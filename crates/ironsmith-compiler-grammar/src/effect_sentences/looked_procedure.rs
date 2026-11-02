@@ -135,6 +135,7 @@ fn continues(
         || partitions::exact_one_to_graveyard_shape(next, revealed, owner).is_some()
         || partitions::optional_reveal_top_shape(next).is_some()
         || (!revealed && face_down::face_down_selection_shape(next).is_some())
+        || (!revealed && matches!(face_down::described_selection_shape(next, rest), Ok(Some(_))))
         || matches!(
             selections::cast_from_among_shape(next, owner),
             Ok(Some(_))
@@ -277,6 +278,11 @@ pub(super) fn continue_with(
             group.consumed += 1;
             return Ok(true);
         }
+    }
+    if group.selected.is_none() && group.effects.is_empty()
+        && face_down::described_selection(group, sentence, rest)? {
+        group.consumed += 1;
+        return Ok(true);
     }
     if group.selected.is_none()
         && group.effects.is_empty()

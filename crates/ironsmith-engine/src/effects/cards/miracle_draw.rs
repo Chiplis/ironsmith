@@ -321,27 +321,18 @@ pub(crate) fn miracle_reveal_event(
     game: &mut GameState,
     drawn: &crate::events::CardsDrawnEvent,
     parent: crate::provenance::ProvNodeId,
-) -> Vec<crate::triggers::TriggerEvent> {
-    let Some(decision) = drawn.miracle.as_ref() else {
-        return Vec::new();
-    };
-    decision
-        .revealed_instances()
-        .iter()
-        .map(|proof| {
-            let provenance = game
-                .provenance_graph_mut()
-                .alloc_child_event(parent, crate::events::EventKind::CardRevealed);
-            super::public_reveal_observation(
-                proof.player,
-                proof.card,
-                Zone::Hand,
-                proof.card,
-                Some(proof.drawn_snapshot.clone()),
-                None,
-                None,
-                provenance,
-            )
-        })
-        .collect()
+    decisions: &mut dyn DecisionMaker,
+) -> Result<Vec<crate::triggers::TriggerEvent>, ExecutionError> {
+    let Some(decision) = drawn.miracle.as_ref() else { return Ok(Vec::new()); };
+    let mut events = Vec::new();
+    for proof in decision.revealed_instances() {
+        let provenance = game.provenance_graph_mut()
+            .alloc_child_event(parent, crate::events::EventKind::CardRevealed);
+        let event = super::public_reveal_observation(proof.player, proof.card, Zone::Hand,
+            proof.card, Some(proof.drawn_snapshot.clone()), None, None, provenance);
+        super::process_public_reveal_action_offers(game, &event, decisions)?;
+        events.push(event);
+        if decisions.awaiting_choice() { break; }
+    }
+    Ok(events)
 }

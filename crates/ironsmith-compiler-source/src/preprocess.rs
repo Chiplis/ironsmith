@@ -76,10 +76,12 @@ pub fn make_line_info(
     }
 }
 
+fn is_layout_whitespace(ch: char) -> bool { ch.is_whitespace() || ch == '\u{200b}' }
+
 pub fn normalize_trimmed_line(line: &str) -> Option<NormalizedLine> {
-    let source_start = line.find(|ch: char| !ch.is_whitespace())?;
+    let source_start = line.find(|ch: char| !is_layout_whitespace(ch))?;
     let source_end = line
-        .rfind(|ch: char| !ch.is_whitespace())
+        .rfind(|ch: char| !is_layout_whitespace(ch))
         .and_then(|byte| line[byte..].chars().next().map(|ch| byte + ch.len_utf8()))?;
     if source_start >= source_end {
         return None;
@@ -92,7 +94,7 @@ pub fn normalize_trimmed_line(line: &str) -> Option<NormalizedLine> {
 
     for (relative_byte, ch) in line[source_start..source_end].char_indices() {
         let source_byte = source_start + relative_byte;
-        if ch.is_whitespace() {
+        if is_layout_whitespace(ch) {
             pending_whitespace.get_or_insert(source_byte);
             continue;
         }
@@ -198,5 +200,16 @@ mod tests {
         assert_eq!(info.line_index, 2);
         assert_eq!(info.display_line_index, 2);
         assert_eq!(info.raw_line, "Draw a card.");
+    }
+}
+
+#[cfg(test)]
+mod zero_width_layout_tests {
+    #[test]
+    fn invisible_layout_space_is_blank_or_collapsed_without_losing_source_spans() {
+        assert!(super::normalize_trimmed_line(" \u{200b} ").is_none());
+        let value=super::normalize_trimmed_line("Draw\u{200b}a card.").unwrap();
+        assert_eq!(value.normalized,"Draw a card.");
+        assert!(!value.char_map.is_empty());
     }
 }

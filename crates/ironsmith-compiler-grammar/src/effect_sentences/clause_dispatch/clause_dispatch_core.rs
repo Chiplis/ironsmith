@@ -243,6 +243,7 @@ pub(super) fn parse_effect_clause_unstacked(
     } else {
         tokens
     };
+    if let Some(effect) = crate::activation_without_costs::parse(tokens)? { return Ok(effect); }
     if let Some(effect) = crate::custom_status::source_effect(tokens) {
         return Ok(effect);
     }
@@ -259,8 +260,9 @@ pub(super) fn parse_effect_clause_unstacked(
                 &terminated
             ),
             Some(crate::grammar::effects::clause_pattern_shapes::KeywordMechanicShape::Phase {
-                until_visit_roll_at_most: Some(_),
-                ..
+                until_visit_roll_at_most: Some(_), ..
+            } | crate::grammar::effects::clause_pattern_shapes::KeywordMechanicShape::Phase {
+                until_controller_casts_nth_spell: Some(_), ..
             })
         ) && let Some(effect) =
             super::super::clause_pattern_helpers::parse_keyword_mechanic_clause(&terminated)?
@@ -999,6 +1001,7 @@ pub(super) fn parse_passive_goad_clause(
 }
 
 pub fn parse_effect_clause_lexed(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(effect)=crate::effect_sentences::dispatch_entry::link_exiled_cards::read(tokens)? {return Ok(effect);}
     parse_effect_clause(tokens)
 }
 

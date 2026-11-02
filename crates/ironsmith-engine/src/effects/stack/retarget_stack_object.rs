@@ -142,6 +142,7 @@ pub(super) fn stack_entry_retarget_requirements(
                     aggregate_constraint,
                     min_targets: range.len(),
                     max_targets: Some(range.len()),
+                    additional_target_budget: 0,
                     distinct_player_group: None,
                     shared_player_group: None,
                 },
@@ -231,6 +232,7 @@ pub(super) fn stack_entry_retarget_requirements(
             aggregate_constraint: None,
             min_targets: count.min,
             max_targets: count.max,
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         });

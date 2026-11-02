@@ -1213,7 +1213,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
                     }
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
-                TurnHistoryCount::MovedZones { filter, .. } => {
+                TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::MovedZonesEver { filter, .. } => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
                 TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter }
@@ -2232,11 +2232,20 @@ pub(crate) fn bind_granted_trigger_outer_player(
     }
 }
 
-fn granted_ability_mode_description(
+fn granted_ability_choice_label(
     ability: &GrantedAbilityAst,
     _spec: &ChooseSpec,
 ) -> Result<String, CardTextError> {
     let display = match ability {
+        GrantedAbilityAst::Bundle(members)=>{
+            // A declared identity names the complete custom ability program
+            // for the player choosing it; implementation clauses stay grouped.
+            if let Some(GrantedAbilityAst::StaticAbility(identity))=members.first()
+                && let StaticAbilityAst::Static(identity)=identity.as_ref()
+                && let ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity {name}=&identity.payload
+            {name.as_str().to_string()}
+            else {members.iter().map(|member|granted_ability_choice_label(member,_spec)).collect::<Result<Vec<_>,_>>()?.join(" and ")}
+        },
         GrantedAbilityAst::ThisAbility => "this ability".to_string(),
         GrantedAbilityAst::ParsedObjectAbility { display, .. } => display.clone(),
         GrantedAbilityAst::KeywordAction(action) => action.display_text(),
@@ -2247,7 +2256,9 @@ fn granted_ability_mode_description(
             .unwrap_or_default(),
     };
 
-    Ok(format!("This creature gains {display} until end of turn."))
+    // This is a chooser label, not an authored rule sentence. The mode's
+    // typed effects own its actual recipient and continuous duration.
+    Ok(display)
 }
 
 pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Option<TagKey> {
@@ -2367,6 +2378,7 @@ pub fn eldrazi_spawn_or_scion_mana_ability() -> Ability {
             vec![crate::costs::Cost::sacrifice_self()],
             vec![ManaSymbol::Colorless],
         )),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -2431,6 +2443,7 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     })
 }
@@ -2472,6 +2485,7 @@ fn equipment_granted_damage_ability(
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     })
 }
@@ -2684,6 +2698,7 @@ fn apply_embedded_token_rules(
                         intervening_if: None,
                         presentation_label: None,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2709,6 +2724,7 @@ fn apply_embedded_token_rules(
                     intervening_if: None,
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             }),
             token_grammar::TokenEmbeddedRuleShape::DiesCreateBuiltinToken { token, count } => {
@@ -2728,6 +2744,7 @@ fn apply_embedded_token_rules(
                         intervening_if: None,
                         presentation_label: None,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2758,6 +2775,7 @@ fn apply_embedded_token_rules(
                         intervening_if: None,
                         presentation_label: None,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2779,6 +2797,7 @@ fn apply_embedded_token_rules(
                         intervening_if: None,
                         presentation_label: None,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2804,6 +2823,7 @@ fn apply_embedded_token_rules(
                         intervening_if: None,
                         presentation_label: None,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2834,6 +2854,7 @@ fn apply_embedded_token_rules(
                         intervening_if: None,
                         presentation_label: None,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2858,6 +2879,7 @@ fn apply_embedded_token_rules(
                         mana_usage_restrictions: Vec::new(),
                         is_loyalty_ability: false,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2895,6 +2917,7 @@ fn apply_embedded_token_rules(
                         mana_usage_restrictions: Vec::new(),
                         is_loyalty_ability: false,
                     }),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 })
             }
@@ -2916,6 +2939,7 @@ pub fn token_dies_deals_damage_any_target_ability(amount: i32) -> Ability {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -2933,6 +2957,7 @@ pub fn token_leaves_deals_damage_any_target_ability(amount: i32) -> Ability {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -2950,6 +2975,7 @@ pub fn token_becomes_tapped_deals_damage_target_player_ability(amount: i32) -> A
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -2969,6 +2995,7 @@ pub fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability 
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -2993,6 +3020,7 @@ pub fn token_red_pump_ability() -> Ability {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3018,6 +3046,7 @@ pub fn token_white_tap_target_creature_ability() -> Ability {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3047,6 +3076,7 @@ pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) ->
             mana_usage_restrictions,
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     })
 }
@@ -3062,6 +3092,7 @@ pub fn token_damage_to_player_poison_counter_ability() -> Ability {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3083,6 +3114,7 @@ pub fn token_noncreature_spell_each_opponent_damage_ability(amount: i32) -> Abil
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3105,6 +3137,7 @@ pub fn token_combat_damage_gain_control_target_artifact_ability() -> Ability {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3138,6 +3171,7 @@ pub fn token_leaves_return_named_from_graveyard_to_hand_ability(
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3218,6 +3252,7 @@ pub fn token_sacrifice_return_named_from_graveyard_ability(
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3259,6 +3294,7 @@ pub fn token_upkeep_sacrifice_return_named_from_graveyard_ability(
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3283,6 +3319,7 @@ pub fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -3568,6 +3605,7 @@ fn build_creature_token_definition(
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         builder = builder.with_ability(ability);
@@ -3646,6 +3684,7 @@ fn build_creature_token_definition(
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         builder = builder.with_ability(ability);
@@ -3675,6 +3714,7 @@ fn build_creature_token_definition(
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: false,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             };
         builder = builder.with_ability(ability);
@@ -3718,6 +3758,7 @@ fn build_creature_token_definition(
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         builder = builder.with_ability(counter_ability);
@@ -3749,6 +3790,7 @@ fn build_creature_token_definition(
                     intervening_if: None,
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             };
         builder = builder.with_ability(ability);
@@ -4046,3 +4088,7 @@ fn with_excess_damage_redirect(
     }
     None
 }
+
+#[cfg(test)]
+#[path = "compile_support/reference_animation_tests.rs"]
+mod reference_animation_tests;

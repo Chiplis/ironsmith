@@ -10,6 +10,13 @@ use super::TagKey;
 
 /// Visit or rewrite every reference key inside a value.
 pub trait TagKeyWalk {
+    /// Native typed execution references. The callback may handle a complete
+    /// node (true) or let a derived model traverse its typed fields (false).
+    /// Strings, labels, retained encodings and numeric values are never nodes.
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        self.map_tag_keys(&mut |tag| { f(tag); });
+    }
+
     /// Visits typed object references, including references without a tag key.
     /// Leaves without object references use the default empty traversal.
     fn for_each_object_ref(&self, _f: &mut dyn FnMut(&crate::filter_model::ObjectRef)) {}
@@ -100,6 +107,11 @@ impl<T: TagKeyWalk> TagKeyWalk for Option<T> {
             value.map_player_refs(f);
         }
     }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        if let Some(value) = self {
+            value.map_execution_nodes(f);
+        }
+    }
 }
 
 impl<T: TagKeyWalk> TagKeyWalk for Vec<T> {
@@ -126,6 +138,11 @@ impl<T: TagKeyWalk> TagKeyWalk for Vec<T> {
     fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
         for value in self {
             value.map_player_refs(f);
+        }
+    }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self {
+            value.map_execution_nodes(f);
         }
     }
 }
@@ -156,6 +173,11 @@ impl<T: TagKeyWalk> TagKeyWalk for [T] {
             value.map_player_refs(f);
         }
     }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self {
+            value.map_execution_nodes(f);
+        }
+    }
 }
 
 impl<T: TagKeyWalk, const N: usize> TagKeyWalk for [T; N] {
@@ -182,6 +204,11 @@ impl<T: TagKeyWalk, const N: usize> TagKeyWalk for [T; N] {
     fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
         for value in self {
             value.map_player_refs(f);
+        }
+    }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self {
+            value.map_execution_nodes(f);
         }
     }
 }
@@ -216,6 +243,9 @@ impl<T: TagKeyWalk + ?Sized> TagKeyWalk for Box<T> {
     fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
         (**self).map_player_refs(f);
     }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        (**self).map_execution_nodes(f);
+    }
 }
 
 impl<T: TagKeyWalk + Clone> TagKeyWalk for std::rc::Rc<T> {
@@ -234,6 +264,9 @@ impl<T: TagKeyWalk + Clone> TagKeyWalk for std::rc::Rc<T> {
     fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
         std::rc::Rc::make_mut(self).map_player_refs(f);
     }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        std::rc::Rc::make_mut(self).map_execution_nodes(f);
+    }
 }
 
 impl<T: TagKeyWalk + Clone> TagKeyWalk for std::sync::Arc<T> {
@@ -251,6 +284,9 @@ impl<T: TagKeyWalk + Clone> TagKeyWalk for std::sync::Arc<T> {
     }
     fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
         std::sync::Arc::make_mut(self).map_player_refs(f);
+    }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        std::sync::Arc::make_mut(self).map_execution_nodes(f);
     }
 }
 
@@ -273,6 +309,9 @@ macro_rules! tag_key_tuples {
                 fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
                     $(self.$index.map_player_refs(f);)+
                 }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+                    $(self.$index.map_execution_nodes(f);)+
+                }
             }
         )+
     };
@@ -280,7 +319,7 @@ macro_rules! tag_key_tuples {
 
 tag_key_tuples!((A 0, B 1) (A 0, B 1, C 2) (A 0, B 1, C 2, D 3));
 
-impl<K: TagKeyWalk, V: TagKeyWalk, S> TagKeyWalk for std::collections::HashMap<K, V, S> {
+impl<K: TagKeyWalk + Eq + std::hash::Hash, V: TagKeyWalk, S: std::hash::BuildHasher> TagKeyWalk for std::collections::HashMap<K, V, S> {
     fn for_each_tag_key(&self, f: &mut dyn FnMut(&TagKey)) {
         for (key, value) in self {
             key.for_each_tag_key(f);
@@ -309,9 +348,15 @@ impl<K: TagKeyWalk, V: TagKeyWalk, S> TagKeyWalk for std::collections::HashMap<K
             value.map_player_refs(f);
         }
     }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        let entries = self.drain().collect::<Vec<_>>();
+        for (mut key, mut value) in entries {
+            key.map_execution_nodes(f); value.map_execution_nodes(f); self.insert(key,value);
+        }
+    }
 }
 
-impl<K: TagKeyWalk, V: TagKeyWalk> TagKeyWalk for std::collections::BTreeMap<K, V> {
+impl<K: TagKeyWalk + Ord, V: TagKeyWalk> TagKeyWalk for std::collections::BTreeMap<K, V> {
     fn for_each_tag_key(&self, f: &mut dyn FnMut(&TagKey)) {
         for (key, value) in self {
             key.for_each_tag_key(f);
@@ -340,9 +385,14 @@ impl<K: TagKeyWalk, V: TagKeyWalk> TagKeyWalk for std::collections::BTreeMap<K, 
             value.map_player_refs(f);
         }
     }
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for (mut key, mut value) in std::mem::take(self) {
+            key.map_execution_nodes(f); value.map_execution_nodes(f); self.insert(key,value);
+        }
+    }
 }
 
-impl<T: TagKeyWalk, S> TagKeyWalk for std::collections::HashSet<T, S> {
+impl<T: TagKeyWalk + Eq + std::hash::Hash, S: std::hash::BuildHasher> TagKeyWalk for std::collections::HashSet<T, S> {
     fn for_each_tag_key(&self, f: &mut dyn FnMut(&TagKey)) {
         for value in self {
             value.for_each_tag_key(f);
@@ -359,9 +409,14 @@ impl<T: TagKeyWalk, S> TagKeyWalk for std::collections::HashSet<T, S> {
         }
     }
     fn map_tag_keys(&mut self, _f: &mut dyn FnMut(&mut TagKey)) {}
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        let values=self.drain().collect::<Vec<_>>();
+        for mut value in values {value.map_execution_nodes(f);self.insert(value);}
+    }
+
 }
 
-impl<T: TagKeyWalk> TagKeyWalk for std::collections::BTreeSet<T> {
+impl<T: TagKeyWalk + Ord> TagKeyWalk for std::collections::BTreeSet<T> {
     fn for_each_tag_key(&self, f: &mut dyn FnMut(&TagKey)) {
         for value in self {
             value.for_each_tag_key(f);
@@ -378,6 +433,10 @@ impl<T: TagKeyWalk> TagKeyWalk for std::collections::BTreeSet<T> {
         }
     }
     fn map_tag_keys(&mut self, _f: &mut dyn FnMut(&mut TagKey)) {}
+    fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for mut value in std::mem::take(self) {value.map_execution_nodes(f);self.insert(value);}
+    }
+
 }
 
 /// The keys a value carries, in field order, duplicates kept.
@@ -428,5 +487,36 @@ mod typed_object_reference_walk_tests {
                 ObjectRef::FilterCandidate
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod typed_execution_node_tests {
+    use super::*;
+    use crate::EffectId;
+    use std::collections::{HashMap,HashSet,BTreeMap,BTreeSet};
+    #[derive(crate::tag::TagKeyWalk)]
+    struct References {
+        ids:HashSet<EffectId>, tags:BTreeSet<TagKey>,
+        by_id:HashMap<EffectId,TagKey>, by_tag:BTreeMap<TagKey,EffectId>,
+        number:u32, text:String,
+    }
+    #[test]
+    fn typed_execution_nodes_rekey_all_containers_without_rewriting_strings_or_numbers() {
+        let mut model=References {
+            ids:[EffectId(7)].into_iter().collect(),tags:[TagKey::from("local")].into_iter().collect(),
+            by_id:[(EffectId(7),TagKey::from("local"))].into_iter().collect(),
+            by_tag:[(TagKey::from("local"),EffectId(7))].into_iter().collect(),
+            number:7,text:"local EffectId(7)".into(),
+        };
+        model.map_execution_nodes(&mut |node| {
+            if let Some(id)=node.downcast_mut::<EffectId>() {id.0+=10;return true;}
+            if let Some(tag)=node.downcast_mut::<TagKey>() {*tag="scoped".into();return true;}
+            false
+        });
+        assert!(model.ids.contains(&EffectId(17)));assert!(model.tags.contains(&TagKey::from("scoped")));
+        assert_eq!(model.by_id.get(&EffectId(17)),Some(&TagKey::from("scoped")));
+        assert_eq!(model.by_tag.get(&TagKey::from("scoped")),Some(&EffectId(17)));
+        assert_eq!(model.number,7);assert_eq!(model.text,"local EffectId(7)");
     }
 }

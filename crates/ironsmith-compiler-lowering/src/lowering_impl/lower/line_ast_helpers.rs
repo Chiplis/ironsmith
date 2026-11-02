@@ -159,14 +159,31 @@ pub fn lower_level_ability_ast(
             }
             ParsedLevelAbilityItemAst::TriggeredAbility(triggered) => {
                 let info = triggered.info.clone();
-                let mut chunk = triggered.chunk;
-                apply_level_range_trigger_condition(&mut chunk, level.min_level, level.max_level);
-                activated_lines.push(normalize_line_ast_standalone(
+                let line = normalize_line_ast_standalone(
                     info,
-                    vec![chunk],
+                    vec![triggered.chunk],
                     triggered.restrictions,
                     triggered.semantic_facts,
-                )?);
+                )?;
+                let mut restrictions = line.restrictions;
+                for chunk in line.chunks {
+                    let NormalizedLineChunk::Triggered { trigger, prepared, max_triggers_per_turn } = chunk else {
+                        return Err(CardTextError::InvariantViolation("level triggered item did not retain its complete triggered occurrence".into()));
+                    };
+                    let mut ability = super::line_lowering::materialize_triggered_ability(
+                        trigger, prepared, max_triggers_per_turn, &line.semantic_facts,
+                    )?;
+                    apply_pending_restrictions_to_ability(&mut ability, &mut restrictions)?;
+                    for designation in &line.semantic_facts.ability_designations {
+                        if !ability.designations.contains(designation) { ability.designations.push(designation.clone()); }
+                    }
+                    if let Some(keyword) = line.semantic_facts.keyword_identity.clone() {
+                        crate::keyword_actions::stamp_keyword_identity(&mut ability, keyword);
+                    }
+                    lowered.abilities.extend(crate::runtime_static_ability_helpers::object_abilities_to_static_carriers(
+                        vec![ability], String::new(),
+                    )?);
+                }
             }
             ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
                 let info = activated.info.clone();
@@ -215,26 +232,6 @@ fn level_range_predicate(min_level: u32, max_level: Option<u32>) -> PredicateAst
     } else {
         min_condition
     }
-}
-
-/// CR 711.2a: an ability in a level range exists only while the permanent has
-/// that many level counters. For a triggered ability that is an event-time
-/// gate (the ability must exist when the event happens); once triggered it
-/// resolves regardless of later counter changes, so this is not an
-/// intervening "if" (CR 603.4).
-fn apply_level_range_trigger_condition(chunk: &mut LineAst, min_level: u32, max_level: Option<u32>) {
-    let LineAst::Triggered { trigger, .. } = chunk else {
-        return;
-    };
-    let max_label = max_level
-        .map(|level| level.to_string())
-        .unwrap_or_else(|| "+".to_string());
-    let inner = std::mem::replace(trigger, TriggerSpec::AnyOf(Vec::new()));
-    *trigger = TriggerSpec::ConditionQualified {
-        trigger: Box::new(inner),
-        condition: level_range_predicate(min_level, max_level),
-        surface: format!("__ironsmith_level_range:{min_level}:{max_label}"),
-    };
 }
 
 fn apply_level_range_activation_condition(
@@ -300,6 +297,7 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
         ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase)
             if increase.filter.source
     ) || match &static_ability.payload {
+        ironsmith_core::StaticAbilityPayload::GrantOptionalSpellCost { filter, .. } if filter.source => true,
         ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
         | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
         | ironsmith_core::StaticAbilityPayload::CastTargetRestriction { .. } => true,
@@ -533,6 +531,7 @@ pub fn lower_line_ast(
     } = line;
     let mut handled_restrictions_for_new_ability = false;
     let line_abilities_start = builder.abilities.len();
+    let line_spell_segments_start = builder.spell_effect.as_ref().map_or(0, |program| program.segments.len());
 
     for parsed in chunks {
         if let NormalizedLineChunk::Statement { effects_ast, .. } = &parsed
@@ -589,6 +588,37 @@ pub fn lower_line_ast(
         apply_pending_restrictions_to_ability(&mut builder.abilities[index], &mut restrictions)?;
     }
 
+    for ability in &mut builder.abilities[line_abilities_start..] {
+        for designation in &semantic_facts.ability_designations {
+            if !ability.designations.contains(designation) {
+                ability.designations.push(designation.clone());
+            }
+            let program = match &mut ability.kind {
+                ironsmith_core::AbilityKind::Triggered(triggered) => Some(&mut triggered.effects),
+                ironsmith_core::AbilityKind::Activated(activated) => Some(&mut activated.effects),
+                ironsmith_core::AbilityKind::Static(ability) => match &mut ability.payload {
+                    ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {program,..} => Some(program),
+                    _ => None,
+                },
+            };
+            if let Some(program) = program {
+                for segment in &mut program.segments {
+                    if !segment.ability_designations.contains(designation) {
+                        segment.ability_designations.push(designation.clone());
+                    }
+                }
+            }
+        }
+    }
+    if let Some(program) = &mut builder.spell_effect {
+        for segment in program.segments.iter_mut().skip(line_spell_segments_start) {
+            for designation in &semantic_facts.ability_designations {
+                if !segment.ability_designations.contains(designation) {
+                    segment.ability_designations.push(designation.clone());
+                }
+            }
+        }
+    }
     if let Some(keyword) = semantic_facts.keyword_identity {
         for ability in &mut builder.abilities[line_abilities_start..] {
             crate::keyword_actions::stamp_keyword_identity(ability, keyword);

@@ -64,6 +64,7 @@ pub(super) fn exiled_permission(sentence: &SentenceInput, exiled: TagKey) -> Opt
     };
     match action {
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+            starts_after_current_turn: false,
             player,
             allow_land,
             without_paying_mana_cost,

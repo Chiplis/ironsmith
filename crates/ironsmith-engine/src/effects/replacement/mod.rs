@@ -91,3 +91,6 @@ pub(crate) use zone_draw_tail::{prepare_zone_draw_tail_with_outputs};
 
 mod deferred_programs;
 pub(crate) use deferred_programs::defer_replacement_programs_with_outputs;
+
+mod register_event_program;
+pub use register_event_program::RegisterEventReplacementEffect;

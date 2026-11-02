@@ -25,6 +25,8 @@ mod entry_observation;
 pub(crate) mod movement_instruction;
 mod prepared_move;
 pub use entry_observation::battlefield_entry_observation;
+pub(crate) use entry_observation::battlefield_creation_observation;
+pub(crate) use battlefield_entry::order_simultaneous_creation_entry_timestamps;
 pub(crate) use prepared_move::{
     PreparedZoneMove, commit_exact_zone_moves_before_completion,  commit_zone_moves_with_completion,
       execute_battlefield_entries_with_outputs,
@@ -1128,6 +1130,7 @@ pub(crate) fn finish_zone_change_receipts_frozen_with_outputs<
 }
 
 pub(crate) use battlefield_entry::{
+    transformed_aura_entry_targets,
     BattlefieldEntryOptions, BattlefieldEntryOutcome, BattlefieldEntryReceipt,
     PreparedBattlefieldEntryBatch,
     finish_battlefield_entry_receipts_with_outputs, move_to_battlefield_batch_with_companions,
@@ -1167,3 +1170,6 @@ mod zone_entry_carrier_tests;
 pub(crate) use sacrifice::sacrifice_selected_objects_with_original_outputs;
 
 mod positioned_move;
+
+mod link_exiled_cards;
+pub use link_exiled_cards::LinkExiledCardsEffect;

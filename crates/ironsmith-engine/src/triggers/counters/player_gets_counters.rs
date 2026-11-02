@@ -148,6 +148,7 @@ mod tests {
                 count_after: None,
                 source: None,
                 source_controller: None,
+                cause: None,
             },
             ProvNodeId::default(),
         );

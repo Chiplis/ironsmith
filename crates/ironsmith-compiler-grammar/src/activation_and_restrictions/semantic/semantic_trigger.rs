@@ -398,9 +398,153 @@ pub(super) fn try_parse_source_with_filtered_attack_count_trigger_lexed(
     }))
 }
 
+#[path = "designated_counter_cause.rs"]
+mod designated_counter_cause;
+
+#[path = "named_action_trigger.rs"]
+mod named_action_trigger;
+
 pub(super) fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    if let Some(trigger) = designated_counter_cause::read(tokens)? { return Ok(trigger); }
+    if let Some(trigger) = named_action_trigger::read_participant_event_union(tokens) { return Ok(trigger); }
+    if let Some(trigger) = named_action_trigger::read(tokens)? { return Ok(trigger); }
+    // A bounded characteristic-gain clause describes a transition, not an
+    // invocation of the effect which happens to produce it.
+    {
+        let view = crate::lexer::TokenWordView::new(tokens);
+        let words = view.word_refs();
+        if let Some(becomes) = words.iter().position(|word| *word == "becomes") {
+            let mut value_start = becomes + 1;
+            if matches!(words.get(value_start), Some(&"a" | &"an")) { value_start += 1; }
+            if becomes > 0 && value_start < words.len() {
+                let value = words[value_start..].join(" ");
+                let characteristic = crate::util::parse_card_type(&value)
+                    .map(ironsmith_core::trigger_model::GainedCharacteristic::CardType)
+                    .or_else(|| crate::util::parse_supertype_word(&value)
+                        .map(ironsmith_core::trigger_model::GainedCharacteristic::Supertype))
+                    .or_else(|| crate::util::parse_subtype_word(&value)
+                        .map(ironsmith_core::trigger_model::GainedCharacteristic::Subtype));
+                if let Some(characteristic) = characteristic {
+                    let end = view.token_start_indices()[becomes];
+                    // A complete disjunction may end in this gain clause.
+                    // Let the existing union owner split it rather than
+                    // claiming its entire prefix as one object noun phrase.
+                    if crate::word_claims::probe_only(|| parse_object_filter_lexed(&tokens[..end], false)).is_ok() {
+                        let source_filter = parse_object_filter_lexed(&tokens[..end], false)?;
+                        crate::word_claims::claim_tokens(&tokens[end..]);
+                        return Ok(TriggerSpec::CharacteristicGained(ironsmith_core::trigger_model::CharacteristicGainTrigger {
+                            filter: source_filter, characteristic,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    if crate::lexer::token_word_refs(tokens).as_slice() == ["a", "number", "is", "chosen", "for", "this", "permanent"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TriggerSpec::KeywordActionFromSource { action: crate::events::KeywordActionKind::ChoosePermanentNumber, player: PlayerFilter::Any });
+    }
+    let cause_words=crate::lexer::token_word_refs(tokens);
+    let owned_cause = if cause_words.len() >= 8 {
+        let start = cause_words.len()-8;
+        match &cause_words[start..] {
+            ["caused","by","its",label,"activated","ability","you","activated"] => Some((start,*label,Some(PlayerFilter::You))),
+            _ => None,
+        }
+    } else { None }.or_else(|| {
+        let start = cause_words.len().checked_sub(6)?;
+        match &cause_words[start..] {
+            ["caused","by","its",label,"activated","ability"] => Some((start,*label,None)),
+            _ => None,
+        }
+    });
+    if let Some((start,label,activator)) = owned_cause {
+        let cut=trigger_word_token_start(tokens,start).unwrap_or(tokens.len());
+        let filter=match parse_trigger_clause_lexed_unstacked(&tokens[..cut])? {
+            TriggerSpec::PermanentTransforms(filter) => filter,
+            TriggerSpec::ThisTransforms {destination_name:None} => ObjectFilter::source(),
+            TriggerSpec::ThisTransformsWithSurface {surface,destination_name:None} => ObjectFilter::source_with_surface(surface),
+            _ => return Err(CardTextError::ParseError("owned activation cause requires a transform event".into())),
+        };
+        crate::word_claims::claim_tokens(&tokens[cut..]);
+        return Ok(TriggerSpec::PermanentTransformsFromOwnNamedActivation {filter,label:label.to_string(),activator});
+    }
+    if cause_words.len() >= 6 {
+        let start=cause_words.len()-6;
+        if let ["caused","by","a",label,"activated","ability"]=&cause_words[start..] {
+            let cut=trigger_word_token_start(tokens,start).unwrap_or(tokens.len());
+            let filter = match parse_trigger_clause_lexed_unstacked(&tokens[..cut])? {
+                TriggerSpec::PermanentTransforms(filter) => filter,
+                TriggerSpec::ThisTransforms {destination_name:None} => ObjectFilter::source(),
+                TriggerSpec::ThisTransformsWithSurface {surface,destination_name:None} => ObjectFilter::source_with_surface(surface),
+                _ => return Err(CardTextError::ParseError("named activation cause requires a transform event".into())),
+            };
+            crate::word_claims::claim_tokens(&tokens[cut..]);
+            return Ok(TriggerSpec::PermanentTransformsFromNamedActivation {filter,label:(*label).to_string()});
+        }
+    }
+    // A named source activation producing a counter event. Source-reference
+    // recognition owns the subject; the label never selects rules by card name.
+    let named_words = crate::lexer::token_word_refs(tokens);
+    if let Some(ability) = named_words.iter().position(|word| *word == "ability")
+        && ability >= 2
+        && named_words.get(ability+1..) == Some(&["puts", "one", "or", "more", "counters", "on", "it"][..]) {
+        let mut source_words = named_words[..ability-1].to_vec();
+        let mut owned = Vec::new();
+        if let Some(last) = source_words.last_mut() {
+            if let Some(base) = last.strip_suffix("'s").or_else(||last.strip_suffix("’s")) {
+                owned.push(base.to_string()); *last = &owned[0];
+            } else if *last == "s" { source_words.pop(); }
+        }
+        if is_source_reference_words(&source_words) || source_words == ["its"] {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(TriggerSpec::CounterPutOn {
+                cause_designation: None,
+                filter: ObjectFilter::source(), counter_type: None, source_controller: None,
+                one_or_more: true, include_players: false, one_or_more_objects: false,
+                activation_label: Some(named_words[ability-1].to_string()),
+            });
+        }
+    }
+    // The cause operand is independent of the counter event's recipient,
+    // count, kind and the triggered effect body.
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() >= 9 {
+        let start = words.len() - 9;
+        if let ["caused", "by", "the", label, "activated", "ability", "of", "this", "permanent"] = &words[start..] {
+            let cut = trigger_word_token_start(tokens, start).unwrap_or(tokens.len());
+            let mut trigger = parse_trigger_clause_lexed_unstacked(&tokens[..cut])?;
+            if let TriggerSpec::CounterPutOn { activation_label, .. } = &mut trigger {
+                *activation_label = Some((*label).to_string());
+                crate::word_claims::claim_tokens(&tokens[cut..]);
+                return Ok(trigger);
+            }
+            return Err(CardTextError::ParseError("named activation cause currently requires a counter-placement event".into()));
+        }
+    }
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        let (player, tail) = if words.starts_with(&["you", "planeswalk"]) {
+            (PlayerFilter::You, &words[2..])
+        } else if words.starts_with(&["a", "player", "planeswalks"]) {
+            (PlayerFilter::Any, &words[3..])
+        } else { (PlayerFilter::Any, &[][..]) };
+        let relation = match tail {
+            ["to", "this", "plane" | "permanent" | "card"] | ["to", "this"] => Some(ironsmith_core::tag::PLANESWALK_DESTINATION_TAG),
+            ["away", "from", "this", "plane" | "permanent" | "card"] | ["away", "from", "this"] => Some(ironsmith_core::tag::PLANESWALK_ORIGINS_TAG),
+            _ => None,
+        };
+        if let Some(relation) = relation {
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(TriggerSpec::KeywordActionTaggedObject {
+                action: crate::events::KeywordActionKind::Planeswalk, player,
+                source_filter: ObjectFilter::default(), object_filter: ObjectFilter::source(),
+                object_tag: crate::tag::TagRef::of(relation), during_your_main_phase: false,
+            });
+        }
+    }
     if let Some((subject, name)) = crate::custom_status::gained_trigger(tokens) {
         let mut filter = parse_object_filter_lexed(&subject, false)?;
         filter.custom_statuses.push(name);
@@ -701,6 +845,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 let filter_tokens = if using_teamwork {
                     &filter_tokens[..filter_tokens.len().saturating_sub(2)]
                 } else if let Some((start, _)) = &using_custom {
+                    crate::word_claims::claim_tokens(&filter_tokens[*start..]);
                     &filter_tokens[..*start]
                 } else {
                     filter_tokens
@@ -1091,6 +1236,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             .ok_or_else(|| CardTextError::ParseError("unknown removed counter type".into()))?;
         let filter = source_reference_surface_for_trigger_subject(&tokens[source..])
             .map(ObjectFilter::source_with_surface).unwrap_or_else(ObjectFilter::source);
+        // The singular article specifies one removal event; the descriptor
+        // reader starts after it, so this event reader owns that token.
+        crate::word_claims::claim_words(&words[2..3]);
         // "... counter from <this source>": the noun, preposition and source.
         crate::word_claims::claim_words(&words[counter_idx..counter_idx + 2]);
         crate::word_claims::claim_tokens(&tokens[source..]);
@@ -3796,7 +3944,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         crate::word_claims::claim_words(&words[counter_word_idx..=counter_word_idx]);
 
         return Ok(TriggerSpec::CounterPutOn {
+            cause_designation: None,
             filter,
+            activation_label: None,
             counter_type,
             source_controller: Some(source_controller),
             one_or_more,
@@ -5914,7 +6064,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
 
         return Ok(TriggerSpec::CounterPutOn {
+            cause_designation: None,
             filter,
+            activation_label: None,
             counter_type,
             source_controller: None,
             one_or_more,
@@ -6656,6 +6808,18 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 if is_source_reference_words(&subject_words) {
                     return Ok(TriggerSpec::ThisDies);
                 }
+                // A qualified source noun retains its ordinary event-time
+                // predicate (for example, nontoken or a creature type).
+                // It is still this exact source incarnation, not any object
+                // matching that predicate.
+                if subject_tokens.first().is_some_and(|token|token.is_word("this"))
+                    && subject_tokens.len()>1
+                    && let Ok(mut filter)=parse_object_filter_lexed(&subject_tokens[1..],false)
+                {
+                    filter.source=true;
+                    crate::word_claims::claim_tokens(&subject_tokens[..1]);
+                    return Ok(TriggerSpec::Dies(filter));
+                }
                 return Err(CardTextError::ParseError(format!(
                     "unsupported this-prefixed dies trigger subject (clause: '{}')",
                     words.join(" ")
@@ -7290,4 +7454,59 @@ fn custom_keyword_using_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, Strin
         return None;
     }
     Some((start, keyword))
+}
+
+#[cfg(test)]
+mod qualified_source_death_tests {
+ use super::*;
+ #[test]
+ fn source_death_keeps_token_and_type_predicates() {
+  let tokens=crate::lexer::lex_line("this nontoken creature dies",0).unwrap();
+  let TriggerSpec::Dies(filter)=parse_trigger_clause_lexed_unstacked(&tokens).unwrap() else {panic!("qualified source death needs filtered event")};
+  assert!(filter.source); assert!(filter.nontoken); assert!(filter.card_types.contains(&crate::types::CardType::Creature));
+  let bare=crate::lexer::lex_line("this creature dies",0).unwrap();
+  assert!(matches!(parse_trigger_clause_lexed_unstacked(&bare).unwrap(),TriggerSpec::ThisDies));
+ }
+}
+
+#[cfg(test)]
+mod characteristic_gain_clause_tests {
+    use super::*;
+    use ironsmith_core::trigger_model::GainedCharacteristic as C;
+    #[test]
+    fn bounded_type_subtype_and_supertype_clauses_use_distinct_facts() {
+        for (text, expected) in [
+            ("a creature you control becomes a Rebel", C::Subtype(crate::types::Subtype::Rebel)),
+            ("a creature you control becomes legendary", C::Supertype(crate::types::Supertype::Legendary)),
+            ("an artifact becomes a creature", C::CardType(crate::types::CardType::Creature)),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let TriggerSpec::CharacteristicGained(actual) =
+                parse_trigger_clause_lexed_unstacked(&tokens).unwrap() else { panic!("typed transition fact: {text}") };
+            assert_eq!(actual.characteristic, expected);
+            assert_ne!(actual.filter, ObjectFilter::default());
+        }
+    }
+    #[test]
+    fn distinct_event_union_keeps_its_typed_gain_arm() {
+        let tokens = crate::lexer::lex_line("you cast a creature spell or a creature you control becomes legendary", 0).unwrap();
+        fn has_gain(trigger: &TriggerSpec) -> bool {
+            match trigger {
+                TriggerSpec::CharacteristicGained(_) => true,
+                TriggerSpec::Either(left, right) => has_gain(left) || has_gain(right),
+                TriggerSpec::AnyOf(branches) => branches.iter().any(has_gain),
+                _ => false,
+            }
+        }
+        let trigger = parse_trigger_clause_lexed_unstacked(&tokens).unwrap();
+        assert!(matches!(trigger, TriggerSpec::Either(..) | TriggerSpec::AnyOf(..)));
+        assert!(has_gain(&trigger));
+    }
+    #[test]
+    fn transition_reader_does_not_claim_unrecognized_or_incomplete_suffix() {
+        for text in ["a creature becomes a glittering", "a creature becomes legendary then", "a creature becomes"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_trigger_clause_lexed_unstacked(&tokens).is_err(), "{text}");
+        }
+    }
 }

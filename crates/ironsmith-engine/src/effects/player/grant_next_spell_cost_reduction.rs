@@ -15,6 +15,10 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.starts_during_next_turn && self.without_paying_mana_cost {
+            return Err(ExecutionError::InternalError("future cost-modifier windows require an ordinary payment modifier".into()));
+        }
+        let first_registration = game.effect_store.temporary_spell_cost_reductions.len();
         let players =
             resolve_player_filter_to_list(game, &self.player, &ctx.filter_context(game), ctx)?;
         if self.without_paying_mana_cost {
@@ -119,6 +123,11 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
                     1,
                     self.duration.clone(),
                 );
+            }
+        }
+        if self.starts_during_next_turn {
+            for modifier in &mut game.effect_store.temporary_spell_cost_reductions[first_registration..] {
+                modifier.starts_next_turn_of = Some(modifier.player);
             }
         }
         Ok(EffectOutcome::resolved())

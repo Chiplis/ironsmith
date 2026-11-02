@@ -1159,7 +1159,7 @@ fn describe_prior_exile_until_next_turn_permission_program(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
-        || permission.while_player_controls.is_some()
+        || (permission.while_player_controls.is_some() || permission.control_duration.is_some())
         || permission.permanents_enter_tapped
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
@@ -3312,6 +3312,7 @@ mod repeated_keyword_grant_tests {
             ironsmith_core::StaticAbility::cascade();
         let granted = ironsmith_core::Ability {
             kind: ironsmith_core::AbilityKind::Static(cascade),
+            designations: Default::default(),
             functional_zones: vec![Zone::Stack],
         };
         let model: crate::static_abilities::CompiledStaticAbility =
@@ -3854,6 +3855,7 @@ mod can_block_additional_grant_tests {
             };
         let granted = ironsmith_core::Ability {
             kind: ironsmith_core::AbilityKind::Static(blocking_model),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         let grant_ability_model: crate::static_abilities::CompiledStaticAbility =
@@ -10705,11 +10707,13 @@ mod cross_segment_choose_color_mana_tests {
     fn program(amount: Value) -> crate::resolution::ResolutionProgram {
         crate::resolution::ResolutionProgram::new(vec![
             crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![Effect::choose_color(PlayerFilter::You)],
                 self_replacements: vec![],
                 starts_new_source_line: false,
             },
             crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![Effect::new(
                     crate::effects::mana::AddManaOfChosenColorEffect::new(
                         amount,
@@ -15722,7 +15726,7 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
-        || grant.while_player_controls.is_some()
+        || (grant.while_player_controls.is_some() || grant.control_duration.is_some())
         || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
@@ -15914,7 +15918,7 @@ fn describe_filtered_exile_cast_parts(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
-        || grant.while_player_controls.is_some()
+        || (grant.while_player_controls.is_some() || grant.control_duration.is_some())
         || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
@@ -16336,7 +16340,7 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
-        || grant.while_player_controls.is_some()
+        || (grant.while_player_controls.is_some() || grant.control_duration.is_some())
         || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
@@ -16661,6 +16665,7 @@ mod shuffle_exile_top_free_play_rendering_tests {
             ),
         );
         vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![shuffle, exile, grant_play, grant_free],
             self_replacements: Vec::new(),
             starts_new_source_line: false,
@@ -19260,6 +19265,8 @@ fn describe_per_opponent_choose_aggregate_copy_program(
         || copy.attack_target_mode.is_some()
         || copy.exile_at_end_of_combat
         || copy.loses_soulbond
+        || copy.ability_loss_until.is_some()
+        || !copy.removed_ability_designations.is_empty()
         || copy.sacrifice_at_next_end_step
         || copy.exile_at_next_end_step
         || copy.pt_adjustment.is_some()
@@ -19701,7 +19708,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
-        || grant.while_player_controls.is_some()
+        || (grant.while_player_controls.is_some() || grant.control_duration.is_some())
         || grant.permanents_enter_tapped
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
@@ -22650,7 +22657,7 @@ fn describe_you_life_change_exile_then_play_program(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
-        || permission.while_player_controls.is_some()
+        || (permission.while_player_controls.is_some() || permission.control_duration.is_some())
         || permission.permanents_enter_tapped
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
@@ -29875,6 +29882,7 @@ mod trailing_same_target_fixed_pt_self_replacement_tests {
         );
         branch.condition_after_replacement = condition_after_replacement;
         crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::new(
                 crate::effects::ModifyPowerToughnessEffect::new(target, -1, -1, Until::EndOfTurn),
             )],
@@ -30102,6 +30110,7 @@ mod named_artifacts_damage_replacement_tests {
         );
         branch.condition_after_replacement = true;
         crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                 source,
                 Effect::deal_damage(Value::Fixed(1), target),
@@ -31084,6 +31093,7 @@ mod additive_search_slots_shared_disposition_tests {
         );
         branch.leading_instead_surface = true;
         crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::new(default)],
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -36280,6 +36290,7 @@ fn life_paid_as_source_entered_for_token(
         turns_face_up_only: false,
         uses_enters_with_counter_surface: false,
         transforms_into: None,
+        transform_characteristics: None,
         presentation_label: None,
         entry_instead_surface: false,
     } = &as_enters.compiled_model()?.payload else { return None };
@@ -38074,7 +38085,45 @@ pub(super) fn describe_alternative_cast_line(
     method: &AlternativeCastingMethod,
     idx: usize,
 ) -> String {
+    let mut text = describe_alternative_cast_line_without_entry_projection(method, idx);
+    if method.battlefield_instructions().project_own_dies_on_entry {
+        text.push_str(". If you cast this spell this way, entering the battlefield causes this permanent's own abilities to trigger as though it died");
+    }
+    text
+}
+
+fn describe_alternative_cast_line_without_entry_projection(
+    method: &AlternativeCastingMethod,
+    idx: usize,
+) -> String {
     match method {
+        AlternativeCastingMethod::Composed { total_cost, instructions, .. }
+            if instructions.casting_power_toughness.is_some() || !instructions.casting_added_supertypes.is_empty() => {
+            let mut text = format!("You may cast this spell for {} rather than pay its mana cost", describe_total_cost(total_cost));
+            if let Some(pt) = instructions.casting_power_toughness {
+                text.push_str(&format!(". If you cast this spell this way, it has base power and toughness {}/{}", pt.power, pt.toughness));
+            }
+            for kind in &instructions.casting_added_supertypes {
+                text.push_str(&format!(". If you cast this spell this way, it is {}", kind.to_string().to_ascii_lowercase()));
+            }
+            for (amount, filter) in &instructions.generic_cost_reductions {
+                text.push_str(&format!(". This cost is reduced by {{{amount}}} for each {}", describe_for_each_filter(filter)));
+            }
+            for (amount, condition) in &instructions.conditional_mana_reductions {
+                let condition = crate::static_abilities::describe_this_spell_cost_condition(condition)
+                    .unwrap_or_else(|| format!("{condition:?}"));
+                text.push_str(&format!(". This cost is reduced by {} if {condition}", amount.to_oracle()));
+            }
+            if instructions.enters_tapped || instructions.enters_attacking {
+                let entry = match (instructions.enters_tapped, instructions.enters_attacking) {
+                    (true,true) => "tapped and attacking", (true,false) => "tapped", _ => "attacking",
+                };
+                text.push_str(&format!(". If you cast this spell this way, it enters {entry}"));
+            }
+            if instructions.enters_transformed { text.push_str(if instructions.attach_to_resolving_spell_target {". If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves"} else {". If you cast this spell this way, put it onto the battlefield transformed as it resolves"}); }
+            if instructions.sacrifice_at_next_end_step { text.push_str(". If you cast this spell this way, sacrifice it at the beginning of the next end step"); }
+            text
+        }
         AlternativeCastingMethod::FromZone { name, zone, total_cost, instructions, .. }
             if name.as_ref() == "Composed zone price" => {
             let mut text = String::new();
@@ -38086,11 +38135,35 @@ pub(super) fn describe_alternative_cast_line(
             for (amount, filter) in &instructions.generic_cost_reductions {
                 text.push_str(&format!(". This cost is reduced by {{{amount}}} for each {}", describe_for_each_filter(filter)));
             }
+            for (amount, condition) in &instructions.conditional_mana_reductions {
+                let condition = crate::static_abilities::describe_this_spell_cost_condition(condition)
+                    .unwrap_or_else(|| format!("{condition:?}"));
+                text.push_str(&format!(". This cost is reduced by {} if {condition}", amount.to_oracle()));
+            }
             if instructions.enters_tapped || instructions.enters_attacking {
                 let entry = match (instructions.enters_tapped, instructions.enters_attacking) {
                     (true, true) => "tapped and attacking", (true, false) => "tapped", _ => "attacking",
                 };
                 text.push_str(&format!(". If you cast this spell this way, it enters {entry}"));
+            }
+            if instructions.enters_transformed {
+                text.push_str(if instructions.attach_to_resolving_spell_target {". If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves"} else {". If you cast this spell this way, put it onto the battlefield transformed as it resolves"});
+            }
+            if let Some(subtypes) = &instructions.resolution_entry_creature_subtypes {
+                text.push_str(&format!(". If you cast this spell this way, put it onto the battlefield as a {} creature as it resolves", subtypes.iter().map(|subtype| subtype.to_string()).collect::<Vec<_>>().join(" ")));
+            }
+            if instructions.keep_kindred_creature_types_on_entry { text.push_str(". If this spell is kindred, it also keeps its creature types"); }
+            if instructions.spell_copies_cannot_enter { text.push_str(". Copies of this spell cannot enter the battlefield"); }
+
+            for redirect in &instructions.departure_replacements {
+                let subject = if redirect.from_zone == Zone::Battlefield { "the permanent this spell becomes" } else { "this spell" };
+                text.push_str(&format!(". If {subject} would leave the {}", redirect.from_zone.name()));
+                for excluded in &redirect.excluded_to_zones {
+                    text.push_str(&format!(" other than being put onto the {}", excluded.name()));
+                }
+                if let Some(to) = redirect.to_zone { text.push_str(&format!(" for the {}", to.name())); }
+                if redirect.destination == Zone::Exile { text.push_str(", exile it instead"); }
+                else { text.push_str(&format!(", put it into the {} instead", redirect.destination.name())); }
             }
             capitalize_first(&text)
         }
@@ -38116,11 +38189,34 @@ pub(super) fn describe_alternative_cast_line(
             let (time, price) = instructions.timed_exile.as_ref().unwrap();
             format!("If you could begin to cast this card from your hand, you may pay {} and exile it with {time} time counters on it. This action doesn't use the stack. At the beginning of your upkeep, if this card is exiled with a time counter on it, remove a time counter from it. When the last time counter is removed from this card, if it's exiled, you may play it without paying its mana cost. If you cast a creature spell this way, it gains haste until you lose control of the spell or the permanent it becomes.", price.to_oracle())
         }
-        AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.exile_preparation.is_some() => {
-            match instructions.exile_preparation.as_ref().unwrap() {
+        AlternativeCastingMethod::FromZone { total_cost, instructions, preparation_total_cost, .. } if instructions.exile_preparation.is_some() => {
+            let mut text = match instructions.exile_preparation.as_ref().unwrap() {
                 ironsmith_core::alternative_cast_model::ExilePreparation::FaceDown { price } => format!("During your turn, you may pay {} and exile this card from your hand face down. Cast it on a later turn for {}.", price.to_oracle(), total_cost.display()),
-                ironsmith_core::alternative_cast_model::ExilePreparation::FaceUpSorcery { price } => format!("You may pay {} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Activate only as a sorcery.", price.to_oracle()),
+                ironsmith_core::alternative_cast_model::ExilePreparation::FaceUpSorcery { price, on_next_spell_resolution: true, optional_cast } => {
+                    let payment = preparation_total_cost.as_ref().map(|cost| {
+                        let mut text = cost.display();
+                        if text.as_bytes().first().is_some_and(u8::is_ascii_uppercase) {
+                            let initial = text[..1].to_ascii_lowercase(); text.replace_range(..1, &initial);
+                        }
+                        text
+                    }).unwrap_or_else(|| format!("pay {}", price.to_oracle()));
+                    format!("You may {payment} and exile this card from your hand as a sorcery. When you next resolve a spell, {}cast this card from exile without paying its mana cost.", if *optional_cast { "you may " } else { "" })
+                },
+                ironsmith_core::alternative_cast_model::ExilePreparation::FaceUpSorcery { price, .. } => format!("You may pay {} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Activate only as a sorcery.", price.to_oracle()),
+                ironsmith_core::alternative_cast_model::ExilePreparation::FaceDownSorcery { price } => format!("As a sorcery, you may pay {} and exile this card from your hand face down. Cast it on a later turn for {}.", price.to_oracle(), total_cost.display()),
+            };
+            if let Some(cost) = &instructions.casting_mana_cost {
+                text.push_str(&format!(" When cast this way, this spell and the permanent it becomes have mana cost {}, colors determined by that mana cost", cost.to_oracle()));
+                if let Some(pt) = &instructions.casting_power_toughness {
+                    text.push_str(&format!(", and base power and toughness {}/{}", pt.power, pt.toughness));
+                }
+                text.push_str(". It keeps its other characteristics. These are copiable characteristics.");
             }
+            if let Some(subtypes) = &instructions.resolves_as_creature {
+                text.push_str(&format!(" When cast this way, after resolving this spell enters the battlefield as a {} creature.",
+                    subtypes.iter().map(|subtype| subtype.to_string()).collect::<Vec<_>>().join(" ")));
+            }
+            text
         }
         AlternativeCastingMethod::FromZone { total_cost, instructions, .. } if instructions.cast_when_discarded_into_exile => {
             let mut parts = Vec::new();
@@ -38128,6 +38224,11 @@ pub(super) fn describe_alternative_cast_line(
             let extra = describe_alternative_costs(&method.non_mana_costs());
             if !extra.is_empty() { parts.push(extra); }
             format!("If you discard this card, discard it into exile. When you do, cast it for {} or put it into your graveyard", parts.join(", "))
+        }
+        AlternativeCastingMethod::FromZone {total_cost,instructions,..} if instructions.hand_reveal_event.is_some() => {
+            let event=instructions.hand_reveal_event.as_ref().unwrap().display();
+            let event=event.strip_prefix("Whenever ").or_else(||event.strip_prefix("When ")).unwrap_or(&event).trim_end_matches('.');
+            format!("You may reveal this card from your hand as {}. When you reveal this card this way, you may cast it by {} rather than its mana cost", lowercase_first(event), lowercase_first(&describe_total_cost(total_cost)))
         }
         AlternativeCastingMethod::FromZone { name, total_cost, instructions, .. } if name.as_ref() == "Parsed conditional battlefield price" => {
             let mut line = format!("You may cast this spell for {}", describe_total_cost(total_cost));
@@ -38141,8 +38242,8 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Composed { name, total_cost, .. } if name.as_ref() == "Parsed entry countdown price" => format!("You may cast this spell for {}", describe_total_cost(total_cost)),
         AlternativeCastingMethod::FromZone { name, .. } if name.as_ref() == "Aftermath" => "Aftermath".into(),
         AlternativeCastingMethod::FromZone { name, .. } if name.as_ref() == "Parsed exclusive graveyard permission" => "You may cast this card from your graveyard".into(),
-        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution, entry_counters, instructions }
-            if matches!(name.as_ref(), "Parsed graveyard alternative cost" | "Parsed zone alternative cost" | "Parsed conditional graveyard price") =>
+        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution, entry_counters, instructions, .. }
+            if instructions.cast_copy || matches!(name.as_ref(), "Parsed graveyard alternative cost" | "Parsed zone alternative cost" | "Parsed conditional graveyard price" | "Parsed alternative cost") =>
         {
             fn payment(cost: &crate::cost::TotalCost) -> String {
                 match cost.kind() {
@@ -38165,12 +38266,40 @@ pub(super) fn describe_alternative_cast_line(
                     }
                 }
             }
-            let mut line = format!("You may cast this card from your {}{} by {} rather than paying its mana cost",
-                zone.name(), if instructions.transformed { " transformed" } else { "" }, payment(total_cost));
+            let subject = if instructions.cast_copy { "a copy of this card" } else { "this card" };
+            let mut price = payment(total_cost);
+            if let Some(destination) = instructions.source_destination_as_cost {
+                if destination == Zone::Exile { price.push_str(&format!(" and exiling this card from your {}", zone.name())); }
+                else { price.push_str(&format!(" and putting this card into the {}", destination.name())); }
+            }
+            let mut line = format!("You may cast {subject}{} from your {} by {} rather than paying its mana cost",
+                if instructions.transformed { " transformed" } else { "" }, zone.name(), price);
             if let Some(condition) = condition
                 && let Some(text) = crate::static_abilities::describe_this_spell_cost_condition(condition)
             {
                 line = format!("As long as {text}, {}", lowercase_first(&line));
+            }
+            if let Some(window) = instructions.casting_window {
+                line = format!("{}, {}", window.to_oracle(), lowercase_first(&line));
+            }
+            if instructions.instant_timing { line.push_str(". You may cast this spell this way any time you could cast an instant"); }
+            for (amount, filter) in &instructions.generic_cost_reductions {
+                line.push_str(&format!(". This cost is reduced by {{{amount}}} for each {}", describe_for_each_filter(filter)));
+            }
+            for (amount, condition) in &instructions.conditional_mana_reductions {
+                let condition = crate::static_abilities::describe_this_spell_cost_condition(condition)
+                    .unwrap_or_else(|| format!("{condition:?}"));
+                line.push_str(&format!(". This cost is reduced by {} if {condition}", amount.to_oracle()));
+            }
+            if instructions.enters_transformed { line.push_str(if instructions.attach_to_resolving_spell_target {". If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves"} else {". If you cast this spell this way, put it onto the battlefield transformed as it resolves"}); }
+            if instructions.enters_tapped || instructions.enters_attacking {
+                let entry = match (instructions.enters_tapped, instructions.enters_attacking) {
+                    (true,true)=>"tapped and attacking", (true,false)=>"tapped", _=>"attacking",
+                };
+                line.push_str(&format!(". If you cast this spell this way, it enters {entry}"));
+            }
+            if instructions.sacrifice_at_next_end_step {
+                line.push_str(". If you cast this spell this way, sacrifice it at the beginning of the next end step");
             }
             for redirect in &instructions.departure_replacements {
                 let subject = if redirect.from_zone == Zone::Battlefield { "the permanent this spell becomes" } else { "this spell" };
@@ -38197,6 +38326,9 @@ pub(super) fn describe_alternative_cast_line(
                     ironsmith_core::cardinal_word(*count).unwrap_or_else(|| count.to_string()),
                     kind.description(), if *count == 1 { "" } else { "s" })).collect::<Vec<_>>().join(" and ");
                 line.push_str(&format!(". If you do, it enters with {entries} on it"));
+            }
+            if instructions.cast_copy && !matches!(name.as_ref(), "Parsed graveyard alternative cost" | "Parsed zone alternative cost" | "Parsed conditional graveyard price" | "Parsed alternative cost") {
+                line.push_str(&format!(". This alternative cost is named {name}"));
             }
             line
         }
@@ -38340,6 +38472,7 @@ pub(super) fn describe_alternative_cast_line(
             // Named keyword costs keep their oracle keyword surface
             // ("Evoke {2}{U}"), like the dedicated variants above.
             if !name.is_empty()
+                && !method.uses_land_play()
                 && !name.eq_ignore_ascii_case("Parsed alternative cost")
                 && cast_condition.is_none()
                 && costs.is_empty()
@@ -38399,6 +38532,9 @@ pub(super) fn describe_alternative_cast_line(
                     crate::static_abilities::describe_this_spell_cost_condition(condition)
             {
                 line = format!("If {condition_text}, {}", lowercase_first(&line));
+            }
+            if method.uses_land_play() {
+                line = format!("During your turn, {}. Casting this spell this way counts as playing a land", lowercase_first(&line));
             }
             if let Some(cost) = mana_cost {
                 for rule in cost.spending_restrictions() {
@@ -39009,6 +39145,7 @@ fn spell_program_without_encoded_aura_attachment(
         }
         if !default_effects.is_empty() || !segment.self_replacements.is_empty() {
             segments.push(ironsmith_core::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects,
                 self_replacements: segment.self_replacements.clone(),
                 starts_new_source_line: segment.starts_new_source_line,
@@ -47036,6 +47173,7 @@ mod conditioned_source_anthem_trait_group_tests {
                     crate::static_abilities::ThisSpellCostCondition,
                 >::None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         let grant = ironsmith_core::GrantObjectAbilityForFilter::new(
@@ -51778,6 +51916,7 @@ mod self_replacement_rendering_tests {
         )))
         .with_starts_new_source_line(true);
         crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: damage_pair(1, creature_target),
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -51930,6 +52069,7 @@ mod self_replacement_rendering_tests {
         ));
         crate::resolution::ResolutionProgram::new(vec![
             crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![Effect::new(crate::effects::SequenceEffect::coordinated(
                     default_pipeline,
                 ))],
@@ -52085,6 +52225,7 @@ mod self_replacement_rendering_tests {
         );
         branch.leading_instead_surface = leading_instead;
         crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![
                 Effect::new(crate::effects::TargetOnlyEffect::new(target.clone())),
                 trailing_threshold_effect(
@@ -52375,6 +52516,7 @@ mod self_replacement_rendering_tests {
         )
         .with_leading_instead_surface(true);
         crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![default],
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -52446,6 +52588,7 @@ mod self_replacement_rendering_tests {
             crate::ability::PresentationLabel::from_ability_word("Morbid"),
         ));
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![
                 Effect::new(crate::effects::TargetOnlyEffect::new(target)),
                 Effect::new(crate::effects::DiscardEffect::new(
@@ -52476,6 +52619,7 @@ mod self_replacement_rendering_tests {
         );
 
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: damage_each_creature_and_player(1),
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 Condition::PlayerControls {
@@ -52541,6 +52685,7 @@ mod self_replacement_rendering_tests {
             ))]
         };
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: coordinated(1),
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 Condition::PlayerControls {
@@ -52576,6 +52721,7 @@ mod self_replacement_rendering_tests {
         );
         branch.condition_after_replacement = true;
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::deal_damage(Value::Fixed(2), target.clone())],
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -52618,6 +52764,7 @@ mod self_replacement_rendering_tests {
         );
         branch.condition_after_replacement = true;
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::deal_damage(Value::Fixed(2), target.clone())],
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -52842,6 +52989,7 @@ mod self_replacement_rendering_tests {
             )]
         };
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: damage_each_creature(1),
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 Condition::ThisSpellWasKicked,
@@ -52871,6 +53019,7 @@ mod self_replacement_rendering_tests {
         )
         .with_leading_instead_surface(true);
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::deal_damage(Value::Fixed(3), target)],
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -53136,6 +53285,7 @@ mod self_replacement_rendering_tests {
         );
         let replacement = Effect::destroy(ChooseSpec::Object(destroy_filter)).tag("destroyed_0");
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![default],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
@@ -53204,6 +53354,7 @@ mod self_replacement_rendering_tests {
         ));
         branch.condition_after_replacement = false;
         let segment = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::draw(Value::Fixed(3))],
             self_replacements: vec![branch],
             starts_new_source_line: false,
@@ -53509,6 +53660,7 @@ mod keyword_condition_ladder_tests {
     ) -> Ability {
         let granted = ironsmith_core::Ability {
             kind: ironsmith_core::AbilityKind::Static(keyword_model(id, label)),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         let grant = ironsmith_core::GrantObjectAbilityForFilter::new(
@@ -54706,6 +54858,7 @@ mod creature_aura_subject_tests {
     fn attached_tap_then_equipment_unattach_uses_one_typed_referent() {
         let enchanted = crate::TagKey::from("enchanted");
         let first = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![
                 Effect::new(crate::effects::TagAttachedToSourceEffect::new(
                     enchanted.clone(),
@@ -54728,6 +54881,7 @@ mod creature_aura_subject_tests {
             ))],
         );
         let second = crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![conditional],
             self_replacements: vec![],
             starts_new_source_line: false,

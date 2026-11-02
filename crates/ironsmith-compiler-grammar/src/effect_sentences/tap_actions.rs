@@ -39,6 +39,29 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
             "tap clause missing target".to_string(),
         ));
     }
+    // A bare exact count is a non-targeted resolution-time choice. It must
+    // not be mistaken for a target declaration or a total-power payment.
+    if let Some(count)=tokens.first().and_then(|token| crate::util::parse_number_word_u32(token.parser_text()))
+        && tokens.get(1).is_some_and(|token| token.is_word("untapped"))
+    {
+        let filter=crate::object_filters::parse_object_filter(&tokens[1..],false)?;
+        crate::word_claims::claim_tokens(&tokens[..1]);
+        return Ok(EffectAst::subject_verb_tap(TargetAst::WithCount(
+            Box::new(TargetAst::Object(filter,None,span_from_tokens(tokens))),
+            crate::cards::builders::ChoiceCount::exactly(count as usize),
+        )));
+    }
+    // An explicitly untapped aggregate selection is the same primitive
+    // whether used in a cost or an optional entry instruction. Keep the
+    // object's complete filter and the group's lower bound independent.
+    if tokens.iter().any(|token| token.is_word("untapped")) {
+        let mut payment = vec![OwnedLexToken::synthetic_word("tap")];
+        payment.extend_from_slice(tokens);
+        if let Some(cost) = crate::activation_and_restrictions::activated_line_core::parse_aggregate_tap_cost(&payment)?
+            && let [crate::model::CompilerCost::ValidatedEffect(effect)] = cost.costs() {
+            return Ok((**effect).clone());
+        }
+    }
     let input = tap_readings::TapClause {
         tokens,
         read_by_cache: Default::default(),
@@ -111,4 +134,18 @@ fn analyze_tap_type_choice_reference(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexT
     }
 
     (clause.trim(), tap_tokens_mention_chosen_type(tokens))
+}
+
+#[cfg(test)]
+mod counted_untapped_resolution_selection {
+    #[test]
+    fn counted_tap_is_exact_resolution_selection_without_targeting() {
+        for text in ["two untapped creatures you control", "3 untapped artifacts you control"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let effect=super::parse_tap(&tokens).unwrap();
+            let debug=format!("{effect:?}");
+            assert!(debug.contains("WithCount"),"{debug}");
+            assert!(debug.contains("Tap"),"{debug}");
+        }
+    }
 }

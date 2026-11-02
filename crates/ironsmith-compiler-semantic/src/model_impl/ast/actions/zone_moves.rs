@@ -21,6 +21,8 @@ pub enum ZoneMoveActionAst {
     /// Lowers to `Effect::put_onto_battlefield`.
     PutOntoBattlefield {
         described_face_down: bool,
+        no_turn_up_permission: bool,
+        exile_cast_permission: Option<ironsmith_core::DescribedFaceDownCastPermission>,
         target: TargetAst,
         tapped: bool,
         controller: ReturnControllerAst,

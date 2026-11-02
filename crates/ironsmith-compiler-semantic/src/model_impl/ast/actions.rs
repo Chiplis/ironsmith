@@ -312,14 +312,22 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount }) => f.debug_tuple("ExileGraveyardForTotalManaValue").field(amount).finish(),
             Self::Library(LibraryActionAst::RetrieveOutsideOrRummage { filter }) => f.debug_tuple("RetrieveOutsideOrRummage").field(filter).finish(),
+            Self::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { target, designation, invocation_action }) => f.debug_tuple("ActivateAbilityWithoutCosts").field(target).field(designation).field(invocation_action).finish(),
             Self::KeywordActions(KeywordActionAst::Learn) => f.write_str("Learn"),
             Self::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost) => f.write_str("ReturnUnblockedAttackerForCost"),
             Self::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies) => f.write_str("ExileResolvedSpellForCombatCopies"),
             Self::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents) => f.write_str("CopiesAssignedToOpponents"),
+            Self::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { label, program }) => f.debug_struct("FirstResolutionEachTurn").field("label",label).field("program",program).finish(),
+            Self::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { class,sources,source_selector,maximum,minimum,chooser,action_name }) => f.debug_struct("TriggerAbilitiesByClass").field("class",class).field("sources",sources).field("source_selector",source_selector).field("maximum",maximum).field("minimum",minimum).field("chooser",chooser).field("action_name",action_name).finish(),
+            Self::KeywordActions(KeywordActionAst::LinkPermanents { target, relation, require_creatures }) => f.debug_struct("LinkPermanents").field("target",target).field("relation",relation).field("require_creatures",require_creatures).finish(),
             Self::KeywordActions(KeywordActionAst::PairUnpairedCreatures) => f.write_str("PairUnpairedCreatures"),
             Self::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender) => f.write_str("EnterAttackingReturnedDefender"),
             Self::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent) => f.write_str("OptionalSourceCopiesForControllerAndOpponent"),
+            Self::KeywordActions(KeywordActionAst::RecordSourceCollection { target, source_tag, name, source_zone, member_zone }) => f.debug_tuple("RecordSourceCollection").field(target).field(source_tag).field(name).field(source_zone).field(member_zone).finish(),
+            Self::KeywordActions(KeywordActionAst::GrantExileControllerInspection {target,sources}) => f.debug_tuple("GrantExileControllerInspection").field(target).field(sources).finish(),
+            Self::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { from, zone, tag }) => f.debug_tuple("RememberOriginalMovementArrivals").field(from).field(zone).field(tag).finish(),
             Self::KeywordActions(KeywordActionAst::SetPermanentDesignation { target, designation }) => f.debug_tuple("SetPermanentDesignation").field(target).field(designation).finish(),
+            Self::KeywordActions(KeywordActionAst::PerformNamedAction { program_completion, label, performer, objects, prior_objects, program }) => f.debug_struct("PerformNamedAction").field("program_completion",program_completion).field("label", label).field("program",program).field("performer",performer).field("objects", objects).field("prior_objects", prior_objects).finish(),
             Self::KeywordActions(KeywordActionAst::EmitKeywordAction { action, amount }) => f
                 .debug_struct("EmitKeywordAction")
                 .field("action", action)
@@ -941,6 +949,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 manifest,
                 shuffle_before,
                 described_face_down,
+                no_turn_up_permission,
+                exile_cast_permission,
             }) => f
                 .debug_struct("PutOntoBattlefield")
                 .field("target", target)
@@ -950,6 +960,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("manifest", manifest)
                 .field("shuffle_before", shuffle_before)
                 .field("described_face_down", described_face_down)
+                .field("no_turn_up_permission", no_turn_up_permission)
+                .field("exile_cast_permission", exile_cast_permission)
                 .finish(),
             Self::RevealLook(RevealLookActionAst::RevealCardsFromHand {
                 count,
@@ -1410,6 +1422,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                starts_after_current_turn,
+                control_duration,
+                alternative_cost,
                 permission_bound_mana,
                 tag,
                 player,
@@ -1426,6 +1441,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 spell_cost_reduction_per_opponent,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
+                .field("starts_after_current_turn", starts_after_current_turn)
+                .field("control_duration", control_duration)
+                .field("alternative_cost", alternative_cost)
                 .field("permission_bound_mana", permission_bound_mana)
                 .field("tag", tag)
                 .field("player", player)
@@ -1681,6 +1699,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 add_supertypes,
                 remove_all_abilities,
                 remove_other_abilities,
+                remove_other_supertypes,
+                remove_other_card_types,
+                remove_other_subtypes,
                 base_power_toughness,
                 target,
                 card_types,
@@ -1702,6 +1723,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("add_supertypes", add_supertypes)
                 .field("remove_all_abilities", remove_all_abilities)
                 .field("remove_other_abilities", remove_other_abilities)
+                .field("remove_other_supertypes", remove_other_supertypes)
+                .field("remove_other_card_types", remove_other_card_types)
+                .field("remove_other_subtypes", remove_other_subtypes)
                 .field("base_power_toughness", base_power_toughness)
                 .field("target", target)
                 .field("card_types", card_types)
@@ -1881,12 +1905,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
                 target,
                 attachment_filter,
+                attachment_player_filter,
+                additional_subtypes,
                 granted_abilities,
                 duration,
             }) => f
                 .debug_struct("BecomeAuraEnchantment")
                 .field("target", target)
                 .field("attachment_filter", attachment_filter)
+                .field("attachment_player_filter", attachment_player_filter)
+                .field("additional_subtypes", additional_subtypes)
                 .field("granted_abilities", granted_abilities)
                 .field("duration", duration)
                 .finish(),
@@ -1925,17 +1953,25 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
+                use_source_chosen_type,
+                use_source_chosen_card_type,
+                source_type_is_unspecified,
                 target,
                 duration,
                 excluded_subtypes,
                 in_addition_to_other_types,
             }) => f
                 .debug_struct("BecomeCreatureTypeChoice")
+                .field("use_source_chosen_type", use_source_chosen_type)
+                .field("use_source_chosen_card_type", use_source_chosen_card_type)
+                .field("source_type_is_unspecified", source_type_is_unspecified)
                 .field("target", target)
                 .field("duration", duration)
                 .field("excluded_subtypes", excluded_subtypes)
                 .field("in_addition_to_other_types", in_addition_to_other_types)
                 .finish(),
+            Self::Characteristics(CharacteristicActionAst::RemoveOptionalTextFragment { target, duration }) =>
+                f.debug_struct("RemoveOptionalTextFragment").field("target", target).field("duration", duration).finish(),
             Self::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }) =>
                 f.debug_struct("ChangeText").field("target", target).field("selection", selection).field("duration", duration).finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeColorChoice {
@@ -2038,6 +2074,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("abilities", abilities)
                 .field("duration", duration)
                 .finish(),
+            Self::Grants(GrantActionAst::GrantKeywordAbilitiesFrom {target,source,keywords,duration,last_known}) => f
+                .debug_struct("GrantKeywordAbilitiesFrom").field("target",target).field("source",source)
+                .field("keywords",keywords).field("duration",duration).field("last_known",last_known).finish(),
             Self::Grants(GrantActionAst::GrantActivatedAbilitiesFrom {
                 target, source, duration, each_recipient, symbol_as_any_color,
             }) => f
@@ -2065,6 +2104,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 }
                 debug.finish()
             }
+            Self::Grants(GrantActionAst::GrantActivationCostAlternative { target, status, replacement_cost, max_uses_per_ability_each_turn, nonloyalty_only }) => f
+                .debug_struct("GrantActivationCostAlternative").field("target", target).field("status", status)
+                .field("replacement_cost", replacement_cost).field("max_uses_per_ability_each_turn", max_uses_per_ability_each_turn)
+                .field("nonloyalty_only", nonloyalty_only).finish(),
             Self::Grants(GrantActionAst::GrantToTarget {
                 target,
                 grantable,
@@ -2677,11 +2720,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("only_if_absent", only_if_absent)
                 .finish(),
             Self::Counters(CounterActionAst::PutCounterOfRandomKind {
+                player_choice,
                 kinds,
                 target,
                 only_absent_kinds,
             }) => f
                 .debug_struct("PutCounterOfRandomKind")
+                .field("player_choice", player_choice)
                 .field("kinds", kinds)
                 .field("target", target)
                 .field("only_absent_kinds", only_absent_kinds)
@@ -2920,8 +2965,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 }
                 debug.finish()
             }
-            Self::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction }) => f
+            Self::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction, starts_during_next_turn }) => f
                 .debug_struct("ReduceNextSpellCostThisTurn")
+                .field("starts_during_next_turn", starts_during_next_turn)
                 .field("filter", filter)
                 .field("reduction", reduction)
                 .finish(),
@@ -2939,8 +2985,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("next_only", next_only)
                 .field("increase", increase)
                 .finish(),
-            Self::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { filter, ability, mode }) => f
+            Self::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { filter, ability, mode, repeat_for_turn }) => f
                 .debug_struct("GrantNextSpellAbilityThisTurn")
+                .field("repeat_for_turn", repeat_for_turn)
                 .field("mode", mode)
                 .field("filter", filter)
                 .field("ability", ability)

@@ -4,6 +4,8 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum PermissionEffectAst {
+    /// One complete optional cost program, acknowledged atomically.
+    MayPay { player: PlayerAst, effects: Vec<EffectAst>, payment_receipt: Option<String> },
     MayCastMatchingSpellWithoutPayingManaCost {
         player: PlayerAst,
         zone_owner: PlayerAst,

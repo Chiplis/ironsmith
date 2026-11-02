@@ -1,0 +1,702 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "structured optional rules-text fragments",
+  "notes": [
+    "Exact full8-card source set. Requires compiler subset plans and cast/layer3 runtime primitives. Pending native validation; materialization alone is not certification.",
+    "Three exact contextual receipt-reader sources cover named payment count and alternate payment choices; they confer no mechanic identity on those readers."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-703",
+      "keyword": "Glitch",
+      "original_reminder": "Remove one [restriction] for each time you pay the glitch cost.",
+      "executable_reminder": "As you cast this spell, you may pay the following additional cost any number of times: {Cost}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.",
+      "source_cards": [
+        "Abrupt Duplication",
+        "Blessing of Immunity",
+        "Fragment Mind",
+        "Mana Overflow",
+        "Sudden Absence",
+        "Manifest Corruption",
+        "Unshackled Revolutionary"
+      ],
+      "rule_reference": "702.250.",
+      "rule_text": [
+        {
+          "name": "702.250a",
+          "rule": "Glitch represents two static abilities that function while the spell with glitch is on the stack. “Glitch [cost]” means “You may pay an additional [cost] any number of times as you cast this spell” and “For each time you chose to pay this spell's glitch cost, change its text by removing one instance of text in [] brackets.” Paying a spell’s glitch cost(s) follows the rules for paying additional costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.250b",
+          "rule": "If a spell’s controller declares the intention to pay any of that spell’s glitch costs, that spell is “glitched.”",
+          "custom": true
+        },
+        {
+          "name": "702.250c",
+          "rule": "If a glitched spell is copied, the choice of which instances of bracketed text were removed will be copied as well.",
+          "custom": true
+        },
+        {
+          "name": "702.250d",
+          "rule": "Persistent glitch is an activated ability and variant of the glitch ability found on permanents. “Persistent glitch [cost]” means “[Cost]: Change the text of this permanent by removing one instance of text in [] brackets.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Abrupt Duplication_AKD",
+          "name": "Abrupt Duplication",
+          "source_card_key": "Abrupt Duplication_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Instant\nGlitch {1} *(Remove one [restriction] for each time you pay the glitch cost.)*\nCreate a token that's a copy of target [noncreature] permanent [you control].",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Abrupt Duplication",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Instant\nGlitch {1} *(Remove one [restriction] for each time you pay the glitch cost.)*\nCreate a token that's a copy of target [noncreature] permanent [you control]."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Abrupt Duplication",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {1}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nCreate a token that's a copy of target [noncreature] permanent [you control].",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch {1}\nCreate a token that's a copy of target [noncreature] permanent [you control].",
+              "original_printed_rules_text": "Glitch {1} (Remove one [restriction] for each time you pay the glitch cost.)\nCreate a token that's a copy of target [noncreature] permanent [you control]."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {1}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nCreate a token that's a copy of target [noncreature] permanent [you control].",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch {1}\nCreate a token that's a copy of target [noncreature] permanent [you control].",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch {1} (Remove one [restriction] for each time you pay the glitch cost.)\nCreate a token that's a copy of target [noncreature] permanent [you control].",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Blessing of Immunity_AKD",
+          "name": "Blessing of Immunity",
+          "source_card_key": "Blessing of Immunity_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}\nType: Instant\nGlitch {2} *(Remove one [restriction] for each time you pay the glitch cost.)*\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn.",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blessing of Immunity",
+              "original_text": "Mana cost: {W}\nType: Instant\nGlitch {2} *(Remove one [restriction] for each time you pay the glitch cost.)*\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blessing of Immunity",
+              "executable_text": "Mana cost: {W}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {2}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn.",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch {2}\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn.",
+              "original_printed_rules_text": "Glitch {2} (Remove one [restriction] for each time you pay the glitch cost.)\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn."
+            }
+          ],
+          "executable_text": "Mana cost: {W}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {2}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn.",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch {2}\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch {2} (Remove one [restriction] for each time you pay the glitch cost.)\nTarget [attacking] creature gets +2/+2 and gains indestructible until end of turn.",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Fragment Mind_AKD",
+          "name": "Fragment Mind",
+          "source_card_key": "Fragment Mind_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nGlitch {U} *(Remove one [restriction] for each time you pay the glitch cost.)*\nCounter target [noncreature] spell [unless its controller pays {2}].",
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fragment Mind",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nGlitch {U} *(Remove one [restriction] for each time you pay the glitch cost.)*\nCounter target [noncreature] spell [unless its controller pays {2}]."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fragment Mind",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {U}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nCounter target [noncreature] spell [unless its controller pays {2}].",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch {U}\nCounter target [noncreature] spell [unless its controller pays {2}].",
+              "original_printed_rules_text": "Glitch {U} (Remove one [restriction] for each time you pay the glitch cost.)\nCounter target [noncreature] spell [unless its controller pays {2}]."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {U}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nCounter target [noncreature] spell [unless its controller pays {2}].",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch {U}\nCounter target [noncreature] spell [unless its controller pays {2}].",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch {U} (Remove one [restriction] for each time you pay the glitch cost.)\nCounter target [noncreature] spell [unless its controller pays {2}].",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Mana Overflow_AKD",
+          "name": "Mana Overflow",
+          "source_card_key": "Mana Overflow_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGlitch—Discard a card. *(Remove one [restriction] for each time you pay the glitch cost.)*\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mana Overflow",
+              "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGlitch—Discard a card. *(Remove one [restriction] for each time you pay the glitch cost.)*\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mana Overflow",
+              "executable_text": "Mana cost: {3}{R}\nType: Sorcery\nAs you cast this spell, you may pay the following additional cost any number of times: Discard a card.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn.",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch—Discard a card.\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn.",
+              "original_printed_rules_text": "Glitch—Discard a card. (Remove one [restriction] for each time you pay the glitch cost.)\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{R}\nType: Sorcery\nAs you cast this spell, you may pay the following additional cost any number of times: Discard a card.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn.",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch—Discard a card.\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch—Discard a card. (Remove one [restriction] for each time you pay the glitch cost.)\nAdd {R} for each [Mountain] land you control, then exile the top three cards of your library. You may play [one of] those cards this turn.",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Manifest Corruption_OTH",
+          "name": "Manifest Corruption",
+          "source_card_key": "Manifest Corruption_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nGlitch—Pay 3 life. *(Remove one [restriction] for each time you pay the glitch cost.)*\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Manifest Corruption",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nGlitch—Pay 3 life. *(Remove one [restriction] for each time you pay the glitch cost.)*\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Manifest Corruption",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nAs you cast this spell, you may pay the following additional cost any number of times: Pay 3 life.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch—Pay 3 life.\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]",
+              "original_printed_rules_text": "Glitch—Pay 3 life. (Remove one [restriction] for each time you pay the glitch cost.)\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nAs you cast this spell, you may pay the following additional cost any number of times: Pay 3 life.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch—Pay 3 life.\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch—Pay 3 life. (Remove one [restriction] for each time you pay the glitch cost.)\nCreate a 6/6 black Demon artifact creature token with flying, trample, [“This creature can't attack players with 10 or more life,”] [and “This creature can't block creatures with power 4 or less.”]",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Sudden Absence_AKD",
+          "name": "Sudden Absence",
+          "source_card_key": "Sudden Absence_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nGlitch {3}{W} *(Remove one [restriction] for each time you pay the glitch cost.)*\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sudden Absence",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nGlitch {3}{W} *(Remove one [restriction] for each time you pay the glitch cost.)*\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sudden Absence",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {3}{W}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch {3}{W}\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]",
+              "original_printed_rules_text": "Glitch {3}{W} (Remove one [restriction] for each time you pay the glitch cost.)\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nAs you cast this spell, you may pay the following additional cost any number of times: {3}{W}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch {3}{W}\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch {3}{W} (Remove one [restriction] for each time you pay the glitch cost.)\nExile target nonland permanent. [Return it to the battlefield under its owner's control at the beginning of the next end step.]",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Unshackled Revolutionary_OTH",
+          "name": "Unshackled Revolutionary",
+          "source_card_key": "Unshackled Revolutionary_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Artifact Creature — Spirit Soldier\nPower/Toughness: 2/1\nGlitch—Sacrifice a creature. *(Remove one [restriction] for each time you pay the glitch cost.)*\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Artifact Creature — Spirit Soldier",
+          "power": "2",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Unshackled Revolutionary",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Artifact Creature — Spirit Soldier\nPower/Toughness: 2/1\nGlitch—Sacrifice a creature. *(Remove one [restriction] for each time you pay the glitch cost.)*\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Unshackled Revolutionary",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Artifact Creature — Spirit Soldier\nPower/Toughness: 2/1\nAs you cast this spell, you may pay the following additional cost any number of times: Sacrifice a creature.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]",
+              "custom_keyword_identities": [
+                "glitch"
+              ],
+              "custom_keyword_payments": [
+                "glitch"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Glitch—Sacrifice a creature.\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]",
+              "original_printed_rules_text": "Glitch—Sacrifice a creature. (Remove one [restriction] for each time you pay the glitch cost.)\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Artifact Creature — Spirit Soldier\nPower/Toughness: 2/1\nAs you cast this spell, you may pay the following additional cost any number of times: Sacrifice a creature.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it.\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]",
+          "custom_keyword_identities": [
+            "glitch"
+          ],
+          "custom_keyword_payments": [
+            "glitch"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Glitch—Sacrifice a creature.\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Glitch—Sacrifice a creature. (Remove one [restriction] for each time you pay the glitch cost.)\nWhen Unshackled Revolutionary enters, you may destroy target creature an opponent controls [with mana value 3 or less]. [You lose 3 life.]",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Error Engineer_AKD",
+          "name": "Error Engineer",
+          "role": "payment_receipt_reader",
+          "source_card_key": "Error Engineer_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Gnome Wizard\n{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a glitched spell, scry 2.\nP/T: 1/3",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Gnome Wizard",
+          "power": "1",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Error Engineer",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Gnome Wizard\n{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a glitched spell, scry 2.\nP/T: 1/3"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Error Engineer",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Gnome Wizard\nPower/Toughness: 1/3\n{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a spell using glitch, scry 2.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a glitched spell, scry 2.",
+              "original_printed_rules_text": "{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a glitched spell, scry 2."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Gnome Wizard\nPower/Toughness: 1/3\n{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a spell using glitch, scry 2.",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a glitched spell, scry 2.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "{T}: Add {C}. Spend this mana only to cast an instant or sorcery spell.\nWhenever you cast a glitched spell, scry 2.",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Null Entity_AKD",
+          "name": "Null Entity",
+          "role": "payment_receipt_reader",
+          "source_card_key": "Null Entity_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{R}\nType: Creature\nMenace\nWhenever you cast a glitched spell, Null Entity gets +2/+0 until end of turn for each time that spell was glitched.\nP/T: 2/3",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature",
+          "power": "2",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Null Entity",
+              "original_text": "Mana cost: {2}{R}\nType: Creature\nMenace\nWhenever you cast a glitched spell, Null Entity gets +2/+0 until end of turn for each time that spell was glitched.\nP/T: 2/3"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Null Entity",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature\nPower/Toughness: 2/3\nMenace\nWhenever you cast a spell using glitch, Null Entity gets +2/+0 until end of turn for each time that spell's additional glitch cost was paid.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhenever you cast a glitched spell, Null Entity gets +2/+0 until end of turn for each time that spell was glitched.",
+              "original_printed_rules_text": "Menace\nWhenever you cast a glitched spell, Null Entity gets +2/+0 until end of turn for each time that spell was glitched."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Creature\nPower/Toughness: 2/3\nMenace\nWhenever you cast a spell using glitch, Null Entity gets +2/+0 until end of turn for each time that spell's additional glitch cost was paid.",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nWhenever you cast a glitched spell, Null Entity gets +2/+0 until end of turn for each time that spell was glitched.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Menace\nWhenever you cast a glitched spell, Null Entity gets +2/+0 until end of turn for each time that spell was glitched.",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Warped Glitchmage_AKD",
+          "name": "Warped Glitchmage",
+          "role": "payment_receipt_reader",
+          "source_card_key": "Warped Glitchmage_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Creature — Wizard\nYou may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a glitched spell, Warped Glitchmage deals 1 damage to target opponent.\nP/T: 2/3",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Creature — Wizard",
+          "power": "2",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Warped Glitchmage",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Creature — Wizard\nYou may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a glitched spell, Warped Glitchmage deals 1 damage to target opponent.\nP/T: 2/3"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Warped Glitchmage",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Creature — Wizard\nPower/Toughness: 2/3\nYou may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a spell using glitch, Warped Glitchmage deals 1 damage to target opponent.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a glitched spell, Warped Glitchmage deals 1 damage to target opponent.",
+              "original_printed_rules_text": "You may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a glitched spell, Warped Glitchmage deals 1 damage to target opponent."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Creature — Wizard\nPower/Toughness: 2/3\nYou may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a spell using glitch, Warped Glitchmage deals 1 damage to target opponent.",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "You may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a glitched spell, Warped Glitchmage deals 1 damage to target opponent.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "You may pay {0} rather than pay the glitch cost for spells you cast.\nWhenever you cast a glitched spell, Warped Glitchmage deals 1 damage to target opponent.",
+          "supplied_card_definitions": []
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Glitch",
+          "template": "{Cost}",
+          "reminder": "As you cast this spell, you may pay the following additional cost any number of times: {Cost}.\nFor each time you pay this spell's optional additional cost, remove one bracketed text fragment from it."
+        }
+      ]
+    },
+    {
+      "id": "msem-704",
+      "keyword": "Glitch",
+      "original_reminder": "{1}: Permanently remove one [restriction] from this permanent.",
+      "executable_reminder": "{Cost}: Remove one bracketed text fragment from this permanent.",
+      "source_cards": [
+        "Glitch, Cosmic Dreamer"
+      ],
+      "rule_reference": "702.250.",
+      "rule_text": [
+        {
+          "name": "702.250a",
+          "rule": "Glitch represents two static abilities that function while the spell with glitch is on the stack. “Glitch [cost]” means “You may pay an additional [cost] any number of times as you cast this spell” and “For each time you chose to pay this spell's glitch cost, change its text by removing one instance of text in [] brackets.” Paying a spell’s glitch cost(s) follows the rules for paying additional costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.250b",
+          "rule": "If a spell’s controller declares the intention to pay any of that spell’s glitch costs, that spell is “glitched.”",
+          "custom": true
+        },
+        {
+          "name": "702.250c",
+          "rule": "If a glitched spell is copied, the choice of which instances of bracketed text were removed will be copied as well.",
+          "custom": true
+        },
+        {
+          "name": "702.250d",
+          "rule": "Persistent glitch is an activated ability and variant of the glitch ability found on permanents. “Persistent glitch [cost]” means “[Cost]: Change the text of this permanent by removing one instance of text in [] brackets.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Glitch, Cosmic Dreamer_OTH",
+          "name": "Glitch, Cosmic Dreamer",
+          "source_card_key": "Glitch, Cosmic Dreamer_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Planeswalker — Glitch\nLoyalty: 4\nPersistent glitch {1}. Spend only mana of a color that hasn't been spent this way to activate this ability. *({1}: Permanently remove one [restriction] from this permanent.)*\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+          "mana_cost": "{1}{U}{R}{W}",
+          "type_line": "Legendary Planeswalker — Glitch",
+          "power": "",
+          "toughness": "",
+          "loyalty": "4",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Glitch, Cosmic Dreamer",
+              "original_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Planeswalker — Glitch\nLoyalty: 4\nPersistent glitch {1}. Spend only mana of a color that hasn't been spent this way to activate this ability. *({1}: Permanently remove one [restriction] from this permanent.)*\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them]."
+            }
+          ],
+          "executable_faces": [],
+          "executable_text": null,
+          "custom_keyword_identities": [
+            "persistent glitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "glitch",
+              "plural": "glitches",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Persistent glitch {1}. Spend only mana of a color that hasn't been spent this way to activate this ability.\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+          "rewrite_status": "explicit_user_boundary",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Persistent glitch {1}. Spend only mana of a color that hasn't been spent this way to activate this ability. ({1}: Permanently remove one [restriction] from this permanent.)\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+          "unresolved_source_boundary": {
+            "source_card_key": "Glitch, Cosmic Dreamer_OTH",
+            "ability_text": "[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+            "reason": "The bracketed creation modifier specifies -1/-1 counter type but no quantity or variable; neither Glitch nor Persistent glitch rules supply a count.",
+            "user_instruction": "Leave ambiguous source unresolved",
+            "status": "explicit_user_boundary",
+            "evidence_report": "reports/custom-mechanics/cosmic-glitch-counter-quantity-ambiguity.json",
+            "whole_source_certification": false
+          },
+          "unresolved_executable_evidence": {
+            "executable_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Planeswalker — Glitch\nLoyalty: 4\n{1}: Remove one bracketed text fragment from this permanent. Spend only mana of a color that hasn't been spent this way to activate this ability.\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+            "executable_faces": [
+              {
+                "name": "Glitch, Cosmic Dreamer",
+                "executable_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Planeswalker — Glitch\nLoyalty: 4\n{1}: Remove one bracketed text fragment from this permanent. Spend only mana of a color that hasn't been spent this way to activate this ability.\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+                "custom_keyword_identities": [
+                  "persistent glitch"
+                ],
+                "custom_keyword_payments": [],
+                "custom_subtypes": [
+                  {
+                    "singular": "glitch",
+                    "plural": "glitches",
+                    "family": "Planeswalker"
+                  }
+                ],
+                "custom_token_definitions": [],
+                "custom_keyword_counter_definitions": [],
+                "original_display_text": "Persistent glitch {1}. Spend only mana of a color that hasn't been spent this way to activate this ability.\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+                "original_printed_rules_text": "Persistent glitch {1}. Spend only mana of a color that hasn't been spent this way to activate this ability. ({1}: Permanently remove one [restriction] from this permanent.)\n[+1]: You [and each opponent] may scry 2. Draw a card[, then discard a card.]\n[-3]: Exile target nonland permanent [with mana value 4 or less]. [Its controller creates a Treasure token.]\n[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them]."
+              }
+            ],
+            "rewrite_status": "frontend_materialized_unverified",
+            "status": "preserved_unverified_prior_candidate_not_executable_certification"
+          }
+        }
+      ],
+      "executable_keyword": "Persistent glitch",
+      "executable_definitions": [
+        {
+          "keyword": "Persistent glitch",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Remove one bracketed text fragment from this permanent."
+        }
+      ]
+    }
+  ],
+  "unresolved_source_boundaries": [
+    {
+      "source_card_key": "Glitch, Cosmic Dreamer_OTH",
+      "ability_text": "[-6]: Create five 2/2 blue Elemental creature tokens with flying [and -1/-1 counters on them].",
+      "reason": "The bracketed creation modifier specifies -1/-1 counter type but no quantity or variable; neither Glitch nor Persistent glitch rules supply a count.",
+      "user_instruction": "Leave ambiguous source unresolved",
+      "status": "explicit_user_boundary",
+      "evidence_report": "reports/custom-mechanics/cosmic-glitch-counter-quantity-ambiguity.json",
+      "whole_source_certification": false
+    }
+  ],
+  "source_support_accounting": {
+    "physical_sources": 11,
+    "whole_source_candidates": 10,
+    "explicit_user_boundaries": 1,
+    "execution": "unverified; an explicit unresolved boundary is not a whole-source pass"
+  }
+}

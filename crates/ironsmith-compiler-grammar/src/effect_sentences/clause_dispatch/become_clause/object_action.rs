@@ -1,6 +1,6 @@
 use crate::word_primitives::WordWindows as _;
 use super::*;
-use crate::cards::builders::ConditionalEffectAst;
+use crate::cards::builders::{ConditionalEffectAst,SubjectVerbActionAst,CharacteristicActionAst};
 use winnow::Parser;
 
 pub fn parse_become_clause(
@@ -131,6 +131,34 @@ pub fn parse_become_clause(
     let subject_tokens = LexedClause::new(subject_tokens).trim();
     let rest_clause = LexedClause::new(rest_tokens).trimmed();
     let rest_words = rest_clause.word_refs();
+    // The previous choice is an operand, not an instruction to choose again.
+    // Reuse the existing type-change effect and snapshot that selected subtype.
+    if rest_words.starts_with(&["that", "type"])
+        || rest_words.starts_with(&["the", "chosen", "type"])
+        || rest_words.starts_with(&["the", "chosen", "creature", "type"])
+        || rest_words.starts_with(&["the", "chosen", "card", "type"])
+    {
+        let count = if rest_words.starts_with(&["that", "type"]) { 2 }
+            else if matches!(rest_words.get(2), Some(&"creature" | &"card")) { 4 } else { 3 };
+        let view=crate::lexer::TokenWordView::new(rest_tokens);
+        let start=view.token_start_indices().get(count).copied().unwrap_or(rest_tokens.len());
+        // Use the production lexer for this canonical operand. The authored
+        // suffix tokens retain their original spans and the consumed source
+        // phrase is claimed explicitly below.
+        let mut replacement=crate::lexer::lex_line("the creature type of your choice",0)?;
+        for token in &mut replacement { token.lowercase_word(); }
+        replacement.extend_from_slice(&rest_tokens[start..]);
+        let mut effect=parse_become_clause(&subject_tokens, &replacement)?;
+        if let EffectAst::SubjectVerb(subject)=&mut effect
+            && let CharacteristicActionAst::BecomeCreatureTypeChoice { use_source_chosen_type,use_source_chosen_card_type,source_type_is_unspecified,.. }=
+                match &mut subject.action { SubjectVerbActionAst::Characteristics(action)=>action,_=>return Err(CardTextError::ParseError("chosen type requires a type-change instruction".into())) }
+        { *use_source_chosen_type=true;
+            *use_source_chosen_card_type = rest_words.starts_with(&["the", "chosen", "card", "type"]);
+            *source_type_is_unspecified = !*use_source_chosen_card_type
+                && !rest_words.starts_with(&["the", "chosen", "creature", "type"]);
+            crate::word_claims::claim_tokens(&rest_tokens[..start]); return Ok(effect); }
+        return Err(CardTextError::ParseError("chosen type requires a type-change instruction".into()));
+    }
     // This packet admits the beginning-of-step lifetime only through the
     // typed basic-land conversion owner. Generic durations must not carry it into
     // prevention shields, permissions, grants, or other unrepresented owners.
@@ -190,6 +218,7 @@ pub fn parse_become_clause(
             ) = &mut subject.action
         {
             *in_addition_to_other_types = true;
+            crate::word_claims::claim_tokens(&rest_tokens[head_end..tail_start]);
             return Ok(effect);
         }
         return Err(CardTextError::ParseError(
@@ -420,11 +449,16 @@ pub fn parse_become_clause(
             return Ok(EffectAst::subject_verb_become_monarch(player));
         }
         if become_grammar::become_subject_has_life_total(subject_tokens) {
-            let amount = parse_value(&become_tokens)
+            let amount_tokens = crate::grammar::primitives::parse_prefix(
+                &become_tokens,
+                crate::grammar::primitives::phrase(&["equal", "to"]),
+            ).map_or(become_tokens.as_slice(), |(_, rest)| rest);
+            let amount = parse_value(amount_tokens)
+                .filter(|(_, used)| *used == amount_tokens.len())
                 .map(|(value, _)| value)
                 .or_else(|| {
                     crate::effect_sentences::zone_counter_helpers::parse_starting_life_total_value(
-                        &become_tokens,
+                        amount_tokens,
                         player,
                     )
                 })
@@ -711,7 +745,16 @@ pub fn parse_become_clause(
             target = TargetAst::Source(span_from_tokens(subject_tokens));
         }
         let enchant_words = crate::lexer::parser_token_word_refs(aura.enchant_filter_tokens);
-        let attachment_filter = if enchant_words == ["creature"] {
+        let attachment_player_filter = match enchant_words.as_slice() {
+            ["opponent"] => Some(crate::target::PlayerFilter::Opponent),
+            ["player"] => Some(crate::target::PlayerFilter::Any),
+            ["you"] => Some(crate::target::PlayerFilter::You),
+            _ => None,
+        };
+        let attachment_filter = if attachment_player_filter.is_some() {
+            crate::word_claims::claim_tokens(aura.enchant_filter_tokens);
+            ObjectFilter::default()
+        } else if enchant_words == ["creature"] {
             ObjectFilter::creature()
         } else if aura.attachment_you_control && enchant_words == ["creature", "you", "control"] {
             ObjectFilter::creature().you_control()
@@ -738,12 +781,27 @@ pub fn parse_become_clause(
         } else {
             Vec::new()
         };
-        return Ok(EffectAst::subject_verb_become_aura_enchantment_with_grants(
-            target,
-            attachment_filter,
-            granted_abilities,
-            duration,
-        ));
+        let mut additional_subtypes = Vec::new();
+        for token in aura.additional_subtype_tokens {
+            let Some(subtype) = crate::util::parse_subtype_flexible(token.parser_text()) else {
+                return Err(CardTextError::ParseError(format!("unsupported Aura subtype '{}'", token.parser_text())));
+            };
+            if !additional_subtypes.contains(&subtype) { additional_subtypes.push(subtype); }
+        }
+        crate::word_claims::claim_tokens(aura.additional_subtype_tokens);
+        let mut result = EffectAst::subject_verb_become_aura_enchantment_with_grants(
+            target, attachment_filter, granted_abilities, duration,
+        );
+        if let EffectAst::SubjectVerb(subject) = &mut result
+            && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
+                attachment_player_filter: player_filter,
+                additional_subtypes: subtypes,
+                ..
+            }) = &mut subject.action {
+            *player_filter = attachment_player_filter;
+            *subtypes = additional_subtypes;
+        }
+        return Ok(result);
     }
 
     if let Some((axes, _)) = dynamic_base_subject.as_ref()
@@ -1274,6 +1332,9 @@ pub fn parse_become_clause(
                 crate::cards::builders::CharacteristicActionAst::BecomeBasePtCreature {
                     add_supertypes,
                     remove_other_abilities,
+                    remove_other_supertypes,
+                    remove_other_card_types,
+                    remove_other_subtypes,
                     name_override,
                     ..
                 },
@@ -1281,6 +1342,9 @@ pub fn parse_become_clause(
         {
             *add_supertypes = shape.supertypes;
             *remove_other_abilities = shape.remove_other_abilities;
+            *remove_other_supertypes = shape.remove_other_supertypes;
+            *remove_other_card_types = shape.remove_other_card_types;
+            *remove_other_subtypes = shape.remove_other_subtypes;
             *name_override = shape.name_override;
         }
         return Ok(effect);

@@ -3639,6 +3639,15 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
   const revealAuditOpenings = useCallback(async (openings = [], options = {}) => {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.revealHiddenSlot !== "function") return;
+    // Only this PUBLIC audit path calls the marker, after cryptographic
+    // verification and face hydration. Owner-private lookups do not.
+    async function recordVerifiedPublicOpening(opening, objectId) {
+      if (objectId == null || typeof currentGame.recordVerifiedPublicHiddenOpening !== "function") return;
+      await currentGame.recordVerifiedPublicHiddenOpening({
+        objectId: Number(objectId), owner: Number(opening.owner),
+        slot: Number(opening.slot), commitment: String(opening.commitment || ""),
+      });
+    }
     const timing = options.timing || null;
     const commandObjectIds = timing === "pre"
       ? collectCommandObjectIds(options.command, new Set(), options.uiState || stateRef.current)
@@ -3857,10 +3866,11 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 			          )
 			        );
 			        if (localOwnerAlreadyKnowsObjectOpening) {
+                  await recordVerifiedPublicOpening(opening, localRevealObjectId ?? opening.objectId);
 			          rememberLocalRevealedOpening(opening, {
 			            objectId: localRevealObjectId ?? opening.objectId,
 			          });
-			          previewAuditOpeningInInspector(opening, latestState, {
+			        previewAuditOpeningInInspector(opening, latestState, {
 			            ...options,
 			            previewIndex: openingIndex,
 			            previewTotal: openingList.length,
@@ -4067,6 +4077,7 @@ export function usePeerLobbyAuditMaterial(base, servicesRef) {
 	          position: revealPosition,
 	          positionCommitment: revealPositionCommitment,
 	        });
+        await recordVerifiedPublicOpening(opening, localRevealObjectId ?? opening.objectId);
         previewAuditOpeningInInspector(opening, latestState, {
           ...options,
           previewIndex: openingIndex,

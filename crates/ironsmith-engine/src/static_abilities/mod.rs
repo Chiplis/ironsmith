@@ -322,6 +322,17 @@ where
     }
 }
 
+/// An explicitly declared source-owned program offered during a reveal action.
+#[derive(Debug, Clone)]
+pub struct RevealActionOffer {
+    pub label: String,
+    pub source_zones: Vec<crate::zone::Zone>,
+    pub max_per_player_turn: Option<u32>,
+    pub arrival_zone: crate::zone::Zone,
+    pub effects: Vec<crate::effect::Effect>,
+    pub display: String,
+}
+
 pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindClone {
     /// Get the unique identifier for this ability type.
     ///
@@ -380,9 +391,22 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Immutable supplied definition operand used by a replacement source.
+    fn supplied_replacement_definition(&self) -> Option<crate::effect::Effect> {None}
+
     fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         None
     }
+
+    fn reveal_action_offer(&self) -> Option<RevealActionOffer> {
+        let ironsmith_core::StaticAbilityPayload::RevealActionOffer {
+            label, source_zones, max_per_player_turn, arrival_zone, effects, display,
+        } = &self.compiled_model()?.payload else { return None; };
+        Some(RevealActionOffer { label: label.clone(), source_zones: source_zones.clone(),
+            max_per_player_turn: *max_per_player_turn, arrival_zone: *arrival_zone,
+            effects: effects.clone(), display: display.clone() })
+    }
+
 
     /// Exact shared model of an immutable native ability's current fields.
     /// Unrepresented semantics remain an explicit codec boundary; neither id
@@ -1696,10 +1720,68 @@ impl Clone for Box<dyn StaticAbilityKind> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StaticAbilityInstanceId(u64);
 
+// Private hypotheses must never consume the committed occurrence namespace.
+// The high bit is reserved, so accidental identity equality cannot join a
+// hypothetical child to a committed occurrence. Nested previews share one
+// sequence and separate top-level previews start with the same local sequence.
+const PREVIEW_INSTANCE_BIT: u64 = 1 << 63;
+std::thread_local! {
+    static PREVIEW_INSTANCE_NEXT: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+    static PREVIEW_TEXT_CHANGES: std::cell::RefCell<std::collections::HashMap<
+        (usize, ironsmith_core::TextChange),
+        (StaticAbility, Result<StaticAbility, crate::continuous::text_changes::TextChangeDomainError>)
+    >> = std::cell::RefCell::new(std::collections::HashMap::new());
+    #[cfg(test)]
+    static COMMITTED_ALLOCATIONS_ON_THREAD: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+pub(crate) fn static_ability_preview_active() -> bool {
+    PREVIEW_INSTANCE_NEXT.with(|next| next.get().is_some())
+}
+
+/// Boolean-only affordability boundary: no hypothetical ability, recipe or
+/// payment plan is returned to a committing caller. Unwinding restores the
+/// outer allocator; it never rewinds the process-global committed counter.
+pub(crate) fn with_static_ability_preview(inspect: impl FnOnce() -> bool) -> bool {
+    struct Restore(Option<u64>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            PREVIEW_TEXT_CHANGES.with(|cache| cache.borrow_mut().clear());
+            PREVIEW_INSTANCE_NEXT.with(|next| next.set(self.0));
+        }
+    }
+    let previous = PREVIEW_INSTANCE_NEXT.with(|next| next.get());
+    if previous.is_some() { return inspect(); }
+    PREVIEW_TEXT_CHANGES.with(|cache| cache.borrow_mut().clear());
+    PREVIEW_INSTANCE_NEXT.with(|next| next.set(Some(0)));
+    let _restore = Restore(previous);
+    inspect()
+}
+
+#[cfg(test)]
+pub(crate) fn committed_static_allocations_on_thread() -> u64 {
+    COMMITTED_ALLOCATIONS_ON_THREAD.with(|count| count.get())
+}
+
 impl StaticAbilityInstanceId {
+    #[cfg(test)]
+    pub(crate) fn is_preview(self) -> bool { self.0 & PREVIEW_INSTANCE_BIT != 0 }
     fn next() -> Self {
+        if let Some(id) = PREVIEW_INSTANCE_NEXT.with(|next| {
+            let id = next.get()?;
+            let following = id.checked_add(1).filter(|id| *id < PREVIEW_INSTANCE_BIT)
+                .expect("preview static ability identity exhausted");
+            next.set(Some(following));
+            Some(Self(PREVIEW_INSTANCE_BIT | id))
+        }) { return id; }
         static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        let id = NEXT_ID.fetch_update(std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed, |id|
+                id.checked_add(1).filter(|next| *next < PREVIEW_INSTANCE_BIT))
+            .expect("committed static ability identity exhausted");
+        #[cfg(test)]
+        COMMITTED_ALLOCATIONS_ON_THREAD.with(|count| count.set(count.get() + 1));
+        Self(id)
     }
 }
 
@@ -1784,6 +1866,15 @@ impl StaticAbility {
     pub fn with_text_change(&self, change: ironsmith_core::TextChange)
         -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
     {
+        // Shared immutable definitions keep a separate hypothesis-local cache.
+        // Retaining the original clone in each entry also pins its pointer key.
+        let preview_key = static_ability_preview_active().then(|| (
+            Arc::as_ptr(&self.0) as *const () as usize, change.clone()
+        ));
+        if let Some(key) = &preview_key {
+            if let Some(value) = PREVIEW_TEXT_CHANGES.with(|cache|
+                cache.borrow().get(key).map(|(_, value)| value.clone())) { return value; }
+        }
         let valid_cache = self.2.definition.upgrade()
             .is_some_and(|definition| Arc::ptr_eq(&definition, &self.0));
         if valid_cache {
@@ -1795,6 +1886,12 @@ impl StaticAbility {
             Ok(Some(mut rewritten)) => { rewritten.1 = self.1; Ok(rewritten) },
             Err(error) => Err(error),
         };
+        if let Some(key) = preview_key {
+            PREVIEW_TEXT_CHANGES.with(|cache| {
+                cache.borrow_mut().entry(key).or_insert_with(|| (self.clone(), value.clone()));
+            });
+            return value;
+        }
         if valid_cache {
             // Recursive child definitions are transformed outside the lock.
             // Retaining this complete result keeps nested grant identities.
@@ -1970,6 +2067,10 @@ impl StaticAbility {
         self.0.companion_deck_condition()
     }
 
+    pub fn reveal_action_offer(&self) -> Option<RevealActionOffer> {
+        self.0.reveal_action_offer()
+    }
+
     pub fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         self.0.reveal_drawn_card_spec()
     }
@@ -2023,6 +2124,8 @@ impl StaticAbility {
             (self.id() == StaticAbilityId::Partner).then_some(CommanderPairing::Partner)
         })
     }
+
+    pub fn supplied_replacement_definition(&self) -> Option<crate::effect::Effect> {self.0.supplied_replacement_definition()}
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         self.0.compiled_model()
@@ -5471,7 +5574,13 @@ impl StaticAbility {
     pub fn add_life_gain_replacement(
         player: crate::target::PlayerFilter, additional: i32, display: impl Into<String>,
     ) -> Self {
-        Self::new(AddLifeGainReplacement { player, additional, condition: None, display: display.into() })
+        Self::add_life_change_replacement(player, additional, false, display)
+    }
+
+    pub fn add_life_change_replacement(
+        player: crate::target::PlayerFilter, additional: i32, loss: bool, display: impl Into<String>,
+    ) -> Self {
+        Self::new(AddLifeGainReplacement { player, additional, loss, condition: None, display: display.into() })
     }
 
     pub fn double_life_change_replacement(
@@ -5772,5 +5881,63 @@ mod tests {
         assert_eq!(StaticAbility::flying().display(), "Flying");
         assert_eq!(StaticAbility::trample().display(), "Trample");
         assert_eq!(StaticAbility::deathtouch().display(), "Deathtouch");
+    }
+}
+
+impl ironsmith_core::definition_model::CustomKeywordPaymentAttribution for StaticAbility {
+    fn unattributed_text_addition_payments(&self)->usize {
+        self.compiled_model().map_or(0,ironsmith_core::definition_model::CustomKeywordPaymentAttribution::unattributed_text_addition_payments)
+    }
+    fn attribute_text_addition_payment(&mut self,keyword:&str)->bool {
+        let Some(mut model)=self.canonical_model() else{return false;};
+        if !ironsmith_core::definition_model::CustomKeywordPaymentAttribution::attribute_text_addition_payment(&mut model,keyword){return false;}
+        *self=Self::from_model(model);true
+    }
+}
+
+#[cfg(test)]
+mod preview_identity_tests {
+    use super::*;
+    #[test]
+    fn nested_and_unwound_preview_ids_never_consume_committed_occurrences_or_shared_caches() {
+        let model = CompiledStaticAbility {
+            id: None, label: String::new(),
+            payload: ironsmith_core::StaticAbilityPayload::EquipmentGrant(vec![
+                CompiledStaticAbility::protection(ironsmith_core::ProtectionFrom::Color(crate::color::ColorSet::BLACK)),
+            ]),
+        };
+        let original = StaticAbility::from_model(model);
+        let original_id = original.instance_id();
+        let change = ironsmith_core::TextChange::color(crate::color::Color::Black, crate::color::Color::Blue).unwrap();
+        let committed_before = committed_static_allocations_on_thread();
+        for _ in 0..4 {
+            assert!(with_static_ability_preview(|| {
+                let first = StaticAbility::flying();
+                assert!(first.instance_id().is_preview());
+                let changed = original.with_text_change(change.clone()).unwrap();
+                let child = changed.equipment_grant_abilities().unwrap()[0].instance_id();
+                assert!(child.is_preview());
+                assert!(with_static_ability_preview(|| {
+                    let second = StaticAbility::flying();
+                    assert_ne!(first.instance_id(), second.instance_id());
+                    let repeated = original.with_text_change(change.clone()).unwrap();
+                    assert_eq!(child, repeated.equipment_grant_abilities().unwrap()[0].instance_id());
+                    true
+                }));
+                assert_eq!(original.instance_id(), original_id);
+                true
+            }));
+        }
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_static_ability_preview(|| { let _ = StaticAbility::flying(); panic!("abort hypothesis") });
+        }));
+        assert!(unwound.is_err());
+        assert!(!static_ability_preview_active());
+        assert_eq!(committed_static_allocations_on_thread(), committed_before);
+        assert!(original.2.values.lock().unwrap().is_empty(), "hypotheses cannot populate shared definition caches");
+        let committed = original.with_text_change(change).unwrap();
+        assert!(!committed.equipment_grant_abilities().unwrap()[0].instance_id().is_preview());
+        assert_eq!(committed.instance_id(), original_id);
+        assert!(committed_static_allocations_on_thread() > committed_before);
     }
 }

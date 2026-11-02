@@ -1,0 +1,26 @@
+[
+  {
+    "path": "crates/ironsmith-core/src/effect/mana_damage_and_control.rs",
+    "enum": "PhaseOutDuration",
+    "old_count": 6,
+    "new_count": 7,
+    "append_only": true,
+    "old": [
+      "UntilNextUntap",
+      "UntilSourceLeaves",
+      "UntilSourceLeavesThenTapped",
+      "UntilSourceUntapsOrLeaves",
+      "UntilVisitRollAtMost",
+      "UntilControllerCastsNthSpellInTurn"
+    ],
+    "new": [
+      "UntilNextUntap",
+      "UntilSourceLeaves",
+      "UntilSourceLeavesThenTapped",
+      "UntilSourceUntapsOrLeaves",
+      "UntilVisitRollAtMost",
+      "UntilControllerCastsNthSpellInTurn",
+      "UntilEndOfTurn"
+    ]
+  }
+]

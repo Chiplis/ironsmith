@@ -89,6 +89,9 @@ pub(super) fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Opt
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
                     duration,
                     ..
+                } | CharacteristicActionAst::RemoveOptionalTextFragment {
+                    duration,
+                    ..
                 }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration,
                     ..

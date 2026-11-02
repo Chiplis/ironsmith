@@ -190,11 +190,26 @@ pub struct CoinFlipResult {
     pub associated_player: Option<PlayerId>,
 }
 
+/// An authored destination and the entry owner's actual attachment verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct EntryAttachmentChoice {
+    pub target: Option<crate::object::AttachmentTarget>,
+    pub performed: bool,
+}
+
+/// Exact before/after incarnations, never reconstructed from attachment state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct EntryAttachmentReceipt {
+    pub original_object: ObjectId,
+    pub entered_object: ObjectId,
+    pub choice: EntryAttachmentChoice,
+    pub provenance: crate::provenance::ProvNodeId,
+}
+
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExecutionFact {
     Accepted,
     Declined,
@@ -282,6 +297,14 @@ pub enum ExecutionFact {
     /// Source snapshot, authored destination, and exact original arrival for
     /// every moved object. Includes tokens and excludes replacement additions.
     OriginalZoneMoveObjects(Vec<(OutcomeObjectMemory, crate::zone::Zone, OutcomeObjectMemory)>),
+    /// Exact pre-movement observers for completed original subjects. This
+    /// packet is retained even when the physical event is queued separately
+    /// rather than returned in an instruction's outcome event list.
+    OriginalZoneMoveObservers { objects: Vec<ObjectId>, sources: Vec<OutcomeObjectMemory> },
+    /// Exact authored entry attachment results; empty explicitly means none.
+    EntryAttachments(Vec<EntryAttachmentReceipt>),
+    /// Eligibility of the original choice, captured before its selected action.
+    ChoiceAvailability { available: bool },
 }
 
 impl ExecutionFact {
@@ -824,6 +847,26 @@ impl EffectOutcome {
         }
     }
 
+    /// The preceding authored instruction's retained attachment result only.
+    pub fn entry_attachments(&self) -> Option<Vec<EntryAttachmentReceipt>> {
+        let mut found = false;
+        let mut receipts = Vec::new();
+        for fact in &self.instruction_result().execution_facts {
+            if let ExecutionFact::EntryAttachments(values) = fact {
+                found = true;
+                receipts.extend(values.iter().cloned());
+            }
+        }
+        if found { return Some(receipts); }
+        // No entry happened: a skipped/prevented instruction has no identities
+        // to attach. A nonempty object result without receipts is incomplete.
+        match &self.instruction_result().value {
+            OutcomeValue::None | OutcomeValue::Count(0) => Some(Vec::new()),
+            OutcomeValue::Objects(ids) if ids.is_empty() => Some(Vec::new()),
+            _ => None,
+        }
+    }
+
     /// Observe replacement payloads without changing the authored instruction's
     /// result or letting their object memories become that instruction's result.
     pub fn aggregate_replacement_outcomes(
@@ -908,6 +951,16 @@ impl EffectOutcome {
         action: PriorEffectAction,
         player: Option<PlayerId>,
     ) -> Vec<&ObjectSnapshot> {
+        if action == PriorEffectAction::Affected {
+            let objects: Vec<&ObjectSnapshot> = if let Some(player) = player {
+                self.player_affected_object_memory().unwrap_or_default().iter()
+                    .filter(|(actor, _)| *actor == player).flat_map(|(_, objects)| objects).collect()
+            } else {
+                self.affected_object_memory().unwrap_or_default().iter().collect()
+            };
+            let mut seen = std::collections::HashSet::new();
+            return objects.into_iter().filter(|object| seen.insert(object.stable_id)).collect();
+        }
         let mut seen = std::collections::HashSet::new();
         self.instruction_result()
             .execution_facts
@@ -1186,6 +1239,10 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
         // program's independent acceptance, failure or observed event.
         let outcome = outcome.instruction_result();
         match self {
+            Self::ChoiceUnavailable => outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::ChoiceAvailability { available: false })),
+            Self::NamedActionCompleted {label}=>outcome.events.iter().any(|event|
+                event.completed_action_provenance().is_some()
+                    && event.downcast::<crate::events::NamedActionEvent>().is_some_and(|action|action.label.eq_ignore_ascii_case(label.trim()))),
             Self::Succeeded => outcome.status.is_success(),
             Self::Failed => outcome.status.is_failure(),
             Self::Happened => {
@@ -1298,7 +1355,8 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             // `IfEffect` evaluator handles it.
             Self::PlayerAffectedObjectHasGreatestManaValue { .. }
             | Self::PlayerActionObjectHasGreatestManaValue { .. }
-            | Self::AffectedObjectsShare { .. } => false,
+            | Self::AffectedObjectsShare { .. }
+            | Self::ResultObjectsMatch { .. } => false,
             Self::PriorEffectResult(surface) => {
                 if surface.negated {
                     let mut positive = surface.clone();
@@ -1450,6 +1508,9 @@ impl RestrictionExt for Restriction {
             };
 
         match self {
+            Restriction::MoveBetweenZones { from, to, initial_state, cards_only } => {
+                tracker.cant_move_between_zones.push((*from, *to, *initial_state, *cards_only));
+            }
             Restriction::AdditionalLandPlays(filter, count) => {
                 let affected_players: Vec<_> = game
                     .players
@@ -2069,6 +2130,13 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::ObjectRule { objects, rule } => {
+                // This rule names the actual player attack target. Populate
+                // only the direct-player map; defending-player restrictions
+                // would also forbid attacks on their planeswalkers/battles.
+                let prohibited_attack_players = if let ironsmith_core::ObjectRule::CantAttackPlayersWithLife { comparison, threshold } = rule {
+                    Some(game.players.iter().filter(|player|player.is_in_game()
+                        && comparison.evaluate(player.life,*threshold)).map(|player|player.id).collect::<Vec<_>>())
+                } else {None};
                 let viewers = match rule {
                     ironsmith_core::ObjectRule::FaceDownVisibleTo(players) => Some(
                         game.players
@@ -2092,7 +2160,9 @@ impl RestrictionExt for Restriction {
                     if !objects.matches(obj, &ctx, game) {
                         continue;
                     }
-                    if let Some(viewers) = &viewers {
+                    if let Some(players)=&prohibited_attack_players {
+                        tracker.add_cant_attack_players(obj_id,players.iter().copied());
+                    } else if let Some(viewers) = &viewers {
                         tracker
                             .face_down_viewers
                             .entry(obj_id)

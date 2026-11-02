@@ -143,6 +143,9 @@ fn parse_relation_verb_word_slice(
         relation_phrase(&["controls"]).value(PlayerRelationVerb::Control),
         relation_phrase(&["own"]).value(PlayerRelationVerb::Own),
         relation_phrase(&["owns"]).value(PlayerRelationVerb::Own),
+        // Ownership is immutable during a game; completed-event wording keeps
+        // the same owner predicate on the event snapshot.
+        relation_phrase(&["owned"]).value(PlayerRelationVerb::Own),
         relation_phrase(&["protect"]).value(PlayerRelationVerb::Protect),
         relation_phrase(&["protects"]).value(PlayerRelationVerb::Protect),
     ))
@@ -350,15 +353,12 @@ fn parse_owner_controller_pair_word_slice(
 fn parse_put_there_from_battlefield_this_turn_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
 ) -> WResult<()> {
-    primitives::word_slice_exact("that")
-        .void()
-        .parse_next(input)?;
-    alt((
-        primitives::word_slice_exact("was"),
-        primitives::word_slice_exact("were"),
-    ))
-    .void()
-    .parse_next(input)?;
+    // Predicate readers already consume "it was". The same historical
+    // qualifier therefore also arrives without a relative-clause introducer.
+    opt((
+        primitives::word_slice_exact("that"),
+        alt((primitives::word_slice_exact("was"), primitives::word_slice_exact("were"))),
+    )).void().parse_next(input)?;
     relation_phrase(&["put", "there", "from", "battlefield", "this", "turn"]).parse_next(input)
 }
 
@@ -646,6 +646,25 @@ pub(super) fn try_apply_player_relation_clause(
         return None;
     }
 
+    let first_end = subject_consumed + verb_consumed;
+    if words.get(first_end) == Some(&"or")
+        && let Some((second, second_len)) = parse_player_relation_verb(&words[first_end+1..])
+        && matches!((verb, second),
+            (PlayerRelationVerb::Control, PlayerRelationVerb::Protect)
+            | (PlayerRelationVerb::Protect, PlayerRelationVerb::Control))
+    {
+        // A single noun/player scope, two alternative existing relations.
+        // Preserve every prior qualifier inside both branches; later
+        // qualifiers remain common on the enclosing filter.
+        let mut left = filter.clone();
+        let mut right = filter.clone();
+        apply_player_relation(&mut left, player.clone(), verb);
+        apply_player_relation(&mut right, player, second);
+        *filter = ObjectFilter { any_of: vec![left, right], ..ObjectFilter::default() };
+        filter.set_union_connective(ironsmith_core::ObjectFilterUnionConnective::Or);
+        crate::word_claims::claim_words(&words[first_end..first_end+1+second_len]);
+        return Some(first_end+1+second_len);
+    }
     apply_player_relation(filter, player, verb);
     // "target creature you cast this turn" (Cycle of Life): the cast
     // relation keeps its turn bound.
@@ -959,6 +978,14 @@ pub(super) fn try_apply_put_there_from_battlefield_this_turn_clause(
                     "this",
                     "turn",
                 ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["put", "there", "from", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["put", "there", "from", "battlefield", "this", "turn"],
                 drain_start_offset: 0,
             },
         ],
@@ -2184,3 +2211,31 @@ where
 #[cfg(test)]
 #[path = "player_relations_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod shared_player_relation_union_tests {
+    use super::*;
+    #[test]
+    fn control_or_protect_keeps_the_same_player_and_common_selector_in_both_arms() {
+        let mut filter = ObjectFilter::permanent();
+        let original = filter.clone();
+        assert_eq!(try_apply_player_relation_clause(&mut filter, &["they","control","or","protect"], &PlayerFilter::IteratedPlayer), Some(4));
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(filter.any_of[0].controller, Some(PlayerFilter::IteratedPlayer));
+        assert_eq!(filter.any_of[1].protected_by, Some(PlayerFilter::IteratedPlayer));
+        let mut left = original.clone(); left.controller = Some(PlayerFilter::IteratedPlayer);
+        let mut right = original; right.protected_by = Some(PlayerFilter::IteratedPlayer);
+        assert_eq!(filter.any_of, vec![left,right]);
+    }
+}
+
+#[cfg(test)]
+mod completed_ownership_tests {
+ use super::*;
+ #[test]
+ fn completed_ownership_keeps_the_explicit_player_and_clause_boundary() {
+  let mut filter=ObjectFilter::default();
+  assert_eq!(try_apply_player_relation_clause(&mut filter,&["you","owned","that","was","exiled"],&PlayerFilter::ChosenPlayer),Some(2));
+  assert_eq!(filter.owner,Some(PlayerFilter::You));
+ }
+}

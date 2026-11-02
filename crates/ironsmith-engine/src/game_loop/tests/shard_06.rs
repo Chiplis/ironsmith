@@ -1455,7 +1455,7 @@ pub(super) fn splice_transaction_adds_ordered_text_costs_targets_and_retains_car
         .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::White]))
         .card_types(vec![CardType::Instant])
         .with_ability(Ability::static_ability(StaticAbility::splice(
-            crate::static_abilities::SpliceSpec {
+            crate::static_abilities::SpliceSpec { custom_keyword: None, source_zone: None, source_destination: None, max_per_spell: None,
                     descriptive: false,
                 quality: crate::static_abilities::SpliceQuality::Arcane,
                 cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::validated_effect(
@@ -1473,7 +1473,7 @@ pub(super) fn splice_transaction_adds_ordered_text_costs_targets_and_retains_car
         .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
         .card_types(vec![CardType::Instant])
         .with_ability(Ability::static_ability(StaticAbility::splice(
-            crate::static_abilities::SpliceSpec {
+            crate::static_abilities::SpliceSpec { custom_keyword: None, source_zone: None, source_destination: None, max_per_spell: None,
                     descriptive: false,
                 quality: crate::static_abilities::SpliceQuality::Arcane,
                 cost: crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
@@ -1651,7 +1651,7 @@ pub(super) fn splice_can_be_declined_and_illegal_selection_rolls_back_cast() {
         let splice = CardDefinitionBuilder::new(CardId::new(), "Creature Target Splice")
             .card_types(vec![CardType::Instant])
             .with_ability(Ability::static_ability(StaticAbility::splice(
-                crate::static_abilities::SpliceSpec {
+                crate::static_abilities::SpliceSpec { custom_keyword: None, source_zone: None, source_destination: None, max_per_spell: None,
                     descriptive: false,
                     quality: crate::static_abilities::SpliceQuality::Arcane,
                     cost: crate::cost::TotalCost::free(),
@@ -1816,7 +1816,7 @@ pub(super) fn splice_is_announced_before_hybrid_payment_symbols_and_targets() {
     let splice = CardDefinitionBuilder::new(CardId::new(), "Hybrid Splice")
         .card_types(vec![CardType::Instant])
         .with_ability(Ability::static_ability(StaticAbility::splice(
-            crate::static_abilities::SpliceSpec {
+            crate::static_abilities::SpliceSpec { custom_keyword: None, source_zone: None, source_destination: None, max_per_spell: None,
                     descriptive: false,
                 quality: crate::static_abilities::SpliceQuality::Arcane,
                 cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
@@ -2034,6 +2034,7 @@ pub(super) fn activation_announces_damage_distribution_after_targets() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -2253,6 +2254,7 @@ pub(super) fn modal_x_activation_announces_modes_before_x() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -2324,6 +2326,7 @@ pub(super) fn x_dependent_cast_prohibition_uses_lookahead_and_rolls_back_illegal
                 ),
                 "You can't cast spells with mana value 0".to_string(),
             )),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         })
         .build();
@@ -2574,6 +2577,7 @@ pub(super) fn mana_optional_cost_target_hypothesis_exposes_legal_cast() {
 
     let program =
         crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::deal_damage(1, ChooseSpec::target_creature())],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 crate::effect::Condition::ThisSpellWasKicked,
@@ -2671,6 +2675,7 @@ pub(super) fn joint_optional_cost_hypothesis_exposes_targetable_cast() {
     );
     let program =
         crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::deal_damage(1, ChooseSpec::target_creature())],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 both_costs_paid,
@@ -3171,6 +3176,7 @@ pub(super) fn activation_mana_ability_window_precedes_every_cost_payment() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -3998,6 +4004,7 @@ pub(super) fn test_apply_blocker_declarations_allows_blocking_multiple_attackers
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(1)),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -4040,6 +4047,7 @@ pub(super) fn watcher_in_the_web_can_block_eight_attackers() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -4075,6 +4083,7 @@ pub(super) fn watcher_in_the_web_cannot_block_nine_attackers() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::can_block_additional_creature_each_combat(7)),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -4119,6 +4128,7 @@ pub(super) fn test_apply_blocker_declarations_enforces_maximum_blockers() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Static(StaticAbility::cant_be_blocked_by_more_than(1)),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 

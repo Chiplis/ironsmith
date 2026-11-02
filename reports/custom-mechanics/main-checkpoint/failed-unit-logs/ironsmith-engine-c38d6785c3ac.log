@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'effects::zones::battlefield_entry::tests::described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings' panicked at crates/ironsmith-engine/src/effects/zones/battlefield_entry.rs:1895:13:
+assertion `left == right` failed
+  left: Hand
+ right: Battlefield
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::zones::battlefield_entry::tests::described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings ... FAILED
+
+failures:
+
+failures:
+    effects::zones::battlefield_entry::tests::described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.05s
+

@@ -1,21 +1,36 @@
 import fs from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
-const DEFAULT_RULES_URL = "https://media.wizards.com/2026/downloads/MagicCompRules%2020260417.txt";
+export const RULES_PAGE = "https://magic.wizards.com/en/rules";
+
+export function discoverRulesUrl(html) {
+  const urls = [...html.replace(/&amp;/g, "&").matchAll(/https:\/\/media\.wizards\.com\/[^\r\n"'<>]+?\.txt/gi)]
+    .map(match => new URL(match[0]).href).filter(url => /MagicCompRules/i.test(url));
+  const unique = [...new Set(urls)];
+  if (unique.length !== 1) throw new Error(`Expected one official Comprehensive Rules TXT link; found ${unique.length}.`);
+  return unique[0];
+}
+
+async function fetchText(url) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+  return response.text();
+}
 const DEFAULT_OUTPUT = new URL("../src/lib/mtg-keyword-rules.generated.js", import.meta.url);
 
 const MANUAL_SUMMARIES = {
-  "701.51": "Reveal cards from your Attraction deck until you reveal an Attraction, then put that Attraction onto the battlefield.",
-  "701.52": "Roll a six-sided die and visit each Attraction whose lit number matches the result.",
-  "701.60": "A suspected creature has menace and can't block. It stops being suspected if it leaves the battlefield or stops being a creature.",
+  "Open an Attraction": "Reveal cards from your Attraction deck until you reveal an Attraction, then put that Attraction onto the battlefield.",
+  "Roll to Visit Your Attractions": "Roll a six-sided die and visit each Attraction whose lit number matches the result.",
+  "Suspect": "A suspected creature has menace and can't block. It stops being suspected if it leaves the battlefield or stops being a creature.",
 };
 
 const MANUAL_ALIASES = {
-  "701.4": ["beheld"],
-  "701.6": ["countered", "countering"],
-  "701.8": ["destroyed"],
-  "701.9": ["discarded"],
-  "701.13": ["exiled"],
-  "702.14": [
+  "Behold": ["beheld"],
+  "Counter": ["countered", "countering"],
+  "Destroy": ["destroyed"],
+  "Discard": ["discarded"],
+  "Exile": ["exiled"],
+  "Landwalk": [
     "artifact landwalk",
     "forestwalk",
     "islandwalk",
@@ -25,7 +40,7 @@ const MANUAL_ALIASES = {
     "snow landwalk",
     "swampwalk",
   ],
-  "702.29": [
+  "Cycling": [
     "basic landcycling",
     "forestcycling",
     "islandcycling",
@@ -35,40 +50,40 @@ const MANUAL_ALIASES = {
     "typecycling",
     "wizardcycling",
   ],
-  "701.15": ["goaded"],
-  "701.26": ["tapped", "untapped"],
-  "701.37": ["monstrous"],
-  "701.40": ["manifested"],
-  "701.43": ["exerted"],
-  "701.44": ["explored"],
-  "701.47": ["amassed"],
-  "701.50": ["connived"],
-  "701.54": ["ring-bearer"],
-  "701.58": ["cloaked"],
-  "701.60": ["suspected"],
-  "701.64": ["harnessed"],
-  "702.26": ["phased in", "phased out", "phased-in", "phased-out"],
-  "702.33": ["kicked", "multikicker", "sticker kicker"],
-  "702.124": [
+  "Goad": ["goaded"],
+  "Tap and Untap": ["tapped", "untapped"],
+  "Monstrosity": ["monstrous"],
+  "Manifest": ["manifested"],
+  "Exert": ["exerted"],
+  "Explore": ["explored"],
+  "Amass": ["amassed"],
+  "Connive": ["connived"],
+  "The Ring Tempts You": ["ring-bearer"],
+  "Cloak": ["cloaked"],
+  "Suspect": ["suspected"],
+  "Harness": ["harnessed"],
+  "Phasing": ["phased in", "phased out", "phased-in", "phased-out"],
+  "Kicker": ["kicked", "multikicker", "sticker kicker"],
+  "Partner": [
     "choose a background",
     "doctor's companion",
     "friends forever",
     "partner with",
     "partner-",
   ],
-  "702.72": ["championed"],
-  "702.95": ["paired"],
-  "702.99": ["encoded"],
-  "702.102": ["fused", "fused split spell"],
-  "702.112": ["renowned"],
-  "702.145": ["daybound", "nightbound"],
-  "702.131": ["city's blessing"],
-  "702.138": ["escaped"],
-  "702.170": ["plotted"],
-  "702.171": ["saddled"],
-  "702.174": ["gift was promised"],
-  "702.185": ["warped"],
-  "702.186": ["infinity", "∞"],
+  "Champion": ["championed"],
+  "Soulbond": ["paired"],
+  "Cipher": ["encoded"],
+  "Fuse": ["fused", "fused split spell"],
+  "Renown": ["renowned"],
+  "Daybound and Nightbound": ["daybound", "nightbound"],
+  "Ascend": ["city's blessing"],
+  "Escape": ["escaped"],
+  "Plot": ["plotted"],
+  "Saddle": ["saddled"],
+  "Gift": ["gift was promised"],
+  "Warp": ["warped"],
+  "\u221e (Infinity)": ["infinity", "∞"],
 };
 
 function argValue(name) {
@@ -246,7 +261,7 @@ function ruleFallbackSummary(lines, rule) {
 }
 
 function findSummary(entry, glossary, lines) {
-  if (MANUAL_SUMMARIES[entry.rule]) return MANUAL_SUMMARIES[entry.rule];
+  if (MANUAL_SUMMARIES[entry.title]) return MANUAL_SUMMARIES[entry.title];
 
   const aliases = titleAliases(entry.title).map((alias) => alias.toLowerCase());
   const exact = glossary.find((item) =>
@@ -275,7 +290,7 @@ function findSummary(entry, glossary, lines) {
 
 function relatedAliases(entry, glossary) {
   const aliases = new Set(titleAliases(entry.title));
-  for (const alias of MANUAL_ALIASES[entry.rule] || []) aliases.add(alias);
+  for (const alias of MANUAL_ALIASES[entry.title] || []) aliases.add(alias);
 
   for (const item of glossary) {
     if (!referencesRule(item.definition, entry.rule)) continue;
@@ -293,23 +308,21 @@ function relatedAliases(entry, glossary) {
 
 async function readRulesText() {
   const input = argValue("--input");
-  if (input) return fs.readFile(input, "utf8");
-
-  const url = argValue("--url") || DEFAULT_RULES_URL;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
-  }
-  return response.text();
+  if (input) return { rawText: await fs.readFile(input, "utf8"), sourceUrl: argValue("--url") || pathToFileURL(input).href };
+  const sourceUrl = argValue("--url") || discoverRulesUrl(await fetchText(RULES_PAGE));
+  return { rawText: await fetchText(sourceUrl), sourceUrl };
 }
 
 async function main() {
-  const rawText = await readRulesText();
+  const { rawText, sourceUrl } = await readRulesText();
   const text = rawText.replace(/^\uFEFF/, "").replace(/\r/g, "");
-  const lines = text.split("\n");
+  const lines = text.split("\n").map(line => line.trim());
   const effectiveDate = text.match(/These rules are effective as of ([^.]+)\./)?.[1] || "unknown";
   const { sectionStart, entries } = parseKeywordRules(lines);
   const glossary = parseGlossary(lines, sectionStart);
+  if (effectiveDate === "unknown" || entries.filter(entry => entry.kind === "keywordAction").length < 50 || entries.filter(entry => entry.kind === "keywordAbility").length < 150) {
+    throw new Error("Incomplete Comprehensive Rules: refusing to replace the official keyword registry.");
+  }
 
   const generated = entries.map((entry) => ({
     id: `${entry.kind === "keywordAction" ? "action" : "ability"}-${entry.rule.replace(/\./g, "-")}-${slugify(entry.title)}`,
@@ -333,7 +346,7 @@ async function main() {
     JSON.stringify({
       title: "Magic: The Gathering Comprehensive Rules",
       effectiveDate,
-      url: DEFAULT_RULES_URL,
+      url: sourceUrl,
     }, null, 2),
     ");",
     "",
@@ -344,12 +357,16 @@ async function main() {
   ].join("\n");
 
   const outputArg = argValue("--output");
-  const outputPath = outputArg ? new URL(`file://${outputArg.startsWith("/") ? outputArg : `${process.cwd()}/${outputArg}`}`) : DEFAULT_OUTPUT;
-  await fs.writeFile(outputPath, output, "utf8");
+  const outputPath = outputArg ? pathToFileURL(outputArg) : DEFAULT_OUTPUT;
+  const temporary = new URL(`${outputPath.href}.${process.pid}.tmp`);
+  try {
+    await fs.writeFile(temporary, output, "utf8");
+    await fs.rename(temporary, outputPath);
+  } finally { await fs.rm(temporary, { force: true }); }
   console.log(`Wrote ${generated.length} keyword summaries to ${outputPath.pathname}`);
 }
 
-main().catch((error) => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

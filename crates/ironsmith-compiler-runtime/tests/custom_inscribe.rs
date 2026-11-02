@@ -209,3 +209,69 @@ fn copying_recipient_does_not_copy_resolution_granted_attack_ability() {
         ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert!(game.stack.is_empty(),"declining copied-card cast remains optional");
     }
 }
+
+#[test]
+fn independent_inscriptions_on_one_recipient_capture_distinct_exact_card_ids() {
+    for definition in definitions() {for departing in [None,Some(0usize),Some(1usize)] {
+        let (mut game,source,host,mut dm)=pending_activation(&definition,A);
+        let first_stable=game.object(source).unwrap().stable_id;
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+        let first=game.find_object_by_stable_id(first_stable).unwrap();
+        let second=game.create_object_from_definition(&definition,A,Zone::Hand);let second_stable=game.object(second).unwrap().stable_id;
+        game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue,1);
+        activate(&mut game,second,&mut dm);ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+        let second=game.find_object_by_stable_id(second_stable).unwrap();
+        let references=game.effect_store.continuous_effects.effects().iter().filter_map(|effect| {
+            let ironsmith::continuous::Modification::AddAbilityGeneric(ability)=&effect.modification else{return None;};
+            let ironsmith::ability::AbilityKind::Triggered(triggered)=&ability.kind else{return None;};
+            fn cast_tags(effect:&Effect,tags:&mut Vec<ironsmith::tag::TagKey>){
+                if let Some(cast)=effect.downcast_ref::<ironsmith::effects::CastTaggedEffect>(){tags.push(cast.tag.clone());}
+                effect.0.visit_child_effects(&mut |child|cast_tags(child,tags));
+            }
+            let mut consumed=Vec::new();for effect in triggered.effects.all_effects(){cast_tags(effect,&mut consumed);}
+            assert!(triggered.effects.captured_object_references.iter().all(|(tag,_)|consumed.contains(tag)),"acquired capture keys must equal the actual lowered CastTagged operand keys");
+            Some(triggered.effects.captured_object_references.iter().flat_map(|(_,ids)|ids.iter().copied()).collect::<Vec<_>>())
+        }).collect::<Vec<_>>();
+        assert!(references.contains(&vec![first]),"first inscription captures its own exile ID: {references:?}");
+        assert!(references.contains(&vec![second]),"second inscription cannot overwrite the first: {references:?}");
+        if let Some(index)=departing {let id=[first,second][index];let hand=move_to(&mut game,id,Zone::Hand);move_to(&mut game,hand,Zone::Exile);}
+        dm.cast=true;attack(&mut game,host,&mut dm);
+        let count=if departing.is_some(){1}else{2};assert_eq!(game.stack.len(),count);
+        for _ in 0..count {
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+            // The newly cast copy is above any remaining attack trigger.
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+        }
+        assert!(game.stack.is_empty());assert_eq!(game.player(A).unwrap().life,20+count as i32);
+    }}
+}
+#[test]
+fn departing_or_reexiled_card_after_trigger_announcement_cannot_satisfy_captured_reference() {
+    for definition in definitions() {for reexile in [false,true] {
+        let (mut game,source,host,mut dm)=pending_activation(&definition,A);let stable=game.object(source).unwrap().stable_id;
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();let exiled=game.find_object_by_stable_id(stable).unwrap();
+        dm.cast=true;attack(&mut game,host,&mut dm);assert_eq!(game.stack.len(),1);
+        let hand=move_to(&mut game,exiled,Zone::Hand);if reexile {move_to(&mut game,hand,Zone::Exile);}
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+        assert!(game.stack.is_empty(),"a new incarnation never revives the exact exiled-card reference");assert_eq!(game.player(A).unwrap().life,20);
+    }}
+}
+#[test]
+fn gained_body_local_exile_shadows_the_granting_abilitys_parent_exile_receipt() {
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-inscribe.json")).unwrap();
+    let reminder=fixture["mechanics"][0]["executable_reminder"].as_str().unwrap().replace("{Cost}","{U}")
+        .replace("Whenever this creature attacks, you may cast a copy of the exiled card", "Whenever this creature attacks, exile the top card of your library, then you may cast a copy of the exiled card");
+    let text=format!("Mana cost: {{U}}\nType: Sorcery\nYou gain 1 life.\n{reminder}");
+    let builder=ironsmith_compiler::CardDefinitionBuilder::new(ironsmith_compiler::ids::CardId::new(),"Local exile scope witness").with_custom_keyword("Inscribe");
+    let (result,loss)=ironsmith_compiler::parse_loss::capture(||ironsmith_compiler::word_claims::with_enforcement_options(true,true,||ironsmith_compiler_runtime::compile_builder_to_artifact(builder,&text,false)));
+    assert!(!loss.is_lossy(),"{}",loss.reasons_text());let (artifact,direct)=result.unwrap();let decoded=CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();assert_eq!(artifact,decoded);
+    for definition in [direct,ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap()] {
+        let (mut game,source,host,mut dm)=pending_activation(&definition,A);let original_stable=game.object(source).unwrap().stable_id;
+        let local=ironsmith_compiler_runtime::compile_to_runtime_definition("Local result reward","Type: Sorcery\nYou gain 3 life.",false).unwrap();let local=game.create_object_from_definition(&local,A,Zone::Library);let local_stable=game.object(local).unwrap().stable_id;
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();dm.cast=true;attack(&mut game,host,&mut dm);assert_eq!(game.stack.len(),1);
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert_eq!(game.stack.len(),1,"locally exiled card is copied");
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert_eq!(game.player(A).unwrap().life,23,"local result wins over the identically named parent reference");
+        assert_eq!(game.object(game.find_object_by_stable_id(original_stable).unwrap()).unwrap().zone,Zone::Exile);
+        assert_eq!(game.object(game.find_object_by_stable_id(local_stable).unwrap()).unwrap().zone,Zone::Exile);
+    }
+}

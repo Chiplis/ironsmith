@@ -72,6 +72,9 @@ pub enum GrantActionAst {
         without_paying_mana_cost: bool,
     },
     GrantPlayTaggedForAsLongAsExiled {
+        starts_after_current_turn: bool,
+        control_duration: Option<ObjectFilter>,
+        alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
         permission_bound_mana: bool,
         tag: TagRef,
         player: PlayerAst,
@@ -174,6 +177,7 @@ pub enum GrantActionAst {
         duration: Until,
     },
     GrantNextSpellAbilityThisTurn {
+        repeat_for_turn: bool,
         filter: ObjectFilter,
         ability: Box<GrantedAbilityAst>,
         mode: ironsmith_core::NextSpellGrantMode,
@@ -185,6 +189,22 @@ pub enum GrantActionAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+    },
+
+    GrantActivationCostAlternative {
+        target: TargetAst,
+        status: String,
+        replacement_cost: ManaCost,
+        max_uses_per_ability_each_turn: u32,
+        nonloyalty_only: bool,
+    },
+
+    GrantKeywordAbilitiesFrom {
+        target: TargetAst,
+        source: TargetAst,
+        keywords: Vec<ironsmith_core::StaticAbilityId>,
+        duration: Until,
+        last_known: bool,
     },
 
 }

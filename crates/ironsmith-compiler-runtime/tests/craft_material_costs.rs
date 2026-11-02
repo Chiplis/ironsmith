@@ -415,11 +415,13 @@ fn hulk_mills_then_gondola_crews_with_vigilance_and_live_descend_permanent_count
         assert_eq!((game.current_power(gondola), game.current_toughness(gondola)), (Some(4), Some(4)));
         for index in 0..7 { printed(&mut game, A, Zone::Graveyard, &format!("Permanent {index}"), "Type: Artifact"); }
         ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap();
-        assert!(game.can_be_blocked(gondola), "seven permanents plus a sorcery is insufficient");
+        assert!(game.can_be_blocked_by_defender(gondola, B), "seven permanents plus a sorcery is insufficient");
+        assert!(game.effect_store.cant_effects.conditional_cant_be_blocked.iter().any(|rule|rule.attacker==gondola),
+            "the actual back face retains its conditional blocking-time restriction");
         let eighth = printed(&mut game, A, Zone::Graveyard, "Eighth permanent", "Type: Land");
-        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(!game.can_be_blocked(gondola));
+        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(!game.can_be_blocked_by_defender(gondola, B));
         game.move_object_by_effect(eighth, Zone::Exile).unwrap();
-        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(game.can_be_blocked(gondola));
+        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(game.can_be_blocked_by_defender(gondola, B));
         attack(&mut game, gondola); assert!(!game.is_tapped(gondola), "vigilance applies after crew");
         ironsmith::turn::execute_cleanup_step(&mut game); assert!(!game.current_is_creature(gondola));
     }

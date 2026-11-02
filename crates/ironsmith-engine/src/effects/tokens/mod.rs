@@ -5,6 +5,8 @@
 //! - `CreateTokenCopyEffect` - Create token copies of permanents
 
 mod amass;
+mod create_linked_face_token;
+pub use create_linked_face_token::CreateLinkedFaceTokenEffect;
 mod create_token;
 mod create_token_copy;
 mod empower_jace;
@@ -35,3 +37,7 @@ pub(crate) use lifecycle::{
 pub(crate) use create_token::{
     create_tokens_with_entry_counters_with_outputs, multiplied_token_instruction,
 };
+
+mod named_action_token_grants;
+pub(crate) use named_action_token_grants::{NamedActionTokenGrant, capture_named_action_token_grants,
+    apply_named_action_grants_to_definition, apply_named_action_grants_to_object, capture_named_action_created_objects};

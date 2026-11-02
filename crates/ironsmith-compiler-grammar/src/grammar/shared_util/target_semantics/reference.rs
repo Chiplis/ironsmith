@@ -13,6 +13,16 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    let role=match crate::lexer::parser_token_word_refs(tokens).as_slice(){
+        ["the","performer","of","this","action"]=>Some("__named_action_source"),
+        ["the","participant"|"participants","in","this","action"]=>Some("__named_action_objects"),
+        _=>None,
+    };
+    if let Some(role)=role {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(ironsmith_compiler_ast::TagRef::of(role),token_slice_span(tokens)));
+    }
+
     // `each of` distributes the action over an explicitly counted target
     // declaration; it does not introduce a separate object-filter domain.
     if let Some(((), rest)) = primitives::parse_prefix(
@@ -33,6 +43,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         crate::lexer::parser_token_word_refs(tokens).as_slice(),
         ["the", "first", "creature" | "card" | "permanent"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::Triggering.bind(),
             token_slice_span(tokens),

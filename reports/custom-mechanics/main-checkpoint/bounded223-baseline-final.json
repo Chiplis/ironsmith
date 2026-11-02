@@ -1,0 +1,20 @@
+{
+  "required_targets": 223,
+  "completed_targets": 223,
+  "passed_targets": 118,
+  "failed_targets": 105,
+  "unfinished_targets": [],
+  "all223_completed": true,
+  "inputs_frozen_through_completion": true,
+  "original_completed_reused_without_rebuild": 51,
+  "subsequent_batch_size": 20,
+  "cases": 4751,
+  "passed_cases": 4320,
+  "nonpassing_cases": 431,
+  "input_fingerprint_count": 6646,
+  "source_drift": 0,
+  "output": "/tmp/custom-mechanics-bounded-223-r4",
+  "actual_failed_executions": 409,
+  "ignored_executions": 22,
+  "ignored_accounting": "tail inspection:2 standalone ignored controls +10 Wymi cases repeated in2 targets; 431 means all nonpassing, not all failures"
+}

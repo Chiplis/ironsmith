@@ -2604,7 +2604,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     ),
     pre_followup_rule!(
         "do-the-same-for-keywords",
-        &["do"],
+        &["do", "the"],
         pre_rule_do_the_same_for_keywords_followup
     ),
     pre_followup_rule!(

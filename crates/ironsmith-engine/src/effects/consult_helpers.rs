@@ -189,16 +189,24 @@ pub fn execute_library_consult_with_outputs(
                         .unwrap_or_default();
 
                     for object_id in top_to_bottom {
-                        let selected =
-                            ObjectSnapshot::from_object_id(game, object_id).ok_or_else(|| {
-                                ExecutionError::IncompleteEvidence(
-                                    "consulted library card disappeared before its reveal".into(),
-                                )
-                            })?;
+                        let object = game.object(object_id).ok_or_else(|| {
+                            ExecutionError::IncompleteEvidence(
+                                "consulted library card disappeared before its reveal".into(),
+                            )
+                        })?;
+                        // Classify the exact object being revealed. An accepted
+                        // reveal offer may move it before the consultation resumes;
+                        // its later incarnation is not the consulted library card.
+                        let snapshot = ObjectSnapshot::from_object(object, game);
+                        let mana_value = object
+                            .mana_cost
+                            .as_ref()
+                            .map_or(0, |cost| cost.mana_value());
+                        let matched = is_match(object, game);
                         let mut reveal = crate::effects::cards::reveal_objects_with_outputs(
                             game,
                             ctx,
-                            vec![selected],
+                            vec![snapshot.clone()],
                             Some(player),
                             "Reveal next consulted card",
                             reveal_context_amount,
@@ -208,19 +216,6 @@ pub fn execute_library_consult_with_outputs(
                         }
                         result.reveal_events.append(&mut reveal.outcome.events);
                         result.operation_outcomes.push(reveal);
-                        let object = game.object(object_id).ok_or_else(|| {
-                            ExecutionError::IncompleteEvidence(
-                                "consulted library card disappeared before its match decision"
-                                    .into(),
-                            )
-                        })?;
-                        let snapshot = ObjectSnapshot::from_object(object, game);
-                        let mana_value = object
-                            .mana_cost
-                            .as_ref()
-                            .map_or(0, |cost| cost.mana_value());
-                        let matched = is_match(object, game);
-
                         result.exposed_object_ids.push(object_id);
                         result.exposed_snapshots.push(snapshot.clone());
                         if matched {
@@ -1119,4 +1114,69 @@ mod replacement_bottom_owner_contract_tests {
         let outcome=move_tagged_remainder_to_library_bottom(&mut game,&mut ctx,&TagKey::from("all"),None,LibraryBottomOrder::Random,alice).unwrap();
         assert!(game.object(later).is_some_and(|object| object.zone == Zone::Exile), "the later incarnation must remain untouched");assert!(outcome.explicit_objects().is_none());assert!(game.player(alice).unwrap().library.is_empty());
     }
+    struct AcceptRevealOffer { offers: usize }
+    impl DecisionMaker for AcceptRevealOffer {
+        fn decide_boolean(&mut self, _: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+            self.offers += 1;
+            true
+        }
+    }
+
+    #[test]
+    fn reveal_offer_departure_retains_original_consultation_match_and_cleanup_identity() {
+        use crate::static_abilities::{CompiledStaticAbility, StaticAbility, StaticAbilityModelInterpreter};
+        use crate::target::ChooseSpec;
+        for matches_departed in [false, true] {
+            let alice = PlayerId(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let source = card(&mut game, alice, "Consultation source", Zone::Battlefield);
+            let next = card(&mut game, alice, "Next artifact", Zone::Library);
+            let model = CompiledStaticAbility::reveal_action_offer(
+                "sample disclosure", vec![Zone::Library], Some(1), Zone::Exile,
+                vec![crate::Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::Source))],
+                "Exile this revealed card?");
+            let definition = crate::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Departing card")
+                .card_types(vec![if matches_departed { CardType::Artifact } else { CardType::Sorcery }])
+                .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+                    StaticAbilityModelInterpreter::new(model))))
+                .build();
+            let departed = game.create_object_from_definition(&definition, alice, Zone::Library);
+            let stable = game.object(departed).unwrap().stable_id;
+            let mut dm = AcceptRevealOffer { offers: 0 };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let all: TagKey = "consulted cards".into();
+            let matched: TagKey = "matched cards".into();
+            let result = execute_library_consult_with_outputs(
+                &mut game, &mut ctx, alice, LibraryConsultMode::Reveal,
+                LibraryConsultStopRule::FirstMatch, Some(&all), Some(&matched),
+                |object, _| object.card_types.contains(&CardType::Artifact),
+            ).expect("accepted reveal movement must not invalidate consultation classification");
+            assert_eq!(result.exposed_object_ids, if matches_departed { vec![departed] } else { vec![departed, next] });
+            assert_eq!(result.exposed_snapshots[0].object_id, departed);
+            assert_eq!(result.exposed_snapshots[0].zone, Zone::Library);
+            assert_eq!(result.matched_snapshots.len(), 1);
+            assert_eq!(result.matched_snapshots[0].object_id, if matches_departed { departed } else { next });
+            assert!(game.object(departed).is_none());
+            let arrival = game.find_object_by_stable_id(stable).unwrap();
+            assert_ne!(arrival, departed);
+            assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+            ctx.set_tagged_objects("departed selection", vec![result.exposed_snapshots[0].clone()]);
+            // Generic local tags retain same-card followups. This assertion
+            // specifically tests an exact viewed-source collection, matching
+            // the cleanup consumer's exact old ObjectId policy below.
+            assert_eq!(crate::effects::helpers::resolve_objects_from_spec(
+                &game, &ChooseSpec::Tagged("departed selection".into()), &ctx).unwrap(), vec![arrival]);
+            ctx.exact_object_reference_tags.insert("departed selection".into());
+            assert!(crate::effects::helpers::resolve_objects_from_spec(
+                &game, &ChooseSpec::Tagged("departed selection".into()), &ctx).unwrap().is_empty());
+            move_tagged_remainder_to_library_bottom_with_outputs(
+                &mut game, &mut ctx, &all, None, LibraryBottomOrder::Random, alice,
+            ).expect("cleanup must ignore the departed incarnation");
+            assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+            assert_eq!(game.object(next).unwrap().zone, Zone::Library);
+            drop(ctx);
+            assert_eq!(dm.offers, 1);
+        }
+    }
+
 }

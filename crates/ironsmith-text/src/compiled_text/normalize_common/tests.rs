@@ -1759,6 +1759,7 @@ fn temporary_generic_granted_trigger_renders_quoted_oracle_surface() {
     };
     let ability = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     let effect = crate::effects::ApplyContinuousEffect::new(
@@ -2040,6 +2041,7 @@ fn source_generic_granted_trigger_uses_source_surface_for_target() {
     };
     let ability = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     let effect = crate::effects::ApplyContinuousEffect::new(
@@ -2069,6 +2071,7 @@ fn implicit_source_zone_change_can_use_a_contextual_pronoun() {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -3497,6 +3500,7 @@ fn equipment_token_compactor_requires_pump_clause() {
             activation_condition: None,
             mana_usage_restrictions: vec![],
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     let token = crate::cards::builders::CardDefinitionBuilder::new(
@@ -4642,6 +4646,7 @@ fn toxic_token_blueprint_keeps_toxic_as_keyword() {
                 crate::ability::PresentationKeyword::Toxic(1),
             )),
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     let token = crate::cards::builders::CardDefinitionBuilder::new(
@@ -4678,6 +4683,7 @@ fn token_with_non_toxic_poison_trigger_does_not_promote_toxic_surface() {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     let poison_trigger = Ability {
@@ -4690,6 +4696,7 @@ fn token_with_non_toxic_poison_trigger_does_not_promote_toxic_surface() {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     let token = crate::cards::builders::CardDefinitionBuilder::new(

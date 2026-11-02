@@ -179,17 +179,20 @@ fn aura_grant_keeps_the_named_granting_source_through_artifact_compilation() {
     use ironsmith_core::static_ability_model::StaticAbilityPayload;
     let oracle = "Enchant creature\nEnchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
     for definition in support::definitions("Hold for Ransom", &format!("Type: Enchantment — Aura\n{oracle}")) {
-        let grant = definition.abilities.iter().find_map(|ability| {
+        let grants:Vec<_> = definition.abilities.iter().filter_map(|ability| {
             let AbilityKind::Static(ability) = &ability.kind else { return None; };
             let model = ability.canonical_model()?;
             match model.payload {
                 StaticAbilityPayload::AttachedAbilityGrant(grant) => Some(grant),
                 _ => None,
             }
-        }).expect("attached ability grant");
-        let ironsmith_core::AbilityKind::Activated(activated) = &grant.ability.kind else {
-            panic!("the Aura grants an activated ability");
-        };
+        }).collect();
+        assert!(!grants.is_empty(),"attached ability grants");
+        // Combat restrictions can themselves be granted static abilities.
+        // Their position does not identify the separate activated grant.
+        let activated=grants.iter().flat_map(|grant|std::iter::once(&grant.ability).chain(grant.additional_abilities.iter()))
+            .find_map(|ability|match &ability.kind {ironsmith_core::AbilityKind::Activated(activated)=>Some(activated),_=>None})
+            .expect("the Aura grants an actual activated ability in its complete grant set");
         let body = format!("{activated:?}");
         assert!(body.contains("SacrificeTarget"), "{body}");
         assert!(body.contains("SourceReference"), "{body}");
@@ -200,4 +203,34 @@ fn aura_grant_keeps_the_named_granting_source_through_artifact_compilation() {
         assert!(rendered.contains("controller sacrifices it and draws a card"), "{rendered}");
         assert!(rendered.contains("activate only as a sorcery"), "{rendered}");
     }
+}
+
+#[test]
+fn ransom_activation_sacrifices_only_its_own_granting_aura_and_draws_for_that_auras_controller(){
+ use ironsmith::{GameState,ObjectId,PlayerId,Zone};
+ use ironsmith::ability::AbilityKind;
+ use ironsmith::decision::{DecisionMaker,LegalAction};
+ fn activate_as(game:&mut GameState,player:PlayerId,source:ObjectId,index:usize,dm:&mut impl DecisionMaker){
+  use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm};
+  let action=LegalAction::ActivateAbility{source,ability_index:index};assert!(ironsmith::decision::compute_legal_actions(game,player).unwrap().contains(&action));
+  let mut queue=ironsmith::triggers::TriggerQueue::new();let mut state=PriorityLoopState::new(game.players_in_game());let mut progress=apply_priority_response_with_dm(game,&mut queue,&mut state,&PriorityResponse::PriorityAction(action),dm).unwrap();
+  for _ in 0..60{if state.pending_activation.is_none(){break}let ironsmith::GameProgress::NeedsDecisionCtx(ctx)=progress else{panic!("{progress:?}")};progress=apply_decision_context_with_dm(game,&mut queue,&mut state,&ctx,dm).unwrap();}assert!(state.pending_activation.is_none());
+ }
+ let oracle="Enchant creature\nEnchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
+ for definition in support::definitions("Hold for Ransom",&format!("Type: Enchantment — Aura\n{oracle}")){for grantor in [play::A,play::C]{
+  let mut game=play::game();game.turn.active_player=play::B;game.turn.priority_player=Some(play::B);
+  let body=play::vanilla("Ransom host","{0}","Soldier",2,2);let first=game.create_object_from_definition(&body,play::B,Zone::Battlefield);let second=game.create_object_from_definition(&body,play::B,Zone::Battlefield);
+  let aura_a=game.create_object_from_definition(&definition,play::A,Zone::Battlefield);let aura_c=game.create_object_from_definition(&definition,play::C,Zone::Battlefield);
+  assert!(game.attach_object_to_target(aura_a,ironsmith::object::AttachmentTarget::Object(first)));assert!(game.attach_object_to_target(aura_c,ironsmith::object::AttachmentTarget::Object(second)));
+  let (host,aura,other_host,other_aura)=if grantor==play::A{(first,aura_a,second,aura_c)}else{(second,aura_c,first,aura_a)};let aura_stable=game.object(aura).unwrap().stable_id;
+  for player in [play::A,play::C]{game.create_object_from_definition(&body,player,Zone::Library);}
+  game.refresh_continuous_state().unwrap();for id in [host,other_host]{assert!(!game.can_attack(id));assert!(!game.can_block(id));}
+  let index=game.current_abilities(host).unwrap().iter().position(|ability|matches!(&ability.kind,AbilityKind::Activated(_))).expect("host has the actual granted activated ability");
+  play::give_mana(&mut game,play::B,ironsmith::mana::ManaSymbol::Colorless,7);let mut dm=play::Script::default();activate_as(&mut game,play::B,host,index,&mut dm);
+  assert_eq!(game.object(aura).unwrap().zone,Zone::Battlefield,"the source is sacrificed on resolution, not as the host's activation cost");assert_eq!(game.player(play::B).unwrap().mana_pool.total(),0);
+  ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();let departed=game.find_object_by_stable_id(aura_stable).unwrap();assert_eq!(game.object(departed).unwrap().zone,Zone::Graveyard);
+  assert_eq!(game.object(host).unwrap().zone,Zone::Battlefield);assert_eq!(game.object(other_aura).unwrap().zone,Zone::Battlefield,"same printed name is not an identity link");
+  assert_eq!(game.player(grantor).unwrap().hand.len(),1);assert_eq!(game.player(if grantor==play::A{play::C}else{play::A}).unwrap().hand.len(),0);assert_eq!(game.player(play::B).unwrap().hand.len(),0,"activating host controller is not the named Aura's controller");
+  game.refresh_continuous_state().unwrap();assert!(game.can_attack(host));assert!(game.can_block(host));assert!(!game.can_attack(other_host));assert!(!game.can_block(other_host));
+ }}
 }

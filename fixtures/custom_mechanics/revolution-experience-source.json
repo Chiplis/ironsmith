@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "description": "Exact misassociated Experience source row retained; actual Bless action candidate pending generic linked-face copy composition.",
+  "mechanics": [
+    {
+      "id": "rev-experience-074",
+      "keyword": "Experience",
+      "scope": "revolution",
+      "rule_reference": "702.197.",
+      "rule_text": {
+        "name": "702.197.",
+        "rule": "Experience",
+        "subrules": [
+          {
+            "name": "702.197a",
+            "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+            "custom": true
+          },
+          {
+            "name": "702.197b",
+            "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Budding Companion//Flourishing Companion",
+          "Cheerful Generator//Combined Generator",
+          "Crusher Beetle",
+          "Curious Cubs//Mauling Mother",
+          "Determined Koi//Destructive Serpent",
+          "Eager Hatchling//Realized Hatchling",
+          "Flame-Tailed Lizard//Flame-Tested Dragon",
+          "Forgotten Temple",
+          "Galloping Blaze",
+          "Grinding",
+          "Loyal Firestarter",
+          "Maternal Monster",
+          "Paralycker",
+          "Sprout Tender",
+          "Tangling Vines",
+          "Tidepool Turtle//Tsunami Titan",
+          "Unstoppable Weed",
+          "Winding Snake//Mother Snake",
+          "Wings of Trust",
+          "Worried Vulpine//Worthy Vulpine",
+          "Callaphe the Mariner//Blessing of the Sea"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Create a token copy of this creature's blessing attached to that permanent.",
+      "executable_reminder": null,
+      "semantic_equivalence": {
+        "status": "pending_existing_operation_composition",
+        "evidence": "Rule701.75a/b conditional back-face copy; target player is authored on Callaphe, player experience counters are ordinary. Back face retained unchanged, including modal hand-cast permission and devotion-filtered free casting. Generic linked-back-face copy/attach reader required; no successful native execution claimed."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Callaphe the Mariner//Blessing of the Sea_TRX",
+          "name": "Callaphe the Mariner",
+          "original_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "executable_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, For each target player, do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that player].",
+          "source_faces": [
+            {
+              "name": "Callaphe the Mariner",
+              "original_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "name": "Blessing of the Sea",
+              "original_text": "Type: Enchantment — Aura Blessing\nMana cost: {6}{U}{U}\n*(You may also cast this side from your hand.)*\nEnchant player\nEnchanted player may cast blue spells with mana value less than or equal to their devotion to blue without paying their mana costs. *(Each {U} in the mana costs of permanents you control counts toward your devotion to blue.)*"
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Callaphe the Mariner",
+              "executable_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, For each target player, do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that player].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Callaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player.",
+              "original_printed_rules_text": "Callaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player. (Create a token copy of this creature's blessing attached to that permanent.)"
+            },
+            {
+              "name": "Blessing of the Sea",
+              "executable_text": "Type: Enchantment — Aura Blessing\nMana cost: {6}{U}{U}\n(You may also cast this side from your hand.)\nEnchant player\nEnchanted player may cast blue spells with mana value less than or equal to their devotion to blue without paying their mana costs. (Each {U} in the mana costs of permanents you control counts toward your devotion to blue.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nEnchanted player may cast blue spells with mana value less than or equal to their devotion to blue without paying their mana costs.",
+              "original_printed_rules_text": "(You may also cast this side from your hand.)\nEnchant player\nEnchanted player may cast blue spells with mana value less than or equal to their devotion to blue without paying their mana costs. (Each {U} in the mana costs of permanents you control counts toward your devotion to blue.)"
+            }
+          ],
+          "source_card_key": "Callaphe the Mariner//Blessing of the Sea_TRX",
+          "custom_keyword_identities": [
+            "bless"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "blessing",
+              "plural": "blessings",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Callaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player.",
+          "original_printed_rules_text": "Callaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player. (Create a token copy of this creature's blessing attached to that permanent.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Callaphe the Mariner//Blessing of the Sea"
+      ],
+      "behavioral_assertions": [
+        "When the complete damage trigger resolves legally, its player gets exactly one experience counter before the threshold is evaluated.",
+        "Bless action runs only after the player has at least three experience counters.",
+        "Target remains player; token copies actual current source back face only if it has Blessing subtype.",
+        "Source without a Blessing back face creates no token, even if it copied the front ability.",
+        "Token retains Aura/Blessing, enchant player, color/mana/name and devotion-dependent free casting grant."
+      ],
+      "support_status": "source_catalog_misattribution",
+      "corrected_keyword": "Bless",
+      "source_catalog_evidence": {
+        "source_card": "Callaphe the Mariner//Blessing of the Sea",
+        "source_field": "rulesText",
+        "actual_action": "bless target player",
+        "false_match": "you get an experience counter",
+        "catalog_keyword_preserved": "Experience"
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Bless",
+          "reminder": "If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to {Player}.",
+          "template": "{Player}"
+        }
+      ]
+    }
+  ]
+}

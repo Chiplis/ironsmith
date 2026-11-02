@@ -31,10 +31,12 @@ pub fn resolve_condition_from_predicate(
 ) -> Result<Condition, CardTextError> {
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
+        PredicateAst::InEndingPhase => Condition::InEndingPhase,
         PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
         PredicateAst::FirstEndStepOfTurn => Condition::FirstEndStepOfTurn,
         PredicateAst::FirstUpkeepStepOfTurn => Condition::FirstUpkeepStepOfTurn,
         PredicateAst::SecondMainPhaseOfTurn => Condition::SecondMainPhaseOfTurn,
+        PredicateAst::FirstMainPhaseOfTurn => Condition::FirstMainPhaseOfTurn,
         PredicateAst::Source(SourcePredicateAst::SourceControllersCombatPhase) => {
             Condition::SourceControllersCombatPhase
         }
@@ -191,6 +193,7 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectWasSacrificed) => {
             Condition::TriggeringObjectWasSacrificed
         }
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringNamedActionPaidMana {label,required}) => Condition::TriggeringNamedActionPaidMana {label:label.clone(),required:required.clone()},
         PredicateAst::Triggering(TriggeringPredicateAst::TriggeringKeywordActionIs(action)) => {
             Condition::TriggeringKeywordActionIs(*action)
         }
@@ -446,6 +449,13 @@ pub fn resolve_condition_from_predicate(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCitysBlessing { player }
         }
+        PredicateAst::Player(PlayerPredicateAst::PlayerNamedActionHistory { player, label, window, minimum, minimum_amount }) => {
+            Condition::PlayerNamedActionHistory { player: resolve_non_target_player_filter(*player, &refs)?, label: label.clone(), window: *window, minimum: *minimum, minimum_amount: *minimum_amount }
+        }
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasDesignation { player, designation }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasDesignation { player, designation: designation.clone() }
+        }
         PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasEnduringStory { player }
@@ -454,6 +464,10 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceIsRingBearer { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::SourceIsRingBearer { player }
+        }
+        PredicateAst::Player(PlayerPredicateAst::PlayerSpentManaToCastSpellsThisTurnAtLeast { player, amount }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerSpentManaToCastSpellsThisTurnAtLeast { player, amount: *amount }
         }
         PredicateAst::Player(PlayerPredicateAst::PlayerRingTemptedThisGameOrMore {
             player,
@@ -821,6 +835,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::YouHaveFullParty => Condition::YouHaveFullParty,
         PredicateAst::ThisSpellWasKicked => Condition::ThisSpellWasKicked,
         PredicateAst::ThisSpellPaidLabel(label) => Condition::ThisSpellPaidLabel(label.clone()),
+        PredicateAst::NamedPaymentOutcome {label,paid,payer}=>Condition::NamedPaymentOutcome {
+            label:label.clone(),paid:*paid,payer:payer.map(|player|resolve_non_target_player_filter(player,refs)).transpose()?,
+        },
         PredicateAst::CountComparison {
             count,
             comparison,
@@ -944,6 +961,9 @@ pub fn resolve_condition_from_predicate(
         },
         PredicateAst::ActivationTiming(timing) => Condition::ActivationTiming(*timing),
         PredicateAst::MaxActivationsPerTurn(limit) => Condition::MaxActivationsPerTurn(*limit),
+        PredicateAst::Source(SourcePredicateAst::EachCurrentDesignatedAbilityActivatedByYou { designation }) => {
+            Condition::EachCurrentDesignatedAbilityActivatedByYou { designation: designation.clone() }
+        }
         PredicateAst::MaxActivationsPerObject(limit) => Condition::MaxActivationsPerObject(*limit),
         PredicateAst::MaxActivationsPerTurnCount(count) => {
             Condition::MaxActivationsPerTurnCount(count.clone())

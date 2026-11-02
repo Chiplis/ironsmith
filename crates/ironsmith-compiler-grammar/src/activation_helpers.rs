@@ -70,6 +70,19 @@ fn parse_add_mana_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
     parse_value(amount_tokens).map(|(value, _)| value)
 }
 
+/// The amount and unrestricted color are one complete alternative operand.
+fn parse_fixed_any_color_mana_operand(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let operand = crate::util::trim_edge_punctuation_tokens(tokens);
+    if operand.len() != 5 || !operand.iter().all(|token| token.as_word().is_some())
+        || !matches!(crate::lexer::token_word_refs(operand).as_slice(), [_, "mana", "of", "any", "color"]) {
+        return None;
+    }
+    match parse_add_mana_amount(operand) {
+        Some(amount @ Value::Fixed(1..)) => Some(amount),
+        _ => None,
+    }
+}
+
 /// "Add {U}{U}, {U}{R}, or {R}{R}" (filter lands) lists every combination of
 /// two mana from its colors, which is exactly "two mana in any combination of
 /// {U} and/or {R}". Any other list ("{B}{B} or {G}{G}", Cadaverous Bloom) is
@@ -309,6 +322,61 @@ pub fn parse_add_mana(
         )))
     };
 
+    // A fixed output and a complete unrestricted color operand are separate
+    // alternatives. Parsing the whole clause as `any color` drops the fixed
+    // output and strands the second branch's amount word.
+    if let [fixed, or_word, rest @ ..] = tokens
+        && or_word.is_word("or")
+        && let Some(pip) = crate::grammar::leaf::parse_leaf_surface_mana_pip_token(fixed)
+        && let Some(amount) = parse_fixed_any_color_mana_operand(rest)
+    {
+        let symbols = pip.into_pip();
+        if symbols.len() != 1 {
+            return Err(CardTextError::ParseError("mixed mana output requires one fixed mana symbol".into()));
+        }
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
+            modes: vec![
+                crate::cards::builders::ChooseOneModeAst {
+                    description: format!("Add {}", crate::mana::ManaCost::from_symbols(symbols.clone()).to_oracle()),
+                    effects: vec![EffectAst::subject_verb_add_mana(player, symbols)],
+                },
+                crate::cards::builders::ChooseOneModeAst {
+                    description: "Add mana of any color".into(),
+                    effects: vec![EffectAst::subject_verb_add_mana_any_color(player, amount, None)],
+                },
+            ],
+        }));
+    }
+    // A fixed mana output and a source-relative color output are independent
+    // alternatives, rather than an unrestricted color or both productions.
+    if let [fixed, or_word, rest @ ..] = tokens
+        && or_word.is_word("or")
+        && let Some(pip) = crate::grammar::leaf::parse_leaf_surface_mana_pip_token(fixed)
+        && let Some(filter) = parse_add_one_mana_any_color_among_filter(rest)?
+    {
+        let symbols = pip.into_pip();
+        if symbols.len() != 1 {
+            return Err(CardTextError::ParseError("mixed mana output requires one fixed mana symbol".into()));
+        }
+        crate::word_claims::claim_tokens(&tokens[..2]);
+        return Ok(EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+                chooser: crate::target::PlayerFilter::You,
+                modes: vec![
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: format!("Add {}", crate::mana::ManaCost::from_symbols(symbols.clone()).to_oracle()),
+                        effects: vec![EffectAst::subject_verb_add_mana(player, symbols)],
+                    },
+                    crate::cards::builders::ChooseOneModeAst {
+                        description: "Add one mana of a color of this source".into(),
+                        effects: vec![EffectAst::subject_verb_add_one_mana_any_color_among(player, filter)],
+                    },
+                ],
+            },
+        ));
+    }
     if let Some(effect) = parse_add_x_of_one_mana_symbol_choice(tokens, player)? {
         return Ok(effect);
     }

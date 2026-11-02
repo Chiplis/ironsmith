@@ -705,6 +705,7 @@ fn object_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.sticker.is_some()
         || filter.token
         || filter.nontoken
+        || filter.spell_copy
         || !filter.excluded_card_types.is_empty()
         || !filter.excluded_subtypes.is_empty()
 }
@@ -744,13 +745,14 @@ fn parse_source_identity_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     if descriptor_clause.tokens().is_empty() {
         return None;
     }
-    if source_identity_descriptor_contains_ignored_state(descriptor_clause) {
+    let copy_identity=parse_copy_identity_descriptor(descriptor_clause.tokens());
+    if copy_identity.is_none() && source_identity_descriptor_contains_ignored_state(descriptor_clause) {
         return None;
     }
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+    let filter = copy_identity.or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(
         descriptor_clause.tokens(),
         false,
-    ))
+    )))
     .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
     .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
     if !object_filter_has_identity(&filter) {
@@ -762,6 +764,18 @@ fn parse_source_identity_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     } else {
         predicate
     })
+}
+
+/// Copy kind and independently named keyword identity are ordinary filter
+/// properties; names are data from the explicit source definition.
+fn parse_copy_identity_descriptor(tokens:&[OwnedLexToken])->Option<ObjectFilter>{
+    let identity=crate::word_claims::probe_only(||crate::custom_identity_filters::filter_clause(tokens));
+    let base=identity.as_ref().map(|(base,_,_)|base.as_slice()).unwrap_or(tokens);
+    let words=crate::lexer::token_word_refs(base);
+    if !matches!(words.as_slice(),["a","copy"]|["copy"]){return None}
+    let mut filter=ObjectFilter {zone:Some(Zone::Stack),spell_copy:true,..ObjectFilter::default()};
+    if let Some((_,name,negative))=identity {let exact=format!("custom keyword:{name}");if negative{filter.excluded_ability_markers.push(exact)}else{filter.ability_markers.push(exact)}}
+    crate::word_claims::claim_tokens(tokens);Some(filter)
 }
 
 fn parse_identity_descriptor_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -5034,11 +5048,31 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
     let reference = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
     demonstrative_reference_prefix(reference)?;
     let keyword = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-    let (constraint, consumed) = parse_filter_keyword_constraint_tokens(keyword.tokens())?;
-    if consumed != keyword.tokens().len() {
-        return None;
-    }
+    // Rest is captured by word range, whose end excludes punctuation after
+    // its final word. Recover the complete token suffix so an operand's
+    // closing quote is retained, without accepting any unparsed tail.
+    let first_keyword = keyword.tokens().first()?;
+    let keyword_start = tokens.iter().position(|token| std::ptr::eq(token, first_keyword))?;
+    let keyword_tokens = crate::util::trim_statement_separators(&tokens[keyword_start..]);
+    // A custom identity is a complete quoted data operand. Reuse the
+    // ordinary identity-filter reader while preserving the past-tense match
+    // policy below; this never grants the named program.
+    let mut identity_tokens = keyword_tokens.to_vec();
+    let mut introducer = identity_tokens.first()?.clone();
+    introducer.replace_word("with");
+    identity_tokens.insert(0, introducer);
+    let custom_identity = crate::custom_identity_filters::filter_clause(&identity_tokens)
+        .filter(|(base, _, negative)| base.is_empty() && !negative)
+        .map(|(_, name, _)| name);
     let mut filter = ObjectFilter::default();
+    let constraint = if let Some(name) = custom_identity {
+        filter.ability_markers.push(name);
+        None
+    } else {
+        let (constraint, consumed) = parse_filter_keyword_constraint_tokens(keyword_tokens)?;
+        if consumed != keyword_tokens.len() { return None; }
+        Some(constraint)
+    };
     let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
     let past = surface::exact_any(
         action,
@@ -5050,7 +5084,11 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
         ],
     );
     let negative = !surface::exact_any(action, &[&["has"], &["have"], &["had"]]);
-    apply_filter_keyword_constraint(&mut filter, constraint, past && negative);
+    if let Some(constraint) = constraint {
+        apply_filter_keyword_constraint(&mut filter, constraint, past && negative);
+    } else if past && negative {
+        filter.excluded_ability_markers = std::mem::take(&mut filter.ability_markers);
+    }
     if past {
         // Missing historical evidence must not satisfy a negation merely
         // because a positive current-state lookup failed.

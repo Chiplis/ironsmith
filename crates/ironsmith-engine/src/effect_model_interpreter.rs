@@ -349,6 +349,7 @@ where
             haunt_choices: payload.haunt_choices.clone(), descriptive: payload.descriptive,
         }));
     }
+    if let Some(converted)=clone_direct_effect::<M,crate::effects::NoteObjectNamesEffect>(&effect){return Ok(converted);}
     if let Some(converted) = clone_direct_effect::<M, crate::effects::DrawCardsEffect>(&effect) {
         return Ok(converted);
     }
@@ -356,6 +357,24 @@ where
         M::downcast_ref::<ironsmith_core::DrawForEachTaggedMatchingEffect>(&effect)
     {
         return Ok(Effect::new(payload.draw_effect()));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CopyFromDefinitionEffect<M::CardDefinition>>(&effect) {
+        return Ok(Effect::new(crate::effects::CopyFromDefinitionEffect {definition:hooks.runtime_card_definition_hook(payload.definition.clone())?,count:payload.count.clone(),player:payload.player.clone()}));
+    }
+    if let Some(payload)=M::downcast_ref::<ironsmith_core::card_creation::CardDefinitionScopeEffect<M::CardDefinition,M::Effect>>(&effect){
+        let definitions=payload.definitions.iter().cloned().map(|definition|hooks.runtime_card_definition_hook(definition)).collect::<Result<Vec<_>,_>>()?;
+        let child=interpret_effect_model::<M,H>((*payload.effect).clone(),hooks)?;
+        return Ok(Effect::new(crate::effects::cards::CardDefinitionScopeEffect{scope:payload.scope,definitions,effect:Box::new(child)}));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CreateCardsEffect<M::CardDefinition>>(&effect) {
+        let definitions = payload.definitions.iter().cloned()
+            .map(|definition| hooks.runtime_card_definition_hook(definition))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok(Effect::new(crate::effects::CreateCardsEffect {
+            definitions, definition_scope: payload.definition_scope, definition_refs: payload.definition_refs.clone(), operation_label: payload.operation_label.clone(), selection: payload.selection.clone(), count: payload.count.clone(),
+            player: payload.player.clone(), zone: payload.zone,
+            library_position: payload.library_position,
+        }));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::CreateTokenEffect<M::CardDefinition>>(&effect)
@@ -411,10 +430,13 @@ where
         if payload.link_source_exiled_this_resolution {
             converted = converted.linking_source_exiled_this_resolution();
         }
+        converted.link_only_last_source_exiled = payload.link_only_last_source_exiled;
         converted.entry_counters = payload.entry_counters.clone();
         converted.must_attack_player_this_turn = payload.must_attack_player_this_turn.clone();
         return Ok(Effect::new(converted));
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::CreateLinkedFaceTokenEffect>(&effect) { return Ok(converted); }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::LinkExiledCardsEffect>(&effect) { return Ok(converted); }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TapEffect>(&effect) {
         return Ok(converted);
     }
@@ -481,6 +503,9 @@ where
                 payload.controller.clone(),
             )
         };
+        converted.effects.object_reference_imports = payload.object_reference_imports.clone();
+        converted.persistent_player_rule = payload.persistent_player_rule.clone();
+        converted.intervening_if = payload.intervening_if.clone();
         if let Some(filter) = &payload.target_filter {
             converted = converted.with_target_filter(filter.clone());
         }
@@ -493,6 +518,7 @@ where
         if payload.either_of_watched_objects {
             converted = converted.with_either_of_watched_objects_surface();
         }
+        converted = converted.with_source_collection_scope(payload.source_collection_scope.clone());
         if let Some((tag, zone)) = &payload.while_any_tagged_object_in_zone {
             converted = converted.while_any_tagged_object_in_zone(tag.clone(), *zone);
         }
@@ -567,6 +593,7 @@ where
                 payload.duration.clone(),
             );
         converted.activated_from = payload.activated_from.clone();
+        converted.keyword_from = payload.keyword_from.clone();
         converted.activated_from_symbol_as_any_color = payload.activated_from_symbol_as_any_color;
         return Ok(Effect::new(converted));
     }
@@ -589,6 +616,8 @@ where
             exile_at_end_of_combat_reference_surface: payload
                 .exile_at_end_of_combat_reference_surface,
             loses_soulbond: payload.loses_soulbond,
+            removed_ability_designations: payload.removed_ability_designations.clone(),
+            ability_loss_until: payload.ability_loss_until.clone(),
             sacrifice_at_next_end_step: payload.sacrifice_at_next_end_step,
             sacrifice_at_next_end_step_reference_surface: payload
                 .sacrifice_at_next_end_step_reference_surface,
@@ -613,6 +642,7 @@ where
             added_colors: payload.added_colors,
             set_card_types: payload.set_card_types.clone(),
             set_subtypes: payload.set_subtypes.clone(),
+            preserve_noncreature_subtypes: payload.preserve_noncreature_subtypes,
             granted_static_abilities: payload
                 .granted_static_abilities
                 .iter()
@@ -632,7 +662,7 @@ where
                 payload.player.clone(),
                 payload.filter.clone(),
                 hooks.runtime_ability_hook(payload.ability.clone())?,
-            ).with_mode(payload.mode),
+            ).with_mode(payload.mode).with_repeat_for_turn(payload.repeat_for_turn),
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::MoveToZoneEffect<M::ContinuousModification>>(&effect) {
@@ -797,7 +827,8 @@ where
         return Ok(converted);
     }
     if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::EmitKeywordActionEffect>(&effect)
+        clone_direct_effect::<M, crate::effects::PerformNamedActionEffect>(&effect)
+            .or_else(|| clone_direct_effect::<M, crate::effects::EmitKeywordActionEffect>(&effect))
     {
         return Ok(converted);
     }
@@ -926,6 +957,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RemoveOptionalTextFragmentEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ChangeTextEffect>(&effect) {
         return Ok(converted);
     }
@@ -1004,6 +1038,7 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted)=clone_direct_effect::<M,crate::effects::LinkObjectsToGroupEffect>(&effect){return Ok(converted);}
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::TagLastDamageSourceEffect>(&effect)
     {
@@ -1097,7 +1132,9 @@ where
         } else {
             crate::effects::MayEffect::new(effects)
         };
-        return Ok(Effect::new(converted.with_pay_as_cost(payload.pay_as_cost)));
+        let mut converted=converted.with_pay_as_cost(payload.pay_as_cost);
+        converted.payment_receipt=payload.payment_receipt.clone();
+        return Ok(Effect::new(converted));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RevealTopEffect>(&effect) {
         return Ok(converted);
@@ -1363,7 +1400,8 @@ where
         )));
     }
     if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::MoveAllCountersEffect>(&effect)
+        clone_direct_effect::<M, crate::effects::MergePermanentsEffect>(&effect)
+            .or_else(||clone_direct_effect::<M, crate::effects::MoveAllCountersEffect>(&effect))
     {
         return Ok(converted);
     }
@@ -1377,12 +1415,27 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ProliferateEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::GrantActivationCostAlternativeEffect>(&effect) { return Ok(converted); }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::GrantExileControllerInspectionEffect>(&effect) { return Ok(converted); }
+    if let Some(converted) = clone_direct_effect::<M, ironsmith_core::effect::RememberOriginalMovementArrivalsEffect>(&effect) { return Ok(converted); }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::SetPermanentDesignationEffect>(&effect) { return Ok(converted); }
+    if let Some(converted) = clone_direct_effect::<M, ironsmith_core::RecordSourceCollectionEffect>(&effect) { return Ok(converted); }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::MonstrosityEffect>(&effect) {
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TransformEffect>(&effect) {
         return Ok(converted);
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::FirstResolutionEachTurnEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::FirstResolutionEachTurnEffect {
+            label: payload.label.clone(), effects: convert_effects(payload.effects.iter().cloned(), hooks)?,
+        }));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::NamedActionProgramEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::NamedActionProgramEffect {
+            label: payload.label.clone(), player: payload.player.clone(), completion: payload.completion, objects: payload.objects.clone(),
+            effects: convert_effects(payload.effects.iter().cloned(), hooks)?,
+        }));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RepeatEffectsEffect<M::Effect>>(&effect)
@@ -1702,6 +1755,7 @@ where
         grant.during_your_turns = payload.during_your_turns;
         grant.alternative_cost_x_is_mana_value = payload.alternative_cost_x_is_mana_value;
         grant.while_player_controls = payload.while_player_controls.clone();
+        grant.control_duration = payload.control_duration.clone();
         grant.permanents_enter_tapped = payload.permanents_enter_tapped;
         grant = grant.with_lands_enter_tapped(payload.lands_enter_tapped);
         return Ok(Effect::new(grant));
@@ -1858,6 +1912,13 @@ where
         clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
     {
         return Ok(converted);
+    }
+    if let Some(payload)=M::downcast_ref::<ironsmith_core::RegisterEventReplacementEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::RegisterEventReplacementEffect {
+            event:payload.event.clone(),target:payload.target.clone(),resolving_object_only:payload.resolving_object_only,
+            replacement_effects:convert_effects(payload.replacement_effects.iter().cloned(),hooks)?,
+            mode:payload.mode,display:payload.display.clone(),
+        }));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RegisterDrawReplacementEffect<M::Effect>>(&effect)
@@ -2282,6 +2343,7 @@ where
             payload.player.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ActivateAbilityWithoutCostsEffect>(&effect) { return Ok(Effect::new(payload.clone())); }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ActivateManaAbilityOfEachLandEffect>(&effect)
     {
@@ -2559,6 +2621,7 @@ where
         crate::effects::ChooseObjectsEffect,
         crate::effects::ChooseSpellCastHistoryEffect,
         crate::effects::ClashEffect,
+        crate::effects::TriggerAbilitiesByClassEffect,
         crate::effects::CopySpellEffect,
         crate::effects::CopySpellForEachTargetEffect,
         crate::effects::CounterEffect,
@@ -2579,6 +2642,8 @@ where
         crate::effects::GrantTaggedSpellLifeCostByManaValueEffect,
         crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,
         crate::effects::LookAtHandEffect,
+        crate::effects::CreateLinkedFaceTokenEffect,
+        crate::effects::LinkExiledCardsEffect,
         crate::effects::MeldEffect,
         crate::effects::MillEffect,
         crate::effects::ModifyPowerToughnessEffect,
@@ -2622,6 +2687,7 @@ where
         crate::effects::ScryEffect,
         crate::effects::SearchLibraryEffect,
         crate::effects::SearchLibrarySlotsEffect,
+        crate::effects::LinkPermanentsEffect,
         crate::effects::SoulbondPairEffect,
         crate::effects::TagMatchingObjectsEffect,
         crate::effects::TagOtherBlockParticipantEffect,

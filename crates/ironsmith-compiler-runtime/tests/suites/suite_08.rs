@@ -20,6 +20,21 @@ mod r#counter_kind_put_another;
 #[path = "../counter_kind_put_or_remove.rs"]
 mod r#counter_kind_put_or_remove;
 
+#[path = "../custom_counter_status_lifetimes.rs"]
+mod r#custom_counter_status_lifetimes;
+
+#[path = "../custom_recite.rs"]
+mod r#custom_recite;
+
+#[path = "../custom_revolution_waste.rs"]
+mod r#custom_revolution_waste;
+
+#[path = "../custom_revolution_waste_receipts.rs"]
+mod r#custom_revolution_waste_receipts;
+
+#[path = "../custom_wander_battlefield_cast.rs"]
+mod r#custom_wander_battlefield_cast;
+
 #[path = "../discard_another_card.rs"]
 mod r#discard_another_card;
 

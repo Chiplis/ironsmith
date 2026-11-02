@@ -25,6 +25,9 @@ pub struct CounterPutOnTrigger {
     /// "... on one or more [objects]": counters one instruction puts on
     /// several matching objects are one trigger event (CR 603.2c).
     pub one_or_more_objects: bool,
+    pub activation_label: Option<String>,
+    pub activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
+    pub cause_designation: Option<String>,
 }
 
 impl CounterPutOnTrigger {
@@ -37,6 +40,9 @@ impl CounterPutOnTrigger {
             include_players: false,
             counter_number: None,
             one_or_more_objects: false,
+            activation_label: None,
+            activation_definition: None,
+            cause_designation: None,
         }
     }
 
@@ -73,6 +79,21 @@ impl CounterPutOnTrigger {
 
 impl TriggerMatcher for CounterPutOnTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if let Some(designation) = &self.cause_designation {
+            let Some(counters) = event.downcast::<MarkersChangedEvent>() else { return false; };
+            let Some(cause) = &counters.cause else { return false; };
+            if !cause.cause_type.is_effect_like() || !cause.resolving_ability_designations.iter().any(|name| name.eq_ignore_ascii_case(designation)) {
+                return false;
+            }
+        }
+        if self.activation_label.is_some() || self.activation_definition.is_some() {
+            let Some(required) = self.activation_definition else { return false; };
+            let Some(e) = event.downcast::<MarkersChangedEvent>() else { return false; };
+            let Some(cause) = &e.cause else { return false; };
+            if cause.activation_definition != Some(required)
+                || cause.resolving_ability != Some(ironsmith_core::CauseAbilityKind::Activated)
+                || cause.source != Some(ctx.source_id) { return false; }
+        }
         let (permanent, counter_type, source_controller, amount, count_after) = match event.kind() {
             EventKind::CounterPlaced => {
                 let Some(e) = event.downcast::<CounterPlacedEvent>() else {
@@ -291,7 +312,7 @@ impl TriggerMatcher for CounterPutOnTrigger {
             );
         }
 
-        match self.count_mode {
+        let mut display = match self.count_mode {
             CountMode::OneOrMore => format!(
                 "Whenever one or more {}s are put on {}{player_suffix}",
                 counters,
@@ -302,7 +323,15 @@ impl TriggerMatcher for CounterPutOnTrigger {
                 counters,
                 recipient(&self.filter)
             ),
+        };
+        if let Some(designation) = &self.cause_designation {
+            display.push_str(&format!(" caused by an ability designated \"{designation}\""));
         }
+        if let Some(label) = &self.activation_label {
+            display.push_str(&format!(" caused by the {label} activated ability of this permanent"));
+        }
+        display
+
     }
 }
 

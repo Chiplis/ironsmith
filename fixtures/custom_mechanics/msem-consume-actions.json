@@ -1,0 +1,1230 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact original source rows, generic optional recipient modal candidate; not semantically certified."
+  },
+  "mechanics": [
+    {
+      "id": "msem-355",
+      "keyword": "Consume",
+      "original_reminder": "To consume, sacrifice another creature or exile a creature card from your graveyard.",
+      "executable_reminder": "Pay the cost \"Choose {Subject}. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\"",
+      "source_cards": [
+        "Bloodbraid Ritualist",
+        "Dagger-Thrash Marauders",
+        "Flesheater Vine",
+        "Hellkite Omnivore",
+        "Hostile Barbfly",
+        "Lava Hellions",
+        "Ravenous Tarwurm",
+        "Regurgitator Ooze",
+        "Scaleshredder",
+        "Viashino Glutton",
+        "Thunderous Avarice"
+      ],
+      "rule_reference": "701.90.",
+      "rule_text": [
+        {
+          "name": "701.90a",
+          "rule": "Consume is a keyword action. To have a creature consume, sacrifice a creature other than the creature consuming, or exile a creature card from your graveyard.",
+          "custom": true
+        },
+        {
+          "name": "701.90b",
+          "rule": "The creature that consumed may have linked abilities related to the cards it consumed.",
+          "custom": true
+        },
+        {
+          "name": "701.90c",
+          "rule": "Consume a type is a variant of the consume action. To have a creature “consume a [type],” sacrifice a permanent of that type other than the creature consuming, or exile a card of that type from your graveyard.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bloodbraid Ritualist_ALR",
+          "name": "Bloodbraid Ritualist",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/2\n{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/2\n{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may Pay the cost \"Choose Bloodbraid Ritualist. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, draw a card.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Shaman",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Bloodbraid Ritualist_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloodbraid Ritualist",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/2\n{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card.",
+          "executable_faces": [
+            {
+              "name": "Bloodbraid Ritualist",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/2\n{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may Pay the cost \"Choose Bloodbraid Ritualist. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, draw a card.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card.",
+              "original_printed_rules_text": "{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Bloodbraid Ritualist",
+            "cardName": "Bloodbraid Ritualist",
+            "manaCost": "{1}{B}",
+            "typeLine": "Creature — Human Shaman",
+            "rarityLine": "*ALR R*",
+            "rulesText": "{B}, Discard a card: Bloodbraid Ritualist gains indestructible until end of turn. Tap it.\nAt the beginning of your upkeep, you may have Bloodbraid Ritualist consume. If you do, draw a card. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "67",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Bob Kehl",
+            "sdn": 7972,
+            "key": "Bloodbraid Ritualist_ALR",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Bloodbraid Ritualist_ALR",
+            "printKeys": [
+              "Bloodbraid Ritualist_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 2.10637177461822,
+            "pm": 10.854583046175051,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Dagger-Thrash Marauders_ALR",
+          "name": "Dagger-Thrash Marauders",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 2/2\nMenace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 2/2\nMenace\nWhen Dagger-Thrash Marauders enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on it and it gains haste until end of turn.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Lizard Warrior",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Dagger-Thrash Marauders_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dagger-Thrash Marauders",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 2/2\nMenace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Dagger-Thrash Marauders",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 2/2\nMenace\nWhen Dagger-Thrash Marauders enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on it and it gains haste until end of turn.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn.",
+              "original_printed_rules_text": "Menace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Menace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Dagger-Thrash Marauders",
+            "cardName": "Dagger-Thrash Marauders",
+            "manaCost": "{2}{R}",
+            "typeLine": "Creature — Lizard Warrior",
+            "rarityLine": "*ALR C*",
+            "rulesText": "Menace\nWhen Dagger-Thrash Marauders enters, you may have it consume. If you do, put a +1/+1 counter on it and it gains haste until end of turn. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "101",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Adam Baines",
+            "sdn": 7996,
+            "key": "Dagger-Thrash Marauders_ALR",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Dagger-Thrash Marauders_ALR",
+            "printKeys": [
+              "Dagger-Thrash Marauders_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Flesheater Vine_ALR",
+          "name": "Flesheater Vine",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Plant\nPower/Toughness: 2/2\nDeathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Plant\nPower/Toughness: 2/2\nDeathtouch\nWhen Flesheater Vine enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on it and you gain 3 life.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Plant",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Flesheater Vine_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Flesheater Vine",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Plant\nPower/Toughness: 2/2\nDeathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Deathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life.",
+          "executable_faces": [
+            {
+              "name": "Flesheater Vine",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Plant\nPower/Toughness: 2/2\nDeathtouch\nWhen Flesheater Vine enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on it and you gain 3 life.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life.",
+              "original_printed_rules_text": "Deathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Deathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Flesheater Vine",
+            "cardName": "Flesheater Vine",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Plant",
+            "rarityLine": "*ALR C*",
+            "rulesText": "Deathtouch\nWhen Flesheater Vine enters, you may have it consume. If you do, put a +1/+1 counter on it and you gain 3 life. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "134",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Afda Trihatma",
+            "sdn": 8033,
+            "key": "Flesheater Vine_ALR",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Flesheater Vine_ALR",
+            "printKeys": [
+              "Flesheater Vine_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Hellkite Omnivore_ALR",
+          "name": "Hellkite Omnivore",
+          "original_text": "Mana cost: {5}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nFlying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {5}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nFlying\nWhenever Hellkite Omnivore attacks, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target.",
+          "mana_cost": "{5}{R}",
+          "type_line": "Creature — Dragon",
+          "power": "5",
+          "toughness": "5",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Hellkite Omnivore_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hellkite Omnivore",
+              "original_text": "Mana cost: {5}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nFlying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target.",
+          "executable_faces": [
+            {
+              "name": "Hellkite Omnivore",
+              "executable_text": "Mana cost: {5}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nFlying\nWhenever Hellkite Omnivore attacks, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target.",
+              "original_printed_rules_text": "Flying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Flying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Hellkite Omnivore",
+            "cardName": "Hellkite Omnivore",
+            "manaCost": "{5}{R}",
+            "typeLine": "Creature — Dragon",
+            "rarityLine": "*ALR R*",
+            "rulesText": "Flying\nWhenever Hellkite Omnivore attacks, you may have it consume. If you do, put a +1/+1 counter on Hellkite Omnivore. When a creature is sacrificed this way, Hellkite Omnivore deals 3 damage to any target. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "5",
+            "toughness": "5",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "104",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Juan Pablo Roldan",
+            "sdn": 8053,
+            "key": "Hellkite Omnivore_ALR",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Hellkite Omnivore_ALR",
+            "printKeys": [
+              "Hellkite Omnivore_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Hostile Barbfly_ALR",
+          "name": "Hostile Barbfly",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Insect\nPower/Toughness: 2/2\nFlying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Insect\nPower/Toughness: 2/2\nFlying\nWhen Hostile Barbfly enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". When you do, target creature gets -2/-2 until end of turn.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Creature — Insect",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Hostile Barbfly_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hostile Barbfly",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Insect\nPower/Toughness: 2/2\nFlying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Hostile Barbfly",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Insect\nPower/Toughness: 2/2\nFlying\nWhen Hostile Barbfly enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". When you do, target creature gets -2/-2 until end of turn.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn.",
+              "original_printed_rules_text": "Flying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Flying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Hostile Barbfly",
+            "cardName": "Hostile Barbfly",
+            "manaCost": "{3}{B}",
+            "typeLine": "Creature — Insect",
+            "rarityLine": "*ALR C*",
+            "rulesText": "Flying\nWhen Hostile Barbfly enters, you may have it consume. When you do, target creature gets -2/-2 until end of turn. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "80",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Luke Mancini",
+            "sdn": 8059,
+            "key": "Hostile Barbfly_ALR",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Hostile Barbfly_ALR",
+            "printKeys": [
+              "Hostile Barbfly_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Lava Hellions_ALR",
+          "name": "Lava Hellions",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Hellion\nPower/Toughness: 4/5\nTrample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Hellion\nPower/Toughness: 4/5\nTrample\nWhenever Lava Hellions attacks, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, it deals 2 damage to defending player.",
+          "mana_cost": "{4}{R}",
+          "type_line": "Creature — Hellion",
+          "power": "4",
+          "toughness": "5",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Lava Hellions_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lava Hellions",
+              "original_text": "Mana cost: {4}{R}\nType: Creature — Hellion\nPower/Toughness: 4/5\nTrample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player.",
+          "executable_faces": [
+            {
+              "name": "Lava Hellions",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Hellion\nPower/Toughness: 4/5\nTrample\nWhenever Lava Hellions attacks, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, it deals 2 damage to defending player.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player.",
+              "original_printed_rules_text": "Trample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Trample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Lava Hellions",
+            "cardName": "Lava Hellions",
+            "manaCost": "{4}{R}",
+            "typeLine": "Creature — Hellion",
+            "rarityLine": "*ALR C*",
+            "rulesText": "Trample\nWhenever Lava Hellions attacks, you may have it consume. If you do, it deals 2 damage to defending player. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "5",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "109",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Sutthiwat Dechakamphu",
+            "sdn": 8080,
+            "key": "Lava Hellions_ALR",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Lava Hellions_ALR",
+            "printKeys": [
+              "Lava Hellions_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Ravenous Tarwurm_ALR",
+          "name": "Ravenous Tarwurm",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Wurm\nPower/Toughness: 3/3\nLifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Wurm\nPower/Toughness: 3/3\nLifelink\nWhen Ravenous Tarwurm enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". When you do, destroy target creature with toughness 3 or less and you gain 3 life.",
+          "mana_cost": "{4}{B}",
+          "type_line": "Creature — Wurm",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Ravenous Tarwurm_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ravenous Tarwurm",
+              "original_text": "Mana cost: {4}{B}\nType: Creature — Wurm\nPower/Toughness: 3/3\nLifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Lifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life.",
+          "executable_faces": [
+            {
+              "name": "Ravenous Tarwurm",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Wurm\nPower/Toughness: 3/3\nLifelink\nWhen Ravenous Tarwurm enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". When you do, destroy target creature with toughness 3 or less and you gain 3 life.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life.",
+              "original_printed_rules_text": "Lifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Ravenous Tarwurm",
+            "cardName": "Ravenous Tarwurm",
+            "manaCost": "{4}{B}",
+            "typeLine": "Creature — Wurm",
+            "rarityLine": "*ALR U*",
+            "rulesText": "Lifelink\nWhen Ravenous Tarwurm enters, you may have it consume. When you do, destroy target creature with toughness 3 or less and you gain 3 life. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "88",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Dénes Nagy",
+            "sdn": 8123,
+            "key": "Ravenous Tarwurm_ALR",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Ravenous Tarwurm_ALR",
+            "printKeys": [
+              "Ravenous Tarwurm_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Regurgitator Ooze_ALR",
+          "name": "Regurgitator Ooze",
+          "original_text": "Mana cost: {3}{G}\nType: Creature — Ooze\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+          "executable_text": "Mana cost: {3}{G}\nType: Creature — Ooze\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may Pay the cost \"Choose Regurgitator Ooze. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, it gets +2/+2 until end of turn.\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+          "mana_cost": "{3}{G}",
+          "type_line": "Creature — Ooze",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Regurgitator Ooze_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Regurgitator Ooze",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Ooze\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn.\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+          "executable_faces": [
+            {
+              "name": "Regurgitator Ooze",
+              "executable_text": "Mana cost: {3}{G}\nType: Creature — Ooze\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may Pay the cost \"Choose Regurgitator Ooze. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, it gets +2/+2 until end of turn.\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn.\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+              "original_printed_rules_text": "At the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "At the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+          "source_raw_record": {
+            "fullName": "Regurgitator Ooze",
+            "cardName": "Regurgitator Ooze",
+            "manaCost": "{3}{G}",
+            "typeLine": "Creature — Ooze",
+            "rarityLine": "*ALR U*",
+            "rulesText": "At the beginning of combat on your turn, you may have Regurgitator Ooze consume. If you do, it gets +2/+2 until end of turn. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*\nWhen Regurgitator Ooze dies, return a card exiled with it to its owner's hand.",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "150",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Damian Schouweiler",
+            "sdn": 8126,
+            "key": "Regurgitator Ooze_ALR",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR",
+              "AVX"
+            ],
+            "rarities": [
+              "uncommon",
+              "bonus"
+            ],
+            "firstPrint": "Regurgitator Ooze_ALR",
+            "printKeys": [
+              "Regurgitator Ooze_ALR",
+              "Regurgitator Ooze_AVX"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Scaleshredder_ALR",
+          "name": "Scaleshredder",
+          "original_text": "Mana cost: {5}{R}\nType: Creature — Lizard Shaman\nPower/Toughness: 5/4\nWhen Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {5}{R}\nType: Creature — Lizard Shaman\nPower/Toughness: 5/4\nWhen Scaleshredder enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order.",
+          "mana_cost": "{5}{R}",
+          "type_line": "Creature — Lizard Shaman",
+          "power": "5",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Scaleshredder_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scaleshredder",
+              "original_text": "Mana cost: {5}{R}\nType: Creature — Lizard Shaman\nPower/Toughness: 5/4\nWhen Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order.",
+          "executable_faces": [
+            {
+              "name": "Scaleshredder",
+              "executable_text": "Mana cost: {5}{R}\nType: Creature — Lizard Shaman\nPower/Toughness: 5/4\nWhen Scaleshredder enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order.",
+              "original_printed_rules_text": "When Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "When Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Scaleshredder",
+            "cardName": "Scaleshredder",
+            "manaCost": "{5}{R}",
+            "typeLine": "Creature — Lizard Shaman",
+            "rarityLine": "*ALR U*",
+            "rulesText": "When Scaleshredder enters, you may have it consume. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "",
+            "power": "5",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "122",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Miroslav Petrov",
+            "sdn": 8138,
+            "key": "Scaleshredder_ALR",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Scaleshredder_ALR",
+            "printKeys": [
+              "Scaleshredder_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 2.067539627842867,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Viashino Glutton_ALR",
+          "name": "Viashino Glutton",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 3/3\nWhen Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 3/3\nWhen Viashino Glutton enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, create two 1/1 red Goblin creature tokens.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Lizard Warrior",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Viashino Glutton_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Viashino Glutton",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 3/3\nWhen Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens.",
+          "executable_faces": [
+            {
+              "name": "Viashino Glutton",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Lizard Warrior\nPower/Toughness: 3/3\nWhen Viashino Glutton enters, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, create two 1/1 red Goblin creature tokens.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens.",
+              "original_printed_rules_text": "When Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens. (To consume, sacrifice another creature or exile a creature card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "When Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens. (To consume, sacrifice another creature or exile a creature card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Viashino Glutton",
+            "cardName": "Viashino Glutton",
+            "manaCost": "{3}{R}",
+            "typeLine": "Creature — Lizard Warrior",
+            "rarityLine": "*ALR U*",
+            "rulesText": "When Viashino Glutton enters, you may have it consume. If you do, create two 1/1 red Goblin creature tokens. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*",
+            "flavorText": "*Goblins scavenging on its leftovers often become the next meal.*\n",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ALR",
+            "cardID": "124",
+            "designer": "Mako",
+            "script": "",
+            "notes": [],
+            "artist": "Timi Honkanen",
+            "sdn": 8202,
+            "key": "Viashino Glutton_ALR",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ALR"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Viashino Glutton_ALR",
+            "printKeys": [
+              "Viashino Glutton_ALR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Thunderous Avarice_MC25",
+          "name": "Thunderous Avarice",
+          "original_text": "Mana cost: {4}{R}{G}\nType: Creature — Lizard Avatar Berserker\nPower/Toughness: 5/4\nVigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it.",
+          "executable_text": "Mana cost: {4}{R}{G}\nType: Creature — Lizard Avatar Berserker\nPower/Toughness: 5/4\nVigilance, menace, trample, haste\nWhenever you cast a spell, you may Pay the cost \"Choose Thunderous Avarice. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on it.\nWhenever an opponent casts a spell, they may Pay the cost \"Choose Thunderous Avarice. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If they don't, put a +1/+1 counter on it.",
+          "mana_cost": "{4}{R}{G}",
+          "type_line": "Creature — Lizard Avatar Berserker",
+          "power": "5",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Thunderous Avarice_MC25",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Thunderous Avarice",
+              "original_text": "Mana cost: {4}{R}{G}\nType: Creature — Lizard Avatar Berserker\nPower/Toughness: 5/4\nVigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it.\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it.",
+          "executable_faces": [
+            {
+              "name": "Thunderous Avarice",
+              "executable_text": "Mana cost: {4}{R}{G}\nType: Creature — Lizard Avatar Berserker\nPower/Toughness: 5/4\nVigilance, menace, trample, haste\nWhenever you cast a spell, you may Pay the cost \"Choose Thunderous Avarice. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If you do, put a +1/+1 counter on it.\nWhenever an opponent casts a spell, they may Pay the cost \"Choose Thunderous Avarice. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\". If they don't, put a +1/+1 counter on it.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it.\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it.",
+              "original_printed_rules_text": "Vigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Vigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it. (To consume, sacrifice another creature or exile a creature card from your graveyard.)\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it.",
+          "source_raw_record": {
+            "fullName": "Thunderous Avarice",
+            "cardName": "Thunderous Avarice",
+            "manaCost": "{4}{R}{G}",
+            "typeLine": "Creature — Lizard Avatar Berserker",
+            "rarityLine": "*MC25 R*",
+            "rulesText": "Vigilance, menace, trample, haste\nWhenever you cast a spell, you may have Thunderous Avarice consume. If you do, put a +1/+1 counter on it. *(To consume, sacrifice another creature or exile a creature card from your graveyard.)*\nWhenever an opponent casts a spell, they may have Thunderous Avarice consume. If they don't, put a +1/+1 counter on it.",
+            "flavorText": "",
+            "power": "5",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Red/Green} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MC25",
+            "cardID": "267",
+            "designer": "PlasterMan",
+            "script": "",
+            "notes": [],
+            "artist": "Felix Englund",
+            "sdn": 19630,
+            "key": "Thunderous Avarice_MC25",
+            "colorIdentity": [
+              "R",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MC25",
+              "MSY"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Thunderous Avarice_MC25",
+            "printKeys": [
+              "Thunderous Avarice_MC25",
+              "Thunderous Avarice_MSY",
+              "Thunderous Avarice (Signed)_MSY"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "supplied_card_definitions": []
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Consume",
+          "template": "{Subject}",
+          "reminder": "Pay the cost \"Choose {Subject}. Choose one of the following: [Sacrifice a creature you control other than the chosen creature] or [Exile a creature card from your graveyard]\""
+        }
+      ],
+      "support_status": "generic_quoted_optional_modal_payment_candidate",
+      "test_status": "pending_actor_and_payment_receipt_validation"
+    },
+    {
+      "id": "msem-356",
+      "keyword": "Consume",
+      "original_reminder": "To consume a land, sacrifice a land or exile a land card from your graveyard.",
+      "executable_reminder": "Pay the cost \"Choose {Subject}. Choose one of the following: [Sacrifice a land you control other than the chosen creature] or [Exile a land card from your graveyard]\"",
+      "source_cards": [
+        "Pineblight Caribou"
+      ],
+      "rule_reference": "701.90.",
+      "rule_text": [
+        {
+          "name": "701.90a",
+          "rule": "Consume is a keyword action. To have a creature consume, sacrifice a creature other than the creature consuming, or exile a creature card from your graveyard.",
+          "custom": true
+        },
+        {
+          "name": "701.90b",
+          "rule": "The creature that consumed may have linked abilities related to the cards it consumed.",
+          "custom": true
+        },
+        {
+          "name": "701.90c",
+          "rule": "Consume a type is a variant of the consume action. To have a creature “consume a [type],” sacrifice a permanent of that type other than the creature consuming, or exile a card of that type from your graveyard.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Pineblight Caribou_OTH",
+          "name": "Pineblight Caribou",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Creature — Elk Caribou Horror\nPower/Toughness: 4/4\nWhenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life. *(To consume a land, sacrifice a land or exile a land card from your graveyard.)*",
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Elk Caribou Horror\nPower/Toughness: 4/4\nWhenever Pineblight Caribou enters or attacks, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a land you control other than the chosen creature] or [Exile a land card from your graveyard]\". If you do, draw a card and you gain 2 life.",
+          "mana_cost": "{2}{G}{G}",
+          "type_line": "Creature — Elk Caribou Horror",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Pineblight Caribou_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pineblight Caribou",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Creature — Elk Caribou Horror\nPower/Toughness: 4/4\nWhenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life. *(To consume a land, sacrifice a land or exile a land card from your graveyard.)*"
+            }
+          ],
+          "custom_keyword_identities": [
+            "consume"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life.",
+          "executable_faces": [
+            {
+              "name": "Pineblight Caribou",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Elk Caribou Horror\nPower/Toughness: 4/4\nWhenever Pineblight Caribou enters or attacks, you may Pay the cost \"Choose it. Choose one of the following: [Sacrifice a land you control other than the chosen creature] or [Exile a land card from your graveyard]\". If you do, draw a card and you gain 2 life.",
+              "custom_keyword_identities": [
+                "consume"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life.",
+              "original_printed_rules_text": "Whenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life. (To consume a land, sacrifice a land or exile a land card from your graveyard.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Whenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life. (To consume a land, sacrifice a land or exile a land card from your graveyard.)",
+          "source_raw_record": {
+            "fullName": "Pineblight Caribou",
+            "cardName": "Pineblight Caribou",
+            "manaCost": "{2}{G}{G}",
+            "typeLine": "Creature — Elk Caribou Horror",
+            "rarityLine": "*OTH R*",
+            "rulesText": "Whenever Pineblight Caribou enters or attacks, you may have it consume a land. If you do, draw a card and you gain 2 life. *(To consume a land, sacrifice a land or exile a land card from your graveyard.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "OTH",
+            "cardID": "225",
+            "designer": "Matt & DrChillbrain",
+            "script": "",
+            "notes": [],
+            "artist": "Legend of the Cryptids",
+            "sdn": 12786,
+            "key": "Pineblight Caribou_OTH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "ctags": [
+              "unique-cr"
+            ],
+            "prints": [
+              "OTH"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Pineblight Caribou_OTH",
+            "printKeys": [
+              "Pineblight Caribou_OTH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.823045267489712,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": []
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Consume",
+          "template": "{Subject} a land",
+          "reminder": "Pay the cost \"Choose {Subject}. Choose one of the following: [Sacrifice a land you control other than the chosen creature] or [Exile a land card from your graveyard]\""
+        }
+      ],
+      "support_status": "generic_quoted_optional_modal_payment_candidate",
+      "test_status": "pending_actor_and_payment_receipt_validation"
+    }
+  ]
+}

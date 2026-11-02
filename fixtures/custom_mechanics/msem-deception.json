@@ -1,0 +1,663 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Deception existing-operation composition",
+  "notes": [
+    "No official Ninjutsu identity assigned.",
+    "Original reminder and authoritative reveal/timing/defender obligations retained.",
+    "Pending actual frontend/native behavior; no equivalence claim from compilation alone."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-559",
+      "keyword": "Deception",
+      "original_reminder": "{2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Agent of Long Shadows"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Agent of Long Shadows_TOJ",
+          "name": "Agent of Long Shadows",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Agent of Long Shadows deals combat damage to a player, you may put a Rogue card from your hand or graveyard onto the battlefield.",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\n{2}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Agent of Long Shadows deals combat damage to a player, you may put a Rogue card from your hand or graveyard onto the battlefield.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Creature — Human Rogue",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Agent of Long Shadows_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Agent of Long Shadows",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Agent of Long Shadows deals combat damage to a player, you may put a Rogue card from your hand or graveyard onto the battlefield."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Agent of Long Shadows",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\n{2}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Agent of Long Shadows deals combat damage to a player, you may put a Rogue card from your hand or graveyard onto the battlefield.",
+              "custom_keyword_identities": [
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {2}{B}\nWhenever Agent of Long Shadows deals combat damage to a player, you may put a Rogue card from your hand or graveyard onto the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {2}{B}\nWhenever Agent of Long Shadows deals combat damage to a player, you may put a Rogue card from your hand or graveyard onto the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Grinning Torturer_OTH",
+          "name": "Grinning Torturer",
+          "source_card_key": "Grinning Torturer_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Grinning Torturer deals combat damage to a player, torment that player. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\n{2}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Grinning Torturer deals combat damage to a player, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grinning Torturer",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Grinning Torturer deals combat damage to a player, torment that player. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Grinning Torturer",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\n{2}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Grinning Torturer deals combat damage to a player, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "deception",
+                "torment"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {2}{B}\nWhenever Grinning Torturer deals combat damage to a player, torment that player."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception",
+            "torment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {2}{B}\nWhenever Grinning Torturer deals combat damage to a player, torment that player."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        },
+        {
+          "keyword": "Torment {Player}",
+          "reminder": "{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    },
+    {
+      "id": "msem-560",
+      "keyword": "Deception",
+      "original_reminder": "{1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Aguri, Shadow of Doubt"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aguri, Shadow of Doubt_TOJ",
+          "name": "Aguri, Shadow of Doubt",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Spirit Rogue\nPower/Toughness: 3/1\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhen Aguri, Shadow of Doubt enters, target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Spirit Rogue\nPower/Toughness: 3/1\n{1}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhen Aguri, Shadow of Doubt enters, target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life.",
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Legendary Creature — Spirit Rogue",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Aguri, Shadow of Doubt_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aguri, Shadow of Doubt",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Spirit Rogue\nPower/Toughness: 3/1\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhen Aguri, Shadow of Doubt enters, target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aguri, Shadow of Doubt",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Spirit Rogue\nPower/Toughness: 3/1\n{1}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhen Aguri, Shadow of Doubt enters, target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life.",
+              "custom_keyword_identities": [
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {1}{B}\nWhen Aguri, Shadow of Doubt enters, target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {1}{B}\nWhen Aguri, Shadow of Doubt enters, target player reveals their hand. You choose a nonland card from it. That player discards that card. You lose 2 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "King Florence of Caulder_MSC",
+          "name": "King Florence of Caulder",
+          "source_card_key": "King Florence of Caulder_MSC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever King Florence of Caulder enters or attacks, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\n{1}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever King Florence of Caulder enters or attacks, For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "King Florence of Caulder",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever King Florence of Caulder enters or attacks, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "King Florence of Caulder",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\n{1}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever King Florence of Caulder enters or attacks, For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "deception",
+                "torment"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {1}{B}\nWhenever King Florence of Caulder enters or attacks, torment each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception",
+            "torment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {1}{B}\nWhenever King Florence of Caulder enters or attacks, torment each opponent."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        },
+        {
+          "keyword": "Torment {Player}",
+          "reminder": "{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    },
+    {
+      "id": "msem-561",
+      "keyword": "Deception",
+      "original_reminder": "{2}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Odaya Profiteer"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Odaya Profiteer_TOJ",
+          "name": "Odaya Profiteer",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nDeception {2}{U} *({2}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a creature you control deals combat damage to an opponent, you may draw a card.",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\n{2}{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever a creature you control deals combat damage to an opponent, you may draw a card.",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Creature — Human Rogue",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Odaya Profiteer_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Odaya Profiteer",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nDeception {2}{U} *({2}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a creature you control deals combat damage to an opponent, you may draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Odaya Profiteer",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\n{2}{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever a creature you control deals combat damage to an opponent, you may draw a card.",
+              "custom_keyword_identities": [
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {2}{U}\nWhenever a creature you control deals combat damage to an opponent, you may draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {2}{U}\nWhenever a creature you control deals combat damage to an opponent, you may draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    },
+    {
+      "id": "msem-562",
+      "keyword": "Deception",
+      "original_reminder": "{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Oshiruko Operative"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Oshiruko Operative_TOJ",
+          "name": "Oshiruko Operative",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/1\nDeception {B} *({B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhen Oshiruko Operative enters, target player loses 1 life.",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/1\n{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhen Oshiruko Operative enters, target player loses 1 life.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Rogue",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Oshiruko Operative_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Oshiruko Operative",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/1\nDeception {B} *({B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhen Oshiruko Operative enters, target player loses 1 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Oshiruko Operative",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/1\n{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhen Oshiruko Operative enters, target player loses 1 life.",
+              "custom_keyword_identities": [
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {B}\nWhen Oshiruko Operative enters, target player loses 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {B}\nWhen Oshiruko Operative enters, target player loses 1 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    },
+    {
+      "id": "msem-563",
+      "keyword": "Deception",
+      "original_reminder": "{U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Suzume Oshiruko"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Suzume Oshiruko_TOJ",
+          "name": "Suzume Oshiruko",
+          "original_text": "Mana cost: {U}{B}\nType: Legendary Creature — Human Rogue\nPower/Toughness: 2/3\nDeception {U}{B} *({U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nPay 1 life, Choose a creature card name you haven't chosen for Suzume Oshiruko this turn: Return another creature you control with the chosen name to its owner's hand.",
+          "executable_text": "Mana cost: {U}{B}\nType: Legendary Creature — Human Rogue\nPower/Toughness: 2/3\n{U}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nPay 1 life, Choose a creature card name you haven't chosen for Suzume Oshiruko this turn: Return another creature you control with the chosen name to its owner's hand.",
+          "mana_cost": "{U}{B}",
+          "type_line": "Legendary Creature — Human Rogue",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Suzume Oshiruko_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Suzume Oshiruko",
+              "original_text": "Mana cost: {U}{B}\nType: Legendary Creature — Human Rogue\nPower/Toughness: 2/3\nDeception {U}{B} *({U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nPay 1 life, Choose a creature card name you haven't chosen for Suzume Oshiruko this turn: Return another creature you control with the chosen name to its owner's hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Suzume Oshiruko",
+              "executable_text": "Mana cost: {U}{B}\nType: Legendary Creature — Human Rogue\nPower/Toughness: 2/3\n{U}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nPay 1 life, Choose a creature card name you haven't chosen for Suzume Oshiruko this turn: Return another creature you control with the chosen name to its owner's hand.",
+              "custom_keyword_identities": [
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {U}{B}\nPay 1 life, Choose a creature card name you haven't chosen for Suzume Oshiruko this turn: Return another creature you control with the chosen name to its owner's hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {U}{B}\nPay 1 life, Choose a creature card name you haven't chosen for Suzume Oshiruko this turn: Return another creature you control with the chosen name to its owner's hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    },
+    {
+      "id": "msem-564",
+      "keyword": "Deception",
+      "original_reminder": "{2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Raloran Insurgent"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Raloran Insurgent_OTH",
+          "name": "Raloran Insurgent",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\nDeception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\n{2}{U}{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Raloran Insurgent deals combat damage to a player, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{4}{U}",
+          "type_line": "Creature — Merfolk Rogue",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Raloran Insurgent_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Raloran Insurgent",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\nDeception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Raloran Insurgent",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\n{2}{U}{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Raloran Insurgent deals combat damage to a player, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "deception",
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {2}{U}{U}\nWhenever Raloran Insurgent deals combat damage to a player, abound."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception",
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {2}{U}{U}\nWhenever Raloran Insurgent deals combat damage to a player, abound.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        },
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    },
+    {
+      "id": "msem-565",
+      "keyword": "Deception",
+      "original_reminder": "{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.",
+      "executable_reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.",
+      "source_cards": [
+        "Recruiter of Irregulars"
+      ],
+      "rule_reference": "702.216.",
+      "rule_text": [
+        {
+          "name": "702.216a",
+          "rule": "Deception is an activated ability that functions only while the card with deception is in a player's hand. “Deception (cost)” means “(cost), Reveal this card from your hand, Return an unblocked attacking creature you control to its owner’s hand: Put this card onto the battlefield from your hand tapped and attacking.”",
+          "custom": true
+        },
+        {
+          "name": "702.216b",
+          "rule": "The card with deception remains revealed from the time the ability is announced until the ability leaves the stack.",
+          "custom": true
+        },
+        {
+          "name": "702.216c",
+          "rule": "A deception ability may be activated only while a creature on the battlefield is unblocked (after blockers are declared). The creature with deception is put onto the battlefield unblocked. It will be attacking the same player or planeswalker as the creature that was returned to its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Recruiter of Irregulars_OTH",
+          "name": "Recruiter of Irregulars",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\nDeception {U} *({U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\n{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever a Pirate or Rogue you control deals combat damage to a player, Look at the top card of your library. You may reveal a Pirate or Rogue card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Creature — Human Pirate",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Recruiter of Irregulars_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Recruiter of Irregulars",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\nDeception {U} *({U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Recruiter of Irregulars",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\n{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever a Pirate or Rogue you control deals combat damage to a player, Look at the top card of your library. You may reveal a Pirate or Rogue card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "deception",
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {U}\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deception",
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {U}\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Deception {Cost}",
+          "reminder": "{Cost}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand."
+        },
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative MSEM702.216; existing return-unblocked-attacker/entry-receipt operations without official keyword identity",
+      "source_discrepancy": "Short reminder omits reveal and defender linkage; authoritative keyword rule governs.",
+      "candidate_status": "frontend_candidate_pending_behavior"
+    }
+  ]
+}

@@ -54,7 +54,10 @@ fn sinister_declares_three_then_partitions_only_the_surviving_announced_incarnat
             let returned = identities.iter().filter(|identity| game.find_object_by_stable_id(**identity)
                 .is_some_and(|id| game.object(id).unwrap().zone == Zone::Battlefield)).count();
             assert_eq!(returned, survivors.min(2));
-            assert_eq!(game.player(A).unwrap().library.len(), usize::from(survivors == 3));
+            assert_eq!(game.player(A).unwrap().library.len(), usize::from(survivors == 3),
+                "a remainder must exclude lost announced incarnations: lost={lost}, original_targets={targets:?}, stack_program={:?}, library={:?}, incarnations={:?}",
+                definition.spell_effect, game.player(A).unwrap().library,
+                identities.iter().map(|stable|game.find_object_by_stable_id(*stable).and_then(|id|game.object(id).map(|object|(id,object.zone)))).collect::<Vec<_>>());
             assert_eq!(game.irreversible_random_count(), u64::from(survivors > 0));
             for identity in identities.iter().take(lost) {
                 let current = game.find_object_by_stable_id(*identity).unwrap();

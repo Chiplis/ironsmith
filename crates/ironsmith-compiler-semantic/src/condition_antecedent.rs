@@ -300,6 +300,7 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
                 target, ..
             })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                 target,
                 ..
@@ -380,6 +381,7 @@ fn bind_condition_antecedent_in_effect(
                 target, ..
             })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                 target,
                 ..
@@ -1261,6 +1263,7 @@ fn resolve_it_animation_to_source(effect: &mut EffectAst) -> bool {
             target, ..
         })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
             target,
             ..
@@ -1348,7 +1351,8 @@ pub fn resolve_it_grant_targets_to_triggering_spell(effects: &mut [EffectAst]) {
                 target,
                 ..
             })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. }) =
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. }) =
                 &mut subject_verb.action
             && let TargetAst::Tagged(tag, _) = target
             && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()

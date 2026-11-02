@@ -59,6 +59,12 @@ impl PutCounterOfKindChosenFromEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PutCounterOfRandomKindEffect {
+    /// Use an ordinary controller decision instead of random selection.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub player_choice: bool,
+    /// Explicit performer of the counter-kind decision; None uses the controller.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub chooser: Option<PlayerFilter>,
     /// The fixed list of kinds the random choice is made from.
     pub kinds: Vec<CounterType>,
     /// The object that receives the counter.
@@ -69,8 +75,18 @@ pub struct PutCounterOfRandomKindEffect {
 }
 
 impl PutCounterOfRandomKindEffect {
+    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.chooser = Some(chooser);
+        self
+    }
+    pub fn with_player_choice(mut self, player_choice: bool) -> Self {
+        self.player_choice = player_choice;
+        self
+    }
     pub fn new(kinds: Vec<CounterType>, recipient: ChooseSpec, only_absent_kinds: bool) -> Self {
         Self {
+            player_choice: false,
+            chooser: None,
             kinds,
             recipient,
             only_absent_kinds,

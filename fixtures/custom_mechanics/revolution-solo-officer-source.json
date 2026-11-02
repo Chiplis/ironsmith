@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "scope": "Only Solo Officer ordinary filtered entry replacement, distinct from excluded28Undercoverdeclaration forms."
+  },
+  "mechanics": [
+    {
+      "id": "rev-undercover-071",
+      "keyword": "Undercover",
+      "rule_reference": "702.196.",
+      "original_reminder": "They're 2/2 creatures.",
+      "executable_reminder": null,
+      "executable_definitions": [],
+      "support_status": "existing_operations_candidate_unverified",
+      "source_cards": [
+        "Solo Officer"
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Solo Officer_SRC",
+          "source_card_key": "Solo Officer_SRC",
+          "name": "Solo Officer",
+          "original_text": "Type: Creature — Human Soldier\nMana cost: {W}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+          "source_faces": [
+            {
+              "name": "Solo Officer",
+              "original_text": "Type: Creature — Human Soldier\nMana cost: {W}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+              "reviewed_source_corrections": [
+                {
+                  "original": "Nontoken creatures without undercover that weren't cast enter face-down.",
+                  "replacement": "Nontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down.",
+                  "source_context": "Nontoken creatures without undercover that weren't cast enter face-down.",
+                  "review_status": "source_context_reviewed",
+                  "evidence": "Ordinary exclusion of the actual named Undercover ability is the existing custom-keyword identity filter. This does not supply or invoke any excluded Undercover casting/no-reveal rules."
+                }
+              ]
+            }
+          ],
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Soldier\nMana cost: {W}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down. (They're 2/2 creatures.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Solo Officer",
+              "executable_text": "Type: Creature — Human Soldier\nMana cost: {W}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down. (They're 2/2 creatures.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike, vigilance\nNontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down.",
+              "original_printed_rules_text": "First strike, vigilance\nNontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down. (They're 2/2 creatures.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike, vigilance\nNontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down.",
+          "original_printed_rules_text": "First strike, vigilance\nNontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down. (They're 2/2 creatures.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Actual static entry replacement, using ordinary characteristicless face-down state before entry observation. No postentry TurnFaceDown action and no excluded keywordcasting rule."
+      }
+    }
+  ]
+}

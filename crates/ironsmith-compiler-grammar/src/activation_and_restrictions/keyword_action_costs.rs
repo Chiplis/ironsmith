@@ -623,11 +623,19 @@ fn without_rounding_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 pub fn parse_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
+    if let Some(result) = crate::grammar::activation_costs::parse_quoted_cost_program_tokens(tokens) {
+        let effects = result?;
+        return Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::ValidatedEffect(Box::new(crate::cards::builders::EffectAst::Sequence { effects })))));
+    }
+
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
         return Ok(None);
     }
 
+    if let Some(cost) = super::activated_line_core::parse_aggregate_tap_cost(&trimmed)? {
+        return Ok(Some(cost));
+    }
     if let Some(mana) = crate::grammar::activation_costs::parse_artifact_creature_tap_price(&trimmed)? {
         return Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(mana))));
     }

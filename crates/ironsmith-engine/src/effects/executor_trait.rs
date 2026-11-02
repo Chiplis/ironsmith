@@ -1137,6 +1137,12 @@ pub trait EffectExecutor:
         None
     }
 
+    /// Distinguish event-local instruction alternatives supplied by one source.
+    /// This is presentation only; it grants no replacement applicability.
+    fn replacement_choice_description(&self) -> Option<String> {
+        None
+    }
+
     /// Execute this effect, mutating the game state and returning the outcome.
     ///
     /// # Arguments
@@ -1345,6 +1351,23 @@ pub trait EffectExecutor:
             bindings.append(CostChoiceBindings::from_spec(&spec));
         }
         bindings
+    }
+
+    /// Atomic scalar recipient roles. Composites deliberately do not inherit
+    /// this contract: projecting a wrapper could repeat untargeted siblings.
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        Vec::new()
+    }
+
+    /// Admission contract for an expanded target role. Unknown consumers fail
+    /// closed; vector consumers opt in independently of scalar projection.
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool {
+        (spec.is_target() && spec.count_value().is_none() && spec.count().max==Some(1)
+            && self.scalar_target_resolution_specs().into_iter().any(|role|
+                role.count_value().is_none() && role.count().max==Some(1) && role.base()==spec.base()))
+            || self.transparent_child_effect().is_some_and(|child| {
+                child.0.supports_additional_target_role(spec)
+            })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -1872,6 +1895,22 @@ pub trait CostExecutableEffect: EffectExecutor {
             .and_then(|cost| {
                 cost.cost_choice_candidate_is_eligible(game, execution, reason, tag, object)
             })
+    }
+
+    /// Publish deterministic context-only bindings for affordability queries.
+    /// This must neither choose objects nor mutate the world or produce receipts.
+    /// Query scopes discard these prospective bindings after validation.
+    fn preview_payment_bindings(
+        &self,
+        game: &GameState,
+        execution: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(child) = self.transparent_child_effect()
+            && let Some(cost) = child.0.as_cost_executable()
+        {
+            return cost.preview_payment_bindings(game, execution);
+        }
+        Ok(())
     }
 
     /// Ordered/conditional cost programs compose payment children explicitly.

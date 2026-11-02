@@ -1,0 +1,4071 @@
+{
+  "version": 1,
+  "scope": "revolution",
+  "source_corpus": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+  "mechanics": [
+    {
+      "id": "rev-undercover-070",
+      "keyword": "Undercover",
+      "rule_text": {
+        "name": "702.196.",
+        "rule": "Undercover",
+        "subrules": [
+          {
+            "name": "702.196a",
+            "rule": "Undercover is a static ability that functions in any zone from which you could play the card it's on, and the undercover effect works any time the card is face down. “Undercover [cost]” means “You may cast this card as a 2/2 face-down creature with no text, no name, no subtypes, and no mana cost by paying {3} rather than paying its mana cost.” (See rule 707, “Face-Down Spells and Permanents.”)",
+            "custom": true
+          },
+          {
+            "name": "702.196b",
+            "rule": "To cast a card using its undercover ability, turn it face down. It becomes a 2/2 face-down creature card with no text, no name, no subtypes, and no mana cost. Any effects or prohibitions that would apply to casting a card with these characteristics (and not the face-up card's characteristics) are applied to casting this card. These values are the copiable values of that object's characteristics. (See rule 613, “Interaction of Continuous Effects,” and rule 706, “Copying Objects.”) Put it onto the stack (as a face-down spell with the same characteristics), and pay {3} rather than pay its mana cost. This follows the rules for paying alternative costs. You can use an undercover ability to cast a card from any zone from which you could normally play it. When the spell resolves, it enters the battlefield with the same characteristics the spell had. The undercover effect applies to the face-down object wherever it is, and it ends when the permanent is exiled or turned face up.",
+            "custom": true
+          },
+          {
+            "name": "702.196c",
+            "rule": "If a face-down permanent that was cast for its undercover cost would die, instead its controller exiles it face down. No player looks at or reveals the card as it's exiled. This is an exception to rules 400.6 and 707.9. The player who exiled it may look at the exiled card and may play it for as long as it remains exiled, but can't play it face down this way. If the exiled card leaves exile, becomes a new object (see rule 406.7), its owner leaves the game, or the game ends, the card must be revealed to all players.",
+            "custom": true
+          },
+          {
+            "name": "702.196d",
+            "rule": "See rule 707, “Face-Down Spells and Permanents,” for more information about how to cast cards with undercover.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Abrupt Possession",
+          "Air of Decay",
+          "Azra Fixer",
+          "Cawyer Station Deputy",
+          "Citywide Restructuring",
+          "Copper Copper",
+          "Debt Collection",
+          "Detective's Intuition",
+          "Dose of Dust",
+          "Dreamer of the Opulent",
+          "Faceless Stalker",
+          "Fishing for Bodies",
+          "Framed Murder",
+          "Go Nuts",
+          "Inciting Charmer",
+          "Lorre Earner",
+          "Lotus Lane Kidnapper",
+          "Lucky Break",
+          "Phantom's Jurisdiction",
+          "Primordial Unveiling",
+          "Protective Detective",
+          "Search the Unknown",
+          "Solo Officer",
+          "Station Seven Host",
+          "Street Razings",
+          "Uncanny Duplicant",
+          "Uncover Evidence",
+          "Unexplained Behemoth",
+          "Up the River",
+          "Undercover"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "scope_decision": "28 Undercover declarations excluded only for explicit hidden-information exception; Solo Officer ordinary query remains required",
+      "source_inventory_id": "rev-undercover-070",
+      "support_status": "unsupported_requires_new_rules",
+      "representative_cards": [
+        {
+          "id": "revolution:Abrupt Possession_SRC",
+          "name": "Abrupt Possession",
+          "source_card_key": "Abrupt Possession_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Abrupt Possession",
+              "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Abrupt Possession",
+            "cardName": "Abrupt Possession",
+            "manaCost": "{3}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "122",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "AlMaNeGrA",
+            "instigatorID": 28112,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 258,
+            "firstPrint": "Abrupt Possession_SRC",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "key": "Abrupt Possession_SRC",
+            "printKeys": [
+              "Abrupt Possession_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Air of Decay_SRC",
+          "name": "Air of Decay",
+          "source_card_key": "Air of Decay_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Air of Decay",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nAll creatures get -1/-1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nAll creatures get -1/-1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Air of Decay",
+            "cardName": "Air of Decay",
+            "manaCost": "{1}{B}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC U*",
+            "rulesText": "All creatures get -1/-1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "81",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Min Nguen",
+            "instigatorID": 28116,
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "sdn": 262,
+            "firstPrint": "Air of Decay_SRC",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Air of Decay_SRC",
+            "printKeys": [
+              "Air of Decay_SRC"
+            ],
+            "pr": 26.17801047120419,
+            "pm": 20.50194414987628,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Azra Fixer_SRC",
+          "name": "Azra Fixer",
+          "source_card_key": "Azra Fixer_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Azra Fixer",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Azra Warrior \nPower/Toughness: 3/3\nWhen Azra Fixer enters, target creature you control gets +2/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Azra Warrior \nPower/Toughness: 3/3\nWhen Azra Fixer enters, target creature you control gets +2/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Azra Fixer",
+            "cardName": "Azra Fixer",
+            "manaCost": "{3}{R}",
+            "typeLine": "Creature — Azra Warrior ",
+            "rarityLine": "*SRC C*",
+            "rulesText": "When Azra Fixer enters, target creature you control gets +2/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "123",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Imx Ud Din",
+            "sdn": 272,
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Azra Fixer_SRC",
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "key": "Azra Fixer_SRC",
+            "printKeys": [
+              "Azra Fixer_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Cawyer Station Deputy_SRC",
+          "name": "Cawyer Station Deputy",
+          "source_card_key": "Cawyer Station Deputy_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cawyer Station Deputy",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nWhen Cawyer Station Deputy enters, creatures you control get +1/+1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nWhen Cawyer Station Deputy enters, creatures you control get +1/+1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Cawyer Station Deputy",
+            "cardName": "Cawyer Station Deputy",
+            "manaCost": "{3}{W}",
+            "typeLine": "Creature — Human Soldier ",
+            "rarityLine": "*SRC C*",
+            "rulesText": "When Cawyer Station Deputy enters, creatures you control get +1/+1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "12",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Chirun",
+            "sdn": 292,
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Cawyer Station Deputy_SRC",
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "key": "Cawyer Station Deputy_SRC",
+            "printKeys": [
+              "Cawyer Station Deputy_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Citywide Restructuring_SRC",
+          "name": "Citywide Restructuring",
+          "source_card_key": "Citywide Restructuring_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Citywide Restructuring",
+              "original_text": "Mana cost: {3}{W}{W}{W}\nType: Sorcery\nDestroy all nonland permanents.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{W}{W}{W}\nType: Sorcery\nDestroy all nonland permanents.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Citywide Restructuring",
+            "cardName": "Citywide Restructuring",
+            "manaCost": "{3}{W}{W}{W}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SRC R*",
+            "rulesText": "Destroy all nonland permanents.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 6,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "14",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Jakub Bazyluk",
+            "instigatorID": 28151,
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "sdn": 297,
+            "firstPrint": "Citywide Restructuring_SRC",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "key": "Citywide Restructuring_SRC",
+            "printKeys": [
+              "Citywide Restructuring_SRC"
+            ],
+            "pr": 52.35602094240838,
+            "pm": 46.65959703075291,
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 4.47427293064877
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Copper Copper_SRC",
+          "name": "Copper Copper",
+          "source_card_key": "Copper Copper_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Copper Copper",
+              "original_text": "Mana cost: {5}\nType: Artifact Creature — Construct Soldier \nPower/Toughness: 3/4\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "",
+              "color_indicator": []
+            }
+          ],
+          "original_text": "Mana cost: {5}\nType: Artifact Creature — Construct Soldier \nPower/Toughness: 3/4\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Copper Copper",
+            "cardName": "Copper Copper",
+            "manaCost": "{5}",
+            "typeLine": "Artifact Creature — Construct Soldier ",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Undercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "*“And I thought the cops were heartless before!”\n— Maria, housewife*\n",
+            "power": "3",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "",
+            "cmc": 5,
+            "cardType": "Artifact Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "226",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Alfred Khamidullin",
+            "instigatorID": 28158,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 304,
+            "firstPrint": "Copper Copper_SRC",
+            "colorIdentity": [],
+            "spellbook": [],
+            "key": "Copper Copper_SRC",
+            "printKeys": [
+              "Copper Copper_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Debt Collection_SRC",
+          "name": "Debt Collection",
+          "source_card_key": "Debt Collection_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Debt Collection",
+              "original_text": "Mana cost: {1}{W}\nType: Sorcery\nDestroy target tapped creature.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nDestroy target tapped creature.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Debt Collection",
+            "cardName": "Debt Collection",
+            "manaCost": "{1}{W}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Destroy target tapped creature.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "*The Lorre family always gets what is due.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "18",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Christina Lynch",
+            "instigatorID": 28170,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 316,
+            "firstPrint": "Debt Collection_SRC",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "key": "Debt Collection_SRC",
+            "printKeys": [
+              "Debt Collection_SRC"
+            ],
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 4.47427293064877
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Detective's Intuition_SRC",
+          "name": "Detective's Intuition",
+          "source_card_key": "Detective's Intuition_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Detective's Intuition",
+              "original_text": "Mana cost: {U}\nType: Instant\nTarget creature you control gains hexproof until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {U}\nType: Instant\nTarget creature you control gains hexproof until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Detective's Intuition",
+            "cardName": "Detective's Intuition",
+            "manaCost": "{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Target creature you control gains hexproof until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "50",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Bigball Gao",
+            "instigatorID": 28176,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 322,
+            "firstPrint": "Detective's Intuition_SRC",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "key": "Detective's Intuition_SRC",
+            "printKeys": [
+              "Detective's Intuition_SRC"
+            ],
+            "pr": 0,
+            "pm": 14.139271827500883,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Dose of Dust_SRC",
+          "name": "Dose of Dust",
+          "source_card_key": "Dose of Dust_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dose of Dust",
+              "original_text": "Mana cost: {1}{G}\nType: Instant\nYou gain 6 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nYou gain 6 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Dose of Dust",
+            "cardName": "Dose of Dust",
+            "manaCost": "{1}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC C*",
+            "rulesText": "You gain 6 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "167",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Sinealas",
+            "instigatorID": 28181,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 327,
+            "firstPrint": "Dose of Dust_SRC",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "key": "Dose of Dust_SRC",
+            "printKeys": [
+              "Dose of Dust_SRC"
+            ],
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Dreamer of the Opulent_SRC",
+          "name": "Dreamer of the Opulent",
+          "source_card_key": "Dreamer of the Opulent_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dreamer of the Opulent",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Horror \nPower/Toughness: 4/3\nFlying\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Horror \nPower/Toughness: 4/3\nFlying\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Dreamer of the Opulent",
+            "cardName": "Dreamer of the Opulent",
+            "manaCost": "{4}{U}",
+            "typeLine": "Creature — Horror ",
+            "rarityLine": "*SRC U*",
+            "rulesText": "Flying\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "53",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "David Romero",
+            "instigatorID": 28185,
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "sdn": 331,
+            "firstPrint": "Dreamer of the Opulent_SRC",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "key": "Dreamer of the Opulent_SRC",
+            "printKeys": [
+              "Dreamer of the Opulent_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Faceless Stalker_SRC",
+          "name": "Faceless Stalker",
+          "source_card_key": "Faceless Stalker_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Faceless Stalker",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Mutant \nPower/Toughness: 2/2\nFlash\nWhen Faceless Stalker enters, you may counter target activated or triggered ability.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Mutant \nPower/Toughness: 2/2\nFlash\nWhen Faceless Stalker enters, you may counter target activated or triggered ability.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Faceless Stalker",
+            "cardName": "Faceless Stalker",
+            "manaCost": "{2}{U}",
+            "typeLine": "Creature — Mutant ",
+            "rarityLine": "*SRC U*",
+            "rulesText": "Flash\nWhen Faceless Stalker enters, you may counter target activated or triggered ability.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "58",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Raymund Lee",
+            "sdn": 346,
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Faceless Stalker_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Faceless Stalker_SRC",
+            "printKeys": [
+              "Faceless Stalker_SRC"
+            ],
+            "pr": 26.17801047120419,
+            "pm": 18.381053375751147,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Fishing for Bodies_SRC",
+          "name": "Fishing for Bodies",
+          "source_card_key": "Fishing for Bodies_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fishing for Bodies",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Fishing for Bodies",
+            "cardName": "Fishing for Bodies",
+            "manaCost": "{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Return target creature card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "94",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Valentyn Porada",
+            "instigatorID": 28203,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 349,
+            "firstPrint": "Fishing for Bodies_SRC",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Fishing for Bodies_SRC",
+            "printKeys": [
+              "Fishing for Bodies_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Framed Murder_SRC",
+          "name": "Framed Murder",
+          "source_card_key": "Framed Murder_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Framed Murder",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Instant\nDestroy target creature or planeswalker. If you cast Framed Murder from exile, you gain 2 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{B}{B}\nType: Instant\nDestroy target creature or planeswalker. If you cast Framed Murder from exile, you gain 2 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Framed Murder",
+            "cardName": "Framed Murder",
+            "manaCost": "{1}{B}{B}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC R*",
+            "rulesText": "Destroy target creature or planeswalker. If you cast Framed Murder from exile, you gain 2 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "95",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Mickie Camua",
+            "sdn": 359,
+            "colorIdentity": [
+              "B"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Framed Murder_SRC",
+            "spellbook": [],
+            "ctags": [
+              "buffed"
+            ],
+            "key": "Framed Murder_SRC",
+            "printKeys": [
+              "Framed Murder_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Go Nuts_SRC",
+          "name": "Go Nuts",
+          "source_card_key": "Go Nuts_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Go Nuts",
+              "original_text": "Mana cost: {X}{R}\nType: Instant\nTarget creature gets +X/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {X}{R}\nType: Instant\nTarget creature gets +X/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Go Nuts",
+            "cardName": "Go Nuts",
+            "manaCost": "{X}{R}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC U*",
+            "rulesText": "Target creature gets +X/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "137",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "TheMinttu",
+            "sdn": 363,
+            "colorIdentity": [
+              "R"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Go Nuts_SRC",
+            "spellbook": [],
+            "key": "Go Nuts_SRC",
+            "printKeys": [
+              "Go Nuts_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Inciting Charmer_SRC",
+          "name": "Inciting Charmer",
+          "source_card_key": "Inciting Charmer_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inciting Charmer",
+              "original_text": "Mana cost: {4}{R}\nType: Creature — Elf Wizard \nPower/Toughness: 4/2\nWhen Inciting Charmer enters, creatures you control gain double strike until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Elf Wizard \nPower/Toughness: 4/2\nWhen Inciting Charmer enters, creatures you control gain double strike until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Inciting Charmer",
+            "cardName": "Inciting Charmer",
+            "manaCost": "{4}{R}",
+            "typeLine": "Creature — Elf Wizard ",
+            "rarityLine": "*SRC U*",
+            "rulesText": "When Inciting Charmer enters, creatures you control gain double strike until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "141",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Michael Davini",
+            "sdn": 375,
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Inciting Charmer_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Inciting Charmer_SRC",
+            "printKeys": [
+              "Inciting Charmer_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Lorre Earner_SRC",
+          "name": "Lorre Earner",
+          "source_card_key": "Lorre Earner_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lorre Earner",
+              "original_text": "Mana cost: {4}{B}\nType: Creature — Azra Assassin \nPower/Toughness: 3/3\nFlash\nWhen Lorre Earner enters, destroy target creature that was dealt damage this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Azra Assassin \nPower/Toughness: 3/3\nFlash\nWhen Lorre Earner enters, destroy target creature that was dealt damage this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Lorre Earner",
+            "cardName": "Lorre Earner",
+            "manaCost": "{4}{B}",
+            "typeLine": "Creature — Azra Assassin ",
+            "rarityLine": "*SRC U*",
+            "rulesText": "Flash\nWhen Lorre Earner enters, destroy target creature that was dealt damage this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "101",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Indahalditha",
+            "sdn": 391,
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Lorre Earner_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Lorre Earner_SRC",
+            "printKeys": [
+              "Lorre Earner_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Lotus Lane Kidnapper_SRC",
+          "name": "Lotus Lane Kidnapper",
+          "source_card_key": "Lotus Lane Kidnapper_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lotus Lane Kidnapper",
+              "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Human Rogue \nPower/Toughness: 4/4\nWhen Lotus Lane Kidnapper enters, exile target creature an opponent controls until Lotus Lane Kidnapper leaves the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Human Rogue \nPower/Toughness: 4/4\nWhen Lotus Lane Kidnapper enters, exile target creature an opponent controls until Lotus Lane Kidnapper leaves the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Lotus Lane Kidnapper",
+            "cardName": "Lotus Lane Kidnapper",
+            "manaCost": "{4}{W}{W}",
+            "typeLine": "Creature — Human Rogue ",
+            "rarityLine": "*SRC U*",
+            "rulesText": "When Lotus Lane Kidnapper enters, exile target creature an opponent controls until Lotus Lane Kidnapper leaves the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "28",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Alen Rocha",
+            "sdn": 395,
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Lotus Lane Kidnapper_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Lotus Lane Kidnapper_SRC",
+            "printKeys": [
+              "Lotus Lane Kidnapper_SRC"
+            ],
+            "pr": 0,
+            "pm": 5.655708731000353,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Lucky Break_SRC",
+          "name": "Lucky Break",
+          "source_card_key": "Lucky Break_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lucky Break",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget creature you control gets +2/+0 and gains indestructible until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget creature you control gets +2/+0 and gains indestructible until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Lucky Break",
+            "cardName": "Lucky Break",
+            "manaCost": "{1}{B}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Target creature you control gets +2/+0 and gains indestructible until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "102",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Tigressinger",
+            "instigatorID": 28251,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 397,
+            "firstPrint": "Lucky Break_SRC",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Lucky Break_SRC",
+            "printKeys": [
+              "Lucky Break_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Phantom's Jurisdiction_SRC",
+          "name": "Phantom's Jurisdiction",
+          "source_card_key": "Phantom's Jurisdiction_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Phantom's Jurisdiction",
+              "original_text": "Mana cost: {U}{U}\nType: Instant\nCounter target creature spell.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {U}{U}\nType: Instant\nCounter target creature spell.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Phantom's Jurisdiction",
+            "cardName": "Phantom's Jurisdiction",
+            "manaCost": "{U}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Counter target creature spell.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "*The phantoms prey on those whose disappearance will not be noticed.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "68",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Mateusz Lenart",
+            "instigatorID": 28290,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 436,
+            "firstPrint": "Phantom's Jurisdiction_SRC",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "key": "Phantom's Jurisdiction_SRC",
+            "printKeys": [
+              "Phantom's Jurisdiction_SRC"
+            ],
+            "pr": 10.471204188481675,
+            "pm": 5.655708731000353,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Primordial Unveiling_SRC",
+          "name": "Primordial Unveiling",
+          "source_card_key": "Primordial Unveiling_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Primordial Unveiling",
+              "original_text": "Mana cost: {3}{G}\nType: Enchantment\nFace-down creatures you control are Horrors with base power and toughness 5/5 and have trample.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{G}\nType: Enchantment\nFace-down creatures you control are Horrors with base power and toughness 5/5 and have trample.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Primordial Unveiling",
+            "cardName": "Primordial Unveiling",
+            "manaCost": "{3}{G}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*SRC R*",
+            "rulesText": "Face-down creatures you control are Horrors with base power and toughness 5/5 and have trample.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "184",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Richard Wright",
+            "sdn": 440,
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Primordial Unveiling_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Primordial Unveiling_SRC",
+            "printKeys": [
+              "Primordial Unveiling_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Protective Detective_SRC",
+          "name": "Protective Detective",
+          "source_card_key": "Protective Detective_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Protective Detective",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Elf Detective Wizard \nPower/Toughness: 2/1\nFlash\nWhen Protective Detective enters, another target creature you control gets +2/+2 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Elf Detective Wizard \nPower/Toughness: 2/1\nFlash\nWhen Protective Detective enters, another target creature you control gets +2/+2 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Protective Detective",
+            "cardName": "Protective Detective",
+            "manaCost": "{1}{G}",
+            "typeLine": "Creature — Elf Detective Wizard ",
+            "rarityLine": "*SRC U*",
+            "rulesText": "Flash\nWhen Protective Detective enters, another target creature you control gets +2/+2 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "185",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Joseph Rahamefy",
+            "sdn": 442,
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Protective Detective_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Protective Detective_SRC",
+            "printKeys": [
+              "Protective Detective_SRC"
+            ],
+            "pr": 198.95287958115182,
+            "pm": 280.6645457758925,
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 13.422818791946309
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Search the Unknown_SRC",
+          "name": "Search the Unknown",
+          "source_card_key": "Search the Unknown_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Search the Unknown",
+              "original_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nSearch your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nSearch your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Search the Unknown",
+            "cardName": "Search the Unknown",
+            "manaCost": "{X}{G}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SRC R*",
+            "rulesText": "Search your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "188",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Mikhail (Ahilim) Smirnov",
+            "instigatorID": 28311,
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "sdn": 457,
+            "firstPrint": "Search the Unknown_SRC",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "key": "Search the Unknown_SRC",
+            "printKeys": [
+              "Search the Unknown_SRC"
+            ],
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 26.845637583892618
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Station Seven Host_SRC",
+          "name": "Station Seven Host",
+          "source_card_key": "Station Seven Host_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Station Seven Host",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Wizard \nPower/Toughness: 2/2\nFlash\nWhen Station Seven Host enters, if you cast it, copy target instant or sorcery spell you control. You may choose new targets for the copy.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Wizard \nPower/Toughness: 2/2\nFlash\nWhen Station Seven Host enters, if you cast it, copy target instant or sorcery spell you control. You may choose new targets for the copy.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Station Seven Host",
+            "cardName": "Station Seven Host",
+            "manaCost": "{1}{R}{R}",
+            "typeLine": "Creature — Human Wizard ",
+            "rarityLine": "*SRC R*",
+            "rulesText": "Flash\nWhen Station Seven Host enters, if you cast it, copy target instant or sorcery spell you control. You may choose new targets for the copy.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "151",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Leo Av",
+            "sdn": 477,
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Station Seven Host_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Station Seven Host_SRC",
+            "printKeys": [
+              "Station Seven Host_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Street Razings_SRC",
+          "name": "Street Razings",
+          "source_card_key": "Street Razings_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Street Razings",
+              "original_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target artifact or land.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target artifact or land.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Street Razings",
+            "cardName": "Street Razings",
+            "manaCost": "{3}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Destroy target artifact or land.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "152",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "boc0",
+            "instigatorID": 28332,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 478,
+            "firstPrint": "Street Razings_SRC",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "key": "Street Razings_SRC",
+            "printKeys": [
+              "Street Razings_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Uncanny Duplicant_SRC",
+          "name": "Uncanny Duplicant",
+          "source_card_key": "Uncanny Duplicant_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Uncanny Duplicant",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Shapeshifter \nPower/Toughness: 0/0\nYou may have Uncanny Duplicant enter as a copy of any creature on the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{U}\nType: Creature — Shapeshifter \nPower/Toughness: 0/0\nYou may have Uncanny Duplicant enter as a copy of any creature on the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Uncanny Duplicant",
+            "cardName": "Uncanny Duplicant",
+            "manaCost": "{3}{U}",
+            "typeLine": "Creature — Shapeshifter ",
+            "rarityLine": "*SRC R*",
+            "rulesText": "You may have Uncanny Duplicant enter as a copy of any creature on the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "0",
+            "toughness": "0",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "78",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Kyena",
+            "sdn": 492,
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Uncanny Duplicant_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Uncanny Duplicant_SRC",
+            "printKeys": [
+              "Uncanny Duplicant_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Uncover Evidence_SRC",
+          "name": "Uncover Evidence",
+          "source_card_key": "Uncover Evidence_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Uncover Evidence",
+              "original_text": "Mana cost: {2}{G}\nType: Instant\nReturn target permanent card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {2}{G}\nType: Instant\nReturn target permanent card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Uncover Evidence",
+            "cardName": "Uncover Evidence",
+            "manaCost": "{2}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Return target permanent card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "198",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Artem Chebokha",
+            "instigatorID": 28348,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 494,
+            "firstPrint": "Uncover Evidence_SRC",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "key": "Uncover Evidence_SRC",
+            "printKeys": [
+              "Uncover Evidence_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Unexplained Behemoth_SRC",
+          "name": "Unexplained Behemoth",
+          "source_card_key": "Unexplained Behemoth_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Unexplained Behemoth",
+              "original_text": "Mana cost: {6}{G}{G}\nType: Creature — Horror \nPower/Toughness: 8/7\nUnexplained Behemoth can't be blocked by creatures with power 2 or less.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {6}{G}{G}\nType: Creature — Horror \nPower/Toughness: 8/7\nUnexplained Behemoth can't be blocked by creatures with power 2 or less.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Unexplained Behemoth",
+            "cardName": "Unexplained Behemoth",
+            "manaCost": "{6}{G}{G}",
+            "typeLine": "Creature — Horror ",
+            "rarityLine": "*SRC C*",
+            "rulesText": "Unexplained Behemoth can't be blocked by creatures with power 2 or less.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "8",
+            "toughness": "7",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 8,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "199",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Neisbeis",
+            "instigatorID": 28350,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 496,
+            "firstPrint": "Unexplained Behemoth_SRC",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "key": "Unexplained Behemoth_SRC",
+            "printKeys": [
+              "Unexplained Behemoth_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        },
+        {
+          "id": "revolution:Up the River_SRC",
+          "name": "Up the River",
+          "source_card_key": "Up the River_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Up the River",
+              "original_text": "Mana cost: {2}{W}\nType: Instant\nExile target creature if it attacked or blocked this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nExile target creature if it attacked or blocked this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_original_fields": {
+            "fullName": "Up the River",
+            "cardName": "Up the River",
+            "manaCost": "{2}{W}",
+            "typeLine": "Instant",
+            "rarityLine": "*SRC U*",
+            "rulesText": "Exile target creature if it attacked or blocked this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "38",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "Nicholas Maxson",
+            "instigatorID": 28352,
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "sdn": 498,
+            "firstPrint": "Up the River_SRC",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "key": "Up the River_SRC",
+            "printKeys": [
+              "Up the River_SRC"
+            ]
+          },
+          "executable_text": null,
+          "support_status": "unsupported_requires_new_rules",
+          "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+        }
+      ]
+    },
+    {
+      "id": "rev-undercover-071",
+      "keyword": "Undercover",
+      "rule_text": {
+        "name": "702.196.",
+        "rule": "Undercover",
+        "subrules": [
+          {
+            "name": "702.196a",
+            "rule": "Undercover is a static ability that functions in any zone from which you could play the card it's on, and the undercover effect works any time the card is face down. “Undercover [cost]” means “You may cast this card as a 2/2 face-down creature with no text, no name, no subtypes, and no mana cost by paying {3} rather than paying its mana cost.” (See rule 707, “Face-Down Spells and Permanents.”)",
+            "custom": true
+          },
+          {
+            "name": "702.196b",
+            "rule": "To cast a card using its undercover ability, turn it face down. It becomes a 2/2 face-down creature card with no text, no name, no subtypes, and no mana cost. Any effects or prohibitions that would apply to casting a card with these characteristics (and not the face-up card's characteristics) are applied to casting this card. These values are the copiable values of that object's characteristics. (See rule 613, “Interaction of Continuous Effects,” and rule 706, “Copying Objects.”) Put it onto the stack (as a face-down spell with the same characteristics), and pay {3} rather than pay its mana cost. This follows the rules for paying alternative costs. You can use an undercover ability to cast a card from any zone from which you could normally play it. When the spell resolves, it enters the battlefield with the same characteristics the spell had. The undercover effect applies to the face-down object wherever it is, and it ends when the permanent is exiled or turned face up.",
+            "custom": true
+          },
+          {
+            "name": "702.196c",
+            "rule": "If a face-down permanent that was cast for its undercover cost would die, instead its controller exiles it face down. No player looks at or reveals the card as it's exiled. This is an exception to rules 400.6 and 707.9. The player who exiled it may look at the exiled card and may play it for as long as it remains exiled, but can't play it face down this way. If the exiled card leaves exile, becomes a new object (see rule 406.7), its owner leaves the game, or the game ends, the card must be revealed to all players.",
+            "custom": true
+          },
+          {
+            "name": "702.196d",
+            "rule": "See rule 707, “Face-Down Spells and Permanents,” for more information about how to cast cards with undercover.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Abrupt Possession",
+          "Air of Decay",
+          "Azra Fixer",
+          "Cawyer Station Deputy",
+          "Citywide Restructuring",
+          "Copper Copper",
+          "Debt Collection",
+          "Detective's Intuition",
+          "Dose of Dust",
+          "Dreamer of the Opulent",
+          "Faceless Stalker",
+          "Fishing for Bodies",
+          "Framed Murder",
+          "Go Nuts",
+          "Inciting Charmer",
+          "Lorre Earner",
+          "Lotus Lane Kidnapper",
+          "Lucky Break",
+          "Phantom's Jurisdiction",
+          "Primordial Unveiling",
+          "Protective Detective",
+          "Search the Unknown",
+          "Solo Officer",
+          "Station Seven Host",
+          "Street Razings",
+          "Uncanny Duplicant",
+          "Uncover Evidence",
+          "Unexplained Behemoth",
+          "Up the River",
+          "Undercover"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "scope_decision": "28 Undercover declarations excluded only for explicit hidden-information exception; Solo Officer ordinary query remains required",
+      "source_inventory_id": "rev-undercover-071",
+      "support_status": "existing_operations_candidate",
+      "representative_cards": [
+        {
+          "id": "revolution:Solo Officer_SRC",
+          "name": "Solo Officer",
+          "source_card_key": "Solo Officer_SRC",
+          "scope": "revolution",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Solo Officer",
+              "original_text": "Mana cost: {W}{W}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {W}{W}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+          "source_original_fields": {
+            "fullName": "Solo Officer",
+            "cardName": "Solo Officer",
+            "manaCost": "{W}{W}",
+            "typeLine": "Creature — Human Soldier ",
+            "rarityLine": "*SRC R*",
+            "rulesText": "First strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+            "flavorText": "*“I had a partner. Once.”*\n",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SRC",
+            "cardID": "37",
+            "designer": "Zangy",
+            "script": "",
+            "notes": [],
+            "artist": "David Simons",
+            "sdn": 472,
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SRC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Solo Officer_SRC",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Solo Officer_SRC",
+            "printKeys": [
+              "Solo Officer_SRC"
+            ],
+            "pr": 120.41884816753927,
+            "pm": 94.73312124425593,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "support_status": "existing_operations_candidate",
+          "source_obligation": "ordinary filtered face-down entry query/replacement; identity marker does not require implementing excluded Undercover ability"
+        }
+      ]
+    }
+  ],
+  "source_row_ids": [
+    "rev-undercover-070",
+    "rev-undercover-071"
+  ],
+  "complete_sources": [
+    {
+      "id": "revolution:Abrupt Possession_SRC",
+      "name": "Abrupt Possession",
+      "source_card_key": "Abrupt Possession_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Abrupt Possession",
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Red} ",
+          "color_indicator": [
+            "Red"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Abrupt Possession",
+        "cardName": "Abrupt Possession",
+        "manaCost": "{3}{R}",
+        "typeLine": "Sorcery",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Red} ",
+        "cmc": 4,
+        "cardType": "Sorcery",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "122",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "AlMaNeGrA",
+        "instigatorID": 28112,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 258,
+        "firstPrint": "Abrupt Possession_SRC",
+        "colorIdentity": [
+          "R"
+        ],
+        "spellbook": [],
+        "key": "Abrupt Possession_SRC",
+        "printKeys": [
+          "Abrupt Possession_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Air of Decay_SRC",
+      "name": "Air of Decay",
+      "source_card_key": "Air of Decay_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Air of Decay",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nAll creatures get -1/-1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Black} ",
+          "color_indicator": [
+            "Black"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{B}\nType: Instant\nAll creatures get -1/-1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Air of Decay",
+        "cardName": "Air of Decay",
+        "manaCost": "{1}{B}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC U*",
+        "rulesText": "All creatures get -1/-1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Black} ",
+        "cmc": 2,
+        "cardType": "Instant",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "81",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Min Nguen",
+        "instigatorID": 28116,
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "sdn": 262,
+        "firstPrint": "Air of Decay_SRC",
+        "colorIdentity": [
+          "B"
+        ],
+        "spellbook": [],
+        "key": "Air of Decay_SRC",
+        "printKeys": [
+          "Air of Decay_SRC"
+        ],
+        "pr": 26.17801047120419,
+        "pm": 20.50194414987628,
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Azra Fixer_SRC",
+      "name": "Azra Fixer",
+      "source_card_key": "Azra Fixer_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Azra Fixer",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Azra Warrior \nPower/Toughness: 3/3\nWhen Azra Fixer enters, target creature you control gets +2/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Red} ",
+          "color_indicator": [
+            "Red"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{R}\nType: Creature — Azra Warrior \nPower/Toughness: 3/3\nWhen Azra Fixer enters, target creature you control gets +2/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Azra Fixer",
+        "cardName": "Azra Fixer",
+        "manaCost": "{3}{R}",
+        "typeLine": "Creature — Azra Warrior ",
+        "rarityLine": "*SRC C*",
+        "rulesText": "When Azra Fixer enters, target creature you control gets +2/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "3",
+        "toughness": "3",
+        "loyalty": "",
+        "color": "{Red} ",
+        "cmc": 4,
+        "cardType": "Creature",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "123",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Imx Ud Din",
+        "sdn": 272,
+        "colorIdentity": [
+          "R"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "firstPrint": "Azra Fixer_SRC",
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "key": "Azra Fixer_SRC",
+        "printKeys": [
+          "Azra Fixer_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Cawyer Station Deputy_SRC",
+      "name": "Cawyer Station Deputy",
+      "source_card_key": "Cawyer Station Deputy_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Cawyer Station Deputy",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nWhen Cawyer Station Deputy enters, creatures you control get +1/+1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{White} ",
+          "color_indicator": [
+            "White"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nWhen Cawyer Station Deputy enters, creatures you control get +1/+1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Cawyer Station Deputy",
+        "cardName": "Cawyer Station Deputy",
+        "manaCost": "{3}{W}",
+        "typeLine": "Creature — Human Soldier ",
+        "rarityLine": "*SRC C*",
+        "rulesText": "When Cawyer Station Deputy enters, creatures you control get +1/+1 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "3",
+        "toughness": "3",
+        "loyalty": "",
+        "color": "{White} ",
+        "cmc": 4,
+        "cardType": "Creature",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "12",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Chirun",
+        "sdn": 292,
+        "colorIdentity": [
+          "W"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "firstPrint": "Cawyer Station Deputy_SRC",
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "key": "Cawyer Station Deputy_SRC",
+        "printKeys": [
+          "Cawyer Station Deputy_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Citywide Restructuring_SRC",
+      "name": "Citywide Restructuring",
+      "source_card_key": "Citywide Restructuring_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Citywide Restructuring",
+          "original_text": "Mana cost: {3}{W}{W}{W}\nType: Sorcery\nDestroy all nonland permanents.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{White} ",
+          "color_indicator": [
+            "White"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{W}{W}{W}\nType: Sorcery\nDestroy all nonland permanents.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Citywide Restructuring",
+        "cardName": "Citywide Restructuring",
+        "manaCost": "{3}{W}{W}{W}",
+        "typeLine": "Sorcery",
+        "rarityLine": "*SRC R*",
+        "rulesText": "Destroy all nonland permanents.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{White} ",
+        "cmc": 6,
+        "cardType": "Sorcery",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "14",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Jakub Bazyluk",
+        "instigatorID": 28151,
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "sdn": 297,
+        "firstPrint": "Citywide Restructuring_SRC",
+        "colorIdentity": [
+          "W"
+        ],
+        "spellbook": [],
+        "key": "Citywide Restructuring_SRC",
+        "printKeys": [
+          "Citywide Restructuring_SRC"
+        ],
+        "pr": 52.35602094240838,
+        "pm": 46.65959703075291,
+        "psr": 0,
+        "psm": 0,
+        "per": 0,
+        "pem": 4.47427293064877
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Copper Copper_SRC",
+      "name": "Copper Copper",
+      "source_card_key": "Copper Copper_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Copper Copper",
+          "original_text": "Mana cost: {5}\nType: Artifact Creature — Construct Soldier \nPower/Toughness: 3/4\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "",
+          "color_indicator": []
+        }
+      ],
+      "original_text": "Mana cost: {5}\nType: Artifact Creature — Construct Soldier \nPower/Toughness: 3/4\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Copper Copper",
+        "cardName": "Copper Copper",
+        "manaCost": "{5}",
+        "typeLine": "Artifact Creature — Construct Soldier ",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Undercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "*“And I thought the cops were heartless before!”\n— Maria, housewife*\n",
+        "power": "3",
+        "toughness": "4",
+        "loyalty": "",
+        "color": "",
+        "cmc": 5,
+        "cardType": "Artifact Creature",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "226",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Alfred Khamidullin",
+        "instigatorID": 28158,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 304,
+        "firstPrint": "Copper Copper_SRC",
+        "colorIdentity": [],
+        "spellbook": [],
+        "key": "Copper Copper_SRC",
+        "printKeys": [
+          "Copper Copper_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Debt Collection_SRC",
+      "name": "Debt Collection",
+      "source_card_key": "Debt Collection_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Debt Collection",
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nDestroy target tapped creature.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{White} ",
+          "color_indicator": [
+            "White"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{W}\nType: Sorcery\nDestroy target tapped creature.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Debt Collection",
+        "cardName": "Debt Collection",
+        "manaCost": "{1}{W}",
+        "typeLine": "Sorcery",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Destroy target tapped creature.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "*The Lorre family always gets what is due.*\n",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{White} ",
+        "cmc": 2,
+        "cardType": "Sorcery",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "18",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Christina Lynch",
+        "instigatorID": 28170,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 316,
+        "firstPrint": "Debt Collection_SRC",
+        "colorIdentity": [
+          "W"
+        ],
+        "spellbook": [],
+        "key": "Debt Collection_SRC",
+        "printKeys": [
+          "Debt Collection_SRC"
+        ],
+        "psr": 0,
+        "psm": 0,
+        "per": 0,
+        "pem": 4.47427293064877
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Detective's Intuition_SRC",
+      "name": "Detective's Intuition",
+      "source_card_key": "Detective's Intuition_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Detective's Intuition",
+          "original_text": "Mana cost: {U}\nType: Instant\nTarget creature you control gains hexproof until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Blue} ",
+          "color_indicator": [
+            "Blue"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {U}\nType: Instant\nTarget creature you control gains hexproof until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Detective's Intuition",
+        "cardName": "Detective's Intuition",
+        "manaCost": "{U}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Target creature you control gains hexproof until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Blue} ",
+        "cmc": 1,
+        "cardType": "Instant",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "50",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Bigball Gao",
+        "instigatorID": 28176,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 322,
+        "firstPrint": "Detective's Intuition_SRC",
+        "colorIdentity": [
+          "U"
+        ],
+        "spellbook": [],
+        "key": "Detective's Intuition_SRC",
+        "printKeys": [
+          "Detective's Intuition_SRC"
+        ],
+        "pr": 0,
+        "pm": 14.139271827500883,
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Dose of Dust_SRC",
+      "name": "Dose of Dust",
+      "source_card_key": "Dose of Dust_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Dose of Dust",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nYou gain 6 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Green} ",
+          "color_indicator": [
+            "Green"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{G}\nType: Instant\nYou gain 6 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Dose of Dust",
+        "cardName": "Dose of Dust",
+        "manaCost": "{1}{G}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC C*",
+        "rulesText": "You gain 6 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Green} ",
+        "cmc": 2,
+        "cardType": "Instant",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "167",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Sinealas",
+        "instigatorID": 28181,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 327,
+        "firstPrint": "Dose of Dust_SRC",
+        "colorIdentity": [
+          "G"
+        ],
+        "spellbook": [],
+        "key": "Dose of Dust_SRC",
+        "printKeys": [
+          "Dose of Dust_SRC"
+        ],
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Dreamer of the Opulent_SRC",
+      "name": "Dreamer of the Opulent",
+      "source_card_key": "Dreamer of the Opulent_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Dreamer of the Opulent",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Horror \nPower/Toughness: 4/3\nFlying\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Blue} ",
+          "color_indicator": [
+            "Blue"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {4}{U}\nType: Creature — Horror \nPower/Toughness: 4/3\nFlying\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Dreamer of the Opulent",
+        "cardName": "Dreamer of the Opulent",
+        "manaCost": "{4}{U}",
+        "typeLine": "Creature — Horror ",
+        "rarityLine": "*SRC U*",
+        "rulesText": "Flying\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "4",
+        "toughness": "3",
+        "loyalty": "",
+        "color": "{Blue} ",
+        "cmc": 5,
+        "cardType": "Creature",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "53",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "David Romero",
+        "instigatorID": 28185,
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "sdn": 331,
+        "firstPrint": "Dreamer of the Opulent_SRC",
+        "colorIdentity": [
+          "U"
+        ],
+        "spellbook": [],
+        "key": "Dreamer of the Opulent_SRC",
+        "printKeys": [
+          "Dreamer of the Opulent_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Faceless Stalker_SRC",
+      "name": "Faceless Stalker",
+      "source_card_key": "Faceless Stalker_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Faceless Stalker",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Mutant \nPower/Toughness: 2/2\nFlash\nWhen Faceless Stalker enters, you may counter target activated or triggered ability.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Blue} ",
+          "color_indicator": [
+            "Blue"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {2}{U}\nType: Creature — Mutant \nPower/Toughness: 2/2\nFlash\nWhen Faceless Stalker enters, you may counter target activated or triggered ability.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Faceless Stalker",
+        "cardName": "Faceless Stalker",
+        "manaCost": "{2}{U}",
+        "typeLine": "Creature — Mutant ",
+        "rarityLine": "*SRC U*",
+        "rulesText": "Flash\nWhen Faceless Stalker enters, you may counter target activated or triggered ability.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "2",
+        "toughness": "2",
+        "loyalty": "",
+        "color": "{Blue} ",
+        "cmc": 3,
+        "cardType": "Creature",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "58",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Raymund Lee",
+        "sdn": 346,
+        "colorIdentity": [
+          "U"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "firstPrint": "Faceless Stalker_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Faceless Stalker_SRC",
+        "printKeys": [
+          "Faceless Stalker_SRC"
+        ],
+        "pr": 26.17801047120419,
+        "pm": 18.381053375751147,
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Fishing for Bodies_SRC",
+      "name": "Fishing for Bodies",
+      "source_card_key": "Fishing for Bodies_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Fishing for Bodies",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Black} ",
+          "color_indicator": [
+            "Black"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Fishing for Bodies",
+        "cardName": "Fishing for Bodies",
+        "manaCost": "{B}",
+        "typeLine": "Sorcery",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Return target creature card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Black} ",
+        "cmc": 1,
+        "cardType": "Sorcery",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "94",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Valentyn Porada",
+        "instigatorID": 28203,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 349,
+        "firstPrint": "Fishing for Bodies_SRC",
+        "colorIdentity": [
+          "B"
+        ],
+        "spellbook": [],
+        "key": "Fishing for Bodies_SRC",
+        "printKeys": [
+          "Fishing for Bodies_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Framed Murder_SRC",
+      "name": "Framed Murder",
+      "source_card_key": "Framed Murder_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Framed Murder",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Instant\nDestroy target creature or planeswalker. If you cast Framed Murder from exile, you gain 2 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Black} ",
+          "color_indicator": [
+            "Black"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{B}{B}\nType: Instant\nDestroy target creature or planeswalker. If you cast Framed Murder from exile, you gain 2 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Framed Murder",
+        "cardName": "Framed Murder",
+        "manaCost": "{1}{B}{B}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC R*",
+        "rulesText": "Destroy target creature or planeswalker. If you cast Framed Murder from exile, you gain 2 life.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Black} ",
+        "cmc": 3,
+        "cardType": "Instant",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "95",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Mickie Camua",
+        "sdn": 359,
+        "colorIdentity": [
+          "B"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "firstPrint": "Framed Murder_SRC",
+        "spellbook": [],
+        "ctags": [
+          "buffed"
+        ],
+        "key": "Framed Murder_SRC",
+        "printKeys": [
+          "Framed Murder_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Go Nuts_SRC",
+      "name": "Go Nuts",
+      "source_card_key": "Go Nuts_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Go Nuts",
+          "original_text": "Mana cost: {X}{R}\nType: Instant\nTarget creature gets +X/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Red} ",
+          "color_indicator": [
+            "Red"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {X}{R}\nType: Instant\nTarget creature gets +X/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Go Nuts",
+        "cardName": "Go Nuts",
+        "manaCost": "{X}{R}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC U*",
+        "rulesText": "Target creature gets +X/+0 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Red} ",
+        "cmc": 1,
+        "cardType": "Instant",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "137",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "TheMinttu",
+        "sdn": 363,
+        "colorIdentity": [
+          "R"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "firstPrint": "Go Nuts_SRC",
+        "spellbook": [],
+        "key": "Go Nuts_SRC",
+        "printKeys": [
+          "Go Nuts_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Inciting Charmer_SRC",
+      "name": "Inciting Charmer",
+      "source_card_key": "Inciting Charmer_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Inciting Charmer",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Elf Wizard \nPower/Toughness: 4/2\nWhen Inciting Charmer enters, creatures you control gain double strike until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Red} ",
+          "color_indicator": [
+            "Red"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {4}{R}\nType: Creature — Elf Wizard \nPower/Toughness: 4/2\nWhen Inciting Charmer enters, creatures you control gain double strike until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Inciting Charmer",
+        "cardName": "Inciting Charmer",
+        "manaCost": "{4}{R}",
+        "typeLine": "Creature — Elf Wizard ",
+        "rarityLine": "*SRC U*",
+        "rulesText": "When Inciting Charmer enters, creatures you control gain double strike until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "4",
+        "toughness": "2",
+        "loyalty": "",
+        "color": "{Red} ",
+        "cmc": 5,
+        "cardType": "Creature",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "141",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Michael Davini",
+        "sdn": 375,
+        "colorIdentity": [
+          "R"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "firstPrint": "Inciting Charmer_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Inciting Charmer_SRC",
+        "printKeys": [
+          "Inciting Charmer_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Lorre Earner_SRC",
+      "name": "Lorre Earner",
+      "source_card_key": "Lorre Earner_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Lorre Earner",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Azra Assassin \nPower/Toughness: 3/3\nFlash\nWhen Lorre Earner enters, destroy target creature that was dealt damage this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Black} ",
+          "color_indicator": [
+            "Black"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {4}{B}\nType: Creature — Azra Assassin \nPower/Toughness: 3/3\nFlash\nWhen Lorre Earner enters, destroy target creature that was dealt damage this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Lorre Earner",
+        "cardName": "Lorre Earner",
+        "manaCost": "{4}{B}",
+        "typeLine": "Creature — Azra Assassin ",
+        "rarityLine": "*SRC U*",
+        "rulesText": "Flash\nWhen Lorre Earner enters, destroy target creature that was dealt damage this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "3",
+        "toughness": "3",
+        "loyalty": "",
+        "color": "{Black} ",
+        "cmc": 5,
+        "cardType": "Creature",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "101",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Indahalditha",
+        "sdn": 391,
+        "colorIdentity": [
+          "B"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "firstPrint": "Lorre Earner_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Lorre Earner_SRC",
+        "printKeys": [
+          "Lorre Earner_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Lotus Lane Kidnapper_SRC",
+      "name": "Lotus Lane Kidnapper",
+      "source_card_key": "Lotus Lane Kidnapper_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Lotus Lane Kidnapper",
+          "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Human Rogue \nPower/Toughness: 4/4\nWhen Lotus Lane Kidnapper enters, exile target creature an opponent controls until Lotus Lane Kidnapper leaves the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{White} ",
+          "color_indicator": [
+            "White"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Human Rogue \nPower/Toughness: 4/4\nWhen Lotus Lane Kidnapper enters, exile target creature an opponent controls until Lotus Lane Kidnapper leaves the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Lotus Lane Kidnapper",
+        "cardName": "Lotus Lane Kidnapper",
+        "manaCost": "{4}{W}{W}",
+        "typeLine": "Creature — Human Rogue ",
+        "rarityLine": "*SRC U*",
+        "rulesText": "When Lotus Lane Kidnapper enters, exile target creature an opponent controls until Lotus Lane Kidnapper leaves the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "4",
+        "toughness": "4",
+        "loyalty": "",
+        "color": "{White} ",
+        "cmc": 6,
+        "cardType": "Creature",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "28",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Alen Rocha",
+        "sdn": 395,
+        "colorIdentity": [
+          "W"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "firstPrint": "Lotus Lane Kidnapper_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Lotus Lane Kidnapper_SRC",
+        "printKeys": [
+          "Lotus Lane Kidnapper_SRC"
+        ],
+        "pr": 0,
+        "pm": 5.655708731000353,
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Lucky Break_SRC",
+      "name": "Lucky Break",
+      "source_card_key": "Lucky Break_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Lucky Break",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget creature you control gets +2/+0 and gains indestructible until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Black} ",
+          "color_indicator": [
+            "Black"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget creature you control gets +2/+0 and gains indestructible until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Lucky Break",
+        "cardName": "Lucky Break",
+        "manaCost": "{1}{B}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Target creature you control gets +2/+0 and gains indestructible until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Black} ",
+        "cmc": 2,
+        "cardType": "Instant",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "102",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Tigressinger",
+        "instigatorID": 28251,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 397,
+        "firstPrint": "Lucky Break_SRC",
+        "colorIdentity": [
+          "B"
+        ],
+        "spellbook": [],
+        "key": "Lucky Break_SRC",
+        "printKeys": [
+          "Lucky Break_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Phantom's Jurisdiction_SRC",
+      "name": "Phantom's Jurisdiction",
+      "source_card_key": "Phantom's Jurisdiction_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Phantom's Jurisdiction",
+          "original_text": "Mana cost: {U}{U}\nType: Instant\nCounter target creature spell.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Blue} ",
+          "color_indicator": [
+            "Blue"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {U}{U}\nType: Instant\nCounter target creature spell.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Phantom's Jurisdiction",
+        "cardName": "Phantom's Jurisdiction",
+        "manaCost": "{U}{U}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Counter target creature spell.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "*The phantoms prey on those whose disappearance will not be noticed.*\n",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Blue} ",
+        "cmc": 2,
+        "cardType": "Instant",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "68",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Mateusz Lenart",
+        "instigatorID": 28290,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 436,
+        "firstPrint": "Phantom's Jurisdiction_SRC",
+        "colorIdentity": [
+          "U"
+        ],
+        "spellbook": [],
+        "key": "Phantom's Jurisdiction_SRC",
+        "printKeys": [
+          "Phantom's Jurisdiction_SRC"
+        ],
+        "pr": 10.471204188481675,
+        "pm": 5.655708731000353,
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Primordial Unveiling_SRC",
+      "name": "Primordial Unveiling",
+      "source_card_key": "Primordial Unveiling_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Primordial Unveiling",
+          "original_text": "Mana cost: {3}{G}\nType: Enchantment\nFace-down creatures you control are Horrors with base power and toughness 5/5 and have trample.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Green} ",
+          "color_indicator": [
+            "Green"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{G}\nType: Enchantment\nFace-down creatures you control are Horrors with base power and toughness 5/5 and have trample.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Primordial Unveiling",
+        "cardName": "Primordial Unveiling",
+        "manaCost": "{3}{G}",
+        "typeLine": "Enchantment",
+        "rarityLine": "*SRC R*",
+        "rulesText": "Face-down creatures you control are Horrors with base power and toughness 5/5 and have trample.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Green} ",
+        "cmc": 4,
+        "cardType": "Enchantment",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "184",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Richard Wright",
+        "sdn": 440,
+        "colorIdentity": [
+          "G"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "firstPrint": "Primordial Unveiling_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Primordial Unveiling_SRC",
+        "printKeys": [
+          "Primordial Unveiling_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Protective Detective_SRC",
+      "name": "Protective Detective",
+      "source_card_key": "Protective Detective_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Protective Detective",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Elf Detective Wizard \nPower/Toughness: 2/1\nFlash\nWhen Protective Detective enters, another target creature you control gets +2/+2 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Green} ",
+          "color_indicator": [
+            "Green"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{G}\nType: Creature — Elf Detective Wizard \nPower/Toughness: 2/1\nFlash\nWhen Protective Detective enters, another target creature you control gets +2/+2 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Protective Detective",
+        "cardName": "Protective Detective",
+        "manaCost": "{1}{G}",
+        "typeLine": "Creature — Elf Detective Wizard ",
+        "rarityLine": "*SRC U*",
+        "rulesText": "Flash\nWhen Protective Detective enters, another target creature you control gets +2/+2 until end of turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "2",
+        "toughness": "1",
+        "loyalty": "",
+        "color": "{Green} ",
+        "cmc": 2,
+        "cardType": "Creature",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "185",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Joseph Rahamefy",
+        "sdn": 442,
+        "colorIdentity": [
+          "G"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "firstPrint": "Protective Detective_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Protective Detective_SRC",
+        "printKeys": [
+          "Protective Detective_SRC"
+        ],
+        "pr": 198.95287958115182,
+        "pm": 280.6645457758925,
+        "psr": 0,
+        "psm": 0,
+        "per": 0,
+        "pem": 13.422818791946309
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Search the Unknown_SRC",
+      "name": "Search the Unknown",
+      "source_card_key": "Search the Unknown_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Search the Unknown",
+          "original_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nSearch your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Green} ",
+          "color_indicator": [
+            "Green"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nSearch your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Search the Unknown",
+        "cardName": "Search the Unknown",
+        "manaCost": "{X}{G}{G}",
+        "typeLine": "Sorcery",
+        "rarityLine": "*SRC R*",
+        "rulesText": "Search your library for a creature card with mana value X or less, put it onto the battlefield, then shuffle.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Green} ",
+        "cmc": 2,
+        "cardType": "Sorcery",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "188",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Mikhail (Ahilim) Smirnov",
+        "instigatorID": 28311,
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "sdn": 457,
+        "firstPrint": "Search the Unknown_SRC",
+        "colorIdentity": [
+          "G"
+        ],
+        "spellbook": [],
+        "key": "Search the Unknown_SRC",
+        "printKeys": [
+          "Search the Unknown_SRC"
+        ],
+        "psr": 0,
+        "psm": 0,
+        "per": 0,
+        "pem": 26.845637583892618
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Solo Officer_SRC",
+      "name": "Solo Officer",
+      "source_card_key": "Solo Officer_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Solo Officer",
+          "original_text": "Mana cost: {W}{W}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+          "source_color": "{White} ",
+          "color_indicator": [
+            "White"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {W}{W}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nFirst strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+      "source_original_fields": {
+        "fullName": "Solo Officer",
+        "cardName": "Solo Officer",
+        "manaCost": "{W}{W}",
+        "typeLine": "Creature — Human Soldier ",
+        "rarityLine": "*SRC R*",
+        "rulesText": "First strike, vigilance\nNontoken creatures without undercover that weren't cast enter face-down. *(They're 2/2 creatures.)*",
+        "flavorText": "*“I had a partner. Once.”*\n",
+        "power": "2",
+        "toughness": "2",
+        "loyalty": "",
+        "color": "{White} ",
+        "cmc": 2,
+        "cardType": "Creature",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "37",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "David Simons",
+        "sdn": 472,
+        "colorIdentity": [
+          "W"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "firstPrint": "Solo Officer_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Solo Officer_SRC",
+        "printKeys": [
+          "Solo Officer_SRC"
+        ],
+        "pr": 120.41884816753927,
+        "pm": 94.73312124425593,
+        "psr": 0,
+        "psm": 0
+      },
+      "executable_text": null,
+      "support_status": "existing_operations_candidate",
+      "source_obligation": "ordinary filtered face-down entry query/replacement; identity marker does not require implementing excluded Undercover ability"
+    },
+    {
+      "id": "revolution:Station Seven Host_SRC",
+      "name": "Station Seven Host",
+      "source_card_key": "Station Seven Host_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Station Seven Host",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Wizard \nPower/Toughness: 2/2\nFlash\nWhen Station Seven Host enters, if you cast it, copy target instant or sorcery spell you control. You may choose new targets for the copy.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Red} ",
+          "color_indicator": [
+            "Red"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Wizard \nPower/Toughness: 2/2\nFlash\nWhen Station Seven Host enters, if you cast it, copy target instant or sorcery spell you control. You may choose new targets for the copy.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Station Seven Host",
+        "cardName": "Station Seven Host",
+        "manaCost": "{1}{R}{R}",
+        "typeLine": "Creature — Human Wizard ",
+        "rarityLine": "*SRC R*",
+        "rulesText": "Flash\nWhen Station Seven Host enters, if you cast it, copy target instant or sorcery spell you control. You may choose new targets for the copy.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "2",
+        "toughness": "2",
+        "loyalty": "",
+        "color": "{Red} ",
+        "cmc": 3,
+        "cardType": "Creature",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "151",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Leo Av",
+        "sdn": 477,
+        "colorIdentity": [
+          "R"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "firstPrint": "Station Seven Host_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Station Seven Host_SRC",
+        "printKeys": [
+          "Station Seven Host_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Street Razings_SRC",
+      "name": "Street Razings",
+      "source_card_key": "Street Razings_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Street Razings",
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target artifact or land.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Red} ",
+          "color_indicator": [
+            "Red"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target artifact or land.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Street Razings",
+        "cardName": "Street Razings",
+        "manaCost": "{3}{R}",
+        "typeLine": "Sorcery",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Destroy target artifact or land.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Red} ",
+        "cmc": 4,
+        "cardType": "Sorcery",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "152",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "boc0",
+        "instigatorID": 28332,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 478,
+        "firstPrint": "Street Razings_SRC",
+        "colorIdentity": [
+          "R"
+        ],
+        "spellbook": [],
+        "key": "Street Razings_SRC",
+        "printKeys": [
+          "Street Razings_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Uncanny Duplicant_SRC",
+      "name": "Uncanny Duplicant",
+      "source_card_key": "Uncanny Duplicant_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Uncanny Duplicant",
+          "original_text": "Mana cost: {3}{U}\nType: Creature — Shapeshifter \nPower/Toughness: 0/0\nYou may have Uncanny Duplicant enter as a copy of any creature on the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Blue} ",
+          "color_indicator": [
+            "Blue"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {3}{U}\nType: Creature — Shapeshifter \nPower/Toughness: 0/0\nYou may have Uncanny Duplicant enter as a copy of any creature on the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Uncanny Duplicant",
+        "cardName": "Uncanny Duplicant",
+        "manaCost": "{3}{U}",
+        "typeLine": "Creature — Shapeshifter ",
+        "rarityLine": "*SRC R*",
+        "rulesText": "You may have Uncanny Duplicant enter as a copy of any creature on the battlefield.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "0",
+        "toughness": "0",
+        "loyalty": "",
+        "color": "{Blue} ",
+        "cmc": 4,
+        "cardType": "Creature",
+        "rarity": "rare",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "78",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Kyena",
+        "sdn": 492,
+        "colorIdentity": [
+          "U"
+        ],
+        "spellbook": [],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "rare"
+        ],
+        "firstPrint": "Uncanny Duplicant_SRC",
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "key": "Uncanny Duplicant_SRC",
+        "printKeys": [
+          "Uncanny Duplicant_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Uncover Evidence_SRC",
+      "name": "Uncover Evidence",
+      "source_card_key": "Uncover Evidence_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Uncover Evidence",
+          "original_text": "Mana cost: {2}{G}\nType: Instant\nReturn target permanent card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Green} ",
+          "color_indicator": [
+            "Green"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {2}{G}\nType: Instant\nReturn target permanent card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Uncover Evidence",
+        "cardName": "Uncover Evidence",
+        "manaCost": "{2}{G}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Return target permanent card from your graveyard to your hand.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{Green} ",
+        "cmc": 3,
+        "cardType": "Instant",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "198",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Artem Chebokha",
+        "instigatorID": 28348,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 494,
+        "firstPrint": "Uncover Evidence_SRC",
+        "colorIdentity": [
+          "G"
+        ],
+        "spellbook": [],
+        "key": "Uncover Evidence_SRC",
+        "printKeys": [
+          "Uncover Evidence_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Unexplained Behemoth_SRC",
+      "name": "Unexplained Behemoth",
+      "source_card_key": "Unexplained Behemoth_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Unexplained Behemoth",
+          "original_text": "Mana cost: {6}{G}{G}\nType: Creature — Horror \nPower/Toughness: 8/7\nUnexplained Behemoth can't be blocked by creatures with power 2 or less.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{Green} ",
+          "color_indicator": [
+            "Green"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {6}{G}{G}\nType: Creature — Horror \nPower/Toughness: 8/7\nUnexplained Behemoth can't be blocked by creatures with power 2 or less.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Unexplained Behemoth",
+        "cardName": "Unexplained Behemoth",
+        "manaCost": "{6}{G}{G}",
+        "typeLine": "Creature — Horror ",
+        "rarityLine": "*SRC C*",
+        "rulesText": "Unexplained Behemoth can't be blocked by creatures with power 2 or less.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "8",
+        "toughness": "7",
+        "loyalty": "",
+        "color": "{Green} ",
+        "cmc": 8,
+        "cardType": "Creature",
+        "rarity": "common",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "199",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Neisbeis",
+        "instigatorID": 28350,
+        "formats": [
+          "reveternal",
+          "reveternalpauper",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "common"
+        ],
+        "sdn": 496,
+        "firstPrint": "Unexplained Behemoth_SRC",
+        "colorIdentity": [
+          "G"
+        ],
+        "spellbook": [],
+        "key": "Unexplained Behemoth_SRC",
+        "printKeys": [
+          "Unexplained Behemoth_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    },
+    {
+      "id": "revolution:Up the River_SRC",
+      "name": "Up the River",
+      "source_card_key": "Up the River_SRC",
+      "scope": "revolution",
+      "source_shape": "normal",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Up the River",
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nExile target creature if it attacked or blocked this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+          "source_color": "{White} ",
+          "color_indicator": [
+            "White"
+          ]
+        }
+      ],
+      "original_text": "Mana cost: {2}{W}\nType: Instant\nExile target creature if it attacked or blocked this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+      "source_original_fields": {
+        "fullName": "Up the River",
+        "cardName": "Up the River",
+        "manaCost": "{2}{W}",
+        "typeLine": "Instant",
+        "rarityLine": "*SRC U*",
+        "rulesText": "Exile target creature if it attacked or blocked this turn.\nUndercover *(You may cast this face down as a 2/2 creature for {3}. If it would die, exile it face down without revealing it instead. You may cast it face up while it's exiled this way.)*",
+        "flavorText": "",
+        "power": "",
+        "toughness": "",
+        "loyalty": "",
+        "color": "{White} ",
+        "cmc": 3,
+        "cardType": "Instant",
+        "rarity": "uncommon",
+        "shape": "normal",
+        "setID": "SRC",
+        "cardID": "38",
+        "designer": "Zangy",
+        "script": "",
+        "notes": [],
+        "artist": "Nicholas Maxson",
+        "instigatorID": 28352,
+        "formats": [
+          "reveternal",
+          "archaeologist"
+        ],
+        "prints": [
+          "SRC"
+        ],
+        "rarities": [
+          "uncommon"
+        ],
+        "sdn": 498,
+        "firstPrint": "Up the River_SRC",
+        "colorIdentity": [
+          "W"
+        ],
+        "spellbook": [],
+        "key": "Up the River_SRC",
+        "printKeys": [
+          "Up the River_SRC"
+        ]
+      },
+      "executable_text": null,
+      "support_status": "unsupported_requires_new_rules",
+      "source_obligation": "whole Undercover declaration body depends on explicit no-reveal rule exception"
+    }
+  ]
+}

@@ -375,6 +375,7 @@ impl StaticAbilityModelInterpreter {
         };
         crate::ability::Ability {
             kind,
+            designations: ability.designations.clone(),
             functional_zones: ability.functional_zones.clone(),
         }
     }
@@ -631,6 +632,7 @@ impl StaticAbilityModelInterpreter {
                 ability_index: *ability_index,
             },
             Model::Keyword(keyword) => Runtime::Keyword(*keyword),
+            Model::Named(label) => Runtime::Named(label.clone()),
             Model::NonManaAbility => Runtime::NonManaAbility,
             Model::ManaAbility => Runtime::ManaAbility,
             Model::FirstActivationOfMatchingSourceThisTurn { filter } => {
@@ -831,6 +833,7 @@ impl StaticAbilityModelInterpreter {
                 runtime.optional_life_additional_cost =
                     reduction.optional_life_additional_cost.clone();
                 runtime.colored_only = reduction.colored_only;
+                runtime.one_mana_of_any_color = reduction.one_mana_of_any_color;
                 runtime.repetitions = reduction.repetitions.clone();
                 if let Some(condition) = reduction.condition.clone() {
                     runtime = runtime.with_condition(condition);
@@ -923,14 +926,14 @@ impl StaticAbilityModelInterpreter {
     ) -> Option<super::ThisSpellCostReductionManaCost> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction) => {
-                Some(
-                    super::ThisSpellCostReductionManaCost::new(
+                let mut runtime = super::ThisSpellCostReductionManaCost::new(
                         reduction.cost.clone(),
                         reduction.condition.clone(),
                     )
                     .with_repetitions(reduction.repetitions.clone())
-                    .with_colored_only(reduction.colored_only),
-                )
+                    .with_colored_only(reduction.colored_only);
+                runtime.one_mana_of_any_color = reduction.one_mana_of_any_color;
+                Some(runtime)
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { .. } => None,
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
@@ -1048,7 +1051,13 @@ impl StaticAbilityModelInterpreter {
         }
 
         Some(match &model.payload {
-            ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { .. } => return None,
+            ironsmith_core::StaticAbilityPayload::PhaseBoundaryPlayerAction { .. }
+            | ironsmith_core::StaticAbilityPayload::TriggerEventProjection { .. }
+            | ironsmith_core::StaticAbilityPayload::GenericManaTapPaymentProhibition { .. }
+            | ironsmith_core::StaticAbilityPayload::GenericManaTapPayment { .. }
+            | ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { .. }
+            | ironsmith_core::StaticAbilityPayload::CanBeBlockedAsThoughBlockersWereUntapped(_)
+            | ironsmith_core::StaticAbilityPayload::AdditionalSpellTargets { .. } => return None,
             ironsmith_core::StaticAbilityPayload::Enchant(_)
             | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
             | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
@@ -1074,10 +1083,19 @@ impl StaticAbilityModelInterpreter {
                     *count,
                 ))
             }
+            ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughZone { .. }
+            | ironsmith_core::StaticAbilityPayload::NamedActionPaymentAlternative { .. }
+            | ironsmith_core::StaticAbilityPayload::NamedActionTokenAbilityGrant { .. }
+            | ironsmith_core::StaticAbilityPayload::OptionalCostPaymentAlternative { .. }
+            | ironsmith_core::StaticAbilityPayload::GrantOptionalSpellCost { .. }
+            | ironsmith_core::StaticAbilityPayload::NamedCastingPriceReduction { .. } => return None,
+            // A fragment manager retains its typed program; it is not a
+            // presentation keyword marker with a different semantic identity.
+            ironsmith_core::StaticAbilityPayload::OptionalTextFragments(_) => return None,
             ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic } => {
                 StaticAbility::new(super::KeywordMarker::typed(
                     model.label.clone(),
-                    Some(*mechanic),
+                    Some(mechanic.clone()),
                 ))
             }
             ironsmith_core::StaticAbilityPayload::Toxic { amount } => StaticAbility::toxic(*amount),
@@ -1296,22 +1314,26 @@ impl StaticAbilityModelInterpreter {
                 // CR 605.1a: mana abilities are excluded from the copy.
                 converted.include_mana = !copy.exclude_mana_abilities;
                 converted.exclude_loyalty = copy.exclude_loyalty_abilities;
+                converted.excluded_ability_designations = copy.excluded_ability_designations.clone();
                 StaticAbility::copy_activated_abilities(converted)
             }
             ironsmith_core::StaticAbilityPayload::CopyStaticAbilityVariants(copy) => {
-                let converted = crate::static_abilities::CopyStaticAbilityVariants::new(
+                let mut converted = crate::static_abilities::CopyStaticAbilityVariants::new(
                     copy.filter.clone(),
                     copy.selectors.clone(),
                     copy.display.clone(),
                 )
                 .with_exclude_source_id(copy.exclude_source_id);
+                converted.excluded_ability_designations = copy.excluded_ability_designations.clone();
+                converted.copy_all = copy.copy_all;
                 StaticAbility::copy_static_ability_variants(converted)
             }
             ironsmith_core::StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
-                let converted =
+                let mut converted =
                     crate::static_abilities::CopyTriggeredAbilities::new(copy.filter.clone())
                         .with_exclude_source_name(copy.exclude_source_name)
                         .with_display(copy.display.clone());
+                converted.excluded_ability_designations = copy.excluded_ability_designations.clone();
                 StaticAbility::copy_triggered_abilities(converted)
             }
             ironsmith_core::StaticAbilityPayload::LevelAbility(level) => {
@@ -1610,6 +1632,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::AttachedIsCopyOfChosenObject(display) => {
                 StaticAbility::attached_is_copy_of_chosen_object(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::AttachedIsCopyOfSource { retain_original_types } => {
+                StaticAbility::new(super::AttachedIsCopyOfSource::new(*retain_original_types))
             }
             ironsmith_core::StaticAbilityPayload::SourceLandIsChosenType(display) => {
                 StaticAbility::source_land_is_chosen_type(display.clone())
@@ -2295,6 +2320,13 @@ impl StaticAbilityModelInterpreter {
                     )
                 }
             }
+            ironsmith_core::StaticAbilityPayload::CopySourceSelectionReplacement {player,replacement,display} => StaticAbility::new(super::misc::CopySourceSelectionReplacement {player:player.clone(),replacement:replacement.clone(),display:display.clone()}),
+            ironsmith_core::StaticAbilityPayload::CardCreationSelectionReplacement {operation_label,player,replacement,display} =>
+                StaticAbility::new(super::misc::CardCreationSelectionReplacement {operation_label:operation_label.clone(),player:player.clone(),replacement:replacement.clone(),display:display.clone()}),
+            ironsmith_core::StaticAbilityPayload::NamedActionFirstThenOtherMode { label, player, first_mode, display } =>
+                StaticAbility::new(super::misc::NamedActionFirstThenOtherMode { label:label.clone(), player:player.clone(), first_mode:*first_mode, display:display.clone() }),
+            ironsmith_core::StaticAbilityPayload::NamedActionReplacement { label, source_filter, performer_filter, object_requirement, replacement_effects, optional, display } =>
+                StaticAbility::new(super::misc::NamedActionReplacement { label: label.clone(), source_filter: source_filter.clone(), performer_filter: performer_filter.clone(), object_requirement:object_requirement.clone(), replacement_effects: replacement_effects.clone(), optional: *optional, display: display.clone() }),
             ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
@@ -2448,8 +2480,8 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } => {
                 StaticAbility::token_creation_templates(controller.clone(), token_filter.clone(), templates.clone(), *mode, *choose_one, *optional, display.clone())
             }
-            ironsmith_core::StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
-                StaticAbility::add_life_gain_replacement(player.clone(), *additional, display.clone()),
+            ironsmith_core::StaticAbilityPayload::AddLifeGainReplacement { player, additional, loss, display } =>
+                StaticAbility::add_life_change_replacement(player.clone(), *additional, *loss, display.clone()),
             ironsmith_core::StaticAbilityPayload::DoubleLifeChangeReplacement {
                 player,
                 loss,
@@ -2633,26 +2665,51 @@ impl StaticAbilityModelInterpreter {
                 StaticAbility::new(native)
             },
             ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                face_down,
                 filter,
                 card_types,
                 subtypes,
                 power,
                 toughness,
-            } => StaticAbility::enters_with_characteristics_for_filter(
+            } => if *face_down { StaticAbility::new(crate::static_abilities::misc::EnterWithCharacteristicsForFilter::face_down(filter.clone())) } else { StaticAbility::enters_with_characteristics_for_filter(
                 filter.clone(),
                 card_types.clone(),
                 subtypes.clone(),
                 *power,
                 *toughness,
-            ),
+            ) },
             _ => return None,
         })
     }
 }
 
 impl StaticAbility {
+    pub fn additional_spell_targets_spec(&self) -> Option<(&crate::target::ObjectFilter,u32)> {
+        match &self.compiled_model()?.payload {
+            ironsmith_core::StaticAbilityPayload::AdditionalSpellTargets { filter, amount } => Some((filter,*amount)),
+            _ => None,
+        }
+    }
     pub fn enchant(filter: crate::object::AuraAttachmentFilter) -> Self {
         Self::from_model(CompiledStaticAbility::enchant(filter))
+    }
+
+    pub fn grant_optional_spell_cost(
+        filter: crate::target::ObjectFilter,
+        price: ironsmith_core::static_ability_model::GrantedOptionalCostPrice<crate::costs::Cost>,
+        reference: crate::cost::OptionalCostRef, effects: Vec<crate::effect::Effect>,
+        timing: ironsmith_core::static_ability_model::GrantedOptionalCostTiming,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::from_model(CompiledStaticAbility::grant_optional_spell_cost(filter, price, reference, effects, timing, display))
+    }
+    pub fn with_optional_spell_cost_local_references(self, references: Vec<crate::tag::TagKey>) -> Self {
+        let model = self.compiled_model().expect("optional casting recipe has a typed model").clone();
+        Self::from_model(model.with_optional_spell_cost_local_references(references))
+    }
+    pub fn with_optional_spell_cost_reduction(self, amount: crate::effect::Value) -> Self {
+        let model = self.compiled_model().expect("optional casting recipe has a typed model").clone();
+        Self::from_model(model.with_optional_spell_cost_reduction(amount))
     }
 
     /// A keyword granted to matching spells as they are cast (CR 601.2b).
@@ -3279,6 +3336,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         &self,
     ) -> Option<(&crate::target::PlayerFilter, &[crate::types::CardType])> {
         self.leaf_static_ability()?.untap_step_chosen_card_types_spec()
+    }
+
+    fn supplied_replacement_definition(&self)->Option<crate::effect::Effect>{
+        if let ironsmith_core::StaticAbilityPayload::Conditional {ability,..}=&self.model.payload {
+            return Self::new((**ability).clone()).supplied_replacement_definition();
+        }
+        self.leaf_static_ability()?.supplied_replacement_definition()
     }
 
     fn generate_replacement_effect(

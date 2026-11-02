@@ -1,6 +1,7 @@
 //! Materialization of versioned compiled-card artifacts into engine values.
 
 use ironsmith_compiled_artifact as wire;
+pub use ironsmith_artifact_effect_decoder::creation_graph::bind_card_creation_scope;
 #[path = "artifact_continuous_word_codec.rs"]
 mod continuous_word_codec;
 #[path = "artifact_text_program_codec.rs"]
@@ -147,6 +148,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CastTaggedEffect" => decode_as::<T, ironsmith_core::CastTaggedEffect<wire::WireCost>>(effect),
         "ChooseCardNameEffect" => decode_as::<T, ironsmith_core::ChooseCardNameEffect>(effect),
         "ChooseCardTypeEffect" => decode_as::<T, ironsmith_core::ChooseCardTypeEffect>(effect),
+        "RemoveOptionalTextFragmentEffect" => decode_as::<T, ironsmith_core::RemoveOptionalTextFragmentEffect>(effect),
         "ChangeTextEffect" => decode_as::<T, ironsmith_core::ChangeTextEffect>(effect),
         "ChooseColorEffect" => decode_as::<T, ironsmith_core::ChooseColorEffect>(effect),
         "RevealChosenSubtypeEffect" => {
@@ -190,6 +192,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "ControlPlayerEffect" => decode_as::<T, ironsmith_core::ControlPlayerEffect>(effect),
         "ConvertEffect" => decode_as::<T, ironsmith_core::ConvertEffect>(effect),
+        "TriggerAbilitiesByClassEffect" => decode_as::<T, ironsmith_core::TriggerAbilitiesByClassEffect>(effect),
         "CopySpellEffect" => decode_as::<T, ironsmith_core::CopySpellEffect>(effect),
         "CopySpellForEachTargetEffect" => {
             decode_as::<T, ironsmith_core::CopySpellForEachTargetEffect>(effect)
@@ -201,6 +204,10 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CreateTokenCopyEffect" => {
             decode_as::<T, ironsmith_core::CreateTokenCopyEffect<wire::WireStaticAbility>>(effect)
         }
+        "CopyFromDefinitionEffect" => decode_as::<T,ironsmith_core::CopyFromDefinitionEffect<wire::WireCardDefinition>>(effect),
+        "CardDefinitionScopeEffect" => decode_as::<T,ironsmith_core::card_creation::CardDefinitionScopeEffect<wire::WireCardDefinition,wire::WireEffect>>(effect),
+        "NoteObjectNamesEffect" => decode_as::<T,ironsmith_core::NoteObjectNamesEffect>(effect),
+        "CreateCardsEffect" => decode_as::<T,ironsmith_core::CreateCardsEffect<wire::WireCardDefinition>>(effect),
         "CreateTokenEffect" => {
             decode_as::<T, ironsmith_core::CreateTokenEffect<wire::WireCardDefinition>>(effect)
         }
@@ -255,6 +262,8 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "EachPlayerScryEffect" => decode_as::<T, ironsmith_core::EachPlayerScryEffect>(effect),
         "EarthbendEffect" => decode_as::<T, ironsmith_core::EarthbendEffect>(effect),
         "EmitGiftGivenEffect" => decode_as::<T, ironsmith_core::EmitGiftGivenEffect>(effect),
+        "PerformNamedActionEffect" => decode_as::<T, ironsmith_core::PerformNamedActionEffect>(effect),
+        "ActivateAbilityWithoutCostsEffect" => decode_as::<T, ironsmith_core::ActivateAbilityWithoutCostsEffect>(effect),
         "EmitKeywordActionEffect" => {
             decode_as::<T, ironsmith_core::EmitKeywordActionEffect>(effect)
         }
@@ -414,7 +423,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "MayEffect" => decode_as::<T, ironsmith_core::MayEffect<wire::WireEffect>>(effect),
         "MayMoveToZoneEffect" => decode_as::<T, ironsmith_core::MayMoveToZoneEffect>(effect),
+        "CreateLinkedFaceTokenEffect" => decode_as::<T, ironsmith_core::CreateLinkedFaceTokenEffect>(effect),
         "MeldEffect" => decode_as::<T, ironsmith_core::MeldEffect>(effect),
+        "MergePermanentsEffect"=>decode_as::<T,ironsmith_core::MergePermanentsEffect>(effect),
         "MillEffect" => decode_as::<T, ironsmith_core::MillEffect>(effect),
         "ModifyPowerToughnessEffect" => {
             decode_as::<T, ironsmith_core::ModifyPowerToughnessEffect>(effect)
@@ -422,6 +433,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ModifyPowerToughnessForEachEffect" => {
             decode_as::<T, ironsmith_core::ModifyPowerToughnessForEachEffect>(effect)
         }
+        "GrantActivationCostAlternativeEffect" => decode_as::<T, ironsmith_core::GrantActivationCostAlternativeEffect>(effect),
+        "GrantExileControllerInspectionEffect" => decode_as::<T, ironsmith_core::GrantExileControllerInspectionEffect>(effect),
+        "RememberOriginalMovementArrivalsEffect" => decode_as::<T, ironsmith_core::effect::RememberOriginalMovementArrivalsEffect>(effect),
         "SetPermanentDesignationEffect" => decode_as::<T, ironsmith_core::SetPermanentDesignationEffect>(effect),
         "MonstrosityEffect" => decode_as::<T, ironsmith_core::MonstrosityEffect>(effect),
         "MoveAllCountersEffect" => decode_as::<T, ironsmith_core::MoveAllCountersEffect>(effect),
@@ -526,6 +540,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RegisterDamagedBySourceZoneReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterDamagedBySourceZoneReplacementEffect>(effect)
         }
+        "RegisterEventReplacementEffect" => {
+            decode_as::<T, ironsmith_core::RegisterEventReplacementEffect<wire::WireEffect>>(effect)
+        }
         "RegisterDrawReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterDrawReplacementEffect<wire::WireEffect>>(effect)
         }
@@ -593,6 +610,8 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ReorderTopPlanarDeckEffect" => {
             decode_as::<T, ironsmith_core::ReorderTopPlanarDeckEffect>(effect)
         }
+        "FirstResolutionEachTurnEffect" => decode_as::<T, ironsmith_core::FirstResolutionEachTurnEffect<wire::WireEffect>>(effect),
+        "NamedActionProgramEffect" => decode_as::<T, ironsmith_core::NamedActionProgramEffect<wire::WireEffect>>(effect),
         "RepeatEffectsEffect" => {
             decode_as::<T, ironsmith_core::RepeatEffectsEffect<wire::WireEffect>>(effect)
         }
@@ -694,6 +713,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ControlVotesThisTurnEffect" => {
             decode_as::<T, ironsmith_core::ControlVotesThisTurnEffect>(effect)
         }
+        "LinkPermanentsEffect" => decode_as::<T, ironsmith_core::LinkPermanentsEffect>(effect),
         "SoulbondPairEffect" => decode_as::<T, ironsmith_core::SoulbondPairEffect>(effect),
         "SupportEffect" => decode_as::<T, ironsmith_core::SupportEffect>(effect),
         "SurveilEffect" => decode_as::<T, ironsmith_core::SurveilEffect>(effect),
@@ -744,6 +764,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::TagTriggeringObjectEffect>(effect)
         }
         "TagSplicedCardsEffect" => decode_as::<T, ironsmith_core::TagSplicedCardsEffect>(effect),
+        "LinkObjectsToGroupEffect" => decode_as::<T, ironsmith_core::LinkObjectsToGroupEffect>(effect),
         "TagLastDamageSourceEffect" => {
             decode_as::<T, ironsmith_core::TagLastDamageSourceEffect>(effect)
         }
@@ -1264,6 +1285,9 @@ fn convert_derived_alternative_cast(
         wire::WireDerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
             crate::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
         }
+        wire::WireDerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label } => {
+            crate::grant::DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label }
+        },
         wire::WireDerivedAlternativeCast::PlotFromCardManaCost => {
             crate::grant::DerivedAlternativeCast::PlotFromCardManaCost
         }
@@ -1490,6 +1514,8 @@ fn runtime_definition_from_core_model(
 pub fn materialize_effect(
     effect: wire::WireEffect,
 ) -> Result<crate::effect::Effect, ArtifactMaterializationError> {
+    ironsmith_artifact_effect_decoder::creation_graph::validate_card_creation_effect_graph(&effect)
+        .map_err(|detail|ArtifactMaterializationError::UnsupportedEffect{detail})?;
     runtime_effect_from_core_model(effect)
 }
 
@@ -1564,6 +1590,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::BolsterEffect,
             crate::effects::CantEffect,
             crate::effects::CastSourceEffect,
+            crate::effects::RemoveOptionalTextFragmentEffect,
             crate::effects::ChangeTextEffect,
             crate::effects::ChooseCardNameEffect,
             crate::effects::ChooseCardTypeEffect,
@@ -1577,6 +1604,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::ConspireCostEffect,
             crate::effects::ConsultTopOfLibraryEffect,
             crate::effects::ControlPlayerEffect,
+            crate::effects::TriggerAbilitiesByClassEffect,
             crate::effects::CopySpellEffect,
             crate::effects::CopySpellForEachTargetEffect,
             crate::effects::CounterEffect,
@@ -1589,9 +1617,12 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::DirectionalAdjacentPlayerControlEffect,
             crate::effects::DiscardHandEffect,
             crate::effects::DiscoverEffect,
+            crate::effects::NoteObjectNamesEffect,
             crate::effects::DrawCardsEffect,
             crate::effects::EachPlayerScryEffect,
             crate::effects::EarthbendEffect,
+            crate::effects::PerformNamedActionEffect,
+            crate::effects::ActivateAbilityWithoutCostsEffect,
             crate::effects::EmitKeywordActionEffect,
             crate::effects::EnergyCountersEffect,
             crate::effects::EvolveEffect,
@@ -1621,11 +1652,17 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::ManifestObjectsEffect,
             crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,
             crate::effects::MayMoveToZoneEffect,
+            crate::effects::CreateLinkedFaceTokenEffect,
+            crate::effects::LinkExiledCardsEffect,
             crate::effects::MeldEffect,
+            crate::effects::MergePermanentsEffect,
             crate::effects::MillEffect,
             crate::effects::ModifyPowerToughnessEffect,
             crate::effects::ModifyPowerToughnessForEachEffect,
+            crate::effects::GrantActivationCostAlternativeEffect,
             crate::effects::SetPermanentDesignationEffect,
+            crate::effects::GrantExileControllerInspectionEffect,
+            ironsmith_core::effect::RememberOriginalMovementArrivalsEffect,
             crate::effects::MonstrosityEffect,
             crate::effects::MoveAllCountersEffect,
             crate::effects::MoveCountersEffect,
@@ -1710,6 +1747,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::ShuffleObjectsIntoLibraryEffect,
             crate::effects::SneakCostEffect,
             crate::effects::SolveCaseEffect,
+            crate::effects::LinkPermanentsEffect,
             crate::effects::SoulbondPairEffect,
             crate::effects::TagAttachedToSourceEffect,
             crate::effects::TagMatchingObjectsEffect,
@@ -1719,6 +1757,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::TagTriggeringObjectEffect,
             crate::effects::TagSplicedCardsEffect,
             crate::effects::TagLastDamageSourceEffect,
+            crate::effects::LinkObjectsToGroupEffect,
             crate::effects::TagTriggeringSourceEffect,
             crate::effects::TapEffect,
             crate::effects::TargetOnlyEffect,
@@ -1813,7 +1852,7 @@ pub fn encode_runtime_effect(
         let converted = ironsmith_core::GrantNextSpellAbilityEffect::new(
             payload.player.clone(), payload.filter.clone(),
             encode_runtime_ability(payload.ability.clone())?,
-        ).with_mode(payload.mode);
+        ).with_mode(payload.mode).with_repeat_for_turn(payload.repeat_for_turn);
         return serde_json::to_value(converted)
             .map(|payload| wire::WireEffect::new("GrantNextSpellAbilityEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
@@ -1862,6 +1901,22 @@ pub fn encode_runtime_effect(
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
 
+    if let Some(payload)=effect.downcast_ref::<crate::effects::CopyFromDefinitionEffect>() {
+        let definition=encode_runtime_definition(payload.definition.clone())?;
+        let converted=ironsmith_core::CopyFromDefinitionEffect{definition,count:payload.count.clone(),player:payload.player.clone()};
+        return serde_json::to_value(converted).map(|payload|wire::WireEffect::new("CopyFromDefinitionEffect",payload)).map_err(|error|RuntimePayloadEncodingError::InvalidEffectModel{detail:error.to_string()});
+    }
+    if let Some(payload)=effect.downcast_ref::<crate::effects::cards::CardDefinitionScopeEffect>() {
+        let definitions=payload.definitions.iter().cloned().map(encode_runtime_definition).collect::<Result<Vec<_>,_>>()?;
+        let child=encode_runtime_effect((*payload.effect).clone())?;
+        let converted=ironsmith_core::card_creation::CardDefinitionScopeEffect{scope:payload.scope,definitions,effect:Box::new(child)};
+        return serde_json::to_value(converted).map(|payload|wire::WireEffect::new("CardDefinitionScopeEffect",payload)).map_err(|error|RuntimePayloadEncodingError::InvalidEffectModel{detail:error.to_string()});
+    }
+    if let Some(payload)=effect.downcast_ref::<crate::effects::CreateCardsEffect>() {
+        let definitions=payload.definitions.iter().cloned().map(encode_runtime_definition).collect::<Result<Vec<_>,_>>()?;
+        let converted=ironsmith_core::CreateCardsEffect {definitions,definition_scope:payload.definition_scope,definition_refs:payload.definition_refs.clone(),selection:payload.selection.clone(),count:payload.count.clone(),player:payload.player.clone(),zone:payload.zone,library_position:payload.library_position,operation_label:payload.operation_label.clone()};
+        return serde_json::to_value(converted).map(|payload|wire::WireEffect::new("CreateCardsEffect",payload)).map_err(|error|RuntimePayloadEncodingError::InvalidEffectModel{detail:error.to_string()});
+    }
     if let Some(payload) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let ironsmith_core::CreateTokenEffect {
             token, text_roles, dynamic_power_toughness, count, controller, controller_target, use_source_chosen_color,
@@ -1870,7 +1925,7 @@ pub fn encode_runtime_effect(
             enters_attacking, attack_target_mode, enters_blocking,
             exile_at_end_of_combat, sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step, exile_at_next_end_step,
-            next_end_step_player, link_source_exiled_this_resolution, entry_counters,
+            next_end_step_player, link_source_exiled_this_resolution, link_only_last_source_exiled, entry_counters,
             must_attack_player_this_turn,
         } = payload.clone();
         let converted = ironsmith_core::CreateTokenEffect {
@@ -1881,7 +1936,7 @@ pub fn encode_runtime_effect(
             enters_attacking, attack_target_mode, enters_blocking,
             exile_at_end_of_combat, sacrifice_at_end_of_combat,
             sacrifice_at_next_end_step, exile_at_next_end_step,
-            next_end_step_player, link_source_exiled_this_resolution, entry_counters,
+            next_end_step_player, link_source_exiled_this_resolution, link_only_last_source_exiled, entry_counters,
             must_attack_player_this_turn,
         };
         return serde_json::to_value(converted)
@@ -2108,7 +2163,16 @@ pub fn restore_runtime_aura_metadata(
 pub fn materialize_definition(
     definition: wire::WireCardDefinition,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {
+    validate_card_creation_graph(&definition)?;
     runtime_definition_from_core_model(definition)
+}
+
+pub use crate::effects::cards::bind_card_creation_scope_runtime;
+
+/// Shared native/wire admission gate for finite supplied-definition graphs.
+pub fn validate_card_creation_graph(definition:&wire::WireCardDefinition)->Result<(),ArtifactMaterializationError>{
+    ironsmith_artifact_effect_decoder::creation_graph::validate_card_creation_graph(definition)
+        .map_err(|detail|ArtifactMaterializationError::UnsupportedEffect{detail})
 }
 
 pub fn materialize_artifact(
@@ -2118,6 +2182,7 @@ pub fn materialize_artifact(
     // admission. In particular, pre-provenance definitions are not migratable
     // merely because their executable abilities still decode structurally.
     artifact.validate().map_err(ArtifactMaterializationError::InvalidArtifact)?;
+    validate_card_creation_graph(&artifact.payload.definition)?;
     let mut definition = runtime_definition_from_core_model(artifact.payload.definition.clone())?;
     definition.canonical_text = artifact.payload.canonical_text.clone();
     definition.ability_labels = artifact.payload.ability_labels.clone();
@@ -2332,6 +2397,7 @@ mod native_effect_payload_codec_tests {
         token.sacrifice_at_next_end_step = true;
         token.exile_at_next_end_step = true;
         token.link_source_exiled_this_resolution = true;
+        token.link_only_last_source_exiled = true;
         let encoded = encode_runtime_effect(crate::effect::Effect::new(token)).expect("native token encodes");
         let restored = materialize_effect(encoded.clone()).expect("typed model materializes");
         let actual = restored.downcast_ref::<crate::effects::CreateTokenEffect>().expect("native token executor");

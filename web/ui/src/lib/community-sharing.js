@@ -1,3 +1,4 @@
+import { mergeSubtypes } from './custom-subtypes.js';
 import { normalizeCommunityFormat } from './community-format.js';
 import { mergeMechanics } from './custom-mechanics.js';
 import { validateToken } from './custom-tokens.js';
@@ -25,7 +26,7 @@ function cards(value) {
     requireValue(card.draft.faces.length > 0 && card.draft.faces.length <= 3, 'each custom card needs 1–3 faces.');
     for (const face of card.draft.faces) {
       requireValue(object(face) && typeof face.name === 'string' && face.name.trim(), 'every card face needs a name.');
-      for (const field of ['oracleText', 'manaCost', 'displayOracleText']) {
+      for (const field of ['oracleText', 'manaCost', 'displayOracleText', 'originalPrintedRulesText']) {
         requireValue(face[field] == null || typeof face[field] === 'string', `${field} must be text.`);
       }
       for (const field of ['cardTypes', 'supertypes', 'subtypes', 'colorIndicator']) {
@@ -38,6 +39,10 @@ function cards(value) {
       // Validate without replacing the originals: retain parameters, forms,
       // expansion and any additional authoring metadata exactly as exported.
       mergeMechanics([], card.draft.customMechanics);
+    }
+    if (card.draft.customSubtypes != null) {
+      array(card.draft.customSubtypes, 'custom subtypes');
+      mergeSubtypes(card.draft.customSubtypes);
     }
     if (card.draft.customTokens != null) {
       array(card.draft.customTokens, 'custom tokens');
@@ -52,6 +57,10 @@ function customSet(value) {
   requireValue(object(value), 'a custom set must be an object.');
   title(value.name);
   cards(value.cards);
+  if (value.customSubtypes != null) {
+    array(value.customSubtypes, 'set subtypes');
+    mergeSubtypes(value.customSubtypes, ...value.cards.map(card => card.draft.customSubtypes || []));
+  }
   if (value.customMechanics != null) {
     array(value.customMechanics, 'set mechanics');
     mergeMechanics([], value.customMechanics);
@@ -62,7 +71,7 @@ export function validateCommunityShare(kind, value) {
   if (kind === 'set') {
     customSet(value);
     normalizeCommunityFormat({ name: value.name, customSets: [value] });
-    return { name: value.name.trim(), cards: structuredClone(value.cards), ...(value.customMechanics ? { customMechanics: structuredClone(value.customMechanics) } : {}) };
+    return { name: value.name.trim(), cards: structuredClone(value.cards), ...(value.customSubtypes ? { customSubtypes: structuredClone(value.customSubtypes) } : {}), ...(value.customMechanics ? { customMechanics: structuredClone(value.customMechanics) } : {}) };
   }
   requireValue(kind === 'format', 'unknown content type.');
   title(value.name);

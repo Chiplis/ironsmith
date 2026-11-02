@@ -1,0 +1,2681 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01",
+    "scope": "msem",
+    "policy": "Exact source variants retained. Frontend materialization is not native semantic or gameplay certification. Nourish/Germinate variants271–275/321–323 remain owned by msem-token-actions.json; no duplicate overlays."
+  },
+  "mechanics": [
+    {
+      "id": "msem-350",
+      "keyword": "Torment",
+      "original_reminder": "To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.",
+      "executable_reminder": null,
+      "source_cards": [
+        "Dawnlit Battlefield",
+        "Deadwood Grove",
+        "Lush Outskirts",
+        "Shrouded Rooftops",
+        "Weathered Fortress",
+        "Agonizing Punishment",
+        "Frozen Hinterlands",
+        "Hazy Coppice",
+        "Inferno Lash",
+        "Spires of Caulte",
+        "Sunlit Fissure",
+        "Surge of Darkness",
+        "Torch the City",
+        "Towering Boughs",
+        "Grinning Torturer",
+        "King Florence of Caulder",
+        "Velinor, Storm of Shadows",
+        "Mad Queen Margarete",
+        "Tiger of the Drums"
+      ],
+      "rule_reference": "701.88.",
+      "rule_text": [
+        {
+          "name": "701.88a",
+          "rule": "Torment is a keyword action. The tormented player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dawnlit Battlefield_L",
+          "name": "Dawnlit Battlefield",
+          "original_text": "Type: Land\nDawnlit Battlefield enters tapped.\n{T}: Add {R} or {W}.\n{2}{R}{W}: Until end of turn, Dawnlit Battlefield becomes a 4/2 red and white Warrior creature with “This creature has first strike as long as it's attacking” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "mana_cost": "",
+          "type_line": "Land",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Dawnlit Battlefield_L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dawnlit Battlefield",
+              "original_text": "Type: Land\nDawnlit Battlefield enters tapped.\n{T}: Add {R} or {W}.\n{2}{R}{W}: Until end of turn, Dawnlit Battlefield becomes a 4/2 red and white Warrior creature with “This creature has first strike as long as it's attacking” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Deadwood Grove_L",
+          "name": "Deadwood Grove",
+          "source_card_key": "Deadwood Grove_L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nDeadwood Grove enters tapped.\n{T}: Add {B} or {G}.\n{1}{B}{G}: Until end of turn, Deadwood Grove becomes a 2/3 black and green Horror creature with deathtouch and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Deadwood Grove",
+              "original_text": "Type: Land\nDeadwood Grove enters tapped.\n{T}: Add {B} or {G}.\n{1}{B}{G}: Until end of turn, Deadwood Grove becomes a 2/3 black and green Horror creature with deathtouch and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Lush Outskirts_L",
+          "name": "Lush Outskirts",
+          "source_card_key": "Lush Outskirts_L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nLush Outskirts enters tapped.\n{T}: Add {G} or {U}.\n{3}{G}{U}: Until end of turn, Lush Outskirts becomes a 5/7 green and blue Plant creature with ward {3} and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lush Outskirts",
+              "original_text": "Type: Land\nLush Outskirts enters tapped.\n{T}: Add {G} or {U}.\n{3}{G}{U}: Until end of turn, Lush Outskirts becomes a 5/7 green and blue Plant creature with ward {3} and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Shrouded Rooftops_L",
+          "name": "Shrouded Rooftops",
+          "source_card_key": "Shrouded Rooftops_L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nShrouded Rooftops enters tapped.\n{T}: Add {W} or {B}.\n{1}{W}{B}: Until end of turn, Shrouded Rooftops becomes a 3/3 white and black Illusion creature with lifelink and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shrouded Rooftops",
+              "original_text": "Type: Land\nShrouded Rooftops enters tapped.\n{T}: Add {W} or {B}.\n{1}{W}{B}: Until end of turn, Shrouded Rooftops becomes a 3/3 white and black Illusion creature with lifelink and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Weathered Fortress_L",
+          "name": "Weathered Fortress",
+          "source_card_key": "Weathered Fortress_L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nWeathered Fortress enters tapped.\n{T}: Add {U} or {R}.\n{U}{R}: Until end of turn, Weathered Fortress becomes a 1/4 blue and red Golem creature with “Whenever this creature attacks, switch its power and toughness until end of turn” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Weathered Fortress",
+              "original_text": "Type: Land\nWeathered Fortress enters tapped.\n{T}: Add {U} or {R}.\n{U}{R}: Until end of turn, Weathered Fortress becomes a 1/4 blue and red Golem creature with “Whenever this creature attacks, switch its power and toughness until end of turn” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Frozen Hinterlands_STN",
+          "name": "Frozen Hinterlands",
+          "source_card_key": "Frozen Hinterlands_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nFrozen Hinterlands enters tapped.\n{T}: Add {W} or {U}.\n{1}{W}{U}: Until end of turn, Frozen Hinterlands becomes a 4/3 white and blue Spirit creature with with prowess and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Frozen Hinterlands",
+              "original_text": "Type: Land\nFrozen Hinterlands enters tapped.\n{T}: Add {W} or {U}.\n{1}{W}{U}: Until end of turn, Frozen Hinterlands becomes a 4/3 white and blue Spirit creature with with prowess and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Hazy Coppice_STN",
+          "name": "Hazy Coppice",
+          "source_card_key": "Hazy Coppice_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nHazy Coppice enters tapped.\n{T}: Add {U} or {B}.\n{2}{U}{B}: Until end of turn, Hazy Coppice becomes a 4/4 blue and black Bird creature with with flying and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hazy Coppice",
+              "original_text": "Type: Land\nHazy Coppice enters tapped.\n{T}: Add {U} or {B}.\n{2}{U}{B}: Until end of turn, Hazy Coppice becomes a 4/4 blue and black Bird creature with with flying and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Spires of Caulte_STN",
+          "name": "Spires of Caulte",
+          "source_card_key": "Spires of Caulte_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nSpires of Caulte enters tapped.\n{T}: Add {B} or {R}.\n{B}{R}: Until end of turn, Spires of Caulte becomes a 3/2 black and red Construct creature with with menace and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spires of Caulte",
+              "original_text": "Type: Land\nSpires of Caulte enters tapped.\n{T}: Add {B} or {R}.\n{B}{R}: Until end of turn, Spires of Caulte becomes a 3/2 black and red Construct creature with with menace and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Sunlit Fissure_STN",
+          "name": "Sunlit Fissure",
+          "source_card_key": "Sunlit Fissure_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nSunlit Fissure enters tapped.\n{T}: Add {G} or {W}.\n{2}{G}{W}: Until end of turn, Sunlit Fissure becomes a 3/5 green and white Elemental creature with with vigilance and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sunlit Fissure",
+              "original_text": "Type: Land\nSunlit Fissure enters tapped.\n{T}: Add {G} or {W}.\n{2}{G}{W}: Until end of turn, Sunlit Fissure becomes a 3/5 green and white Elemental creature with with vigilance and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        },
+        {
+          "id": "Towering Boughs_STN",
+          "name": "Towering Boughs",
+          "source_card_key": "Towering Boughs_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Type: Land\nTowering Boughs enters tapped.\n{T}: Add {R} or {G}.\n{3}{R}{G}: Until end of turn, Towering Boughs becomes a 6/6 red and green Treefolk creature with with trample and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": null,
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Towering Boughs",
+              "original_text": "Type: Land\nTowering Boughs enters tapped.\n{T}: Add {R} or {G}.\n{3}{R}{G}: Until end of turn, Towering Boughs becomes a 6/6 red and green Treefolk creature with with trample and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        }
+      ],
+      "support_status": "pending_generic_player_action_operand",
+      "rewrite_boundary": "Generic action needs explicit player operand, optional repetition, and actor-safe unless alternatives. A standalone you/them replacement cannot preserve target player, each player, quoted granted self-action, or casting-cost context. No target/non-target or additional-cost substitution is claimed."
+    },
+    {
+      "id": "msem-351",
+      "keyword": "Torment",
+      "original_reminder": "They lose 3 life unless they discard a card or sacrifice a nonland permanent.",
+      "executable_reminder": "{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+      "source_cards": [
+        "Dawnlit Battlefield",
+        "Deadwood Grove",
+        "Lush Outskirts",
+        "Shrouded Rooftops",
+        "Weathered Fortress",
+        "Agonizing Punishment",
+        "Frozen Hinterlands",
+        "Hazy Coppice",
+        "Inferno Lash",
+        "Spires of Caulte",
+        "Sunlit Fissure",
+        "Surge of Darkness",
+        "Torch the City",
+        "Towering Boughs",
+        "Grinning Torturer",
+        "King Florence of Caulder",
+        "Velinor, Storm of Shadows",
+        "Mad Queen Margarete",
+        "Tiger of the Drums"
+      ],
+      "rule_reference": "701.88.",
+      "rule_text": [
+        {
+          "name": "701.88a",
+          "rule": "Torment is a keyword action. The tormented player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Agonizing Punishment_STN",
+          "name": "Agonizing Punishment",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature.\nTorment target player three times. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature.\nChoose target player. that player loses 3 life unless they discard a card or sacrifice a nonland permanent. that player loses 3 life unless they discard a card or sacrifice a nonland permanent. that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Agonizing Punishment_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Agonizing Punishment",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature.\nTorment target player three times. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Agonizing Punishment",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature.\nChoose target player. that player loses 3 life unless they discard a card or sacrifice a nonland permanent. that player loses 3 life unless they discard a card or sacrifice a nonland permanent. that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "torment"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "As an additional cost to cast this spell, sacrifice a creature.\nTorment target player three times."
+            }
+          ],
+          "custom_keyword_identities": [
+            "torment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "As an additional cost to cast this spell, sacrifice a creature.\nTorment target player three times."
+        },
+        {
+          "id": "Inferno Lash_STN",
+          "name": "Inferno Lash",
+          "source_card_key": "Inferno Lash_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{R}\nType: Instant\nInferno Lash deals 2 damage to target creature or planeswalker. When it does, torment that permanent's controller. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Instant\nInferno Lash deals 2 damage to target creature or planeswalker. When it does, torment that permanent's controller. (They lose 3 life unless they discard a card or sacrifice a nonland permanent.)",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inferno Lash",
+              "original_text": "Mana cost: {1}{R}\nType: Instant\nInferno Lash deals 2 damage to target creature or planeswalker. When it does, torment that permanent's controller. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_declaration_unread",
+          "executable_faces": [
+            {
+              "name": "Inferno Lash",
+              "executable_text": "Mana cost: {1}{R}\nType: Instant\nInferno Lash deals 2 damage to target creature or planeswalker. When it does, torment that permanent's controller. (They lose 3 life unless they discard a card or sacrifice a nonland permanent.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": []
+        },
+        {
+          "id": "Grinning Torturer_OTH",
+          "name": "Grinning Torturer",
+          "source_card_key": "Grinning Torturer_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Grinning Torturer deals combat damage to a player, torment that player. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\n{2}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Grinning Torturer deals combat damage to a player, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grinning Torturer",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Grinning Torturer deals combat damage to a player, torment that player. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Grinning Torturer",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\n{2}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Grinning Torturer deals combat damage to a player, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "torment",
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {2}{B}\nWhenever Grinning Torturer deals combat damage to a player, torment that player."
+            }
+          ],
+          "custom_keyword_identities": [
+            "torment",
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {2}{B}\nWhenever Grinning Torturer deals combat damage to a player, torment that player."
+        },
+        {
+          "id": "King Florence of Caulder_MSC",
+          "name": "King Florence of Caulder",
+          "source_card_key": "King Florence of Caulder_MSC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever King Florence of Caulder enters or attacks, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\n{1}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever King Florence of Caulder enters or attacks, For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "King Florence of Caulder",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever King Florence of Caulder enters or attacks, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "King Florence of Caulder",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\n{1}{B}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever King Florence of Caulder enters or attacks, For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "torment",
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {1}{B}\nWhenever King Florence of Caulder enters or attacks, torment each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "torment",
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deception {1}{B}\nWhenever King Florence of Caulder enters or attacks, torment each opponent."
+        },
+        {
+          "id": "Velinor, Storm of Shadows_SWR",
+          "name": "Velinor, Storm of Shadows",
+          "source_card_key": "Velinor, Storm of Shadows_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 3/1\nWhenever you cast a noncreature spell, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life.",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 3/1\nWhenever you cast a noncreature spell, For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Velinor, Storm of Shadows",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 3/1\nWhenever you cast a noncreature spell, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Velinor, Storm of Shadows",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 3/1\nWhenever you cast a noncreature spell, For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life.",
+              "custom_keyword_identities": [
+                "torment"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever you cast a noncreature spell, torment each opponent.\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "torment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever you cast a noncreature spell, torment each opponent.\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life."
+        },
+        {
+          "id": "Mad Queen Margarete_MSL",
+          "name": "Mad Queen Margarete",
+          "source_card_key": "Mad Queen Margarete_MSL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {B}{R}\nType: Legendary Creature — Wolf Noble\nPower/Toughness: 1/3\nMenace\nWhenever Margarete or another creature you control dies, up to one target creature you control cackles. *(Put a menace counter on it. If it already has menace, it deals 1 damage to each opponent instead.)*\nOnce each turn, when Margarete or another creature you control with menace dies, you may torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {B}{R}\nType: Legendary Creature — Wolf Noble\nPower/Toughness: 1/3\nMenace\nWhenever Margarete or another creature you control dies, up to one target creature you control cackles. (Put a menace counter on it. If it already has menace, it deals 1 damage to each opponent instead.)\nOnce each turn, when Margarete or another creature you control with menace dies, you may torment each opponent. (They lose 3 life unless they discard a card or sacrifice a nonland permanent.)",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mad Queen Margarete",
+              "original_text": "Mana cost: {B}{R}\nType: Legendary Creature — Wolf Noble\nPower/Toughness: 1/3\nMenace\nWhenever Margarete or another creature you control dies, up to one target creature you control cackles. *(Put a menace counter on it. If it already has menace, it deals 1 damage to each opponent instead.)*\nOnce each turn, when Margarete or another creature you control with menace dies, you may torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_declaration_unread",
+          "executable_faces": [
+            {
+              "name": "Mad Queen Margarete",
+              "executable_text": "Mana cost: {B}{R}\nType: Legendary Creature — Wolf Noble\nPower/Toughness: 1/3\nMenace\nWhenever Margarete or another creature you control dies, up to one target creature you control cackles. (Put a menace counter on it. If it already has menace, it deals 1 damage to each opponent instead.)\nOnce each turn, when Margarete or another creature you control with menace dies, you may torment each opponent. (They lose 3 life unless they discard a card or sacrifice a nonland permanent.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": []
+        },
+        {
+          "id": "Tiger of the Drums_MSL",
+          "name": "Tiger of the Drums",
+          "source_card_key": "Tiger of the Drums_MSL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Cat Demon\nPower/Toughness: 4/3\nMenace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• Torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Creature — Cat Demon\nPower/Toughness: 4/3\nMenace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tiger of the Drums",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Cat Demon\nPower/Toughness: 4/3\nMenace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• Torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Tiger of the Drums",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Creature — Cat Demon\nPower/Toughness: 4/3\nMenace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• For each opponent, that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "torment"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Menace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• Torment each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "torment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Menace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• Torment each opponent."
+        }
+      ],
+      "support_status": "existing_operations_candidate_pending_player_binding_native_validation",
+      "rewrite_boundary": "Explicit player binding and finite repetition materialize through the generic frontend. Target is selected once; each-player repetitions stay in a per-player scope. Native validation of complete target/decision semantics remains pending. Additional casting costs and quoted self-actions are not expanded.",
+      "executable_definitions": [
+        {
+          "keyword": "Torment {Player}",
+          "reminder": "{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent."
+        }
+      ]
+    },
+    {
+      "id": "msem-352",
+      "keyword": "Torment",
+      "original_reminder": "You lose 3 life unless you discard a card or sacrifice a nonland permanent.",
+      "executable_reminder": null,
+      "source_cards": [
+        "Dawnlit Battlefield",
+        "Deadwood Grove",
+        "Lush Outskirts",
+        "Shrouded Rooftops",
+        "Weathered Fortress",
+        "Agonizing Punishment",
+        "Frozen Hinterlands",
+        "Hazy Coppice",
+        "Inferno Lash",
+        "Spires of Caulte",
+        "Sunlit Fissure",
+        "Surge of Darkness",
+        "Torch the City",
+        "Towering Boughs",
+        "Grinning Torturer",
+        "King Florence of Caulder",
+        "Velinor, Storm of Shadows",
+        "Mad Queen Margarete",
+        "Tiger of the Drums"
+      ],
+      "rule_reference": "701.88.",
+      "rule_text": [
+        {
+          "name": "701.88a",
+          "rule": "Torment is a keyword action. The tormented player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Surge of Darkness_STN",
+          "name": "Surge of Darkness",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nAs an additional cost to cast this spell, torment yourself. *(You lose 3 life unless you discard a card or sacrifice a nonland permanent.)*\nDestroy target creature.",
+          "executable_text": null,
+          "mana_cost": "{1}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Surge of Darkness_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Surge of Darkness",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nAs an additional cost to cast this spell, torment yourself. *(You lose 3 life unless you discard a card or sacrifice a nonland permanent.)*\nDestroy target creature."
+            }
+          ],
+          "rewrite_status": "pending_generic_player_action_operand"
+        }
+      ],
+      "support_status": "pending_generic_player_action_operand",
+      "rewrite_boundary": "Generic action needs explicit player operand, optional repetition, and actor-safe unless alternatives. A standalone you/them replacement cannot preserve target player, each player, quoted granted self-action, or casting-cost context. No target/non-target or additional-cost substitution is claimed."
+    },
+    {
+      "id": "msem-353",
+      "keyword": "Torment",
+      "original_reminder": "To torment a player, they lose 3 life unless they discard a card or sacrifice a nonland permanent.",
+      "executable_reminder": "{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+      "source_cards": [
+        "Dawnlit Battlefield",
+        "Deadwood Grove",
+        "Lush Outskirts",
+        "Shrouded Rooftops",
+        "Weathered Fortress",
+        "Agonizing Punishment",
+        "Frozen Hinterlands",
+        "Hazy Coppice",
+        "Inferno Lash",
+        "Spires of Caulte",
+        "Sunlit Fissure",
+        "Surge of Darkness",
+        "Torch the City",
+        "Towering Boughs",
+        "Grinning Torturer",
+        "King Florence of Caulder",
+        "Velinor, Storm of Shadows",
+        "Mad Queen Margarete",
+        "Tiger of the Drums"
+      ],
+      "rule_reference": "701.88.",
+      "rule_text": [
+        {
+          "name": "701.88a",
+          "rule": "Torment is a keyword action. The tormented player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Torch the City_STN",
+          "name": "Torch the City",
+          "original_text": "Mana cost: {3}{B}{R}\nType: Sorcery\nEach player sacrifices three lands. Torment each player three times. *(To torment a player, they lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+          "executable_text": "Mana cost: {3}{B}{R}\nType: Sorcery\nEach player sacrifices three lands. For each player, that player loses 3 life unless they discard a card or sacrifice a nonland permanent, then that player loses 3 life unless they discard a card or sacrifice a nonland permanent, then that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+          "mana_cost": "{3}{B}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Torch the City_STN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Torch the City",
+              "original_text": "Mana cost: {3}{B}{R}\nType: Sorcery\nEach player sacrifices three lands. Torment each player three times. *(To torment a player, they lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Torch the City",
+              "executable_text": "Mana cost: {3}{B}{R}\nType: Sorcery\nEach player sacrifices three lands. For each player, that player loses 3 life unless they discard a card or sacrifice a nonland permanent, then that player loses 3 life unless they discard a card or sacrifice a nonland permanent, then that player loses 3 life unless they discard a card or sacrifice a nonland permanent.",
+              "custom_keyword_identities": [
+                "torment"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Each player sacrifices three lands. Torment each player three times."
+            }
+          ],
+          "custom_keyword_identities": [
+            "torment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Each player sacrifices three lands. Torment each player three times."
+        }
+      ],
+      "support_status": "existing_operations_candidate_pending_player_binding_native_validation",
+      "rewrite_boundary": "Explicit player binding and finite repetition materialize through the generic frontend. Target is selected once; each-player repetitions stay in a per-player scope. Native validation of complete target/decision semantics remains pending. Additional casting costs and quoted self-actions are not expanded.",
+      "executable_definitions": [
+        {
+          "keyword": "Torment {Player}",
+          "reminder": "{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent."
+        }
+      ]
+    },
+    {
+      "id": "msem-369",
+      "keyword": "Recruit",
+      "original_reminder": "To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.",
+      "executable_reminder": "Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+      "source_cards": [
+        "Affluent Knight",
+        "Aid from Martoob",
+        "Andazir Assaulter",
+        "Army's Suppliers",
+        "Assault of the Conscripted",
+        "Bringer of Armies",
+        "Call on Reinforcements",
+        "Cyrukan Guardians",
+        "Devastating Charge",
+        "Divine Splendor",
+        "Endless Infantry",
+        "Enlist",
+        "Fight for Succession//Chalice of Fallen Foes",
+        "Grand Stand at Danaj",
+        "Hold Captive",
+        "Kahroba General",
+        "Lax Gambit",
+        "Mahara, the Universal//Andazir, the Crownless",
+        "Makeshift Quarters",
+        "Nightly Raid",
+        "Omid, the Undefeated",
+        "Overwhelming Defeat",
+        "Paladin of Order",
+        "Relentless Army",
+        "Saeedi Kahroba, Daughter",
+        "Satrapy General",
+        "Scouting Party",
+        "Siaveed, Commander of Armies",
+        "War's Trauma",
+        "War of Resources",
+        "Livia's Advocate",
+        "Major Benjamin Stout",
+        "Mahnaz of Moonlit Blades"
+      ],
+      "rule_reference": "701.97.",
+      "rule_text": [
+        {
+          "name": "701.97a",
+          "rule": "Recruit is a keyword action. To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Affluent Knight_ALK",
+          "name": "Affluent Knight",
+          "original_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, recruit, then recruit again. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Then Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "mana_cost": "{4}{B}{G}",
+          "type_line": "Creature — Human Knight",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Affluent Knight_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Affluent Knight",
+              "original_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, recruit, then recruit again. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control., then Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Affluent Knight",
+              "executable_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Then Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Affluent Knight enters, muster ranks, then muster ranks again."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Affluent Knight enters, muster ranks, then muster ranks again.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Assault of the Conscripted_ALK",
+          "name": "Assault of the Conscripted",
+          "source_card_key": "Assault of the Conscripted_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {X}{B}{B}\nType: Instant\nRecruit X times. You lose X life. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {X}{B}{B}\nType: Instant\nRepeat the following process X times: Create a 0/0 white Soldier Army creature token; Then put a +1/+1 counter on each Army you control. You lose X life.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Assault of the Conscripted",
+              "original_text": "Mana cost: {X}{B}{B}\nType: Instant\nRecruit X times. You lose X life. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {X}{B}{B}\nType: Instant\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. X times. You lose X life.",
+          "executable_faces": [
+            {
+              "name": "Assault of the Conscripted",
+              "executable_text": "Mana cost: {X}{B}{B}\nType: Instant\nRepeat the following process X times: Create a 0/0 white Soldier Army creature token; Then put a +1/+1 counter on each Army you control. You lose X life.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "muster ranks X times. You lose X life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "muster ranks X times. You lose X life."
+        },
+        {
+          "id": "Grand Stand at Danaj_ALK",
+          "name": "Grand Stand at Danaj",
+          "source_card_key": "Grand Stand at Danaj_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nRecruit four times. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grand Stand at Danaj",
+              "original_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nRecruit four times. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. four times.",
+          "executable_faces": [
+            {
+              "name": "Grand Stand at Danaj",
+              "executable_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "muster ranks four times."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "muster ranks four times.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule701.97a operations and order preserved. New token remains0/0 until following counter action; no intervening state-based-action check is inserted."
+      },
+      "support_status": "existing_operations_candidate",
+      "executable_keyword": "Muster ranks",
+      "executable_definitions": [
+        {
+          "keyword": "Muster ranks",
+          "reminder": "Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "sourceKeyword": "Recruit"
+        }
+      ]
+    },
+    {
+      "id": "msem-370",
+      "keyword": "Recruit",
+      "original_reminder": "Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.",
+      "executable_reminder": "Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+      "source_cards": [
+        "Affluent Knight",
+        "Aid from Martoob",
+        "Andazir Assaulter",
+        "Army's Suppliers",
+        "Assault of the Conscripted",
+        "Bringer of Armies",
+        "Call on Reinforcements",
+        "Cyrukan Guardians",
+        "Devastating Charge",
+        "Divine Splendor",
+        "Endless Infantry",
+        "Enlist",
+        "Fight for Succession//Chalice of Fallen Foes",
+        "Grand Stand at Danaj",
+        "Hold Captive",
+        "Kahroba General",
+        "Lax Gambit",
+        "Mahara, the Universal//Andazir, the Crownless",
+        "Makeshift Quarters",
+        "Nightly Raid",
+        "Omid, the Undefeated",
+        "Overwhelming Defeat",
+        "Paladin of Order",
+        "Relentless Army",
+        "Saeedi Kahroba, Daughter",
+        "Satrapy General",
+        "Scouting Party",
+        "Siaveed, Commander of Armies",
+        "War's Trauma",
+        "War of Resources",
+        "Livia's Advocate",
+        "Major Benjamin Stout",
+        "Mahnaz of Moonlit Blades"
+      ],
+      "rule_reference": "701.97.",
+      "rule_text": [
+        {
+          "name": "701.97a",
+          "rule": "Recruit is a keyword action. To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aid from Martoob_ALK",
+          "name": "Aid from Martoob",
+          "original_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhen enchanted land is tapped for mana, add one mana of any color.",
+          "executable_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nWhen enchanted land is tapped for mana, add one mana of any color.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Aid from Martoob_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aid from Martoob",
+              "original_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhen enchanted land is tapped for mana, add one mana of any color."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nWhen enchanted land is tapped for mana, add one mana of any color.",
+          "executable_faces": [
+            {
+              "name": "Aid from Martoob",
+              "executable_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nWhen enchanted land is tapped for mana, add one mana of any color.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Enchant land\nWhen Aid from Martoob enters, muster ranks.\nWhen enchanted land is tapped for mana, add one mana of any color."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Enchant land\nWhen Aid from Martoob enters, muster ranks.\nWhen enchanted land is tapped for mana, add one mana of any color.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Andazir Assaulter_ALK",
+          "name": "Andazir Assaulter",
+          "source_card_key": "Andazir Assaulter_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Andazir Assaulter",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Andazir Assaulter",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhen Andazir Assaulter enters, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhen Andazir Assaulter enters, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Army's Suppliers_ALK",
+          "name": "Army's Suppliers",
+          "source_card_key": "Army's Suppliers_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Army's Suppliers",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Army's Suppliers",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Lifelink\nWhen Army's Suppliers enters, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lifelink\nWhen Army's Suppliers enters, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Bringer of Armies_ALK",
+          "name": "Bringer of Armies",
+          "source_card_key": "Bringer of Armies_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bringer of Armies",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Bringer of Armies",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Trample\nWhen Bringer of Armies enters, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Trample\nWhen Bringer of Armies enters, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Call on Reinforcements_ALK",
+          "name": "Call on Reinforcements",
+          "source_card_key": "Call on Reinforcements_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nArmies you control gain trample until end of turn.",
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nArmies you control gain trample until end of turn.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Call on Reinforcements",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nArmies you control gain trample until end of turn."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{G}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nArmies you control gain trample until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Call on Reinforcements",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nArmies you control gain trample until end of turn.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "muster ranks.\nArmies you control gain trample until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "muster ranks.\nArmies you control gain trample until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Cyrukan Guardians_ALK",
+          "name": "Cyrukan Guardians",
+          "source_card_key": "Cyrukan Guardians_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cyrukan Guardians",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Cyrukan Guardians",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nWhen Cyrukan Guardians enters, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nWhen Cyrukan Guardians enters, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Devastating Charge_ALK",
+          "name": "Devastating Charge",
+          "source_card_key": "Devastating Charge_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Devastating Charge",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Devastating Charge",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Destroy target noncreature permanent.\nmuster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Destroy target noncreature permanent.\nmuster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Divine Splendor_ALK",
+          "name": "Divine Splendor",
+          "source_card_key": "Divine Splendor_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nCreatures you control get +2/+1 until end of turn.",
+          "executable_text": "Mana cost: {4}{W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nCreatures you control get +2/+1 until end of turn.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Divine Splendor",
+              "original_text": "Mana cost: {4}{W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nCreatures you control get +2/+1 until end of turn."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {4}{W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nCreatures you control get +2/+1 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Divine Splendor",
+              "executable_text": "Mana cost: {4}{W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nCreatures you control get +2/+1 until end of turn.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "muster ranks.\nCreatures you control get +2/+1 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "muster ranks.\nCreatures you control get +2/+1 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Endless Infantry_ALK",
+          "name": "Endless Infantry",
+          "source_card_key": "Endless Infantry_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Endless Infantry",
+              "original_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Endless Infantry",
+              "executable_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever an Army you control dies, if it wasn't sacrificed, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever an Army you control dies, if it wasn't sacrificed, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Enlist_ALK",
+          "name": "Enlist",
+          "source_card_key": "Enlist_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Enlist",
+              "original_text": "Mana cost: {W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Enlist",
+              "executable_text": "Mana cost: {W}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Fight for Succession//Chalice of Fallen Foes_ALK",
+          "name": "Chalice of Fallen Foes",
+          "source_card_key": "Fight for Succession//Chalice of Fallen Foes_ALK",
+          "source_face": "back",
+          "source_shape": "doubleface",
+          "original_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fight for Succession",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nMonument {3}{W}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Chalice of Fallen Foes",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Fight for Succession",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nYou may cast this card from your graveyard transformed for {3}{W}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Destroy target nonland permanent.\nMonument {3}{W}{B}"
+            },
+            {
+              "name": "Chalice of Fallen Foes",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "At the beginning of your upkeep, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "At the beginning of your upkeep, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Hold Captive_ALK",
+          "name": "Hold Captive",
+          "source_card_key": "Hold Captive_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hold Captive",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Hold Captive",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Kahroba General_ALK",
+          "name": "Kahroba General",
+          "source_card_key": "Kahroba General_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nKahroba General gets +1/+1 for each creature you control.",
+          "executable_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nKahroba General gets +1/+1 for each creature you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kahroba General",
+              "original_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nKahroba General gets +1/+1 for each creature you control."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nKahroba General gets +1/+1 for each creature you control.",
+          "executable_faces": [
+            {
+              "name": "Kahroba General",
+              "executable_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nKahroba General gets +1/+1 for each creature you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Kahroba General enters, muster ranks.\nKahroba General gets +1/+1 for each creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Kahroba General enters, muster ranks.\nKahroba General gets +1/+1 for each creature you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Lax Gambit_ALK",
+          "name": "Lax Gambit",
+          "source_card_key": "Lax Gambit_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lax Gambit",
+              "original_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Lax Gambit",
+              "executable_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Exile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nmuster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Exile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nmuster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mahara, the Universal//Andazir, the Crownless_ALK",
+          "name": "Mahara, the Universal",
+          "source_card_key": "Mahara, the Universal//Andazir, the Crownless_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nAt the beginning of your end step, if you control four or more creatures, transform Mahara.",
+          "executable_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nAt the beginning of your end step, if you control four or more creatures, transform Mahara.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mahara, the Universal",
+              "original_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nAt the beginning of your end step, if you control four or more creatures, transform Mahara."
+            },
+            {
+              "face": "back",
+              "name": "Andazir, the Crownless",
+              "original_text": "Type: Legendary Creature — Elder Demon\nPower/Toughness: 6/6\nProtection from instants and from sorceries\nAt the beginning of your upkeep, sacrifice another creature. If you do, put a +1/+1 counter on Andazir, the Crownless.\nAt the beginning of your end step, if you control four or fewer creatures, transform Andazir."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nAt the beginning of your end step, if you control four or more creatures, transform Mahara.",
+          "executable_faces": [
+            {
+              "name": "Mahara, the Universal",
+              "executable_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nAt the beginning of your end step, if you control four or more creatures, transform Mahara.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Indestructible\nWhenever this creature enters or transforms into Mahara, muster ranks.\nAt the beginning of your end step, if you control four or more creatures, transform Mahara."
+            },
+            {
+              "name": "Andazir, the Crownless",
+              "executable_text": "Type: Legendary Creature — Elder Demon\nPower/Toughness: 6/6\nProtection from instants and from sorceries\nAt the beginning of your upkeep, sacrifice another creature. If you do, put a +1/+1 counter on Andazir, the Crownless.\nAt the beginning of your end step, if you control four or fewer creatures, transform Andazir.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Indestructible\nWhenever this creature enters or transforms into Mahara, muster ranks.\nAt the beginning of your end step, if you control four or more creatures, transform Mahara.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Makeshift Quarters_ALK",
+          "name": "Makeshift Quarters",
+          "source_card_key": "Makeshift Quarters_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Makeshift Quarters",
+              "original_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Makeshift Quarters",
+              "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "You gain 4 life.\nmuster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "You gain 4 life.\nmuster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Nightly Raid_ALK",
+          "name": "Nightly Raid",
+          "source_card_key": "Nightly Raid_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nightly Raid",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Nightly Raid",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Destroy target creature. muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Destroy target creature. muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Omid, the Undefeated_ALK",
+          "name": "Omid, the Undefeated",
+          "source_card_key": "Omid, the Undefeated_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Omid, the Undefeated",
+              "original_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Omid, the Undefeated",
+              "executable_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhenever Omid enters or one or more Armies you control attack, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhenever Omid enters or one or more Armies you control attack, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Overwhelming Defeat_ALK",
+          "name": "Overwhelming Defeat",
+          "source_card_key": "Overwhelming Defeat_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nTarget creature you control fights target creature you don't control.",
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nTarget creature you control fights target creature you don't control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Overwhelming Defeat",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nTarget creature you control fights target creature you don't control."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{G}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nTarget creature you control fights target creature you don't control.",
+          "executable_faces": [
+            {
+              "name": "Overwhelming Defeat",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nTarget creature you control fights target creature you don't control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "muster ranks.\nTarget creature you control fights target creature you don't control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "muster ranks.\nTarget creature you control fights target creature you don't control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Paladin of Order_ALK",
+          "name": "Paladin of Order",
+          "source_card_key": "Paladin of Order_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Paladin of Order",
+              "original_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Paladin of Order",
+              "executable_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{2}{W}{B}: Exile up to two cards from a single graveyard. muster ranks. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}{W}{B}: Exile up to two cards from a single graveyard. muster ranks. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Relentless Army_ALK",
+          "name": "Relentless Army",
+          "source_card_key": "Relentless Army_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Relentless Army",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Relentless Army",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Return up to one target creature card from your graveyard to your hand.\nmuster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Return up to one target creature card from your graveyard to your hand.\nmuster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Saeedi Kahroba, Daughter_ALK",
+          "name": "Saeedi Kahroba, Daughter",
+          "source_card_key": "Saeedi Kahroba, Daughter_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Saeedi Kahroba, Daughter",
+              "original_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Saeedi Kahroba, Daughter",
+              "executable_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nWhenever Saeedi Kahroba, Daughter attacks, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nWhenever Saeedi Kahroba, Daughter attacks, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Satrapy General_ALK",
+          "name": "Satrapy General",
+          "source_card_key": "Satrapy General_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Satrapy General",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Satrapy General",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nTap three untapped Satrapies you control: muster ranks. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nTap three untapped Satrapies you control: muster ranks. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Scouting Party_ALK",
+          "name": "Scouting Party",
+          "source_card_key": "Scouting Party_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scouting Party",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Scouting Party",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Target opponent reveals their hand. You choose a nonland card from it and exile that card.\nmuster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Target opponent reveals their hand. You choose a nonland card from it and exile that card.\nmuster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Siaveed, Commander of Armies_ALK",
+          "name": "Siaveed, Commander of Armies",
+          "source_card_key": "Siaveed, Commander of Armies_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Siaveed, Commander of Armies",
+              "original_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Siaveed, Commander of Armies",
+              "executable_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "At the beginning of your upkeep, you lose life equal to the number of Armies you control, then muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "At the beginning of your upkeep, you lose life equal to the number of Armies you control, then muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "War's Trauma_ALK",
+          "name": "War's Trauma",
+          "source_card_key": "War's Trauma_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "War's Trauma",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "War's Trauma",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nCreate a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Up to one target creature gets -1/-1 until end of turn.\nmuster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Up to one target creature gets -1/-1 until end of turn.\nmuster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "War of Resources_ALK",
+          "name": "War of Resources",
+          "source_card_key": "War of Resources_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhenever a creature you control dies, each opponent loses 1 life.",
+          "executable_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nWhenever a creature you control dies, each opponent loses 1 life.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "War of Resources",
+              "original_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhenever a creature you control dies, each opponent loses 1 life."
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..\nWhenever a creature you control dies, each opponent loses 1 life.",
+          "executable_faces": [
+            {
+              "name": "War of Resources",
+              "executable_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.\nWhenever a creature you control dies, each opponent loses 1 life.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When War of Resources enters, muster ranks.\nWhenever a creature you control dies, each opponent loses 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When War of Resources enters, muster ranks.\nWhenever a creature you control dies, each opponent loses 1 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Livia's Advocate_OTH",
+          "name": "Livia's Advocate",
+          "source_card_key": "Livia's Advocate_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Livia's Advocate",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Livia's Advocate",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Ward—Pay 3 life.\nWhenever you cast an instant or sorcery spell, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Ward—Pay 3 life.\nWhenever you cast an instant or sorcery spell, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Major Benjamin Stout_MSC",
+          "name": "Major Benjamin Stout",
+          "source_card_key": "Major Benjamin Stout_MSC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Major Benjamin Stout",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Major Benjamin Stout",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Double strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Double strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mahnaz of Moonlit Blades_MSL",
+          "name": "Mahnaz of Moonlit Blades",
+          "source_card_key": "Mahnaz of Moonlit Blades_MSL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mahnaz of Moonlit Blades",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "source_equivalent_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control..",
+          "executable_faces": [
+            {
+              "name": "Mahnaz of Moonlit Blades",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "muster ranks"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Armies you control attack each combat if able.\nAt the beginning of combat on your turn, muster ranks."
+            }
+          ],
+          "custom_keyword_identities": [
+            "muster ranks"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Armies you control attack each combat if able.\nAt the beginning of combat on your turn, muster ranks.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule701.97a operations and order preserved. New token remains0/0 until following counter action; no intervening state-based-action check is inserted."
+      },
+      "support_status": "existing_operations_candidate",
+      "executable_keyword": "Muster ranks",
+      "executable_definitions": [
+        {
+          "keyword": "Muster ranks",
+          "reminder": "Create a 0/0 white Soldier Army creature token. Then put a +1/+1 counter on each Army you control.",
+          "sourceKeyword": "Recruit"
+        }
+      ]
+    }
+  ],
+  "related_source_cards": [
+    {
+      "id": "Dawnlit Battlefield_L",
+      "name": "Dawnlit Battlefield",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nDawnlit Battlefield enters tapped.\n{T}: Add {R} or {W}.\n{2}{R}{W}: Until end of turn, Dawnlit Battlefield becomes a 4/2 red and white Warrior creature with “This creature has first strike as long as it's attacking” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Dawnlit Battlefield",
+          "original_text": "Type: Land\nDawnlit Battlefield enters tapped.\n{T}: Add {R} or {W}.\n{2}{R}{W}: Until end of turn, Dawnlit Battlefield becomes a 4/2 red and white Warrior creature with “This creature has first strike as long as it's attacking” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Deadwood Grove_L",
+      "name": "Deadwood Grove",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nDeadwood Grove enters tapped.\n{T}: Add {B} or {G}.\n{1}{B}{G}: Until end of turn, Deadwood Grove becomes a 2/3 black and green Horror creature with deathtouch and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Deadwood Grove",
+          "original_text": "Type: Land\nDeadwood Grove enters tapped.\n{T}: Add {B} or {G}.\n{1}{B}{G}: Until end of turn, Deadwood Grove becomes a 2/3 black and green Horror creature with deathtouch and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Lush Outskirts_L",
+      "name": "Lush Outskirts",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nLush Outskirts enters tapped.\n{T}: Add {G} or {U}.\n{3}{G}{U}: Until end of turn, Lush Outskirts becomes a 5/7 green and blue Plant creature with ward {3} and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Lush Outskirts",
+          "original_text": "Type: Land\nLush Outskirts enters tapped.\n{T}: Add {G} or {U}.\n{3}{G}{U}: Until end of turn, Lush Outskirts becomes a 5/7 green and blue Plant creature with ward {3} and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Shrouded Rooftops_L",
+      "name": "Shrouded Rooftops",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nShrouded Rooftops enters tapped.\n{T}: Add {W} or {B}.\n{1}{W}{B}: Until end of turn, Shrouded Rooftops becomes a 3/3 white and black Illusion creature with lifelink and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Shrouded Rooftops",
+          "original_text": "Type: Land\nShrouded Rooftops enters tapped.\n{T}: Add {W} or {B}.\n{1}{W}{B}: Until end of turn, Shrouded Rooftops becomes a 3/3 white and black Illusion creature with lifelink and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Weathered Fortress_L",
+      "name": "Weathered Fortress",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nWeathered Fortress enters tapped.\n{T}: Add {U} or {R}.\n{U}{R}: Until end of turn, Weathered Fortress becomes a 1/4 blue and red Golem creature with “Whenever this creature attacks, switch its power and toughness until end of turn” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Weathered Fortress",
+          "original_text": "Type: Land\nWeathered Fortress enters tapped.\n{T}: Add {U} or {R}.\n{U}{R}: Until end of turn, Weathered Fortress becomes a 1/4 blue and red Golem creature with “Whenever this creature attacks, switch its power and toughness until end of turn” and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Agonizing Punishment_STN",
+      "name": "Agonizing Punishment",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature.\nTorment target player three times. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Agonizing Punishment",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature.\nTorment target player three times. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Frozen Hinterlands_STN",
+      "name": "Frozen Hinterlands",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nFrozen Hinterlands enters tapped.\n{T}: Add {W} or {U}.\n{1}{W}{U}: Until end of turn, Frozen Hinterlands becomes a 4/3 white and blue Spirit creature with with prowess and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Frozen Hinterlands",
+          "original_text": "Type: Land\nFrozen Hinterlands enters tapped.\n{T}: Add {W} or {U}.\n{1}{W}{U}: Until end of turn, Frozen Hinterlands becomes a 4/3 white and blue Spirit creature with with prowess and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Hazy Coppice_STN",
+      "name": "Hazy Coppice",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nHazy Coppice enters tapped.\n{T}: Add {U} or {B}.\n{2}{U}{B}: Until end of turn, Hazy Coppice becomes a 4/4 blue and black Bird creature with with flying and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Hazy Coppice",
+          "original_text": "Type: Land\nHazy Coppice enters tapped.\n{T}: Add {U} or {B}.\n{2}{U}{B}: Until end of turn, Hazy Coppice becomes a 4/4 blue and black Bird creature with with flying and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Inferno Lash_STN",
+      "name": "Inferno Lash",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{R}\nType: Instant\nInferno Lash deals 2 damage to target creature or planeswalker. When it does, torment that permanent's controller. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Inferno Lash",
+          "original_text": "Mana cost: {1}{R}\nType: Instant\nInferno Lash deals 2 damage to target creature or planeswalker. When it does, torment that permanent's controller. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Spires of Caulte_STN",
+      "name": "Spires of Caulte",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nSpires of Caulte enters tapped.\n{T}: Add {B} or {R}.\n{B}{R}: Until end of turn, Spires of Caulte becomes a 3/2 black and red Construct creature with with menace and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Spires of Caulte",
+          "original_text": "Type: Land\nSpires of Caulte enters tapped.\n{T}: Add {B} or {R}.\n{B}{R}: Until end of turn, Spires of Caulte becomes a 3/2 black and red Construct creature with with menace and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Sunlit Fissure_STN",
+      "name": "Sunlit Fissure",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nSunlit Fissure enters tapped.\n{T}: Add {G} or {W}.\n{2}{G}{W}: Until end of turn, Sunlit Fissure becomes a 3/5 green and white Elemental creature with with vigilance and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Sunlit Fissure",
+          "original_text": "Type: Land\nSunlit Fissure enters tapped.\n{T}: Add {G} or {W}.\n{2}{G}{W}: Until end of turn, Sunlit Fissure becomes a 3/5 green and white Elemental creature with with vigilance and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Surge of Darkness_STN",
+      "name": "Surge of Darkness",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{B}\nType: Instant\nAs an additional cost to cast this spell, torment yourself. *(You lose 3 life unless you discard a card or sacrifice a nonland permanent.)*\nDestroy target creature.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Surge of Darkness",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nAs an additional cost to cast this spell, torment yourself. *(You lose 3 life unless you discard a card or sacrifice a nonland permanent.)*\nDestroy target creature."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Torch the City_STN",
+      "name": "Torch the City",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{B}{R}\nType: Sorcery\nEach player sacrifices three lands. Torment each player three times. *(To torment a player, they lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Torch the City",
+          "original_text": "Mana cost: {3}{B}{R}\nType: Sorcery\nEach player sacrifices three lands. Torment each player three times. *(To torment a player, they lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Towering Boughs_STN",
+      "name": "Towering Boughs",
+      "source_shape": "normal",
+      "original_text": "Type: Land\nTowering Boughs enters tapped.\n{T}: Add {R} or {G}.\n{3}{R}{G}: Until end of turn, Towering Boughs becomes a 6/6 red and green Treefolk creature with with trample and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Towering Boughs",
+          "original_text": "Type: Land\nTowering Boughs enters tapped.\n{T}: Add {R} or {G}.\n{3}{R}{G}: Until end of turn, Towering Boughs becomes a 6/6 red and green Treefolk creature with with trample and “Whenever this creature attacks or blocks, torment yourself.” It's still a land. *(To torment yourself, lose 3 life unless you discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Affluent Knight_ALK",
+      "name": "Affluent Knight",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, recruit, then recruit again. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Affluent Knight",
+          "original_text": "Mana cost: {4}{B}{G}\nType: Creature — Human Knight\nPower/Toughness: 2/1\nWhen Affluent Knight enters, recruit, then recruit again. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Aid from Martoob_ALK",
+      "name": "Aid from Martoob",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhen enchanted land is tapped for mana, add one mana of any color.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Aid from Martoob",
+          "original_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant land\nWhen Aid from Martoob enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhen enchanted land is tapped for mana, add one mana of any color."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Andazir Assaulter_ALK",
+      "name": "Andazir Assaulter",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Andazir Assaulter",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Azra Soldier\nPower/Toughness: 2/2\nFlying\nWhen Andazir Assaulter enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Army's Suppliers_ALK",
+      "name": "Army's Suppliers",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Army's Suppliers",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 2/1\nLifelink\nWhen Army's Suppliers enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Assault of the Conscripted_ALK",
+      "name": "Assault of the Conscripted",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {X}{B}{B}\nType: Instant\nRecruit X times. You lose X life. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Assault of the Conscripted",
+          "original_text": "Mana cost: {X}{B}{B}\nType: Instant\nRecruit X times. You lose X life. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Bringer of Armies_ALK",
+      "name": "Bringer of Armies",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Bringer of Armies",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Azra Knight\nPower/Toughness: 4/4\nTrample\nWhen Bringer of Armies enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Call on Reinforcements_ALK",
+      "name": "Call on Reinforcements",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nArmies you control gain trample until end of turn.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Call on Reinforcements",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nArmies you control gain trample until end of turn."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Cyrukan Guardians_ALK",
+      "name": "Cyrukan Guardians",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Cyrukan Guardians",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nVigilance\nWhen Cyrukan Guardians enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Devastating Charge_ALK",
+      "name": "Devastating Charge",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Devastating Charge",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target noncreature permanent.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Divine Splendor_ALK",
+      "name": "Divine Splendor",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {4}{W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nCreatures you control get +2/+1 until end of turn.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Divine Splendor",
+          "original_text": "Mana cost: {4}{W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nCreatures you control get +2/+1 until end of turn."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Endless Infantry_ALK",
+      "name": "Endless Infantry",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Endless Infantry",
+          "original_text": "Mana cost: {2}{B}{G}{W}\nType: Enchantment\nWhenever an Army you control dies, if it wasn't sacrificed, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Enlist_ALK",
+      "name": "Enlist",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Enlist",
+          "original_text": "Mana cost: {W}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Fight for Succession//Chalice of Fallen Foes_ALK",
+      "name": "Fight for Succession//Chalice of Fallen Foes",
+      "source_shape": "doubleface",
+      "original_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nMonument {3}{W}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Fight for Succession",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nMonument {3}{W}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+        },
+        {
+          "face": "back",
+          "name": "Chalice of Fallen Foes",
+          "original_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Grand Stand at Danaj_ALK",
+      "name": "Grand Stand at Danaj",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nRecruit four times. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Grand Stand at Danaj",
+          "original_text": "Mana cost: {4}{B}{G}{W}\nType: Sorcery\nRecruit four times. *(To recruit, create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Hold Captive_ALK",
+      "name": "Hold Captive",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Hold Captive",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment\nWhen Hold Captive enters, exile another target nonland permanent until Hold Captive leaves the battlefield.\nWhen Hold Captive enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Kahroba General_ALK",
+      "name": "Kahroba General",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nKahroba General gets +1/+1 for each creature you control.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Kahroba General",
+          "original_text": "Mana cost: {2}{G}{W}\nType: Creature — Azra Soldier\nPower/Toughness: 0/0\nWhen Kahroba General enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nKahroba General gets +1/+1 for each creature you control."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Lax Gambit_ALK",
+      "name": "Lax Gambit",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Lax Gambit",
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nExile up to one target permanent you control. Return it to the battlefield under its owner's control at the beginning of the next end step.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Mahara, the Universal//Andazir, the Crownless_ALK",
+      "name": "Mahara, the Universal//Andazir, the Crownless",
+      "source_shape": "doubleface",
+      "original_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nAt the beginning of your end step, if you control four or more creatures, transform Mahara.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Mahara, the Universal",
+          "original_text": "Mana cost: {3}{W}{B}\nType: Legendary Creature — Elder Angel\nPower/Toughness: 4/3\nIndestructible\nWhenever this creature enters or transforms into Mahara, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nAt the beginning of your end step, if you control four or more creatures, transform Mahara."
+        },
+        {
+          "face": "back",
+          "name": "Andazir, the Crownless",
+          "original_text": "Type: Legendary Creature — Elder Demon\nPower/Toughness: 6/6\nProtection from instants and from sorceries\nAt the beginning of your upkeep, sacrifice another creature. If you do, put a +1/+1 counter on Andazir, the Crownless.\nAt the beginning of your end step, if you control four or fewer creatures, transform Andazir."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Makeshift Quarters_ALK",
+      "name": "Makeshift Quarters",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Makeshift Quarters",
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 4 life.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Nightly Raid_ALK",
+      "name": "Nightly Raid",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Nightly Raid",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy target creature. Recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Omid, the Undefeated_ALK",
+      "name": "Omid, the Undefeated",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Omid, the Undefeated",
+          "original_text": "Mana cost: {3}{B}{G}{W}\nType: Legendary Creature — Demon Soldier\nPower/Toughness: 3/8\nFlying\nWhenever Omid enters or one or more Armies you control attack, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Overwhelming Defeat_ALK",
+      "name": "Overwhelming Defeat",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nTarget creature you control fights target creature you don't control.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Overwhelming Defeat",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nTarget creature you control fights target creature you don't control."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Paladin of Order_ALK",
+      "name": "Paladin of Order",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Paladin of Order",
+          "original_text": "Mana cost: {W}{B}\nType: Creature — Nephilim Soldier\nPower/Toughness: 2/3\n{2}{W}{B}: Exile up to two cards from a single graveyard. Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Relentless Army_ALK",
+      "name": "Relentless Army",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Relentless Army",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nReturn up to one target creature card from your graveyard to your hand.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Saeedi Kahroba, Daughter_ALK",
+      "name": "Saeedi Kahroba, Daughter",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Saeedi Kahroba, Daughter",
+          "original_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Human Knight Noble\nPower/Toughness: 4/3\nVigilance\nWhenever Saeedi Kahroba, Daughter attacks, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Satrapy General_ALK",
+      "name": "Satrapy General",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Satrapy General",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Angel Warrior\nPower/Toughness: 3/3\nFlying\nTap three untapped Satrapies you control: Recruit. Activate only as a sorcery. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Scouting Party_ALK",
+      "name": "Scouting Party",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Scouting Party",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and exile that card.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Siaveed, Commander of Armies_ALK",
+      "name": "Siaveed, Commander of Armies",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Siaveed, Commander of Armies",
+          "original_text": "Mana cost: {W}{B}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 2/2\nAt the beginning of your upkeep, you lose life equal to the number of Armies you control, then recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "War's Trauma_ALK",
+      "name": "War's Trauma",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "War's Trauma",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nUp to one target creature gets -1/-1 until end of turn.\nRecruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "War of Resources_ALK",
+      "name": "War of Resources",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhenever a creature you control dies, each opponent loses 1 life.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "War of Resources",
+          "original_text": "Mana cost: {2}{B}\nType: Enchantment\nWhen War of Resources enters, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*\nWhenever a creature you control dies, each opponent loses 1 life."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Grinning Torturer_OTH",
+      "name": "Grinning Torturer",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Grinning Torturer deals combat damage to a player, torment that player. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Grinning Torturer",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Zombie Rogue\nPower/Toughness: 2/3\nDeception {2}{B} *({2}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Grinning Torturer deals combat damage to a player, torment that player. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "King Florence of Caulder_MSC",
+      "name": "King Florence of Caulder",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever King Florence of Caulder enters or attacks, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "King Florence of Caulder",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/4\nDeception {1}{B} *({1}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever King Florence of Caulder enters or attacks, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Livia's Advocate_OTH",
+      "name": "Livia's Advocate",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Livia's Advocate",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWard—Pay 3 life.\nWhenever you cast an instant or sorcery spell, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Major Benjamin Stout_MSC",
+      "name": "Major Benjamin Stout",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Major Benjamin Stout",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Rabbit Soldier\nPower/Toughness: 2/4\nDouble strike, vigilance\nWhenever Major Benjamin Stout enters, attacks, or dies, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Velinor, Storm of Shadows_SWR",
+      "name": "Velinor, Storm of Shadows",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 3/1\nWhenever you cast a noncreature spell, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life.",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Velinor, Storm of Shadows",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 3/1\nWhenever you cast a noncreature spell, torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*\n{3}{U/B}{U/B}: Draw a card for each opponent with ten or more cards in their graveyard. You lose that much life."
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Mad Queen Margarete_MSL",
+      "name": "Mad Queen Margarete",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {B}{R}\nType: Legendary Creature — Wolf Noble\nPower/Toughness: 1/3\nMenace\nWhenever Margarete or another creature you control dies, up to one target creature you control cackles. *(Put a menace counter on it. If it already has menace, it deals 1 damage to each opponent instead.)*\nOnce each turn, when Margarete or another creature you control with menace dies, you may torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Mad Queen Margarete",
+          "original_text": "Mana cost: {B}{R}\nType: Legendary Creature — Wolf Noble\nPower/Toughness: 1/3\nMenace\nWhenever Margarete or another creature you control dies, up to one target creature you control cackles. *(Put a menace counter on it. If it already has menace, it deals 1 damage to each opponent instead.)*\nOnce each turn, when Margarete or another creature you control with menace dies, you may torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Mahnaz of Moonlit Blades_MSL",
+      "name": "Mahnaz of Moonlit Blades",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Mahnaz of Moonlit Blades",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nArmies you control attack each combat if able.\nAt the beginning of combat on your turn, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    },
+    {
+      "id": "Tiger of the Drums_MSL",
+      "name": "Tiger of the Drums",
+      "source_shape": "normal",
+      "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Cat Demon\nPower/Toughness: 4/3\nMenace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• Torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*",
+      "source_faces": [
+        {
+          "face": "front",
+          "name": "Tiger of the Drums",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Cat Demon\nPower/Toughness: 4/3\nMenace, haste\nWhenever Tiger of the Drums attacks, choose one —\n• Exile target opponent's graveyard.\n• You draw a card and lose 1 life.\n• Torment each opponent. *(They lose 3 life unless they discard a card or sacrifice a nonland permanent.)*"
+        }
+      ],
+      "status": "source_rule_neighbor_unreviewed"
+    }
+  ]
+}

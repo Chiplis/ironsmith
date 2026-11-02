@@ -174,6 +174,22 @@ pub(super) fn parse_additional_cost(
     tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
+    if let Some(colon) = tokens.iter().position(|token|token.kind == crate::lexer::TokenKind::Colon) {
+        let header = crate::lexer::parser_token_word_refs(&tokens[..colon]);
+        if header.as_slice() == ["as","you","cast","this","spell","you","may","pay","the","following","additional","cost","any","number","of","times"] {
+            let body = crate::util::trim_edge_punctuation_tokens(&tokens[colon+1..]);
+            if body.is_empty() {return Err(CardTextError::ParseError("repeatable optional additional cost has an empty payment".into()));}
+            let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(body)?;
+            let mut optional = crate::model::CompilerOptionalCost::custom("Additional",cost); optional.repeatable = true;
+            if let Some(mana) = optional.cost.mana_cost() { optional.reference = crate::util::additional_mana_payment_reference(mana); }
+            // This explicitly declared generic payment may later receive its
+            // independently supplied custom keyword label. Keep its exact
+            // discriminator while recording attribution eligibility.
+            optional.reference.custom_keyword_attributable = true;
+            crate::word_claims::claim_tokens(&tokens[..=colon]);
+            return Ok(ast(LineAst::OptionalCost(optional)));
+        }
+    }
     let prose = crate::lexer::render_token_slice(full_tokens).to_ascii_lowercase();
     if let Some(rest) = prose.strip_prefix("as an additional cost to cast this spell, you may choose an opponent. if this is a permanent, when it enters, if you paid that cost, ")
         && let Some((entry, spell)) = rest.split_once(". if this is an instant or sorcery spell, if you paid that cost, ")
@@ -224,11 +240,13 @@ pub(super) fn parse_additional_cost(
     let clean = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::parser_token_word_refs(clean);
     if words.starts_with(&["you", "may"])
-        && matches!(words.get(2), Some(&"sacrifice" | &"discard" | &"exile" | &"return" | &"tap" | &"remove"))
+        && matches!(words.get(2), Some(&"sacrifice" | &"discard" | &"exile" | &"return" | &"tap" | &"remove" | &"mill"))
         && words.ends_with(&["as", "you", "cast", "this", "spell"])
     {
         let payment = &clean[2..clean.len() - 5];
         let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(payment)?;
+        crate::word_claims::claim_tokens(&clean[..2]);
+        crate::word_claims::claim_tokens(&clean[clean.len()-5..]);
         return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
     }
     if let Some(body) = crate::grammar::primitives::match_word_prefix(clean, &["you", "may", "pay", "an", "additional"])
@@ -408,7 +426,14 @@ pub(super) fn parse_additional_cost(
     if effect_tokens.get(0).is_some_and(|token| token.is_word("you"))
         && effect_tokens.get(1).is_some_and(|token| token.is_word("may"))
     {
-        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&effect_tokens[2..])?;
+        let payment = &effect_tokens[2..];
+        if let Ok(Some((payment, _))) = read_selected_exile_payment(payment) {
+            if std::env::var_os("IRONSMITH_TRACE_COST_RECEIPTS").is_some() { eprintln!("COST_RECEIPT_MATERIALIZE {payment:#?}"); }
+
+            let cost = ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::ValidatedEffect(Box::new(payment)));
+            return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
+        }
+        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(payment)?;
         return Ok(ast(LineAst::OptionalCost(crate::model::CompilerOptionalCost::custom("Additional", cost))));
     }
     let evidence_minimum = match words.as_slice() {
@@ -871,4 +896,50 @@ fn bind_optional_payment_copy_count(effects: &mut [EffectAst], reference: &irons
         }
         crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| bind_optional_payment_copy_count(nested, reference));
     }
+}
+
+
+/// One selected exile payment and optional actual-action receipts. The typed
+/// inventory is shared with preprocessing so sentence splitting cannot detach
+/// a receipt from the operation that performed its cost. Names are data.
+/// The Boolean reports whether a receipt extends beyond the first operation.
+pub(crate) fn read_selected_exile_payment(payment: &[OwnedLexToken]) -> Result<Option<(EffectAst, bool)>, CardTextError> {
+    if crate::lexer::parser_token_word_refs(payment).contains(&"target") { return Ok(None); }
+    // Each authored sentence is independently typed before composing the
+    // selected payment. A whole-program coordination probe must not claim
+    // the `or` inside one instruction's duration as an action disjunction.
+    let mut effects = Vec::new();
+    for sentence in crate::lexer::split_lexed_sentences(payment) {
+        effects.extend(parse_effect_sentences_lexed(sentence)?);
+    }
+    fn inventory<'a>(effect: &'a EffectAst, actions: &mut Vec<&'a EffectAst>) {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects } => {
+                for child in effects { inventory(child, actions); }
+            }
+            _ => actions.push(effect),
+        }
+    }
+    let mut actions = Vec::new();
+    for effect in &effects { inventory(effect, &mut actions); }
+    let compatible = matches!(actions.first().copied(), Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+            crate::cards::builders::ZoneMoveActionAst::ExileUntilSourceLeaves {
+                duration: ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield, ..
+            }), ..
+    }))) && actions.iter().skip(1).all(|effect| matches!(effect,
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                crate::cards::builders::KeywordActionAst::PerformNamedAction {
+                    prior_objects: Some((_, ironsmith_core::PriorEffectAction::Exiled)),
+                    performer: None, objects: None, program: None, ..
+                }), ..
+        })));
+    if std::env::var_os("IRONSMITH_TRACE_COST_RECEIPTS").is_some() {
+        eprintln!("COST_RECEIPT_READER compatible={compatible} actions={actions:#?}");
+    }
+    if !compatible { return Ok(None); }
+    let has_receipt = actions.len() > 1;
+    let payment = if effects.len() == 1 { effects[0].clone() } else { EffectAst::Sequence { effects } };
+    Ok(Some((payment, has_receipt)))
 }

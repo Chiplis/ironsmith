@@ -252,10 +252,16 @@ fn read_during_your_end_step(
     input: &SingleStaticLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
-    if let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
+    let ending_phase = crate::grammar::primitives::parse_prefix(tokens,
+        crate::grammar::primitives::phrase(&["during", "each", "ending", "phase"]))
+        .or_else(|| crate::grammar::primitives::parse_prefix(tokens,
+            crate::grammar::primitives::phrase(&["during", "the", "ending", "phase"])))
+        .map(|(_, rest)| (PredicateAst::InEndingPhase, rest));
+    let timed = ending_phase.or_else(|| crate::grammar::primitives::parse_prefix(
         tokens,
         crate::grammar::primitives::phrase(&["during", "your", "end", "step"]),
-    ) {
+    ).map(|(_, rest)| (PredicateAst::Source(SourcePredicateAst::SourceControllersEndStep), rest)));
+    if let Some((condition, rest)) = timed {
         let remainder = trim_lexed_commas(rest);
         if remainder.len() < rest.len()
             && !remainder.is_empty()
@@ -267,7 +273,7 @@ fn read_during_your_end_step(
             for ability in abilities {
                 conditioned.push(add_static_ability_ast_condition(
                     ability,
-                    PredicateAst::Source(SourcePredicateAst::SourceControllersEndStep),
+                    condition.clone(),
                 )?);
             }
             return Ok(Some(conditioned));

@@ -163,7 +163,7 @@ fn push_unique_tag(tags: &mut Vec<TagKey>, tag: &TagKey) {
     }
 }
 
-fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
+fn collect_direct_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
@@ -189,7 +189,8 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
         | EffectAst::TagReferenced { tag, .. } => push_unique_tag(tags, tag),
         EffectAst::SnapshotLastObjectTag { into } => push_unique_tag(tags, into),
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { tag, .. })
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { tag, .. })
+            | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { tag, .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { tag, .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory {
                 tag, ..
@@ -237,6 +238,10 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
         _ => {}
     }
 
+}
+
+fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
+    collect_direct_effect_produced_tags(effect,tags);
     for_each_nested_effects(effect, true, |nested| {
         for nested_effect in nested {
             collect_effect_produced_tags(nested_effect, tags);
@@ -268,6 +273,8 @@ pub fn effects_reference_tag_in_object_position(effects: &[EffectAst], tag: &str
 }
 
 fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetAst)) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection{target,..}),..})=effect {visit(target);}
+
     assert_effect_ast_variant_coverage(effect);
     // "If each of those creatures could block ..." (Sorrow's Path): the
     // exchanged pair is the earlier declared target set, so that declaration
@@ -284,6 +291,11 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
         visit(blocker);
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect {
+        if let SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction {performer,objects,..})=&subject_verb.action {
+            if let Some(target)=performer {visit(target);}
+            if let Some(target)=objects {visit(target);}
+        }
+
         match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
                 sources,
@@ -576,7 +588,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 visit(object);
                 visit(target);
             }
-            SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) => visit(object),
+            SubjectVerbActionAst::Control(ControlActionAst::Unattach { object })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. }) => visit(object),
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight {
                 creature1,
                 creature2,
@@ -697,6 +710,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 target, ..
             })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                 target,
                 ..
@@ -709,7 +723,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 target,
                 source,
                 ..
-            }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, source, .. }) => {
+            }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, source, .. }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { target, source, .. }) => {
                 visit(target);
                 visit(source);
             }
@@ -733,7 +747,18 @@ fn direct_effect_targets_reference_tag(effect: &EffectAst, tag: &str) -> bool {
     references
 }
 
+// CastTagged consumes the selected object collection directly; it does not
+// expose that operand as TargetAst, and it does not declare a result tag.
+fn direct_cast_object_references_tag(effect: &EffectAst, tag: &str) -> bool {
+    matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag: input, .. }), ..
+    }) if input.as_str() == tag)
+}
+
 fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bool {
+    if direct_cast_object_references_tag(effect, tag) { return true; }
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection{source_tag:Some(source),..}),..})=effect {if source.key.as_str()==tag{return true;}}
+
     assert_effect_ast_variant_coverage(effect);
     if damage_multiplier_references_tag(effect, tag) {
         return true;
@@ -1025,6 +1050,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
 }
 
 pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
+    if direct_cast_object_references_tag(effect, tag) { return true; }
     assert_effect_ast_variant_coverage(effect);
     if damage_multiplier_references_tag(effect, tag) {
         return true;
@@ -1283,6 +1309,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         }
         Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
+        | Value::TimesPaidLabelOf { object: spec, .. }
         | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
         | Value::CommanderCastCountOf(spec)
@@ -1527,7 +1554,8 @@ fn filter_references_event_derived_amount(filter: &ObjectFilter) -> bool {
     filter
         .target_set_aggregate_constraint
         .as_ref()
-        .is_some_and(|constraint| value_references_event_derived_amount(&constraint.maximum))
+        .is_some_and(|constraint| value_references_event_derived_amount(&constraint.maximum)
+            || constraint.minimum.as_ref().is_some_and(value_references_event_derived_amount))
         || filter
         .power
         .as_ref()
@@ -1576,11 +1604,16 @@ fn target_references_event_derived_amount(target: &TargetAst) -> bool {
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
+        // Producer identity, zone and output tag are not scalar expressions.
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { .. }) => None,
+        // The price is ManaCost, the limit is u32, and status is identity:
+        // none is an expression. Target operands are visited separately.
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { .. }) => None,
         SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => None,
         SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount }) => Some(amount),
         SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => None,
-        SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. }) => None,
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { .. }) => None,
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => count_value.as_ref(),
         SubjectVerbActionAst::Random(RandomActionAst::RollDiceTotal { count, .. }) => Some(count),
         SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier, .. }) => result_modifier.as_ref().map(|modifier| modifier.value()),
@@ -1717,10 +1750,16 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
@@ -2016,7 +2055,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
             ..
         })
-        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { .. })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { .. } | CharacteristicActionAst::RemoveOptionalTextFragment { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { .. })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. })
@@ -2044,6 +2083,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
         | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
         | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeSourceWhenLeaves {
             ..
@@ -2211,6 +2251,7 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                     .into_iter()
                     .any(value_references_event_derived_amount)
                 || match &subject_verb.action {
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. }) => target_references_event_derived_amount(target),
                     SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays {
                         cost, ..
                     }) => total_cost_values_any(cost, value_references_event_derived_amount),
@@ -2413,7 +2454,7 @@ pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || matches!(zone_owner, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
-        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects } | PermissionEffectAst::MayPay { player, effects, .. }) => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 || effects_reference_its_controller(effects)
         }
@@ -2464,7 +2505,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
     if let EffectAst::SubjectVerb(subject_verb) = effect
         && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { abilities, .. }) =
             &subject_verb.action
-        && abilities.iter().any(|ability| {
+        && abilities.iter().flat_map(|ability|ability.leaves()).any(|ability| {
             matches!(
                 ability,
                 crate::cards::builders::GrantedAbilityAst::StaticAbility(ability)
@@ -3147,7 +3188,7 @@ fn granted_entry_counter_amounts(action: &SubjectVerbActionAst) -> Vec<&Value> {
         return Vec::new();
     };
     let mut values = Vec::new();
-    for ability in abilities {
+    for ability in abilities.iter().flat_map(|ability|ability.leaves()) {
         if let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) = ability
             && let crate::cards::builders::StaticAbilityAst::Static(ability) =
                 static_ability.as_ref()
@@ -3171,4 +3212,263 @@ fn granted_entry_counter_amounts(action: &SubjectVerbActionAst) -> Vec<&Value> {
         }
     }
     values
+}
+
+/// Free parent object dependencies of cast instructions in a granted body.
+/// The environment tracks which parent inputs each local result depends on.
+/// Branches, optional programs, delayed closures and loop bindings each own
+/// their scope; declarations never erase an earlier read or a sibling read.
+pub fn granted_cast_object_reference_imports(effects: &[EffectAst]) -> Vec<TagKey> {
+    cast_object_reference_imports(effects, true)
+}
+
+/// A delayed body executes in a new registration frame. Its prior exile and
+/// `it` references belong to that parent frame, unlike a granted ability's
+/// source-local bindings. Local producers inside the body still shadow them.
+pub fn delayed_cast_object_reference_imports(effects: &[EffectAst]) -> Vec<TagKey> {
+    cast_object_reference_imports(effects, false)
+}
+
+fn cast_object_reference_imports(effects: &[EffectAst], granted_source_locals: bool) -> Vec<TagKey> {
+    use ironsmith_core::tag::TagKeyWalk;
+    type Env=std::collections::HashMap<TagKey,Vec<TagKey>>;
+    fn union(into:&mut Vec<TagKey>,other:impl IntoIterator<Item=TagKey>){for tag in other{push_unique_tag(into,&tag);}}
+    fn dependencies(tags:&[TagKey],env:&Env)->Vec<TagKey>{
+        let mut result=Vec::new();for tag in tags{union(&mut result,env.get(tag).cloned().unwrap_or_else(||vec![tag.clone()]));}result
+    }
+    fn direct_reads(effect:&EffectAst)->Vec<TagKey>{
+        let mut direct=effect.clone();
+        crate::effect_ast_traversal::for_each_nested_effect_vec_mut(&mut direct,true,|nested|nested.clear());
+        let mut candidates=Vec::new();direct.map_tag_keys(&mut |tag|push_unique_tag(&mut candidates,tag));
+        if let EffectAst::Iteration(iteration)=&direct
+            && let crate::model::resource_choice_clauses::CompilerIterationSourceAst::Objects(filter)=&iteration.source {
+            let mut filter=filter.clone();filter.map_tag_keys(&mut |tag|push_unique_tag(&mut candidates,tag));
+        }
+        candidates.retain(|tag|effect_references_tag_in_object_position(&direct,tag.as_str())
+            || matches!(&direct,EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Stack(StackActionAst::CastTagged{tag:found,..}),..}) if found==tag)
+            || matches!(&direct,EffectAst::ControlFlow(control) if matches!(&control.node,crate::model::ControlFlowNodeAst::Condition{condition,..} if matches!(&condition.predicate,crate::model::ControlPredicateAst::State(predicate) if predicate_references_tag(predicate,tag.as_str()))))
+            || matches!(&direct,EffectAst::Iteration(iteration) if matches!(&iteration.source,crate::model::resource_choice_clauses::CompilerIterationSourceAst::Objects(filter) if filter_references_tag(filter,tag.as_str()))));candidates
+    }
+    fn merge_paths(incoming:&Env,paths:&[Env])->Env{
+        let mut result=incoming.clone();let mut keys=Vec::new();
+        for path in paths{for key in path.keys(){push_unique_tag(&mut keys,key);}}
+        for key in keys{
+            let mut values=Vec::new();for path in paths{
+                union(&mut values,path.get(&key).cloned().unwrap_or_else(||incoming.get(&key).cloned().unwrap_or_else(||vec![key.clone()])));
+            }result.insert(key,values);
+        }result
+    }
+    fn sequence(effects:&[EffectAst],env:&mut Env,controls:&[TagKey],imports:&mut Vec<TagKey>){for effect in effects{node(effect,env,controls,imports);}}
+    fn node(effect:&EffectAst,env:&mut Env,controls:&[TagKey],imports:&mut Vec<TagKey>){
+        let inputs=dependencies(&direct_reads(effect),env);
+        if matches!(effect,EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Stack(StackActionAst::CastTagged{..}),..})){
+            union(imports,inputs.clone());union(imports,controls.iter().cloned());
+        }
+        let mut child_controls=controls.to_vec();union(&mut child_controls,inputs.clone());
+        match effect{
+            EffectAst::Sequence{effects}|EffectAst::SourceSentence{effects,..}|EffectAst::CommaThen{effects}|EffectAst::Coordinated{effects,..}=>sequence(effects,env,controls,imports),
+            EffectAst::TagAffected{effect,..}|EffectAst::TagReferenced{effect,..}=>node(effect,env,controls,imports),
+            EffectAst::DocumentProgram(program)=>{for statement in &program.statements{sequence(&statement.effects,env,controls,imports);}}
+            EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult{effect,if_true,..})=>{
+                node(effect,env,controls,imports);let incoming=env.clone();let mut taken=incoming.clone();sequence(if_true,&mut taken,&child_controls,imports);*env=merge_paths(&incoming,&[incoming.clone(),taken]);
+            }
+            EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen{effect,otherwise})=>{
+                node(effect,env,controls,imports);let incoming=env.clone();let mut taken=incoming.clone();sequence(otherwise,&mut taken,&child_controls,imports);*env=merge_paths(&incoming,&[incoming.clone(),taken]);
+            }
+            EffectAst::ControlFlow(control)=>{
+                use crate::model::ControlFlowNodeAst as C;
+                match &control.node{
+                    C::Condition{consequence_program,alternative_program,..}=>{
+                        let incoming=env.clone();let mut yes=incoming.clone();let mut no=incoming.clone();
+                        if let Some(program)=control.programs.get(*consequence_program){sequence(&program.effects,&mut yes,&child_controls,imports);}
+                        if let Some(program)=alternative_program.and_then(|index|control.programs.get(index)){sequence(&program.effects,&mut no,&child_controls,imports);}
+                        *env=merge_paths(&incoming,&[yes,no]);
+                    }
+                    C::Duration{program,..}|C::Permission(crate::model::PermissionRelationshipAst{program,..})=>{
+                        if let Some(program)=control.programs.get(*program){sequence(&program.effects,env,controls,imports);}
+                    }
+                    C::Delayed{program,..}|C::NestedAbility{program}=>{
+                        if let Some(program)=control.programs.get(*program){let mut child=env.clone();sequence(&program.effects,&mut child,&child_controls,imports);}
+                    }
+                    _=>{for program in &control.programs{let mut child=env.clone();sequence(&program.effects,&mut child,&child_controls,imports);}}
+                }
+            }
+            EffectAst::Iteration(iteration)=>{
+                let incoming=env.clone();let mut body=incoming.clone();let binder=TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG);body.insert(binder.clone(),Vec::new());
+                sequence(&iteration.body,&mut body,&child_controls,imports);*env=merge_paths(&incoming,&[incoming.clone(),body]);
+                match incoming.get(&binder){Some(value)=>{env.insert(binder,value.clone());},None=>{env.remove(&binder);}}
+            }
+
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessAction{effects,alternative,..})=>{
+                let incoming=env.clone();let mut yes=incoming.clone();let mut no=incoming.clone();
+                sequence(effects,&mut yes,&child_controls,imports);sequence(alternative,&mut no,&child_controls,imports);*env=merge_paths(&incoming,&[yes,no]);
+            }
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional{if_true,if_false,..})|EffectAst::SelfReplacement{if_true,if_false,..}=>{
+                let incoming=env.clone();let mut yes=incoming.clone();let mut no=incoming.clone();
+                sequence(if_true,&mut yes,&child_controls,imports);sequence(if_false,&mut no,&child_controls,imports);
+                *env=merge_paths(&incoming,&[yes,no]);
+            }
+            EffectAst::Coordination(coordination) if coordination.kind!=crate::model::CoordinationKindAst::Disjunction=>{
+                for member in &coordination.members{sequence(&member.effects,env,controls,imports);}
+            }
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged{effects,..}|ForEachEffectAst::ForEachObject{effects,..}|ForEachEffectAst::ForEachTaggedWithControllerAtLastBlockedBy{effects,..})=>{
+                let incoming=env.clone();let mut body=incoming.clone();
+                let binders=[crate::tag::CompilerReferenceTag::It.key(),TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG)];
+                for binder in &binders{body.insert(binder.clone(),Vec::new());}
+                sequence(effects,&mut body,&child_controls,imports);
+                *env=merge_paths(&incoming,&[incoming.clone(),body]);
+                for binder in binders{match incoming.get(&binder){Some(value)=>{env.insert(binder,value.clone());},None=>{env.remove(&binder);}}}
+            }
+            EffectAst::Delayed(_)=>{
+                // The delayed body reads the registration frame, but its
+                // later local producers never shadow this immediate program.
+                for_each_nested_effects(effect,true,|nested|{let mut child=env.clone();sequence(nested,&mut child,&child_controls,imports);});
+            }
+            _=>{
+                let incoming=env.clone();let mut paths=vec![incoming.clone()];
+                for_each_nested_effects(effect,true,|nested|{let mut child=incoming.clone();sequence(nested,&mut child,&child_controls,imports);paths.push(child);});
+                *env=merge_paths(&incoming,&paths);
+            }
+        }
+        let mut produced=Vec::new();collect_direct_effect_produced_tags(effect,&mut produced);
+        if matches!(effect,EffectAst::SubjectVerb(SubjectVerbEffectAst{
+            action:SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile{..}|ZoneMoveActionAst::ExileAll{..}|ZoneMoveActionAst::ExileUntilSourceLeaves{..}|ZoneMoveActionAst::MoveToZone{zone:crate::zone::Zone::Exile,..})
+                |SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary{..}),..
+        })){push_unique_tag(&mut produced,&crate::tag::CompilerReferenceTag::PriorExiledCard.key());}
+        let mut output_dependencies=inputs;union(&mut output_dependencies,controls.iter().cloned());
+        for tag in produced{env.insert(tag,output_dependencies.clone());}
+    }
+    let mut env=Env::new();
+    for local in [crate::tag::CompilerReferenceTag::Triggering.key(),TagKey::from(ironsmith_core::tag::SOURCE_OBJECT_TAG)] { env.insert(local,Vec::new()); }
+    if granted_source_locals {
+        for local in [crate::tag::CompilerReferenceTag::It.key(),crate::tag::CompilerReferenceTag::SourceExiled.key()] { env.insert(local,Vec::new()); }
+    }
+    let mut imports=Vec::new();sequence(effects,&mut env,&[],&mut imports);imports
+}
+
+#[cfg(test)]
+mod granted_cast_import_scope_tests {
+    use super::*;
+    fn cast(tag:&str)->EffectAst{EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(tag),PlayerAst::You,false,true,true,None)}
+    fn local(tag:&str)->EffectAst{EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects{
+        filter:ObjectFilter::default().in_zone(crate::zone::Zone::Exile),count:crate::effect::ChoiceCount::exactly(1),count_value:None,player:PlayerAst::You,tag:crate::tag::TagRef::of(tag),
+    })}
+    #[test]
+    fn local_result_shadows_parent_only_after_its_declaration(){
+        assert_eq!(granted_cast_object_reference_imports(&[cast("x")]),vec![TagKey::from("x")]);
+        assert!(granted_cast_object_reference_imports(&[local("x"),cast("x")]).is_empty());
+        assert_eq!(granted_cast_object_reference_imports(&[cast("x"),local("x")]),vec![TagKey::from("x")]);
+    }
+    #[test]
+    fn mandatory_result_antecedent_binds_before_its_conditional_arm(){
+        let gated=EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult{effect:Box::new(local("x")),predicate:crate::effect::EffectPredicate::Happened,if_true:vec![cast("x")]});
+        assert!(granted_cast_object_reference_imports(&[gated]).is_empty());
+    }
+    #[test]
+    fn local_card_selection_carries_its_free_parent_pool_dependency(){
+        let mut choose=local("x");
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects{filter,..})=&mut choose{*filter=ObjectFilter::tagged(TagKey::from("parent_pool")).in_zone(crate::zone::Zone::Exile);}
+        let gated=EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult{effect:Box::new(choose),predicate:crate::effect::EffectPredicate::Happened,if_true:vec![cast("x")]});
+        assert_eq!(granted_cast_object_reference_imports(&[gated]),vec![TagKey::from("parent_pool")]);
+    }
+    #[test]
+    fn sibling_branch_producer_does_not_shadow_another_branch_read(){
+        let branch=EffectAst::Conditionals(ConditionalEffectAst::Conditional{predicate:PredicateAst::YourTurn,if_true:vec![cast("x")],if_false:vec![local("x"),cast("x")]});
+        assert_eq!(granted_cast_object_reference_imports(&[branch]),vec![TagKey::from("x")]);
+    }
+    #[test]
+    fn delayed_body_producer_does_not_shadow_later_immediate_read(){
+        let delayed=EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat{effects:vec![local("x"),cast("x")]});
+        assert_eq!(granted_cast_object_reference_imports(&[delayed,cast("x")]),vec![TagKey::from("x")]);
+    }
+    #[test]
+    fn unless_alternative_reads_the_parent_frame_independently(){
+        let unless=EffectAst::Conditionals(ConditionalEffectAst::UnlessAction{effects:vec![local("x")],alternative:vec![cast("x")],player:PlayerAst::You});
+        assert_eq!(granted_cast_object_reference_imports(&[unless]),vec![TagKey::from("x")]);
+    }
+    #[test]
+    fn normalized_document_statements_share_ordered_local_bindings(){
+        use crate::model::document_program::{CompilerDocumentProgramAst,CompilerDocumentStatementAst,CompilerStatementId};
+        let statements=vec![local("x"),cast("x")].into_iter().enumerate().map(|(index,effect)|CompilerDocumentStatementAst{id:CompilerStatementId(index as u32),scope:crate::model::SymbolScopeId(1),parent_scope:crate::model::SymbolScopeId(0),effects:vec![effect],imports:Vec::new(),exports:Vec::new(),leading_then:false,starting_with_controller:false}).collect();
+        let document=EffectAst::DocumentProgram(Box::new(CompilerDocumentProgramAst{scope:crate::model::SymbolScopeId(0),parent_scope:crate::model::SymbolScopeId(0),statements,edges:Vec::new()}));
+        assert!(granted_cast_object_reference_imports(&[document]).is_empty());
+    }
+    #[test]
+    fn normalized_object_iteration_imports_domain_and_restores_outer_iterator(){
+        use crate::model::resource_choice_clauses::{CompilerIterationAst,CompilerIterationSourceAst,CompilerRepetitionKindAst};
+        let current=ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG;
+        let iteration=EffectAst::Iteration(Box::new(CompilerIterationAst{kind:CompilerRepetitionKindAst::ForEach,source:CompilerIterationSourceAst::Objects(ObjectFilter::tagged(TagKey::from("outer_cards"))),parent_scope:crate::model::SymbolScopeId(0),scope:crate::model::SymbolScopeId(1),iterator:crate::model::SymbolReference{symbol:crate::model::SymbolId(1),role:crate::model::ReferenceRole::Iteration,domain:crate::model::ObjectDomain::Object,cardinality:crate::model::Cardinality::ExactlyOne},selection_cardinality:None,body:vec![cast(current)],aggregate:None}));
+        let imports=granted_cast_object_reference_imports(&[iteration,cast(current)]);
+        assert!(imports.contains(&TagKey::from("outer_cards")));assert!(imports.contains(&TagKey::from(current)));
+    }
+    #[test]
+    fn loop_domain_is_imported_and_loop_local_producer_does_not_erase_zero_iteration_parent(){
+        let looped=EffectAst::ForEach(ForEachEffectAst::ForEachTagged{tag:crate::tag::TagRef::of("outer_cards"),effects:vec![cast(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG),local("x")]});
+        let imports=granted_cast_object_reference_imports(&[looped,cast("x")]);
+        assert!(imports.contains(&TagKey::from("outer_cards")));assert!(imports.contains(&TagKey::from("x")));
+        assert!(!imports.contains(&TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG)));
+    }
+}
+
+#[cfg(test)]
+mod alternative_activation_grant_target_tests {
+    use super::*;
+    #[test]
+    fn alternative_activation_price_grant_reads_event_values_in_its_target_filter() {
+        let mut filter=ObjectFilter::default();
+        filter.power=Some(crate::filter::Comparison::EqualExpr(Box::new(Value::EventValue(EventValueSpec::DieBatchTotal))));
+        let action=SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative {
+            target:TargetAst::Object(filter,None,None),status:"marked".into(),replacement_cost:Default::default(),max_uses_per_ability_each_turn:1,nonloyalty_only:true,
+        });
+        assert!(subject_verb_action_value(&action).is_none());
+        let effect=EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor,PlayerAst::You,action);
+        assert!(effect_references_event_derived_amount(&effect));
+    }
+}
+
+#[cfg(test)]
+mod delayed_registration_import_scope_tests {
+    use super::*;
+    fn cast(tag:crate::tag::TagRef)->EffectAst { EffectAst::subject_verb_cast_tagged(tag,PlayerAst::You,false,true,true,None) }
+    #[test]
+    fn parent_exile_and_it_are_imports_only_for_delayed_registration_frames() {
+        for reference in [crate::tag::CompilerReferenceTag::SourceExiled,crate::tag::CompilerReferenceTag::It] {
+            let body=vec![cast(reference.bind())];
+            assert_eq!(delayed_cast_object_reference_imports(&body),vec![reference.key()]);
+            assert!(granted_cast_object_reference_imports(&body).is_empty());
+        }
+    }
+    #[test]
+    fn delayed_local_exile_producer_shadows_only_its_own_later_reads() {
+        let tag=crate::tag::CompilerReferenceTag::SourceExiled.bind();
+        let producer=EffectAst::subject_verb_filtered_tagged_objects(ObjectFilter::default(),tag.clone(),Vec::new());
+        assert!(delayed_cast_object_reference_imports(&[producer.clone(),cast(tag.clone())]).is_empty());
+        assert_eq!(delayed_cast_object_reference_imports(&[cast(tag.clone()),producer]),vec![tag.key.clone()]);
+    }
+}
+
+#[cfg(test)]
+mod remembered_arrival_tag_tests {
+    use super::*;
+    #[test]
+    fn remembered_arrivals_publish_a_tag_without_reading_it_or_a_scalar() {
+        let tag = crate::tag::CompilerReferenceTag::SourceExiled.bind();
+        let action = SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals {
+            from: crate::effect::EffectId::PENDING_PRIOR_ACTION,
+            zone: crate::zone::Zone::Exile,
+            tag: tag.clone(),
+        });
+        assert!(subject_verb_action_value(&action).is_none());
+        let producer = EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor, PlayerAst::You, action);
+        let mut produced = Vec::new();
+        collect_effect_produced_tags(&producer, &mut produced);
+        assert_eq!(produced, vec![tag.key.clone()]);
+        assert!(!effect_references_tag(&producer, tag.key.as_str()));
+        let consumer = EffectAst::subject_verb_cast_tagged(tag.clone(), PlayerAst::You, false, true, true, None);
+        assert!(effect_references_tag(&consumer, tag.key.as_str()));
+        assert!(effect_references_tag_in_object_position(&consumer, tag.key.as_str()));
+        assert!(!effect_references_tag(&consumer, "unrelated-output"));
+        assert!(!effect_references_tag_in_object_position(&producer, tag.key.as_str()));
+        assert!(effects_have_cross_arm_tag_dependency(&[producer, consumer]));
+    }
 }

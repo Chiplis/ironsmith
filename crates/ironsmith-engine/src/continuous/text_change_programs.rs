@@ -240,14 +240,16 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
         | EffectPredicate::PlayerActionObjectHasGreatestManaValue { player, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
         }
+        EffectPredicate::ResultObjectsMatch {filter,..} => *filter=rewrite_filter_words(filter,change)?,
         EffectPredicate::PriorEffectResult(surface) => surface.filter = rewrite_filter_words(&surface.filter, change)?,
-        EffectPredicate::Succeeded | EffectPredicate::Failed | EffectPredicate::Happened
+        EffectPredicate::NamedActionCompleted {..}
+        | EffectPredicate::Succeeded | EffectPredicate::Failed | EffectPredicate::Happened
         | EffectPredicate::DidNotHappen | EffectPredicate::SearchedLibrary | EffectPredicate::HappenedNotReplaced
         | EffectPredicate::ExcessDamageDealt | EffectPredicate::ExcessDamageDealtToCreature
         | EffectPredicate::DealtDamageToPlayer
         | EffectPredicate::ExcessDamageRedirected
         | EffectPredicate::AffectedObjectMatchesCardType { .. } | EffectPredicate::Value(_)
-        | EffectPredicate::Chosen | EffectPredicate::WasDeclined
+        | EffectPredicate::Chosen | EffectPredicate::WasDeclined | EffectPredicate::ChoiceUnavailable
         // Characteristic families and the minimum cohort size contain no
         // authored color, creature-type or land-type word to substitute.
         | EffectPredicate::AffectedObjectsShare { .. } => {}
@@ -259,6 +261,11 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
 /// intentionally drops the old retained transport model; its native encoder
 /// must encode the rewritten typed payload, never reuse stale serialized data.
 pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Result<Option<Effect>, Error> {
+    if let Some(model)=effect.downcast_ref::<LinkExiledCardsEffect>() {
+        let mut changed=model.clone();changed.cards=rewrite_choose_spec_words(&model.cards,change)?;
+        changed.host=rewrite_choose_spec_words(&model.host,change)?;
+        return Ok(Some(Effect::new(changed)));
+    }
     if let Some(model) = effect.downcast_ref::<CreateTokenEffect>() {
         let roles = model.text_roles.as_ref().ok_or(Error::TokenDefinition)?;
         if !roles.has_complete_ability_inventory(model.token.abilities.len())
@@ -338,6 +345,10 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         let rewritten = super::text_change_modifications::rewrite_apply_continuous_words(model, change)?;
         return Ok(Some(Effect::new(rewritten)));
     }
+    visit!(RemoveOptionalTextFragmentEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.until = super::text_change_modifications::rewrite_until_words(&model.until, change)?;
+    });
     visit!(ChangeTextEffect, model, {
         model.duration = super::text_change_modifications::rewrite_until_words(&model.duration, change)?;
         model.target = rewrite_choose_spec_words(&model.target, change)?;
@@ -537,6 +548,13 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.target = rewrite_choose_spec_words(&model.target, change)?;
         model.chooser = model.chooser.as_ref().map(|player| rewrite_player_filter_words(player, change)).transpose()?;
     });
+    visit!(TriggerAbilitiesByClassEffect, model, {
+        model.sources = rewrite_filter_words(&model.sources, change)?;
+        model.source_selector = model.source_selector.as_ref().map(|spec| rewrite_choose_spec_words(spec, change)).transpose()?;
+        model.chooser = model.chooser.as_ref().map(|player| rewrite_player_filter_words(player, change)).transpose()?;
+        // Class/action labels, cardinality and selected occurrence identity
+        // are data, not authored color/type words.
+    });
     visit!(ChooseObjectsEffect, model, {
         model.filter = rewrite_filter_words(&model.filter, change)?;
         model.count_value = model.count_value.as_ref().map(|value| rewrite_value_words(value, change)).transpose()?;
@@ -549,6 +567,17 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.filter = rewrite_player_filter_words(&model.filter, change)?;
     });
     visit!(TagMatchingObjectsEffect, model, { model.filter = rewrite_filter_words(&model.filter, change)?; });
+    visit!(LinkPermanentsEffect, model, {
+        model.source = rewrite_choose_spec_words(&model.source, change)?;
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        // Relation labels are opaque authored association identities.
+    });
+    visit!(LinkObjectsToGroupEffect, model, {
+        for group in &mut model.groups {
+            group.subjects = rewrite_choose_spec_words(&group.subjects, change)?;
+            group.owner = group.owner.as_ref().map(|owner| rewrite_choose_spec_words(owner, change)).transpose()?;
+        }
+    });
 
     child_list!(SequenceEffect);
     child_list!(ManaRetainedEffect);
@@ -563,6 +592,23 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
     child_list!(ForEachTaggedPlayerEffect);
     visit!(WithIdEffect, model, { model.effect = Box::new(model.effect.with_text_change(change)?); });
     visit!(TaggedEffect, model, { model.effect = Box::new(model.effect.with_text_change(change)?); });
+    visit!(NoteObjectNamesEffect,model,{
+        model.object=rewrite_choose_spec_words(&model.object,change)?;
+        model.for_object=rewrite_choose_spec_words(&model.for_object,change)?;
+    });
+    // Catalog nodes are immutable source identities; text changes apply to the
+    // executing program, not to the cards it may later create.
+    visit!(crate::effects::cards::CardDefinitionScopeEffect, model, { model.effect=Box::new(model.effect.with_text_change(change)?); });
+    visit!(CreateCardsEffect, model, {
+        model.count=rewrite_value_words(&model.count,change)?;
+        model.player=rewrite_player_filter_words(&model.player,change)?;
+        match &mut model.selection {
+            ironsmith_core::CardCreationSelection::RandomMatching{filter,..}=>*filter=rewrite_filter_words(filter,change)?,
+            ironsmith_core::CardCreationSelection::Duplicate(target)=>*target=rewrite_choose_spec_words(target,change)?,
+            // Names are real-card identity operands, not color/type words.
+            ironsmith_core::CardCreationSelection::Named(_) | ironsmith_core::CardCreationSelection::ChosenName{..}=>{},
+        }
+    });
     visit!(ExecuteWithSourceEffect, model, {
         model.source = rewrite_choose_spec_words(&model.source, change)?;
         model.effect = Box::new(model.effect.with_text_change(change)?);
@@ -630,6 +676,19 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.filter = rewrite_player_filter_words(&model.filter, change)?;
         model.effects = rewrite_effects(&model.effects, change)?;
     });
+    visit!(FirstResolutionEachTurnEffect, model, {
+        model.effects = rewrite_effects(&model.effects, change)?;
+    });
+    visit!(CopyFromDefinitionEffect, model, {
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+
+    });
+    visit!(NamedActionProgramEffect, model, {
+        model.objects = model.objects.as_ref().map(|objects| rewrite_choose_spec_words(objects, change)).transpose()?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.effects = rewrite_effects(&model.effects, change)?;
+    });
     visit!(RepeatEffectsEffect, model, {
         model.count = rewrite_value_words(&model.count, change)?;
         model.effects = rewrite_effects(&model.effects, change)?;
@@ -691,8 +750,12 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.duration = until(&model.duration, change)?;
         model.activated_from = model.activated_from.as_ref()
             .map(|spec| rewrite_choose_spec_words(spec, change)).transpose()?;
+        if let Some(source)=&mut model.keyword_from {
+            source.source=rewrite_choose_spec_words(&source.source,change)?;
+        }
         let changed = model.target != original.target || model.duration != original.duration
             || model.activated_from != original.activated_from
+            || model.keyword_from != original.keyword_from
             || !same_static_identities(&model.abilities, &original.abilities);
         return Ok(changed.then(|| Effect::new(model)));
     }
@@ -824,6 +887,7 @@ mod tests {
             definition: ironsmith_core::LinkedExileDefinition([17; 32]), pair: 29,
         };
         let program = ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![unchanged.clone()], starts_new_source_line: true,
             self_replacements: vec![crate::resolution::SelfReplacementBranch {
                 condition: Condition::YouControl(black()), replacement_effects: vec![changed.clone()],

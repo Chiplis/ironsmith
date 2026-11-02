@@ -73,6 +73,8 @@ impl DestroyNoRegenerationEffect {
 }
 
 impl EffectExecutor for DestroyNoRegenerationEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.spec==*spec}
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Destroyed)
     }
@@ -95,7 +97,7 @@ impl EffectExecutor for DestroyNoRegenerationEffect {
         // regenerated" means they can't replace this destruction (CR 701.19c).
         // Otherwise this is an ordinary destroy: a mass destruction is one
         // simultaneous event (CR 701.8a, 603.10a).
-        if self.spec.is_target() && self.spec.is_single() {
+        if self.spec.is_target() && self.spec.is_single() && !crate::effects::target_packets::multiple(ctx,&self.spec) {
             return super::destroy::execute_single_target_destroy_with_outputs(
                 game, ctx, &self.spec, false,
             );

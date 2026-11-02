@@ -14,6 +14,9 @@ pub struct TransformsTrigger {
     /// trigger's source ("Whenever a permanent you control transforms").
     pub permanent_filter: Option<crate::target::ObjectFilter>,
     pub destination_filter: Option<crate::target::ObjectFilter>,
+    pub activation_label: Option<String>,
+    pub activation_source_must_match: bool,
+    pub activation_player: Option<crate::PlayerFilter>,
 }
 
 impl TransformsTrigger {
@@ -23,6 +26,9 @@ impl TransformsTrigger {
             destination_name: None,
             permanent_filter: None,
             destination_filter: None,
+            activation_label: None,
+            activation_source_must_match: false,
+            activation_player: None,
         }
     }
 
@@ -96,6 +102,16 @@ impl TriggerMatcher for TransformsTrigger {
             _ => return false,
         };
         let e = &e;
+        if let Some(label) = &self.activation_label {
+            let Some(cause) = &e.cause else {return false;};
+            if cause.activation_definition.is_none() || cause.activation_label.as_ref() != Some(label)
+                || cause.resolving_ability != Some(ironsmith_core::CauseAbilityKind::Activated) {return false;}
+            if self.activation_source_must_match && cause.source != Some(e.permanent) { return false; }
+            if let Some(player) = &self.activation_player {
+                use crate::filter::PlayerFilterExt as _;
+                if cause.source_controller.is_none_or(|actor| !player.matches_player(actor,&ctx.filter_ctx)) { return false; }
+            }
+        }
         if let Some(filter) = &self.permanent_filter {
             let matches = |snapshot| {
                 super::permanent_lifecycle::matches_completed(filter, snapshot, ctx)
@@ -131,6 +147,14 @@ impl TriggerMatcher for TransformsTrigger {
         true
     }
 
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        match event.kind() {
+            EventKind::Transformed => event.downcast::<TransformedEvent>().is_some_and(|event| event.complete_source_lookback),
+            EventKind::Converted if self.watches_transforms_into() => event.downcast::<crate::events::ConvertedEvent>().is_some_and(|event| event.complete_source_lookback),
+            _ => false,
+        }
+    }
+
     fn uses_snapshot(&self) -> bool {
         self.permanent_filter.is_some()
     }
@@ -144,26 +168,19 @@ impl TriggerMatcher for TransformsTrigger {
     }
 
     fn display(&self) -> String {
-        if let Some(filter) = &self.permanent_filter {
-
-            return format!(
-                "Whenever {} transforms{}",
-                filter.description(),
-                self.destination_filter
-                    .as_ref()
-                    .map(|destination| format!(" into {}", destination.description()))
-                    .unwrap_or_default()
-            );
+        let mut display = if let Some(filter) = &self.permanent_filter {
+            format!("Whenever {} transforms{}", filter.description(),
+                self.destination_filter.as_ref().map(|destination|format!(" into {}",destination.description())).unwrap_or_default())
+        } else if self.destination_name.is_some() {
+            format!("Whenever {} transforms into {}", self.this_subject_text(),self.destination_text())
+        } else {format!("When {} transforms",self.this_subject_text())};
+        if let Some(label)=&self.activation_label {
+            display.push_str(&format!(" caused by {} {label} activated ability",if self.activation_source_must_match {"its"} else {"a"}));
+            if self.activation_player == Some(crate::PlayerFilter::You) {display.push_str(" you activated");}
         }
-        if self.destination_name.is_some() {
-            return format!(
-                "Whenever {} transforms into {}",
-                self.this_subject_text(),
-                self.destination_text()
-            );
-        }
-        format!("When {} transforms", self.this_subject_text())
+        display
     }
+
 }
 
 #[cfg(test)]
@@ -201,5 +218,34 @@ mod tests {
                 .destination_name(Some("Front Face".to_string()))
                 .matches(&event, &ctx)
         );
+    }
+}
+
+#[cfg(test)]
+mod own_activation_cause_tests {
+    use super::*;
+    #[test]
+    fn own_named_activation_uses_retained_cause_identity_not_another_producer_or_current_marker() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let alice=crate::PlayerId(0);let bob=crate::PlayerId(1);
+        let card=crate::card::CardBuilder::new(crate::CardId::from_raw(98_702),"Back Face").build();
+        let source=game.create_object_from_card(&card,alice,crate::Zone::Battlefield);
+        let other=game.create_object_from_card(&card,alice,crate::Zone::Battlefield);
+        let snapshot=crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(),&game);
+        let ctx=TriggerContext::for_source(source,alice,&game);
+        let mut trigger=TransformsTrigger::new().permanent_filter(crate::ObjectFilter::source());
+        trigger.activation_label=Some("glimmer".into());trigger.activation_source_must_match=true;
+        trigger.activation_player=Some(crate::PlayerFilter::You);
+        for negative in 0..7 {
+            let mut cause=crate::events::EventCause::effect();
+            cause.source=Some(if negative==1 {other}else{source});cause.source_controller=Some(if negative==5 {bob}else{alice});
+            cause.activation_label=Some(if negative==2 {"other"}else{"glimmer"}.into());
+            cause.activation_definition=if negative==3 {None}else{Some(ironsmith_core::LinkedExileDefinition([7;32]))};
+            cause.resolving_ability=Some(if negative==4 {ironsmith_core::CauseAbilityKind::Triggered}else{ironsmith_core::CauseAbilityKind::Activated});
+            let event=TransformedEvent::new(source).with_snapshot(Some(snapshot.clone()));
+            let event=if negative==6 {event}else{event.with_cause(cause)};
+            let event=TriggerEvent::new_with_provenance(event,Default::default());
+            assert_eq!(trigger.matches(&event,&ctx),negative==0,"negative={negative}");
+        }
     }
 }

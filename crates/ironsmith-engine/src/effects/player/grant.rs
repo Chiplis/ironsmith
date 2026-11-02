@@ -51,6 +51,41 @@ impl EffectExecutor for GrantEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let grantable=ctx.bind_definition_scope_grantable(self.grantable.clone())?;
+        if ctx.target_assignments.iter().any(|assignment| {
+            assignment.spec.base() == self.target.base() && assignment.range.len() > 1
+        }) {
+            let mut objects = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+            let mut outcomes = Vec::new();
+            if let Grantable::Ability(ability) = &grantable {
+                let battlefield = objects.iter().copied().filter(|id| {
+                    game.object(*id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                }).collect::<Vec<_>>();
+                if !battlefield.is_empty() {
+                    let until = match self.duration {
+                        GrantDuration::UntilEndOfTurn => crate::effect::Until::EndOfTurn,
+                        GrantDuration::Forever => crate::effect::Until::Forever,
+                        GrantDuration::UntilYourNextTurn => crate::effect::Until::YourNextTurn,
+                        GrantDuration::UntilYourNextTurnEnd => crate::effect::Until::YourNextTurnEnd,
+                    };
+                    outcomes.push(crate::effects::ApplyContinuousEffect::new(
+                        crate::continuous::EffectTarget::AllPermanents,
+                        crate::continuous::Modification::AddAbility(ability.clone()), until,
+                    ).with_source_type(crate::continuous::EffectSourceType::Resolution {
+                        locked_targets: battlefield.clone(),
+                    }).execute_child(game, ctx)?);
+                    objects.retain(|id| !battlefield.contains(id));
+                }
+            }
+            // Permission registry writes are independent exact-incarnation
+            // grants. Each derived price still reads its own recipient card.
+            for object in objects {
+                let mut grant = self.clone();
+                grant.target = ChooseSpec::SpecificObject(object);
+                outcomes.push(grant.execute_child(game, ctx)?);
+            }
+            return Ok(EffectOutcome::aggregate(outcomes));
+        }
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
         let obj = game
@@ -63,7 +98,7 @@ impl EffectExecutor for GrantEffect {
         // Battlefield abilities participate in the continuous-effect layers;
         // the casting-permission registry serves cards in other zones.
         if zone == crate::zone::Zone::Battlefield
-            && let Grantable::Ability(ability) = &self.grantable
+            && let Grantable::Ability(ability) = &grantable
         {
             let until = match self.duration {
                 GrantDuration::UntilEndOfTurn => crate::effect::Until::EndOfTurn,
@@ -89,7 +124,7 @@ impl EffectExecutor for GrantEffect {
             ctx.controller,
         );
 
-        match &self.grantable {
+        match &grantable {
             Grantable::Ability(ability) => {
                 // Grant a static ability
                 game.effect_store.grant_registry.grant_ability_to_card(
@@ -123,7 +158,7 @@ impl EffectExecutor for GrantEffect {
                     target_id,
                     zone,
                     owner,
-                    self.grantable.clone(),
+                    grantable.clone(),
                     grant_source,
                 );
                 Ok(EffectOutcome::resolved())
@@ -135,13 +170,15 @@ impl EffectExecutor for GrantEffect {
                     target_id,
                     zone,
                     owner,
-                    self.grantable.clone(),
+                    grantable.clone(),
                     grant_source,
                 );
                 Ok(EffectOutcome::resolved())
             }
         }
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)

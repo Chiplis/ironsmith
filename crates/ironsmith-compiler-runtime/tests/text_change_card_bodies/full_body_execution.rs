@@ -143,7 +143,7 @@ impl Resolve {
 }
 impl DecisionMaker for Resolve {
     fn decide_options(&mut self, _: &GameState, context: &SelectOptionsContext) -> Vec<usize> {
-        let (count, index) = self.options.pop_front().expect("every resolution word choice is authored explicitly");
+        let (count, index) = self.options.pop_front().unwrap_or_else(|| panic!("every resolution word choice is authored explicitly: {context:?}"));
         assert_eq!((context.min, context.max, context.options.len()), (1, 1, count));
         assert!(context.options.iter().any(|option| option.index == index && option.legal));
         vec![index]

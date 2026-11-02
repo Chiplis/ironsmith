@@ -11,13 +11,15 @@
 pub mod canonical_pipeline;
 pub mod compiler_pipeline;
 pub mod facade;
+mod supplied_definitions;
+pub use supplied_definitions::{compile_supplied_card_definition,compile_supplied_card_definition_bundle,SuppliedCardDefinitionSource,SuppliedCardDefinitionBundle};
 pub mod pipeline;
 
 pub use ironsmith_compiler_grammar::*;
 pub use ironsmith_compiler_lowering::{
     CardDefinitionBuilder, battlefield_entry_counter_fusion, card_builders, card_tokens, cards,
     compile_support, condition_antecedent, effect_pipeline, lower, lowering, lowering_support,
-    runtime_static_ability_helpers, with_custom_tokens,
+    runtime_static_ability_helpers, with_custom_tokens, with_supplied_card_definitions, supplied_card_definition_named,
 };
 
 pub use facade::{
@@ -98,3 +100,4 @@ impl ParseCardText for CardDefinitionBuilder {
 }
 
 pub use ironsmith_compiler_grammar::with_custom_subtypes;
+pub use ironsmith_core::custom_subtypes::CustomSubtypeDefinition;

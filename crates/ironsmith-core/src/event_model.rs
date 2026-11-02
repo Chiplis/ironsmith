@@ -120,6 +120,8 @@ pub enum KeywordActionKind {
     /// A player chose one or more modes for a modal spell or ability.
     FaceDilemma,
     CustomStatusGained,
+    /// A completed source-owned number choice, including reselection of the same number.
+    ChoosePermanentNumber,
 }
 
 impl KeywordActionKind {
@@ -246,6 +248,7 @@ impl KeywordActionKind {
             Self::Forage => "forage",
             Self::Harness => "harness",
             Self::CustomStatusGained => "gain a custom status",
+            Self::ChoosePermanentNumber => "choose a number for this permanent",
             Self::Heal => "heal damage",
             Self::Improvise => "improvise",
             Self::Incubate => "incubate",
@@ -333,6 +336,7 @@ impl KeywordActionKind {
             Self::Forage => "forages",
             Self::Harness => "harnesses",
             Self::CustomStatusGained => "gains a custom status",
+            Self::ChoosePermanentNumber => "chooses a number for this permanent",
             Self::Heal => "heals damage",
             Self::Improvise => "improvises",
             Self::Incubate => "incubates",

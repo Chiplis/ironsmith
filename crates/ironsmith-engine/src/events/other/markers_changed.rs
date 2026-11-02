@@ -43,6 +43,7 @@ pub struct MarkersChangedEvent {
     pub source: Option<ObjectId>,
     /// The player who controlled the source (if any).
     pub source_controller: Option<PlayerId>,
+    pub cause: Option<crate::events::cause::EventCause>,
 }
 
 impl MarkersChangedEvent {
@@ -62,6 +63,7 @@ impl MarkersChangedEvent {
             count_after: None,
             source,
             source_controller,
+            cause: None,
         }
     }
 
@@ -81,7 +83,12 @@ impl MarkersChangedEvent {
             count_after: None,
             source,
             source_controller,
+            cause: None,
         }
+    }
+
+    pub fn with_cause(mut self, cause: crate::events::cause::EventCause) -> Self {
+        self.cause = Some(cause); self
     }
 
     /// Check if this is an add event.

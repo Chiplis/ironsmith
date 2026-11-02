@@ -4694,6 +4694,7 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
             || grant.abilities.len() != 1
             || grant.activated_from.is_some()
             || grant.activated_from_symbol_as_any_color.is_some()
+            || grant.keyword_from.is_some()
         {
             return None;
         }
@@ -5261,6 +5262,7 @@ pub(crate) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String>
                 || grant_target.abilities.len() != 1
                 || grant_target.activated_from.is_some()
                 || grant_target.activated_from_symbol_as_any_color.is_some()
+                || grant_target.keyword_from.is_some()
             {
                 return None;
             }
@@ -5878,6 +5880,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Shuffled => "shuffled",
         crate::effect::PriorEffectAction::Tapped => "tapped",
         crate::effect::PriorEffectAction::ManaLost => "lost",
+        crate::effect::PriorEffectAction::Affected => "affected",
     }
 }
 
@@ -6801,6 +6804,15 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             };
             format!("the number of {subject} that were exiled under {controller} control this turn")
         }
+        TurnHistoryCount::MovedZonesEver { filter, from, to } => {
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(filter));
+            match (from,to) {
+                (Some(from),Some(to))=>format!("the number of {subject} put into {to} from {from} during this game"),
+                (Some(from),None)=>format!("the number of {subject} that left {from} during this game"),
+                (None,Some(to))=>format!("the number of {subject} put into {to} during this game"),
+                (None,None)=>format!("the number of {subject} that changed zones during this game"),
+            }
+        }
         TurnHistoryCount::MovedZones { filter, from, to } => {
             let subject = pluralize_noun_phrase(&describe_for_each_filter(filter));
             match (from, to) {
@@ -7706,6 +7718,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 ironsmith_core::ChoiceAggregateMetric::Toughness => "toughness",
                 ironsmith_core::ChoiceAggregateMetric::ManaValue => "mana value",
                 ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+                ironsmith_core::ChoiceAggregateMetric::DistinctColorRepresentatives => "distinct represented colors",
                 ironsmith_core::ChoiceAggregateMetric::ManaSymbolsOfColor(color) => {
                     return format!(
                         "the total number of {} mana symbols in the mana costs of the objects this spell targets",
@@ -8065,6 +8078,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
         Value::StationContributionOf(spec) => format!("{} power", describe_possessive_choose_spec(spec)),
+        Value::TimesPaidLabelOf {object,reference} => format!("the number of times {}'s additional {} cost was paid", describe_choose_spec(object),reference.custom_keyword.as_deref().unwrap_or("named")),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ModeSelectionsOf(spec) => format!(
             "the number of times you chose a mode for {}",
@@ -8726,6 +8740,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("how many times optional cost '{label}' was paid")
         }
         Value::KickCount => "the number of times this spell was kicked".to_string(),
+        Value::NamedActionCount {object,label,this_turn} => format!("the number of times {} has performed the {label} action{}",describe_choose_spec(object),if *this_turn {" this turn"}else{""}),
         Value::CountersOnSource(counter_type) => format!(
             "the number of {} counters on this source",
             counter_type.description()

@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-inscribe.json",
+    "scope": "Exact full Intrusive Thoughts source with counter reminder retained; combines generic player counter meaning and Inscribe"
+  },
+  "mechanics": [
+    {
+      "id": "msem-444",
+      "keyword": "Inscribe",
+      "original_reminder": "{2}{U}{B}: Exile this card from your hand inscribed on a creature you control. Whenever it attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "source_cards": [
+        "Intrusive Thoughts"
+      ],
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Intrusive Thoughts_HQZ",
+          "name": "Intrusive Thoughts",
+          "original_text": "Mana cost: {U}{B}\nType: Sorcery — Inscription\nTarget player gets three corruption counters. *(At your first main phase, for each corruption counter on you, mill a card. If it's nonland, you lose 1 life and the counter.)*\nWhenever you mill a card, inscribed creature gets +1/+1 until end of turn.\nInscribe {2}{U}{B} *({2}{U}{B}: Exile this card from your hand inscribed on a creature you control. Whenever it attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "executable_text": "Mana cost: {U}{B}\nType: Sorcery — Inscription\nTarget player gets three corruption counters. Register a persistent rule named \"corruption player counter meaning\" for that player with event condition \"You have one or more corruption counters and it's the first main phase of the turn\" and ability \"At the beginning of each of your main phases, For each corruption counter on you, do the following: mill a card. If a nonland card was milled this way, you lose 1 life and remove a corruption counter from yourself\".\nWhenever you mill a card, if this card is in exile, creature from the inscribed host collection gets +1/+1 until end of turn.\nKeyword ability \"inscribe\" — {2}{U}{B}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "mana_cost": "{U}{B}",
+          "type_line": "Sorcery — Inscription",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Intrusive Thoughts_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Intrusive Thoughts",
+              "original_text": "Mana cost: {U}{B}\nType: Sorcery — Inscription\nTarget player gets three corruption counters. *(At your first main phase, for each corruption counter on you, mill a card. If it's nonland, you lose 1 life and the counter.)*\nWhenever you mill a card, inscribed creature gets +1/+1 until end of turn.\nInscribe {2}{U}{B} *({2}{U}{B}: Exile this card from your hand inscribed on a creature you control. Whenever it attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Intrusive Thoughts",
+              "executable_text": "Mana cost: {U}{B}\nType: Sorcery — Inscription\nTarget player gets three corruption counters. Register a persistent rule named \"corruption player counter meaning\" for that player with event condition \"You have one or more corruption counters and it's the first main phase of the turn\" and ability \"At the beginning of each of your main phases, For each corruption counter on you, do the following: mill a card. If a nonland card was milled this way, you lose 1 life and remove a corruption counter from yourself\".\nWhenever you mill a card, if this card is in exile, creature from the inscribed host collection gets +1/+1 until end of turn.\nKeyword ability \"inscribe\" — {2}{U}{B}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player gets three corruption counters.\nWhenever you mill a card, inscribed creature gets +1/+1 until end of turn.\nInscribe {2}{U}{B}",
+              "original_printed_rules_text": "Target player gets three corruption counters. (At your first main phase, for each corruption counter on you, mill a card. If it's nonland, you lose 1 life and the counter.)\nWhenever you mill a card, inscribed creature gets +1/+1 until end of turn.\nInscribe {2}{U}{B} ({2}{U}{B}: Exile this card from your hand inscribed on a creature you control. Whenever it attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Target player gets three corruption counters.\nWhenever you mill a card, inscribed creature gets +1/+1 until end of turn.\nInscribe {2}{U}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Target player gets three corruption counters. (At your first main phase, for each corruption counter on you, mill a card. If it's nonland, you lose 1 life and the counter.)\nWhenever you mill a card, inscribed creature gets +1/+1 until end of turn.\nInscribe {2}{U}{B} ({2}{U}{B}: Exile this card from your hand inscribed on a creature you control. Whenever it attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+        }
+      ],
+      "support_status": "implemented_candidate_unverified",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "Authoritative702.201a-e adds reveal activation cost and owner-hand constraint omitted in reminder; exact exile-incarnation link grants a noncopiable attack trigger, not Cipher identity.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "candidate_status": "frontend_candidate_pending_link_binding",
+      "composition_gaps": [
+        "Two independently bound referents (chosen creature and exact exiled card) must survive gained trigger lowering.",
+        "Owner-hand effect constraint must apply to copied/stolen activated ability, not only to original activation cost.",
+        "Grant must disappear on either incarnation leaving its required zone; no revive when exiled card leaves and returns."
+      ],
+      "semantic_equivalence": "Preserves the complete authored player-counter reminder for generic counter-rule ingress; source-free player registration and sequential per-counter receipts require parent verification."
+    }
+  ]
+}

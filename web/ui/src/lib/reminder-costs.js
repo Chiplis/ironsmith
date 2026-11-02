@@ -18,8 +18,37 @@ export function hasReminderCostReference(reminder, keyword, forms) {
   return [...String(reminder).matchAll(reference(keyword, forms))].some(match => outsideQuotation(reminder, match.index));
 }
 
+// Compact mana is admitted only in a declared price slot and only as one
+// complete mana prefix. An ordinary quantity such as "2 life" stays a
+// nonmana payment, not a generic mana symbol followed by unparsed text.
+export function normalizeDeclaredManaPrice(value) {
+  const text=String(value).trim();
+  const match=text.match(/^((?:(?:[0-9]+|[WUBRGCSXYZ])(?:\/[WUBRGCP])?)+)(?=$|,\s*(?:Pay|Sacrifice|Discard|Exile|Return|Tap|Remove)\b)/);
+  if(!match)return text;
+  const symbols=match[1].match(/(?:[0-9]+|[WUBRGCSXYZ])(?:\/[WUBRGCP])?/g);
+  return symbols.map(symbol=>`{${symbol}}`).join('')+text.slice(match[1].length);
+}
+// A declaration's cost ends before a separate ability instruction. Quoted
+// names/programs and mana symbols own their internal punctuation.
+export function splitReminderPriceDeclaration(value,definition) {
+  const text=String(value);const parameters=reminderParameters(definition.reminder);
+  if(parameters.some(name=>name!=='cost')||(definition.template&&definition.template.toLowerCase()!=='{cost}'))return {price:text,following:''};
+  let quote=null,braces=0;
+  for(let index=0;index<text.length;index++) {
+    const character=text[index];
+    if(character==='"'||character==='“'||character==='”'){if(!quote)quote=character;else if(character==='"'||character==='”')quote=null;continue;}
+    if(quote)continue;
+    if(character==='{'){braces++;continue;}if(character==='}'){braces--;continue;}
+    if(character!=='.'||braces)continue;
+    const following=text.slice(index+1).trimStart();
+    if(/^Spend only mana\b[^.!?]*\bto activate this ability\.?$/i.test(following))return {price:text.slice(0,index).trimEnd(),following};
+    if(/^(?:This (?:ability|cost|card|creature|permanent|spell)|Activate|If|When|Whenever|At|For each|You)\b/i.test(following))return {price:text.slice(0,index).trimEnd(),following};
+  }
+  return {price:text,following:''};
+}
+
 function declaredPrice(reminder, declaredCost) {
-  const cost = String(declaredCost || '').trim().replace(/\.$/, '').trim();
+  const cost = normalizeDeclaredManaPrice(String(declaredCost || '').trim().replace(/\.$/, '').trim());
   const qualified = cost.match(/^onto\s+(.+?)\s+(?=\{|(?:pay|discard|sacrifice|exile|return|tap|remove)\b)(.+)$/i);
   if (!qualified) return cost;
   const quality = qualified[1].trim();
@@ -36,7 +65,7 @@ export function bindReminderCost(reminder, keyword, declaredCost, forms) {
   if (/[\r\n()]/.test(cost) || /\bits\s+.+?\s+cost\b/i.test(cost)) {
     throw new Error(`"${keyword}" requires a concrete cost, including any non-mana payments.`);
   }
-  const pattern = new RegExp(`(?:\\bpay\\s+)?${reference(keyword, forms).source}`, 'gi');
+  const pattern = new RegExp(`(?:\\bpay(?:ing)?\\s+)?${reference(keyword, forms).source}`, 'gi');
   return String(reminder).replace(pattern, (match, offset) => {
     if (!outsideQuotation(reminder, offset)) return match;
     // A subject referring back to a price is not another payment slot.
@@ -46,15 +75,20 @@ export function bindReminderCost(reminder, keyword, declaredCost, forms) {
     // label must survive binding the separate price slot in the same reminder.
     // Only historical predicate subjects are protected: payable occurrences
     // ("pay its ... cost" / "for its ... cost") still bind normally.
-    if (!/^pay\s+/i.test(match) && !/\{cost\}/i.test(match)
+    if (!/^pay(?:ing)?\s+/i.test(match) && !/\{cost\}/i.test(match)
       && /^\s+(?:was|wasn't|was not)\s+paid\b/i.test(reminder.slice(offset + match.length))) return match;
-    const hadPay = /^pay\s+/i.test(match);
+    const hadPay = /^pay(?:ing)?\s+/i.test(match);
+    const gerundSlot = /^paying\s+/i.test(match);
     const actionPrice = /^(?:pay|exile|discard|sacrifice|return|tap|remove)\b/i.test(cost);
     // An action price written as its own line ("Blink—Sacrifice a creature.")
     // reads mid-sentence once it replaces "pay {Cost}".
     const sentenceStart = /(?:^|[.!?:]\s*)$/.test(reminder.slice(0, offset));
-    const price = actionPrice && !sentenceStart ? cost[0].toLowerCase() + cost.slice(1) : cost;
-    return `${hadPay && !actionPrice ? match.match(/^pay\s+/i)[0] : ''}${price}`;
+    let price = actionPrice && !sentenceStart ? cost[0].toLowerCase() + cost.slice(1) : cost;
+    if (actionPrice && gerundSlot) {
+      const gerunds = {pay:'paying', exile:'exiling', discard:'discarding', sacrifice:'sacrificing', return:'returning', tap:'tapping', remove:'removing'};
+      price = price.replace(/^(pay|exile|discard|sacrifice|return|tap|remove)\b/i, verb => gerunds[verb.toLowerCase()]);
+    }
+    return `${hadPay && !actionPrice ? match.match(/^pay(?:ing)?\s+/i)[0] : ''}${price}`;
   });
 }
 
@@ -114,6 +148,12 @@ export function bindReminderValueFromDeclaration(reminder, declaration) {
   const variable = binding[1].toUpperCase(), expression = binding[2].trim();
   if (!new RegExp(`\\b${variable}\\b`, 'i').test(String(declaration).slice(0, binding.index))) return { text: reminder, binding: null };
   if (new RegExp(`\\bwhere\\s+${variable}\\s+is\\b`, 'i').test(reminder)) return { text: reminder, binding: null };
+  // A declared operation's parameter is sampled before its body can select,
+  // exile or otherwise rebind the referenced object. BindX restores outer X.
+  if (variable === 'X' && /^Perform the [^:\n]+ action[^:\n]*:/i.test(String(reminder).trim())) {
+    return { text: `With X equal to ${expression}, do the following: [${String(reminder).trim()}]`, binding: { variable, expression } };
+  }
+
   for (const sentence of String(reminder).matchAll(/[^.!?]+[.!?]?/g)) {
     const offset = sentence[0].search(new RegExp(`\\b${variable}\\b`, 'i'));
     if (offset < 0 || !outsideQuotation(reminder, sentence.index + offset)) continue;
@@ -147,7 +187,9 @@ export function expandRepeatedCopyPayment(reminder, keyword, cost) {
 // Activation reminders modify the declared cost/effect rather than replacing
 // it. This binding is independent of the label (Boast, Exhaust, or a custom
 // name), and must not smuggle that label into native activation metadata.
+const CREATURE_TAP_ACTIVATION_PAYMENT = /^For each (?:generic )?mana in this ability's (?:activation|total) cost, you may tap an untapped creature you control rather than pay that mana\.\s*$/i;
 export function isActivationReminder(reminder) {
+  if (CREATURE_TAP_ACTIVATION_PAYMENT.test(String(reminder).trim())) return true;
   return /^Activate\b[^.!?]+\.\s*$/i.test(String(reminder).trim());
 }
 
@@ -160,6 +202,12 @@ export function bindActivationReminder(reminder, declaration) {
   const colon = activation.indexOf(':');
   if (colon < 1 || !activation.slice(colon + 1).trim() || !outsideQuotation(activation, colon)) return { text: reminder, binding: null };
   let restriction = String(reminder).trim();
+  if (CREATURE_TAP_ACTIVATION_PAYMENT.test(restriction)) {
+    return {
+      text: `${activation.trim().replace(/\.$/, '')}. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.`,
+      binding: { keyword, activation: activation.trim(), expanded_full_rule: true },
+    };
+  }
   const selfReference = new RegExp(`^Activate (?:each|this) ${escape(keyword)} ability only once\\.$`, 'i');
   if (selfReference.test(restriction)) restriction = 'Activate this ability only once.';
   else if (!/^Activate (?:this ability )?only\b/i.test(restriction)) return { text: reminder, binding: null };
@@ -258,8 +306,15 @@ export const hasReminderParameters = (reminder, template) => reminderParameters(
 // decoration: "Keyword 3—{1}{U}" and "Keyword 3 {1}{U}" give the same values.
 const SEPARATOR = '(?:[ \\t]*[—–-][ \\t]*|[ \\t]+)';
 const ARTICLE = /^(?:an?|An?)$/;
+// Printed declarations may spell a bounded integer as a word. This vocabulary
+// belongs only to the explicit Number slot, never to references or free text.
+const DECLARED_NUMBER_WORDS = Object.fromEntries([
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+  'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+  'seventeen', 'eighteen', 'nineteen', 'twenty',
+].map((word, number) => [word, String(number)]));
 const CAPTURE = {
-  number: '(\\d+|X)',
+  number: `(\\d+|X|${Object.keys(DECLARED_NUMBER_WORDS).join('|')})`,
   cost: '(.+?)',
   // One to three type words; a leading article belongs to the line, not the type.
   type: "(?!an?\\b)([A-Za-z][A-Za-z'-]*(?:[ \\t]+[A-Za-z][A-Za-z'-]*){0,2}?)",
@@ -304,7 +359,7 @@ export function parseParameterDeclaration(reminder, keyword, declaration, templa
   const parameters = reminderParameters(reminder);
   const rest = String(declaration).trim().replace(new RegExp(`^${escape(keyword)}(?![a-z])`, 'i'), '').trim().replace(/\.$/, '').trim();
   if (!template && !parameters.some(name => name !== 'cost')) {
-    const cost = rest.replace(/^[—–-]\s*/, '');
+    const cost = normalizeDeclaredManaPrice(rest.replace(/^[—–-]\s*/, ''));
     return price(cost) ? { cost } : null;
   }
   for (const candidate of template ? [template] : defaultTemplates(parameters)) {
@@ -312,6 +367,8 @@ export function parseParameterDeclaration(reminder, keyword, declaration, templa
     const match = rest.match(pattern);
     if (!match) continue;
     const values = Object.fromEntries(names.map((name, index) => [name, match[index + 1].trim()]));
+    if (values.number !== undefined) values.number = DECLARED_NUMBER_WORDS[values.number.toLowerCase()] ?? values.number;
+    if (values.cost !== undefined) values.cost=normalizeDeclaredManaPrice(values.cost);
     if (values.cost !== undefined && !price(values.cost)) continue;
     return values;
   }

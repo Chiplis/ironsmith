@@ -69,11 +69,30 @@ pub(crate) fn value_pair(value: &Value) -> Option<LinkedExilePair> {
 }
 pub(crate) fn filter_pair(filter: &crate::target::ObjectFilter) -> Option<LinkedExilePair> {
     use crate::filter::Comparison;
+    if filter.name_noted_for.is_some(){return filter.noted_name_pair;}
     [&filter.mana_value,&filter.power,&filter.toughness].into_iter().find_map(|comparison|match comparison {
         Some(Comparison::EqualExpr(value)|Comparison::NotEqualExpr(value)|Comparison::LessThanExpr(value)
             |Comparison::LessThanOrEqualExpr(value)|Comparison::GreaterThanExpr(value)|Comparison::GreaterThanOrEqualExpr(value))=>value_pair(value),
         _=>None,
     }).or_else(||filter.any_of.iter().find_map(filter_pair))
+}
+fn condition_pair(condition: &ironsmith_core::Condition) -> Option<LinkedExilePair> {
+    match condition {
+        ironsmith_core::Condition::ValueComparison {left,right,..}=>value_pair(left).or_else(||value_pair(right)),
+        ironsmith_core::Condition::ValueIsPrime(value)=>value_pair(value),
+        ironsmith_core::Condition::And(left,right)|ironsmith_core::Condition::Or(left,right)=>condition_pair(left).or_else(||condition_pair(right)),
+        ironsmith_core::Condition::Not(inner)=>condition_pair(inner),
+        _=>None,
+    }
+}
+fn condition_requires_number(condition: &ironsmith_core::Condition) -> bool {
+    match condition {
+        ironsmith_core::Condition::ValueComparison {left,right,..}=>contains_value(left)||contains_value(right),
+        ironsmith_core::Condition::ValueIsPrime(value)=>contains_value(value),
+        ironsmith_core::Condition::And(left,right)|ironsmith_core::Condition::Or(left,right)=>condition_requires_number(left)||condition_requires_number(right),
+        ironsmith_core::Condition::Not(inner)=>condition_requires_number(inner),
+        _=>false,
+    }
 }
 pub(crate) fn static_pair(ability:&crate::static_abilities::StaticAbility)->Option<LinkedExilePair>{
     fn pair(model:&crate::static_abilities::CompiledStaticAbility)->Option<LinkedExilePair>{
@@ -81,7 +100,10 @@ pub(crate) fn static_pair(ability:&crate::static_abilities::StaticAbility)->Opti
             ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram{program,..}=>program.source_number_pair,
             ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt{power,toughness}=>value_pair(power).or_else(||value_pair(toughness)),
             ironsmith_core::StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::CastSpellsMatching(_,filter),..}=>filter_pair(filter),
-            ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>pair(ability),
+            ironsmith_core::StaticAbilityPayload::Conditional{ability,condition,..}=>condition_pair(condition).or_else(||pair(ability)),
+            ironsmith_core::StaticAbilityPayload::Anthem(anthem)=>anthem.condition.as_ref().and_then(condition_pair),
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)=>grant.condition.as_ref().and_then(condition_pair),
+            ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction)=>filter_pair(&reduction.filter),
             _=>None,
         }
     }
@@ -119,7 +141,9 @@ fn ability_requires_number(ability: &Ability) -> bool {
             ironsmith_core::StaticAbilityPayload::RuleRestriction {
                 restriction: crate::effect::Restriction::CastSpellsMatching(_, filter), ..
             } => filter_requires_number(filter),
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => static_requires(ability),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => condition_requires_number(condition)||static_requires(ability),
+            ironsmith_core::StaticAbilityPayload::Anthem(anthem)=>anthem.condition.as_ref().is_some_and(condition_requires_number),
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)=>grant.condition.as_ref().is_some_and(condition_requires_number),
             _ => false,
         }
     }
@@ -182,4 +206,24 @@ pub(crate) fn read(game:&GameState,source:ObjectId,pair:Option<LinkedExilePair>,
     explicit:Option<&NumberChoiceOwner>,snapshot:Option<&ObjectSnapshot>)->Result<Option<u32>,ExecutionError>{
     let owner=resolve_owner(game,source,pair,explicit,snapshot)?;
     game.number_for_acquisition(&owner,snapshot)
+}
+
+/// Admission-time ownership of a source-noted-information predicate. The
+/// acquired trigger identity selects the actual occurrence, not equal text.
+pub(crate) fn trigger_memory_owner(game:&GameState,source:ObjectId,pair:Option<LinkedExilePair>,identity:Option<crate::triggers::TriggerIdentity>)->Result<NumberChoiceOwner,ExecutionError>{
+    let Some(identity)=identity else{return resolve_owner(game,source,pair,None,None);};
+    let pair=pair.ok_or_else(missing)?;
+    let snapshot=if let Some(object)=game.object(source){
+        ObjectSnapshot::try_from_object_with_calculated_characteristics(object,game)?
+    }else{game.source_last_known_snapshot(source).cloned().ok_or_else(missing)?};
+    let origins=snapshot.ability_origins.as_ref().ok_or_else(missing)?;
+    let mut owners=Vec::new();
+    for (slot,ability) in snapshot.abilities.iter().enumerate(){
+        let AbilityKind::Triggered(trigger)=&ability.kind else{continue;};
+        if trigger.effects.source_number_pair==Some(pair) && crate::triggers::compute_trigger_identity(trigger)==identity{
+            let owner=capture(source,Some(pair),origins.get(slot)).ok_or_else(missing)?;
+            if !owners.contains(&owner){owners.push(owner);}
+        }
+    }
+    match owners.as_slice(){[owner]=>Ok(owner.clone()),_=>Err(missing())}
 }

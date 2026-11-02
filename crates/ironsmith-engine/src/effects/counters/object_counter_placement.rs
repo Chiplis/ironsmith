@@ -90,6 +90,9 @@ fn prepare_object_counter_request(
             CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
     }
+    // A public effect may follow a newly entered/removed provider before a
+    // priority pass refreshes restrictions. Check the current static world.
+    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
     if !game.can_have_counter_type_placed(object, proposed.counter_type) {
         return Ok(ObjectCounterRequest::Finished(
             CompletedEffectOutputs::aggregate_only(prevented()),
@@ -234,12 +237,11 @@ pub(super) fn commit_object_counter_placement_with_limit_outputs(
                     "object counter placement exceeds the supported counter range".into(),
                 )
             })?;
-            let Some(mut notification) = game.add_counters_with_source(
+            let Some(mut notification) = game.add_counters_with_cause(
                 object,
                 resolved.counter_type,
                 count,
-                resolved.cause.source,
-                resolved.cause.source_controller,
+                resolved.cause.clone(),
             ) else {
                 return Ok(CompletedEffectOutputs::aggregate_only(
                     if resolved.count == 0 {

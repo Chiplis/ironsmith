@@ -185,3 +185,20 @@ fn copy_source_separates_bare_tapped_attacking_suffix() {
     assert_eq!(token_word_refs(&parsed.source_tokens), ["this", "creature"]);
     assert!(parsed.enters_tapped && parsed.enters_attacking && parsed.attacks_that_player_only);
 }
+
+#[test]
+fn outer_sentence_period_is_not_a_token_name_but_quoted_period_is_literal() {
+    for (text,expected) in [
+        ("a 0/1 red Kobold creature token named Watchers of High Harbor.","Watchers of High Harbor"),
+        ("a 0/1 red Kobold creature token named \"Keep.\".","Keep."),
+        ("a 0/1 red Kobold creature token named \"Watchers with Wings.\".","Watchers with Wings."),
+        ("a 0/1 red Kobold creature token named Canvas, Dusk.","Canvas, Dusk"),
+    ] {
+        let tokens=lex_line(text,0).unwrap();
+        let shape=parse_named_token_clause_tokens(&tokens).unwrap();
+        let name=crate::lexer::render_literal_token_slice(&tokens[shape.name.clone()]);
+        assert_eq!(name.trim_matches('"'),expected,"{text}");
+        assert!(!tokens[shape.name.end-1].is_period(),"only quoted internal periods are owned");
+        assert!(tokens[shape.clause.end].is_period(),"terminal sentence delimiter stays outside named operand");
+    }
+}

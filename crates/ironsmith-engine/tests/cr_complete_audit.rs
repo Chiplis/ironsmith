@@ -22210,6 +22210,7 @@ fn cr_614_17d_entry_bans_recheck_types_added_by_a_replacement() {
                                 alice,
                                 WouldEnterBattlefieldMatcher::any().with_stable_id(stable),
                                 ReplacementAction::EnterWithCharacteristics {
+                                    face_down: false,
                                     added_card_types: vec![CardType::Land],
                                     added_subtypes: vec![],
                                     set_base_power_toughness: None,
@@ -53410,6 +53411,7 @@ fn cr_201_5b_c_borrowed_self_named_activated_abilities_act_on_the_new_bearer() {
                                 ApplyContinuousEffect::new(
                                     EffectTarget::Specific(recipient),
                                     Modification::CopyActivatedAbilities {
+                                        excluded_ability_designations: Vec::new(),
                                         filter: ObjectFilter::specific(donor),
                                         counter: None,
                                         include_mana: true,
@@ -84014,7 +84016,7 @@ fn cr_601_2b_702_47b_modes_added_by_splice_are_announced_before_cast_completion(
                         .subtypes(vec![Subtype::Arcane])
                         .mana_cost(ManaCost::new())
                         .with_spell_effect(vec![program(added_modal, true)])
-                        .with_ability(Ability::static_ability(StaticAbility::splice(SpliceSpec {
+                        .with_ability(Ability::static_ability(StaticAbility::splice(SpliceSpec { custom_keyword: None, source_zone: None, source_destination: None, max_per_spell: None,
                     descriptive: false,
                             quality: SpliceQuality::Arcane,
                             cost: ironsmith::cost::TotalCost::free(),

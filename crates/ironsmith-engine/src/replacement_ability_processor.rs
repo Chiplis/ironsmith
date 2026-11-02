@@ -13,6 +13,18 @@ use crate::ability::AbilityKind;
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
 
+/// The selected native price's already-installed stack-exit replacement.
+/// Resolution may add other competing destinations, but must not install a
+/// second copy of this same mandatory payment-method rider.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectedStackExileScope { AnyDeparture, GraveyardDeparture }
+pub(crate) fn selected_stack_exile_scope(method: &crate::alternative_cast::AlternativeCastingMethod) -> Option<SelectedStackExileScope> {
+    if method.exiles_on_stack_exit() { Some(SelectedStackExileScope::AnyDeparture) }
+    else if matches!(method, crate::alternative_cast::AlternativeCastingMethod::FromZone { exiles_after_resolution: true, .. }) {
+        Some(SelectedStackExileScope::GraveyardDeparture)
+    } else { None }
+}
+
 /// Generate all replacement effects from static abilities in zones where they function.
 ///
 /// This scans all objects for static abilities that generate replacement effects
@@ -53,28 +65,17 @@ pub fn generate_replacement_effects_from_abilities(
             });
             // These payment methods replace every subsequent departure from
             // the stack (CR 702.34, 702.133, 702.180), including counter/bounce.
-            if intrinsic_exile || (zone == crate::zone::Zone::Stack && object.cast_alternative_method.as_deref().is_some_and(|method|
-                method.exiles_on_stack_exit())) {
+            let selected_exile_scope = (zone == crate::zone::Zone::Stack).then(||
+                object.cast_alternative_method.as_deref().and_then(selected_stack_exile_scope)).flatten();
+            if intrinsic_exile || selected_exile_scope == Some(SelectedStackExileScope::AnyDeparture) {
                 effects.push(crate::replacement::ZoneReplacementSpec::new(
                     crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
                     .from_zone(crate::zone::Zone::Stack).build(object_id, controller));
-            } else if zone == crate::zone::Zone::Stack
-                && object.cast_alternative_method.as_deref().is_some_and(|method| {
-                    matches!(
-                        method,
-                        crate::alternative_cast::AlternativeCastingMethod::FromZone {
-                            exiles_after_resolution: true,
-                            ..
-                        }
-                    )
-                })
-            {
-                // Grants that exile only graveyard departures do not replace a bounce.
-                let spec = crate::replacement::ZoneReplacementSpec::new(
+            } else if selected_exile_scope == Some(SelectedStackExileScope::GraveyardDeparture) {
+                effects.push(crate::replacement::ZoneReplacementSpec::new(
                     crate::target::ObjectFilter::specific(object_id), crate::zone::Zone::Exile)
-                    .from_zone(crate::zone::Zone::Stack)
-                    .to_zone(crate::zone::Zone::Graveyard);
-                effects.push(spec.build(object_id, controller));
+                    .from_zone(crate::zone::Zone::Stack).to_zone(crate::zone::Zone::Graveyard)
+                    .build(object_id, controller));
             }
 
             // Only the chosen method creates these spell-bound replacements.
@@ -1331,6 +1332,8 @@ mod independent_static_copy_gameplay_tests {
                             alice,
                             vec![recipient],
                             Modification::CopyStaticAbilityVariants {
+                                excluded_ability_designations: Vec::new(),
+                                copy_all: false,
                                 filter: filter.clone(),
                                 selectors: selectors.clone(),
                                 exclude_source_id: true,

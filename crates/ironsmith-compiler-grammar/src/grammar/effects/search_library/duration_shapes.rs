@@ -169,6 +169,25 @@ pub fn parse_search_restriction_duration_shape_lexed(
         return Ok(None);
     }
 
+    // A bounded leading turn boundary; the restriction body remains owned by
+    // the ordinary sentence/action readers.
+    if let Some((_, rest)) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| -> WResult<()> {
+        use winnow::combinator::alt;
+        primitives::phrase(&["until", "an"]).parse_next(input)?;
+        alt((primitives::kw("opponents"), primitives::kw("opponent's"))).parse_next(input)?;
+        primitives::phrase(&["next", "turn"]).parse_next(input)?;
+        Ok(())
+    }) {
+        if rest.first().is_some_and(|token| token.kind == TokenKind::Comma)
+            && !trim_lexed_commas(rest).is_empty() {
+            return Ok(Some(SearchRestrictionDurationShape {
+                duration: Until::OpponentsNextTurn,
+                remainder: trim_lexed_commas(rest).to_vec(),
+                placement: SearchRestrictionDurationPlacement::Prefix,
+            }));
+        }
+    }
+
     if let Some(parsed) = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens) {
         let Some(duration) = until_from_leaf(parsed.duration) else { return Ok(None); };
         return Ok(Some(SearchRestrictionDurationShape {

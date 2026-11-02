@@ -70,6 +70,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("object-filter-lexed-inner-regis
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("source-collection-membership"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(super::filter_shape_readings::read_source_collection_suffix(input.tokens, input.other)),
+    },
+    Reading {
         id: RuleId::new("quantified-spell-cost-or-target-suffix"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

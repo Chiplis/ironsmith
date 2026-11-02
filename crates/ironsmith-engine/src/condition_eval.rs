@@ -151,7 +151,7 @@ fn source_was_cast(
         && let Some(etb) = event.downcast::<crate::events::EnterBattlefieldEvent>()
         && etb.object == source
     {
-        return etb.from == Zone::Stack && !resolved_from_uncast_spell_copy(game, source, None);
+        return etb.from == Some(Zone::Stack) && !resolved_from_uncast_spell_copy(game, source, None);
     }
     if let Some(event) = triggering_event
         && let Some(zc) = event.downcast::<crate::events::ZoneChangeEvent>()
@@ -285,7 +285,7 @@ fn tagged_object_was_cast(game: &GameState, tag: &crate::TagKey, ctx: &Execution
     for snapshot in tagged {
         if let Some(event) = &ctx.triggering_event
             && let Some(etb) = event.downcast::<crate::events::EnterBattlefieldEvent>()
-            && etb.from == Zone::Stack
+            && etb.from == Some(Zone::Stack)
             && etb.object == snapshot.object_id
             && !resolved_from_uncast_spell_copy(game, snapshot.object_id, Some(snapshot))
         {
@@ -2096,8 +2096,21 @@ fn evaluate_value_comparison(
     attacking_player: Option<PlayerId>,
     iterated_player: Option<PlayerId>,
     ability_identity: (Option<crate::triggers::TriggerIdentity>, Option<usize>),
+    projected_source_facts: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Result<bool, ExecutionError> {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    bind_projected_source_numeric_facts(&mut ctx, projected_source_facts);
+    // Entry action predicates retain the original successful recipients even
+    // if either the source or those cards have departed before resolution.
+    if let Some(object)=game.object(source){
+        for(tag,objects)in &object.cast_tagged_objects{if tag.as_str().starts_with("__entry_action_"){ctx.set_tagged_objects(tag.clone(),objects.clone());}}
+    }
+    if let Some(event)=triggering_event {
+        let snapshot=event.downcast::<crate::events::ZoneChangeEvent>()
+            .and_then(|movement|movement.destination_snapshots.iter().chain(movement.snapshots.iter()).find(|snapshot|snapshot.object_id==source))
+            .or_else(||event.snapshot().filter(|snapshot|snapshot.object_id==source));
+        if let Some(snapshot)=snapshot{for(tag,objects)in &snapshot.entry_action_objects{ctx.set_tagged_objects(tag.clone(),objects.clone());}}
+    }
     ctx.iteration.iterated_player = iterated_player;
     // "If you haven't added mana with this ability this turn": the ability's
     // own resolution count needs its identity outside resolution too.
@@ -2122,8 +2135,8 @@ fn evaluate_value_comparison(
         if let Some(reference) = game.defending_reference_for_event(event) {
             ctx.combat.defending_player_reference = Some(reference);
         }
-        if let Some(snapshot) = event.snapshot() {
-            ctx.set_tagged_objects("triggering", vec![snapshot.clone()]);
+        if let Ok(snapshot) = capture_triggering_object_at_resolution(game, event) {
+            ctx.set_tagged_objects("triggering", vec![snapshot]);
         }
         if let Some(cast) = event.downcast::<crate::events::SpellCastEvent>()
             && let Some(spell) = game.object(cast.spell)
@@ -2192,8 +2205,10 @@ fn evaluate_value_is_prime(
     source: ObjectId,
     value: &Value,
     triggering_event: Option<&TriggerEvent>,
+    projected_source_facts: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    bind_projected_source_numeric_facts(&mut ctx, projected_source_facts);
     if let Some(event) = triggering_event {
         ctx = ctx.with_triggering_event(event.clone());
         if let Some(snapshot) = event.snapshot() {
@@ -3216,7 +3231,7 @@ fn evaluate_turn_history_condition(
                 event
                     .downcast::<crate::events::EnterBattlefieldEvent>()
                     .is_some_and(|etb| {
-                        etb.from == Zone::Stack
+                        etb.from == Some(Zone::Stack)
                             && !resolved_from_uncast_spell_copy(game, etb.object, None)
                     })
                     || event
@@ -3237,7 +3252,7 @@ fn evaluate_turn_history_condition(
             ctx.triggering_event.is_some_and(|event| {
                 event
                     .downcast::<crate::events::EnterBattlefieldEvent>()
-                    .is_some_and(|etb| etb.from == *zone)
+                    .is_some_and(|etb| etb.from == Some(*zone))
                     || event
                         .downcast::<crate::events::ZoneChangeEvent>()
                         .is_some_and(|change| change.to == Zone::Battlefield && change.from == *zone)
@@ -3756,6 +3771,34 @@ pub fn evaluate_condition_external(
     }
 }
 
+/// Source-noted information reads the acquisition captured by the stack
+/// entry; admission derives it from the exact acquired trigger identity.
+pub(crate) fn evaluate_condition_external_with_memory_owner_checked(
+    game:&GameState,condition:&Condition,ctx:&ExternalEvaluationContext<'_>,
+    paid:Option<&crate::cost::OptionalCostsPaid>,owner:Option<&crate::linked_exile::LinkedExileOwner>,
+)->Result<bool,ExecutionError>{
+    match condition{
+        Condition::Not(inner)=>Ok(!evaluate_condition_external_with_memory_owner_checked(game,inner,ctx,paid,owner)?),
+        Condition::And(a,b)=>Ok(evaluate_condition_external_with_memory_owner_checked(game,a,ctx,paid,owner)? && evaluate_condition_external_with_memory_owner_checked(game,b,ctx,paid,owner)?),
+        Condition::Or(a,b)=>Ok(evaluate_condition_external_with_memory_owner_checked(game,a,ctx,paid,owner)? || evaluate_condition_external_with_memory_owner_checked(game,b,ctx,paid,owner)?),
+        Condition::TaggedObjectMatches(tag,filter) if filter.name_noted_for.is_some()=>{
+            if tag.as_str()!="triggering"{return Err(ExecutionError::IncompleteEvidence("external noted-name predicate has no bound object reference".into()));}
+            let owned=match owner{
+                Some(owner)=>owner.clone(),
+                None=>crate::source_numbers::trigger_memory_owner(game,ctx.source,filter.noted_name_pair,ctx.trigger_identity)?,
+            };
+            if owned.host!=ctx.source || Some(owned.pair)!=filter.noted_name_pair{return Err(ExecutionError::IncompleteEvidence("noted-name predicate omitted its exact linked acquisition".into()));}
+            let event=ctx.triggering_event.ok_or_else(||ExecutionError::IncompleteEvidence("noted-name predicate has no triggering object evidence".into()))?;
+            let mut filter_ctx=game.filter_context_for(ctx.controller,Some(ctx.source));filter_ctx.source_number_owner=Some(owned);
+            let result=if ctx.options.triggering_object_current{triggering_event_object_matches_at_resolution(game,event,filter,&filter_ctx)}
+                else{triggering_event_object_matches_with_filter_context(game,event,filter,&filter_ctx)}?;
+            if let Some(error)=game.token_resource_failure(){return Err(error);}
+            Ok(result)
+        },
+        _=>evaluate_condition_external_checked(game,condition,ctx,paid),
+    }
+}
+
 /// Preserve the exact paid receipt and any incomplete characteristic evidence
 /// through nested boolean predicates. Existing payment semantics are unchanged.
 pub fn evaluate_condition_external_checked(
@@ -4115,7 +4158,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
@@ -4302,6 +4345,7 @@ fn evaluate_condition_in_context(
     let shared = ctx.shared();
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
+        Condition::InEndingPhase => Ok(game.turn.phase == crate::game_state::Phase::Ending),
         Condition::FirstCombatPhaseOfTurn => Ok(game.turn.phase
             == crate::game_state::Phase::Combat
             && game.turn_store.combat_phases_started_this_turn == 1),
@@ -4310,6 +4354,9 @@ fn evaluate_condition_in_context(
         Condition::FirstEndStepOfTurn => Ok(game.turn.step
             == Some(crate::game_state::Step::End)
             && game.turn_store.end_steps_started_this_turn <= 1),
+        Condition::FirstMainPhaseOfTurn => Ok(matches!(game.turn.phase,
+            crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain)
+            && game.turn_store.main_phases_started_this_turn == 1),
         Condition::SecondMainPhaseOfTurn => Ok(matches!(
             game.turn.phase,
             crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
@@ -4664,6 +4711,18 @@ fn evaluate_condition_in_context(
             }
             Ok(false)
         }
+        Condition::PlayerNamedActionHistory { player, label, window, minimum, minimum_amount } => {
+            for player in ctx.matching_players(game, player)? {
+                if *minimum == 0 { return Ok(true); }
+                let count = if *minimum_amount == 0 { game.player_named_action_count(player, label, *window) }
+                    else { game.player_named_action_count_with_minimum_amount(player, label, *window, *minimum_amount)? };
+                if count >= *minimum { return Ok(true); }
+            }
+            Ok(false)
+        }
+        Condition::PlayerHasDesignation { player, designation } => {
+            Ok(ctx.matching_players(game, player)?.into_iter().any(|id| game.has_player_designation(id, designation)))
+        }
         Condition::PlayerHasEnduringStory { player } => {
             for player_id in ctx.matching_players(game, player)? {
                 // A quantified player ("an opponent", "a player") matches
@@ -4979,6 +5038,16 @@ fn evaluate_condition_in_context(
                 }
             }
             Ok(false)
+        }
+        Condition::NamedPaymentOutcome {label,paid,payer}=>{
+            let expected=if let Some(player)=payer {
+                let Some(player)=ctx.resolve_player(game,player)? else{return Ok(false)};
+                Some(player)
+            } else {None};
+            let receipts=game.object(shared.source).map(|source|source.named_payment_outcomes.as_slice())
+                .or_else(||ctx.execution().and_then(|execution|execution.source_snapshot.as_ref()).filter(|snapshot|snapshot.object_id==shared.source).map(|snapshot|snapshot.named_payment_outcomes.as_slice()));
+            Ok(receipts.is_some_and(|receipts|receipts.iter().any(|receipt|
+                receipt.label==*label && receipt.paid==*paid && expected.is_none_or(|player|receipt.payer==player))))
         }
         Condition::ThisSpellWasKicked => {
             if let Some(ctx) = ctx.execution() {
@@ -5314,9 +5383,11 @@ fn evaluate_condition_in_context(
         }
         Condition::SourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
-            Ok(game
-                .object(shared.source)
-                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)))
+            if let Some(snapshot) = projected_source_condition_snapshot(game, ctx) {
+                Ok(filter.matches_snapshot(&snapshot, &filter_ctx.with_source_snapshot(Some(snapshot.clone())), game))
+            } else {
+                Ok(game.object(shared.source).is_some_and(|obj| filter.matches(obj, &filter_ctx, game)))
+            }
         }
         Condition::AttachedToSourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
@@ -5345,14 +5416,15 @@ fn evaluate_condition_in_context(
                 &filter_ctx,
             ))
         }
-        Condition::SourcePowerAtLeast(min_power) => Ok(game
-            .calculated_power(shared.source)
-            .or_else(|| game.object(shared.source).and_then(|obj| obj.power()))
-            .is_some_and(|power| power >= *min_power as i32)),
-        Condition::SourceHasCountersAtLeast(count) => Ok(game
-            .object(shared.source)
-            .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
-            .unwrap_or(false)),
+        Condition::SourcePowerAtLeast(min_power) => Ok(match projected_source_condition_snapshot(game, ctx) {
+            Some(snapshot) => snapshot.power.is_some_and(|power| power >= *min_power as i32),
+            None => game.calculated_power(shared.source).or_else(|| game.object(shared.source).and_then(|obj| obj.power()))
+                .is_some_and(|power| power >= *min_power as i32),
+        }),
+        Condition::SourceHasCountersAtLeast(count) => Ok(match projected_source_condition_snapshot(game, ctx) {
+            Some(snapshot) => snapshot.counters.values().copied().sum::<u32>() >= *count,
+            None => game.object(shared.source).is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count),
+        }),
         Condition::SourceAttackedThisCombat => {
             if ctx.is_cast_time() { return Ok(false); }
             game.turn_store.turn_history.creature_attacked_in_combat(
@@ -5856,6 +5928,14 @@ fn evaluate_condition_in_context(
                 })
             }))
         }
+        Condition::TriggeringNamedActionPaidMana {label,required} => {
+            let Some(event)=shared.triggering_event.and_then(|event|event.downcast::<crate::events::NamedActionEvent>()) else{return Ok(false);};
+            if event.label != *label {return Ok(false);}
+            let spent=event.mana_spent.as_ref().ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence("named action payment receipt is unavailable".into()))?;
+            let total:u32=required.iter().map(|symbol|symbol.mana_value()).sum();
+            let colors=[crate::mana::ManaSymbol::White,crate::mana::ManaSymbol::Blue,crate::mana::ManaSymbol::Black,crate::mana::ManaSymbol::Red,crate::mana::ManaSymbol::Green,crate::mana::ManaSymbol::Colorless];
+            Ok(spent.total()>=total && colors.iter().all(|symbol| spent.amount(*symbol)>=required.iter().filter(|required|*required==symbol).count() as u32))
+        }
         Condition::TriggeringKeywordActionIs(action) => Ok(shared
             .triggering_event
             .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
@@ -6149,6 +6229,20 @@ fn evaluate_condition_in_context(
             Ok(i64::from(game.ability_activation_count_this_turn(ctx.source, ability_index))
                 < i64::from(limit))
         }
+        Condition::EachCurrentDesignatedAbilityActivatedByYou { designation } => {
+            let Some(chars) = game.try_current_characteristics(ctx.source)
+                .map_err(ExecutionError::ContinuousDiscovery)? else { return Ok(false); };
+            for (index, ability) in chars.abilities.iter().enumerate() {
+                let crate::ability::AbilityKind::Activated(activated) = &ability.kind else { continue; };
+                if !activated.effects.activation_designations.iter().any(|label| label == designation) { continue; }
+                let Some(origin) = chars.abilities.origin(index) else { return Ok(false); };
+                let Some(definition) = activated.effects.activation_definition else { return Ok(false); };
+                if !game.turn_store.ability_activations_by_actor.contains_key(&(
+                    ctx.source, origin.clone(), definition, ctx.controller,
+                )) { return Ok(false); }
+            }
+            Ok(true)
+        }
         Condition::MaxActivationsPerObject(limit) => {
             let Some(ctx) = ctx.external() else {
                 return Ok(false);
@@ -6169,7 +6263,27 @@ fn evaluate_condition_in_context(
                     ctx.source,
                     ability_index,
                 ));
-                game.turn_store.ability_activations_per_object.get(&(ctx.source, origin)).copied().unwrap_or(0) < limit
+                let tracked_definition = game.current_ability(ctx.source, ability_index).and_then(|ability| {
+                    match &ability.kind {
+                        crate::ability::AbilityKind::Activated(activated) if !activated.effects.activation_designations.is_empty() => Some(activated.effects.activation_definition),
+                        _ => None,
+                    }
+                });
+                if matches!(tracked_definition, Some(None)) { return Ok(false); }
+                let definition = tracked_definition.flatten();
+                // A designated occurrence includes its immutable definition. A
+                // transformed face can reuse Printed(slot) while defining a
+                // different activated ability. Other legacy lifetime caps retain
+                // their established origin-only accounting.
+                let count = if let Some(definition) = definition {
+                    game.turn_store.ability_activations_by_actor.iter()
+                        .filter(|((source, acquisition, authored, _), _)|
+                            *source == ctx.source && acquisition == &origin && *authored == definition)
+                        .fold(0u32, |total, (_, count)| total.saturating_add(*count))
+                } else {
+                    game.turn_store.ability_activations_per_object.get(&(ctx.source, origin)).copied().unwrap_or(0)
+                };
+                count < limit
             })
         }
         Condition::SourceIsEquipped => {
@@ -6399,6 +6513,7 @@ fn evaluate_condition_in_context(
                         external.and_then(|c| c.trigger_identity),
                         external.and_then(|c| c.ability_index),
                     ),
+                    projected_source_condition_snapshot(game, ctx).as_ref(),
                 )
             }
         }
@@ -6412,6 +6527,7 @@ fn evaluate_condition_in_context(
                     ctx.source,
                     value,
                     shared.triggering_event,
+                    projected_source_condition_snapshot(game, ctx).as_ref(),
                 ))
             }
         }
@@ -6726,18 +6842,18 @@ fn evaluate_condition_in_context(
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Ok(game.turn_store.spells_cast_last_turn_total >= *count)
         }
-        Condition::SourceHasNoCounter(counter_type) => Ok(game
-            .object(shared.source)
-            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0)
-            .unwrap_or(false)),
+        Condition::SourceHasNoCounter(counter_type) => Ok(match projected_source_condition_snapshot(game, ctx) {
+            Some(snapshot) => snapshot.counter_count(*counter_type) == 0,
+            None => game.object(shared.source).is_some_and(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) == 0),
+        }),
         Condition::SourceHasCounterAtLeast {
             counter_type,
             count,
             ..
-        } => Ok(game
-            .object(shared.source)
-            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
-            .unwrap_or(false)),
+        } => Ok(match projected_source_condition_snapshot(game, ctx) {
+            Some(snapshot) => snapshot.counter_count(*counter_type) >= *count,
+            None => game.object(shared.source).is_some_and(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count),
+        }),
         Condition::SourceInGraveyardWithCardsAbove {
             filter,
             count,
@@ -6849,6 +6965,11 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
                     .any(|player_id| game.current_ring_bearer(player_id) == Some(shared.source)),
             )
         }
+        Condition::PlayerSpentManaToCastSpellsThisTurnAtLeast { player, amount } => {
+            let amount=amount.fixed().ok_or_else(||ExecutionError::IncompleteEvidence("copy-creation numeric parameter was not captured by its creation recipe".into()))?;
+            Ok(matching_condition_players_simple(game, shared.controller, player).into_iter().any(|payer|
+                game.turn_store.turn_history.mana_spent_to_cast_spells_this_turn.get(&payer).copied().unwrap_or(0) >= amount))
+        },
         Condition::PlayerRingTemptedThisGameOrMore { player, count } => Ok(
             matching_condition_players_simple(game, shared.controller, player)
                 .into_iter()
@@ -7603,4 +7724,42 @@ mod announced_alternative_payment_tests {
         game.object_mut(source).unwrap().zone = Zone::Battlefield;
         assert!(!evaluate_condition_cast_time_checked(&game, &madness, alice, source).unwrap());
     }
+}
+
+/// Event-local source facts for a source-only trigger projection. This tag
+/// is never queued or recorded as a real game action or history event.
+pub(crate) const PROJECTED_SOURCE_FACTS_TAG: &str = "__projected_trigger_source_facts__";
+pub(crate) fn projected_trigger_source_snapshot(event: &TriggerEvent, source: ObjectId) -> Option<&crate::snapshot::ObjectSnapshot> {
+    event.downcast::<crate::events::ZoneChangeEvent>()?.object_tags.get(PROJECTED_SOURCE_FACTS_TAG)?
+        .iter().find(|snapshot| snapshot.object_id == source)
+}
+/// Only explicitly marked projections use this adapter. Ordinary intervening
+/// conditions retain their prior behavior. Trigger checks use frozen source
+/// facts; resolution rechecks the exact live source or its latest exact LKI.
+fn projected_source_condition_snapshot(game: &GameState, ctx: &ConditionContext<'_, '_>) -> Option<crate::snapshot::ObjectSnapshot> {
+    let external = ctx.external()?;
+    let snapshot = projected_trigger_source_snapshot(external.triggering_event?, external.source)?;
+    if external.options.triggering_object_current {
+        if game.object(external.source).is_some() { return None; }
+        return Some(game.source_last_known_snapshot(external.source).unwrap_or(snapshot).clone());
+    }
+    Some(snapshot.clone())
+}
+
+
+// An ephemeral numeric binding used only by condition-evaluation probes. It
+// never changes the world or an ordinary trigger/effect's source LKI policy.
+const PROJECTED_SOURCE_NUMERIC_FACTS_TAG: &str = "__projected_condition_source_numeric_facts__";
+fn bind_projected_source_numeric_facts(ctx: &mut ExecutionContext<'_>, snapshot: Option<&crate::snapshot::ObjectSnapshot>) {
+    if let Some(snapshot) = snapshot.filter(|snapshot| snapshot.object_id == ctx.source) {
+        ctx.set_tagged_objects(PROJECTED_SOURCE_NUMERIC_FACTS_TAG, vec![snapshot.clone()]);
+    }
+}
+pub(crate) fn projected_condition_source_numeric_facts<'a>(ctx: &'a ExecutionContext<'_>) -> Option<&'a crate::snapshot::ObjectSnapshot> {
+    // Both the original event marker and the phase-selected probe binding are
+    // required. Merely retaining a projected event on a resolving ability does
+    // not freeze that ability's body or its current-source recheck.
+    projected_trigger_source_snapshot(ctx.triggering_event.as_ref()?, ctx.source)?;
+    ctx.get_tagged_all(PROJECTED_SOURCE_NUMERIC_FACTS_TAG)?.iter()
+        .find(|snapshot| snapshot.object_id == ctx.source)
 }

@@ -27,6 +27,7 @@ pub(crate) struct PreparedDamageAssignment {
     creature: bool,
     removals: Vec<crate::effects::counters::PreparedCounterRemoval>,
     consequence: PreparedConsequence,
+    recipient_controller_life_loss: Option<TraitEventResult>,
     ui_ids: Vec<StableId>,
 }
 
@@ -71,6 +72,7 @@ pub(crate) fn prepare_processed_damage_assignment(
         creature: false,
         removals: Vec::new(),
         consequence: PreparedConsequence::None,
+        recipient_controller_life_loss: None,
         ui_ids: Vec::new(),
     };
     if amount == 0 {
@@ -155,6 +157,23 @@ pub(crate) fn prepare_processed_damage_assignment(
             let battle = snapshot.card_types.contains(&CardType::Battle);
             if !plan.creature && !planeswalker && !battle {
                 return Ok(plan);
+            }
+            // Freeze the recipient's controller and ability before committing
+            // simultaneous damage. The rider is a result of damage, including
+            // infect/wither damage, and does not create a stack trigger.
+            if plan.creature
+                && crate::derived_view::DerivedGameView::new(game)
+                    .object_has_keyword_marker_mechanic(object.id,
+                        ironsmith_core::KeywordMarkerMechanic::DamageCausesRecipientControllerLifeLoss)
+            {
+                let controller = game.current_controller(object.id).unwrap_or(object.owner);
+                let event = crate::events::Event::life_loss(controller, amount, false)
+                    .with_provenance(ctx.provenance);
+                plan.recipient_controller_life_loss = Some(
+                    crate::effects::life::life_change::prepare_life_change(game, ctx, event)?);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(plan);
+                }
             }
             plan.ui_ids.push(snapshot.stable_id);
             plan.target_snapshot = Some(snapshot);
@@ -288,6 +307,13 @@ pub(crate) fn commit_prepared_damage_original_with_outputs(
         ),
     };
     consequences.extend(consequence);
+    if let Some(proposal) = prepared.recipient_controller_life_loss {
+        consequences.push(
+            crate::effects::life::life_change::commit_prepared_life_original_with_outputs(
+                game, ctx, proposal,
+            )?,
+        );
+    }
     let (consequence_outcome, completion) = if consequences.is_empty() {
         (None, None)
     } else {

@@ -63,6 +63,8 @@ impl ResolvedTargetAggregateConstraint {
 
     pub fn allows(&self, targets: &[Target]) -> bool {
         self.card_type_slots_allow(targets)
+            && (self.metric != ChoiceAggregateMetric::DistinctColorRepresentatives
+                || card_type_slot_matching_size(&targets.iter().map(|target| self.value_for(*target) as u32).collect::<Vec<_>>()) == targets.len())
             && aggregate_contributions(
             self.metric,
             targets.iter().map(|target| self.value_for(*target)),
@@ -89,6 +91,10 @@ impl ResolvedTargetAggregateConstraint {
             .iter()
             .map(|(_, value)| *value)
             .collect::<Vec<_>>();
+        if self.metric == ChoiceAggregateMetric::DistinctColorRepresentatives {
+            let masks = values.iter().map(|mask| *mask as u32).collect::<Vec<_>>();
+            return card_type_slot_matching_size(&masks) >= minimum && minimum as i32 <= self.maximum;
+        }
         if self.metric == ChoiceAggregateMetric::DistinctCardTypes {
             let mut states = std::collections::HashMap::from([(0i32, 0usize)]);
             for value in values {
@@ -145,7 +151,9 @@ pub(crate) fn aggregate_contributions(
     metric: ChoiceAggregateMetric,
     values: impl IntoIterator<Item = i32>,
 ) -> i32 {
-    if metric == ChoiceAggregateMetric::DistinctCardTypes {
+    if metric == ChoiceAggregateMetric::DistinctColorRepresentatives {
+        card_type_slot_matching_size(&values.into_iter().map(|mask| mask as u32).collect::<Vec<_>>()) as i32
+    } else if metric == ChoiceAggregateMetric::DistinctCardTypes {
         values
             .into_iter()
             .fold(0i32, |mask, value| mask | value)
@@ -186,6 +194,11 @@ pub fn aggregate_object_value(
             .calculated_toughness(id)
             .or_else(|| object.toughness())
             .unwrap_or(0),
+        ChoiceAggregateMetric::DistinctColorRepresentatives => game.current_colors(id).map_or(0, |colors| {
+            crate::color::Color::ALL.iter().enumerate().fold(0i32, |mask, (slot, color)| {
+                if colors.contains(*color) { mask | (1 << slot) } else { mask }
+            })
+        }),
         ChoiceAggregateMetric::DistinctCardTypes => game
             .current_card_types(id)
             .into_iter()

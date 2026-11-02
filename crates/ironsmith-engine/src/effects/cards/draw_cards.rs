@@ -185,7 +185,18 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
 
 pub(crate) fn emit_automatic_draw_reveal_event(
     game: &mut GameState,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
+    candidate: &AutomaticDrawRevealCandidate,
+    provenance: ProvNodeId,
+) -> Result<TriggerEvent, ExecutionError> {
+    let event = emit_automatic_draw_reveal_event_without_offers(game, decision_maker, candidate, provenance);
+    super::process_public_reveal_action_offers(game, &event, decision_maker)?;
+    Ok(event)
+}
+
+pub(crate) fn emit_automatic_draw_reveal_event_without_offers(
+    game: &mut GameState,
+    decision_maker: &mut dyn DecisionMaker,
     candidate: &AutomaticDrawRevealCandidate,
     provenance: ProvNodeId,
 ) -> TriggerEvent {
@@ -331,7 +342,7 @@ pub(crate) fn automatic_reveal_events_for_draw(
     player_id: PlayerId,
     drawn: &[ObjectId],
     draws_before: u32,
-    decision_maker: &mut (impl DecisionMaker + ?Sized),
+    decision_maker: &mut dyn DecisionMaker,
     provenance: ProvNodeId,
     hidden_mode: HiddenDrawRevealMode,
 ) -> Result<Vec<TriggerEvent>, ExecutionError> {
@@ -381,7 +392,7 @@ pub(crate) fn automatic_reveal_events_for_draw(
                             decision_maker,
                             &candidate,
                             provenance,
-                        ));
+                        )?);
                     }
                 }
             }
@@ -409,7 +420,7 @@ pub(crate) fn automatic_reveal_events_for_draw(
             decision_maker,
             &candidate,
             provenance,
-        ));
+        )?);
         if decision_maker.awaiting_choice() {
             return Ok(reveal_events);
         }
@@ -441,6 +452,10 @@ pub(crate) fn automatic_reveal_events_for_draw(
 /// let effect = DrawCardsEffect::new(2, PlayerFilter::Specific(player_id));
 /// ```
 impl EffectExecutor for DrawCardsEffect {
+    fn scalar_target_resolution_specs(&self)->Vec<crate::target::ChooseSpec>{
+        crate::effects::helpers::scalar_player_target_spec(&self.player).into_iter().collect()
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
         Some(self)
     }
@@ -455,15 +470,17 @@ impl EffectExecutor for DrawCardsEffect {
     }
 
     fn prepare_simultaneous_player_action(
-        &self,
-        _game: &GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Drawing makes no choices; defer to commit so the whole
-        // each-player action lands as one batch.
+        &self,game:&GameState,ctx:&mut ExecutionContext,
+    )->Result<Box<dyn crate::effects::SimultaneousEffectProposal>,ExecutionError>{
+        // Freeze both the exact recipient and quantity in the common world.
+        // Commit still uses the ordinary draw owner for replacements/events.
+        let prepared=prepare_draw_instruction(self,game,ctx)?;
+        let mut frozen=self.clone();
+        frozen.player=crate::target::PlayerFilter::Specific(prepared.player);
+        frozen.count=crate::effect::Value::Fixed(prepared.requested_count as i32);
         Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
+            effect:crate::effect::Effect::new(frozen),
+            iterated_player:ctx.iteration.iterated_player,
         }))
     }
 
@@ -488,7 +505,7 @@ impl crate::effects::CostExecutableEffect for DrawCardsEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        let ctx = ExecutionContext::new_default(source, controller);
+        let mut ctx = ExecutionContext::new_default(source, controller);
         let player = resolve_player_filter(game, &self.player, &ctx)
             .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?;
         let count = resolve_value(game, &self.count, &ctx)
@@ -526,9 +543,9 @@ fn finish_direct_draw_segment(
     step_context: (bool, u32),
     miracle: &mut Option<crate::events::other::MiracleDrawDecision>,
     automatic_reveals: &mut Vec<TriggerEvent>,
-) -> Vec<TriggerEvent> {
+) -> Result<Vec<TriggerEvent>, ExecutionError> {
     if drawn.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     // Every physical observation has its own identity. Reusing the proposal's
     // provenance lets a later added observation replace this staged draw.
@@ -552,11 +569,11 @@ fn finish_direct_draw_segment(
     // Added programs can draw again before the enclosing outcome is published.
     game.stage_turn_history_event(&event);
     game.note_hidden_draw_for_reveal_window(&event);
-    let reveals = super::miracle_reveal_event(game, draw, draw_provenance);
+    let reveals = super::miracle_reveal_event(game, draw, draw_provenance, ctx.decision_maker)?;
     let mut events = vec![event];
     events.extend(reveals);
     events.append(automatic_reveals);
-    events
+    Ok(events)
 }
 
 /// Commit an expanded draw's original result before its appended programs.
@@ -667,7 +684,7 @@ fn commit_draw_original_with_reveal_mode(
                 step,
                 &mut miracle,
                 &mut automatic_reveals,
-            );
+            )?;
             Ok(EffectOutcome::count(count)
                 .with_result_objects(ids)
                 .with_events(events))
@@ -939,7 +956,7 @@ fn execute_prepared_draw_cards(
                 direct_draw_step_context,
                 &mut direct_miracle,
                 &mut direct_automatic_reveals,
-            );
+            )?;
             original_draw_facts.extend(
                 segment
                     .iter()
@@ -1046,7 +1063,7 @@ fn execute_prepared_draw_cards(
                         direct_draw_step_context,
                         &mut direct_miracle,
                         &mut direct_automatic_reveals,
-                    );
+                    )?;
                     original_draw_facts.extend(segment.iter().flat_map(|event| {
                         crate::effects::outcome_recording::event_facts(game, event)
                     }));
@@ -1110,7 +1127,8 @@ fn execute_prepared_draw_cards(
                         game,
                         event.downcast::<CardsDrawnEvent>().expect("typed draw"),
                         ctx.provenance,
-                    );
+                        ctx.decision_maker,
+                    )?;
                     events.push(event);
                     events.extend(reveal);
                     events.extend(completed.automatic_reveals);
@@ -1172,7 +1190,7 @@ fn execute_prepared_draw_cards(
         direct_draw_step_context,
         &mut direct_miracle,
         &mut direct_automatic_reveals,
-    );
+    )?;
     original_draw_facts.extend(
         segment
             .iter()

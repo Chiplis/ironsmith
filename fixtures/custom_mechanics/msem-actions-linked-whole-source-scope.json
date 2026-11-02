@@ -1,0 +1,1251 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "path": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "sha256": "3c7102b6cce3627279de1539379b39bb17c528605c748519ce2f55795217ec0e",
+    "physical_record_count": 17073,
+    "fields_searched": [
+      "rulesText",
+      "rulesText2",
+      "cardName",
+      "cardName2",
+      "fullName",
+      "flavorText",
+      "flavorText2",
+      "rename"
+    ],
+    "rules_fields_searched": [
+      "rulesText",
+      "rulesText2"
+    ],
+    "broad_candidate_patterns": {
+      "abound": "\\babound\\w*\\b",
+      "catalyze": "\\bcataly[sz]\\w*\\b",
+      "dynamize": "\\bdynamiz\\w*\\b",
+      "rediscover": "\\brediscover\\w*\\b",
+      "submerge": "\\bsubmerg\\w*\\b",
+      "voyage": "\\bvoyag\\w*\\b"
+    },
+    "operative_patterns": {
+      "abound": "\\babound(?:s|ed|ing)?\\b",
+      "catalyze": "\\bcataly[sz](?:e|es|ed|ing)\\b",
+      "dynamize": "\\bdynamiz(?:e|es|ed|ing)\\b",
+      "rediscover": "\\brediscover(?:s|ed|ing)?\\b",
+      "submerge": "\\bsubmerg(?:e|es|ed|ing)\\b",
+      "voyage": "\\bvoyag(?:e|es|ed|ing)\\b"
+    },
+    "review": "every broad prefix candidate reviewed against whole rules/metadata; quote/name occurrences classified separately; no absent-source/runtime exclusions"
+  },
+  "families": [
+    {
+      "scope": "msem",
+      "family": "abound",
+      "operative_keys": [
+        "msem:Act of Repentance_MAC",
+        "msem:Anarchy Storm_MAC",
+        "msem:Breach Titan_MS2",
+        "msem:Burgeoning Blooms_MAC",
+        "msem:Chance at Redemption_MAC",
+        "msem:Conjure Realities_MAC",
+        "msem:End of Worlds_MAC",
+        "msem:Gold Retriever_HZN",
+        "msem:Ophidian Oracle_MAC",
+        "msem:Raloran Insurgent_OTH",
+        "msem:Raloran Tidecaller_MS2",
+        "msem:Seek Refuge_MAC",
+        "msem:Skali, the Last Sunfeather_SWR",
+        "msem:Speaker of the Iris_MAC",
+        "msem:Spectrum Archmage_MS1"
+      ],
+      "operative_physical_count": 15,
+      "operative_face_count": 15,
+      "canonical_fixture_paths": [
+        "fixtures/custom_mechanics/msem-abound-whole-source-inputs.json"
+      ],
+      "preserved_sources": [
+        {
+          "key": "msem:Spectrum Archmage_MS1",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Spectrum Archmage",
+              "rules_field": "rulesText",
+              "rules_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Act of Repentance_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Act of Repentance",
+              "rules_field": "rulesText",
+              "rules_text": "Escalate {1}{W} *(Pay this cost for each mode chosen beyond the first.)*\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {1}{B}{G}\nType: Instant\nEscalate {1}{W} *(Pay this cost for each mode chosen beyond the first.)*\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Anarchy Storm_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Anarchy Storm",
+              "rules_field": "rulesText",
+              "rules_text": "Destroy target nonbasic land.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {2}{R}\nType: Sorcery\nDestroy target nonbasic land.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Burgeoning Blooms_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Burgeoning Blooms",
+              "rules_field": "rulesText",
+              "rules_text": "Draw X cards, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {X}{G}{U}{R}\nType: Sorcery\nDraw X cards, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Chance at Redemption_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Chance at Redemption",
+              "rules_field": "rulesText",
+              "rules_text": "Each opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {W}{B}{G}\nType: Instant\nEach opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Conjure Realities_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Conjure Realities",
+              "rules_field": "rulesText",
+              "rules_text": "Abound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {2}{G}{U}\nType: Sorcery\nAbound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:End of Worlds_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "End of Worlds",
+              "rules_field": "rulesText",
+              "rules_text": "Each player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {4}{R}{R}{R}{R}\nType: Sorcery\nEach player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Ophidian Oracle_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Ophidian Oracle",
+              "rules_field": "rulesText",
+              "rules_text": "When Ophidian Oracle enters, draw a card, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nRecite {2}{G}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*",
+              "original_text": "Mana cost: {3}{U}{R}\nType: Creature — Human Shaman\nPower/Toughness: 4/4\nWhen Ophidian Oracle enters, draw a card, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nRecite {2}{G}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Seek Refuge_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Seek Refuge",
+              "rules_field": "rulesText",
+              "rules_text": "Look at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {2}{G}\nType: Instant\nLook at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Speaker of the Iris_MAC",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Speaker of the Iris",
+              "rules_field": "rulesText",
+              "rules_text": "Haste\nWhen Speaker of the Iris enters, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nOther creatures you control have haste.",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nHaste\nWhen Speaker of the Iris enters, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nOther creatures you control have haste."
+            }
+          ]
+        },
+        {
+          "key": "msem:Breach Titan_MS2",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Breach Titan",
+              "rules_field": "rulesText",
+              "rules_text": "Other creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+              "original_text": "Mana cost: {3}{G}{U}{R}\nType: Creature — Elemental Giant\nPower/Toughness: 6/6\nOther creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nAt the beginning of your end step, return another target creature you control to its owner's hand."
+            }
+          ]
+        },
+        {
+          "key": "msem:Raloran Tidecaller_MS2",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Raloran Tidecaller",
+              "rules_field": "rulesText",
+              "rules_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Gold Retriever_HZN",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Gold Retriever",
+              "rules_field": "rulesText",
+              "rules_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Raloran Insurgent_OTH",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Raloran Insurgent",
+              "rules_field": "rulesText",
+              "rules_text": "Deception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\nDeception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Skali, the Last Sunfeather_SWR",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Skali, the Last Sunfeather",
+              "rules_field": "rulesText",
+              "rules_text": "Flying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+              "original_text": "Mana cost: {3}{R/G}{W}\nType: Legendary Creature — Griffin\nPower/Toughness: 3/4\nFlying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": "msem",
+      "family": "catalyze",
+      "operative_keys": [
+        "msem:Bazaar Trickster_ORP",
+        "msem:Delude_ORP",
+        "msem:Duela Alchemist_ORP",
+        "msem:Duela Marshall_ORP",
+        "msem:Duela Science Kit_ORP",
+        "msem:Energize_ORP",
+        "msem:Feed Into Aether_ORP",
+        "msem:Fueled Flame_ORP",
+        "msem:Jolt Awake_OTH",
+        "msem:Melt Down_ORP",
+        "msem:Practical Battlemage_ORP",
+        "msem:Preparation_ORP",
+        "msem:Sift Components_ORP",
+        "msem:Sigil Slinger_ORP",
+        "msem:Steamwalker_ORP",
+        "msem:Toggle_ORP"
+      ],
+      "operative_physical_count": 16,
+      "operative_face_count": 16,
+      "canonical_fixture_paths": [
+        "fixtures/custom_mechanics/msem-catalyze-fullsource.json"
+      ],
+      "preserved_sources": [
+        {
+          "key": "msem:Bazaar Trickster_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Bazaar Trickster",
+              "rules_field": "rulesText",
+              "rules_text": "If you would catalyze, catalyze twice instead. *(The next spell you cast this turn costs {1} less to cast.)*\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/4\nIf you would catalyze, catalyze twice instead. *(The next spell you cast this turn costs {1} less to cast.)*\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library."
+            }
+          ]
+        },
+        {
+          "key": "msem:Delude_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Delude",
+              "rules_field": "rulesText",
+              "rules_text": "This spell costs {1} less to cast for each time you catalyzed this turn.\nCounter target spell unless its controller pays {X}.",
+              "original_text": "Mana cost: {X}{U}{U}\nType: Instant\nThis spell costs {1} less to cast for each time you catalyzed this turn.\nCounter target spell unless its controller pays {X}."
+            }
+          ]
+        },
+        {
+          "key": "msem:Duela Alchemist_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Duela Alchemist",
+              "rules_field": "rulesText",
+              "rules_text": "Whenever Duela Alchemist becomes tapped, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*\n{1}{U}, {T}: Untap another target artifact or creature.",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Dwarf Artificer\nPower/Toughness: 3/3\nWhenever Duela Alchemist becomes tapped, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*\n{1}{U}, {T}: Untap another target artifact or creature."
+            }
+          ]
+        },
+        {
+          "key": "msem:Duela Marshall_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Duela Marshall",
+              "rules_field": "rulesText",
+              "rules_text": "Whenever you cast a spell with mana value 4 or greater, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Dwarf Artificer\nPower/Toughness: 1/3\nWhenever you cast a spell with mana value 4 or greater, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Duela Science Kit_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Duela Science Kit",
+              "rules_field": "rulesText",
+              "rules_text": "Whenever you cast an instant or sorcery spell, you may untap Duela Science Kit.\n{T}, Tap an untapped creature you control: Catalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {3}\nType: Artifact\nWhenever you cast an instant or sorcery spell, you may untap Duela Science Kit.\n{T}, Tap an untapped creature you control: Catalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Energize_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Energize",
+              "rules_field": "rulesText",
+              "rules_text": "Energize deals 3 damage to any target.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {1}{R}\nType: Sorcery\nEnergize deals 3 damage to any target.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Feed Into Aether_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Feed Into Aether",
+              "rules_field": "rulesText",
+              "rules_text": "Return target spell or creature to its owner's hand. If you controlled that spell or creature, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {2}{U}\nType: Instant\nReturn target spell or creature to its owner's hand. If you controlled that spell or creature, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Fueled Flame_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Fueled Flame",
+              "rules_field": "rulesText",
+              "rules_text": "Catalyze. *(The next spell you cast this turn costs {1} less to cast.)*\nFueled Flame deals damage to any target equal to the number of times you've catalyzed this turn.",
+              "original_text": "Mana cost: {2}{R}\nType: Instant\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*\nFueled Flame deals damage to any target equal to the number of times you've catalyzed this turn."
+            }
+          ]
+        },
+        {
+          "key": "msem:Melt Down_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Melt Down",
+              "rules_field": "rulesText",
+              "rules_text": "Destroy target artifact.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {1}{R}\nType: Instant\nDestroy target artifact.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Practical Battlemage_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Practical Battlemage",
+              "rules_field": "rulesText",
+              "rules_text": "Whenever Practical Battlemage attacks, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {R}{R}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/2\nWhenever Practical Battlemage attacks, catalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Preparation_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Preparation",
+              "rules_field": "rulesText",
+              "rules_text": "Scry 3.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nScry 3.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Sift Components_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Sift Components",
+              "rules_field": "rulesText",
+              "rules_text": "Draw three cards, then discard a card unless you've catalyzed three or more times this turn.",
+              "original_text": "Mana cost: {3}{U}\nType: Sorcery\nDraw three cards, then discard a card unless you've catalyzed three or more times this turn."
+            }
+          ]
+        },
+        {
+          "key": "msem:Sigil Slinger_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Sigil Slinger",
+              "rules_field": "rulesText",
+              "rules_text": "Prowess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater. *(The next spell you cast this turn costs {2} less to cast.)*",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/3\nProwess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater. *(The next spell you cast this turn costs {2} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Steamwalker_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Steamwalker",
+              "rules_field": "rulesText",
+              "rules_text": "Prowess\nWhenever Steamwalker attacks, you may discard a card. If you do, draw a card, then catalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {U}{R}\nType: Creature — Dwarf Artificer\nPower/Toughness: 1/3\nProwess\nWhenever Steamwalker attacks, you may discard a card. If you do, draw a card, then catalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Toggle_ORP",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Toggle",
+              "rules_field": "rulesText",
+              "rules_text": "You may tap or untap target nonland permanent.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nYou may tap or untap target nonland permanent.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Jolt Awake_OTH",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Jolt Awake",
+              "rules_field": "rulesText",
+              "rules_text": "Return target creature card from your graveyard to your hand. Catalyze. *(The next spell you cast this turn costs {1} less to cast.)*\nFlashback {3}{B} *(You may cast this card from your graveyard for its flashback cost. Then exile it.)*",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand. Catalyze. *(The next spell you cast this turn costs {1} less to cast.)*\nFlashback {3}{B} *(You may cast this card from your graveyard for its flashback cost. Then exile it.)*"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": "msem",
+      "family": "dynamize",
+      "operative_keys": [
+        "msem:Blooming Fireheart_G5L",
+        "msem:Clutch of the Tyrant_G5L",
+        "msem:Core of Swelling Fields_G5L",
+        "msem:Crucible of Facets_G5L",
+        "msem:Cup of Infinite Possibilities_G5L",
+        "msem:Feather of All Paths_G5L",
+        "msem:Heart of Creeping Doubt_G5L",
+        "msem:Ic, Seeker of Elsewheres_G5L",
+        "msem:Perch of the Sherdal_G5L",
+        "msem:Quill of Fate_G5L",
+        "msem:Twinning Lattice_G5L",
+        "msem:Twins of the Unresting Sting_G5L"
+      ],
+      "operative_physical_count": 12,
+      "operative_face_count": 12,
+      "canonical_fixture_paths": [
+        "fixtures/custom_mechanics/msem-dynamize-complete.json"
+      ],
+      "preserved_sources": [
+        {
+          "key": "msem:Blooming Fireheart_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Blooming Fireheart",
+              "rules_field": "rulesText",
+              "rules_text": "{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Clutch of the Tyrant_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Clutch of the Tyrant",
+              "rules_field": "rulesText",
+              "rules_text": "{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Core of Swelling Fields_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Core of Swelling Fields",
+              "rules_field": "rulesText",
+              "rules_text": "{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Crucible of Facets_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Crucible of Facets",
+              "rules_field": "rulesText",
+              "rules_text": "{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Cup of Infinite Possibilities_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Cup of Infinite Possibilities",
+              "rules_field": "rulesText",
+              "rules_text": "{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Feather of All Paths_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Feather of All Paths",
+              "rules_field": "rulesText",
+              "rules_text": "Feather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Legendary Artifact\nFeather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Heart of Creeping Doubt_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Heart of Creeping Doubt",
+              "rules_field": "rulesText",
+              "rules_text": "{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Ic, Seeker of Elsewheres_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Ic, Seeker of Elsewheres",
+              "rules_field": "rulesText",
+              "rules_text": "{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Legendary Artifact Creature — Scout\nPower/Toughness: 2/2\n{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Perch of the Sherdal_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Perch of the Sherdal",
+              "rules_field": "rulesText",
+              "rules_text": "{2}{G}, {T}: Target creature gets +3/+3 until end of turn. \n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{2}{G}, {T}: Target creature gets +3/+3 until end of turn. \n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Quill of Fate_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Quill of Fate",
+              "rules_field": "rulesText",
+              "rules_text": "{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Twinning Lattice_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Twinning Lattice",
+              "rules_field": "rulesText",
+              "rules_text": "{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Twins of the Unresting Sting_G5L",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Twins of the Unresting Sting",
+              "rules_field": "rulesText",
+              "rules_text": "{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": "msem",
+      "family": "rediscover",
+      "operative_keys": [
+        "msem:Bright-Eyed Adventurer_LAW",
+        "msem:Cantrip Collector_LAW",
+        "msem:Excavator of the Beyond_LAW",
+        "msem:Fate Tracer_LAW",
+        "msem:Fluctuating Locale_LAW",
+        "msem:Neophyte of the Old Gods_LAW",
+        "msem:Open the Cryo-Chambers_LAW",
+        "msem:Rebuild History_LAW",
+        "msem:Recruiter of Irregulars_OTH",
+        "msem:Refuse Trawler_LAW",
+        "msem:Risti Salvager_LAW",
+        "msem:Risti Watchkeeper_LAW",
+        "msem:Scavengermobile_LAW",
+        "msem:Surveyor's Rifle_LAW"
+      ],
+      "operative_physical_count": 14,
+      "operative_face_count": 14,
+      "canonical_fixture_paths": [
+        "fixtures/custom_mechanics/msem-rediscover-whole-source-inputs.json"
+      ],
+      "preserved_sources": [
+        {
+          "key": "msem:Bright-Eyed Adventurer_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Bright-Eyed Adventurer",
+              "rules_field": "rulesText",
+              "rules_text": "Lifelink\nWhen Bright-Eyed Adventurer enters, rediscover an enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an enchantment card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Human Scout\nPower/Toughness: 2/2\nLifelink\nWhen Bright-Eyed Adventurer enters, rediscover an enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an enchantment card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Cantrip Collector_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Cantrip Collector",
+              "rules_field": "rulesText",
+              "rules_text": "Hexproof\nWhen Cantrip Collector enters, rediscover an instant card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an instant card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Warlock\nPower/Toughness: 2/2\nHexproof\nWhen Cantrip Collector enters, rediscover an instant card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an instant card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Excavator of the Beyond_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Excavator of the Beyond",
+              "rules_field": "rulesText",
+              "rules_text": "First strike\nWhen Excavator of the Beyond enters, rediscover an artifact card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Human Scout\nPower/Toughness: 2/2\nFirst strike\nWhen Excavator of the Beyond enters, rediscover an artifact card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Fate Tracer_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Fate Tracer",
+              "rules_field": "rulesText",
+              "rules_text": "Vigilance\nWhenever Fate Tracer attacks, rediscover a creature or enchantment card X times, where X is Fate Tracer's power. *(Repeat this process X times: Look at the top card of your library. You may reveal it and put it into your hand if it's a creature or enchantment card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Human Shaman\nPower/Toughness: 1/4\nVigilance\nWhenever Fate Tracer attacks, rediscover a creature or enchantment card X times, where X is Fate Tracer's power. *(Repeat this process X times: Look at the top card of your library. You may reveal it and put it into your hand if it's a creature or enchantment card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Fluctuating Locale_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Fluctuating Locale",
+              "rules_field": "rulesText",
+              "rules_text": "{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Rediscover a land card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Type: Land\n{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Rediscover a land card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Neophyte of the Old Gods_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Neophyte of the Old Gods",
+              "rules_field": "rulesText",
+              "rules_text": "Deathtouch\nWhen Neophyte of the Old Gods enters, rediscover a sorcery card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a sorcery card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Cleric\nPower/Toughness: 2/2\nDeathtouch\nWhen Neophyte of the Old Gods enters, rediscover a sorcery card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a sorcery card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Open the Cryo-Chambers_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Open the Cryo-Chambers",
+              "rules_field": "rulesText",
+              "rules_text": "Return target creature card from your graveyard to the battlefield, then rediscover a creature card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {4}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield, then rediscover a creature card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Rebuild History_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Rebuild History",
+              "rules_field": "rulesText",
+              "rules_text": "Rediscover an artifact card, then do the same for creature, enchantment, instant, land, planeswalker, and sorcery. *(Each time, look at the top card of your library. You may reveal it and put it into your hand if it's of that type. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nRediscover an artifact card, then do the same for creature, enchantment, instant, land, planeswalker, and sorcery. *(Each time, look at the top card of your library. You may reveal it and put it into your hand if it's of that type. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Refuse Trawler_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Refuse Trawler",
+              "rules_field": "rulesText",
+              "rules_text": "When Refuse Trawler enters, you may pay {G}. If you do, choose one —\n• Return a permanent card from your graveyard to your hand.\n• Rediscover a permanent card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a permanent card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Scout\nPower/Toughness: 1/3\nWhen Refuse Trawler enters, you may pay {G}. If you do, choose one —\n• Return a permanent card from your graveyard to your hand.\n• Rediscover a permanent card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a permanent card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Risti Salvager_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Risti Salvager",
+              "rules_field": "rulesText",
+              "rules_text": "Artifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, rediscover an artifact or enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact or enchantment card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {R}{W}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nArtifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, rediscover an artifact or enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact or enchantment card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Risti Watchkeeper_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Risti Watchkeeper",
+              "rules_field": "rulesText",
+              "rules_text": "Reach\nWhen Risti Watchkeeper enters, rediscover a creature card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Human Scout\nPower/Toughness: 2/2\nReach\nWhen Risti Watchkeeper enters, rediscover a creature card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Scavengermobile_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Scavengermobile",
+              "rules_field": "rulesText",
+              "rules_text": "Crew 1 *(Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)*\nWhenever Scavengermobile deals combat damage to a player, choose land or nonland, then rediscover a card of that kind. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a card of the chosen type. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {1}\nType: Artifact — Vehicle\nPower/Toughness: 2/2\nCrew 1 *(Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)*\nWhenever Scavengermobile deals combat damage to a player, choose land or nonland, then rediscover a card of that kind. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a card of the chosen type. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Surveyor's Rifle_LAW",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Surveyor's Rifle",
+              "rules_field": "rulesText",
+              "rules_text": "When Surveyor's Rifle enters, rediscover a land card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.)*\nEquipped creature gets +2/+1.\nEquip {3}",
+              "original_text": "Mana cost: {2}\nType: Artifact — Equipment\nWhen Surveyor's Rifle enters, rediscover a land card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.)*\nEquipped creature gets +2/+1.\nEquip {3}"
+            }
+          ]
+        },
+        {
+          "key": "msem:Recruiter of Irregulars_OTH",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Recruiter of Irregulars",
+              "rules_field": "rulesText",
+              "rules_text": "Deception {U} *({U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.)*",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\nDeception {U} *({U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.)*"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": "msem",
+      "family": "submerge",
+      "operative_keys": [
+        "msem:An and En, Destined Souls_GNJ",
+        "msem:Bathophobia_GNJ",
+        "msem:Beckon from the Depths_GNJ",
+        "msem:Coax Under_GNJ",
+        "msem:Demystifying Tide_GNJ",
+        "msem:Engulfing Incubus_GNJ",
+        "msem:Forlorn Murklurker_GNJ",
+        "msem:Ing'Wei of the Flood Realm_GNJ",
+        "msem:Into the Flood Realm_OTH",
+        "msem:Isle Conservator_GNJ",
+        "msem:Keeper of Blue Incense_GNJ",
+        "msem:Lost Among the Lilies_GNJ",
+        "msem:Rise from the Depths_GNJ",
+        "msem:Shojiro, the Wavewaker_GNJ",
+        "msem:Surging Stream_GNJ"
+      ],
+      "operative_physical_count": 15,
+      "operative_face_count": 15,
+      "canonical_fixture_paths": [
+        "fixtures/custom_mechanics/msem-linked-face-down.json"
+      ],
+      "preserved_sources": [
+        {
+          "key": "msem:An and En, Destined Souls_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "An and En, Destined Souls",
+              "rules_field": "rulesText",
+              "rules_text": "Flying\n{1}{W}{U}: Submerge another target creature. When An and En, Destined Souls leaves the battlefield, turn that creature face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {1}{W}{U}\nType: Legendary Creature — Spirit\nPower/Toughness: 2/2\nFlying\n{1}{W}{U}: Submerge another target creature. When An and En, Destined Souls leaves the battlefield, turn that creature face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Bathophobia_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Bathophobia",
+              "rules_field": "rulesText",
+              "rules_text": "Enchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Submerge enchanted creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Submerge enchanted creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Beckon from the Depths_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Beckon from the Depths",
+              "rules_field": "rulesText",
+              "rules_text": "Look at the top two cards of your library. Put one of them into your hand, then submerge the other. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {2}{U}\nType: Sorcery\nLook at the top two cards of your library. Put one of them into your hand, then submerge the other. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Coax Under_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Coax Under",
+              "rules_field": "rulesText",
+              "rules_text": "Submerge each creature you control. At the beginning of the next end step, you may turn any number of face down creatures you control face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {2}{U}\nType: Instant\nSubmerge each creature you control. At the beginning of the next end step, you may turn any number of face down creatures you control face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Demystifying Tide_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Demystifying Tide",
+              "rules_field": "rulesText",
+              "rules_text": "Submerge target artifact or enchantment. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {W}\nType: Instant\nSubmerge target artifact or enchantment. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Engulfing Incubus_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Engulfing Incubus",
+              "rules_field": "rulesText",
+              "rules_text": "First strike\nWhen Engulfing Incubus enters, you may submerge target nontoken creature an opponent controls. When Engulfing Incubus is no longer on the battlefield, turn that card face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Creature — Spirit\nPower/Toughness: 2/1\nFirst strike\nWhen Engulfing Incubus enters, you may submerge target nontoken creature an opponent controls. When Engulfing Incubus is no longer on the battlefield, turn that card face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Forlorn Murklurker_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Forlorn Murklurker",
+              "rules_field": "rulesText",
+              "rules_text": "When Forlorn Murklurker dies, submerge the top card of your library. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 1/1\nWhen Forlorn Murklurker dies, submerge the top card of your library. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Ing'Wei of the Flood Realm_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Ing'Wei of the Flood Realm",
+              "rules_field": "rulesText",
+              "rules_text": "Hexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, you may submerge that creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*\n{1}{U}{U}: Turn target face-down creature you control face up.",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nHexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, you may submerge that creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*\n{1}{U}{U}: Turn target face-down creature you control face up."
+            }
+          ]
+        },
+        {
+          "key": "msem:Isle Conservator_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Isle Conservator",
+              "rules_field": "rulesText",
+              "rules_text": "When Isle Conservator enters, if you control a legendary creature, submerge target creature an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Drake\nPower/Toughness: 2/5\nWhen Isle Conservator enters, if you control a legendary creature, submerge target creature an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Keeper of Blue Incense_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Keeper of Blue Incense",
+              "rules_field": "rulesText",
+              "rules_text": "When Keeper of Blue Incense enters, submerge target card from your graveyard. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nWhen Keeper of Blue Incense enters, submerge target card from your graveyard. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Lost Among the Lilies_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Lost Among the Lilies",
+              "rules_field": "rulesText",
+              "rules_text": "Submerge target spell. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nSubmerge target spell. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Rise from the Depths_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Rise from the Depths",
+              "rules_field": "rulesText",
+              "rules_text": "Submerge all creature cards in graveyards. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nSubmerge all creature cards in graveyards. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Shojiro, the Wavewaker_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Shojiro, the Wavewaker",
+              "rules_field": "rulesText",
+              "rules_text": "When Shojiro, the Wavewaker enters, submerge up to eight target creatures your opponents control. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {6}{U}{U}\nType: Legendary Creature — Octopus\nPower/Toughness: 8/8\nWhen Shojiro, the Wavewaker enters, submerge up to eight target creatures your opponents control. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Surging Stream_GNJ",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Surging Stream",
+              "rules_field": "rulesText",
+              "rules_text": "Submerge up to two target attacking nontoken creatures an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {3}{W}\nType: Instant\nSubmerge up to two target attacking nontoken creatures an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Into the Flood Realm_OTH",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Into the Flood Realm",
+              "rules_field": "rulesText",
+              "rules_text": "Draw three cards, then you may submerge a card from your hand. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Instant\nDraw three cards, then you may submerge a card from your hand. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scope": "msem",
+      "family": "voyage",
+      "operative_keys": [
+        "msem:Adept Fisherman_DSS",
+        "msem:Cryptozoologist_DSS",
+        "msem:Daybreak Wayfarers_DSS",
+        "msem:Eager Voyager_DSS",
+        "msem:Empyrean Griffin_DSS",
+        "msem:Grievous Buccaneer_DSS",
+        "msem:Keen Seafarer_DSS",
+        "msem:Living Archipelago_OTH",
+        "msem:Opaline Drake_DSS",
+        "msem:Pale Courier_DSS",
+        "msem:Plucky Pickpocket_DSS",
+        "msem:Seasoned Lookout_DSS",
+        "msem:Skysail Rigger_DSS",
+        "msem:Song of the Sea_DSS",
+        "msem:Twilight Privateer_DSS"
+      ],
+      "operative_physical_count": 15,
+      "operative_face_count": 15,
+      "canonical_fixture_paths": [
+        "fixtures/custom_mechanics/msem-voyage-complete.json"
+      ],
+      "preserved_sources": [
+        {
+          "key": "msem:Adept Fisherman_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Adept Fisherman",
+              "rules_field": "rulesText",
+              "rules_text": "{T}: Adept Fisherman voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Adept Fisherman phases in, you gain 2 life.",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Human Pirate Scout\nPower/Toughness: 3/2\n{T}: Adept Fisherman voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Adept Fisherman phases in, you gain 2 life."
+            }
+          ]
+        },
+        {
+          "key": "msem:Cryptozoologist_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Cryptozoologist",
+              "rules_field": "rulesText",
+              "rules_text": "{2}{G}: Cryptozoologist voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield. *(It returns to your hand if it's still on the battlefield.)*",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}: Cryptozoologist voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield. *(It returns to your hand if it's still on the battlefield.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Daybreak Wayfarers_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Daybreak Wayfarers",
+              "rules_field": "rulesText",
+              "rules_text": "{2}{G}{U}: Target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, draw a card.",
+              "original_text": "Mana cost: {G}{U}\nType: Creature — Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}{U}: Target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, draw a card."
+            }
+          ]
+        },
+        {
+          "key": "msem:Eager Voyager_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Eager Voyager",
+              "rules_field": "rulesText",
+              "rules_text": "{4}{G}{G}: Eager Voyager voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it.",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Pirate Scout\nPower/Toughness: 2/2\n{4}{G}{G}: Eager Voyager voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it."
+            }
+          ]
+        },
+        {
+          "key": "msem:Empyrean Griffin_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Empyrean Griffin",
+              "rules_field": "rulesText",
+              "rules_text": "Flying\nWhenever Empyrean Griffin attacks, up to one target creature voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nPermanents your opponents control can't phase in.",
+              "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Griffin\nPower/Toughness: 5/5\nFlying\nWhenever Empyrean Griffin attacks, up to one target creature voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nPermanents your opponents control can't phase in."
+            }
+          ]
+        },
+        {
+          "key": "msem:Grievous Buccaneer_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Grievous Buccaneer",
+              "rules_field": "rulesText",
+              "rules_text": "When Grievous Buccaneer enters, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step.",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Pirate\nPower/Toughness: 2/3\nWhen Grievous Buccaneer enters, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step."
+            }
+          ]
+        },
+        {
+          "key": "msem:Keen Seafarer_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Keen Seafarer",
+              "rules_field": "rulesText",
+              "rules_text": "{1}{G}: Keen Seafarer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it.",
+              "original_text": "Mana cost: {G}\nType: Creature — Human Pirate Warrior\nPower/Toughness: 1/1\n{1}{G}: Keen Seafarer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it."
+            }
+          ]
+        },
+        {
+          "key": "msem:Opaline Drake_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Opaline Drake",
+              "rules_field": "rulesText",
+              "rules_text": "Flying\nAt the beginning of your end step, up to one other target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, you may have it become a copy of target creature you control until end of turn.",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Drake\nPower/Toughness: 3/3\nFlying\nAt the beginning of your end step, up to one other target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, you may have it become a copy of target creature you control until end of turn."
+            }
+          ]
+        },
+        {
+          "key": "msem:Pale Courier_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Pale Courier",
+              "rules_field": "rulesText",
+              "rules_text": "Flying\nWhenever Pale Courier deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token.",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Griffin\nPower/Toughness: 1/1\nFlying\nWhenever Pale Courier deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token."
+            }
+          ]
+        },
+        {
+          "key": "msem:Plucky Pickpocket_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Plucky Pickpocket",
+              "rules_field": "rulesText",
+              "rules_text": "{T}: Plucky Pickpocket voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card.",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human Pirate\nPower/Toughness: 1/1\n{T}: Plucky Pickpocket voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card."
+            }
+          ]
+        },
+        {
+          "key": "msem:Seasoned Lookout_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Seasoned Lookout",
+              "rules_field": "rulesText",
+              "rules_text": "Whenever Seasoned Lookout deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand.",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Human Pirate Scout\nPower/Toughness: 3/3\nWhenever Seasoned Lookout deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand."
+            }
+          ]
+        },
+        {
+          "key": "msem:Skysail Rigger_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Skysail Rigger",
+              "rules_field": "rulesText",
+              "rules_text": "{1}{U}: Skysail Rigger voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Skysail Rigger phases in, put a flying counter on it.",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/3\n{1}{U}: Skysail Rigger voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Skysail Rigger phases in, put a flying counter on it."
+            }
+          ]
+        },
+        {
+          "key": "msem:Song of the Sea_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Song of the Sea",
+              "rules_field": "rulesText",
+              "rules_text": "Put three +1/+1 counters on target creature you control. It voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*",
+              "original_text": "Mana cost: {2}{G}\nType: Sorcery\nPut three +1/+1 counters on target creature you control. It voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*"
+            }
+          ]
+        },
+        {
+          "key": "msem:Twilight Privateer_DSS",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Twilight Privateer",
+              "rules_field": "rulesText",
+              "rules_text": "{1}{U}: Twilight Privateer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Twilight Privateer phases in, up to one other target creature voyages.",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Pirate\nPower/Toughness: 2/2\n{1}{U}: Twilight Privateer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Twilight Privateer phases in, up to one other target creature voyages."
+            }
+          ]
+        },
+        {
+          "key": "msem:Living Archipelago_OTH",
+          "faces": [
+            {
+              "face": "front",
+              "name": "Living Archipelago",
+              "rules_field": "rulesText",
+              "rules_text": "Trample\nWhenever Living Archipelago enters or attacks, up to two target lands you control voyage. *(If they aren't being targeted by another spell or ability, they phase out.)*\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land.",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Elder Turtle\nPower/Toughness: 6/6\nTrample\nWhenever Living Archipelago enters or attacks, up to two target lands you control voyage. *(If they aren't being targeted by another spell or ability, they phase out.)*\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "mechanics": []
+}

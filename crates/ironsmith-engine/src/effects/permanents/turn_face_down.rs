@@ -31,13 +31,14 @@ impl EffectExecutor for TurnFaceDownEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            targets.retain(|id| game.can_turn_face_down_permanent(*id));
+            targets.retain(|id| game.can_turn_face_down_permanent(*id)
+                || game.object(*id).is_some_and(|object| matches!(object.zone, crate::zone::Zone::Command | crate::zone::Zone::Exile)));
             targets.sort();
             targets.dedup();
-            let mut turned = 0;
+            let mut turned = Vec::new();
             for id in targets {
                 if game.set_face_down(id) {
-                    turned += 1;
+                    turned.push(id);
                 }
             }
             // No ETB, zone move, face-up event, manifest/cloak provenance, or
@@ -45,7 +46,7 @@ impl EffectExecutor for TurnFaceDownEffect {
             // only after every selected permanent has changed orientation.
             game.refresh_continuous_state()
                 .map_err(ExecutionError::ContinuousDiscovery)?;
-            Ok(EffectOutcome::count(turned))
+            Ok(EffectOutcome::with_objects(turned))
         })
     }
 

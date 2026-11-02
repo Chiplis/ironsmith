@@ -146,7 +146,7 @@ fn departed_planeswalker_and_battle_destinations_retain_controller_or_protector_
         let mut queue=attack(&mut game,attacker,if battle{AttackTarget::Battle(destination)}else{AttackTarget::Planeswalker(destination)});
         let expected=if battle&&change==0{assert!(game.set_battle_protector(destination,C));C}else{B};
         match change{0 if !battle=>{game.set_current_controller(destination,C).unwrap();},1=>{game.move_object_by_effect(destination,Zone::Graveyard).unwrap();},2=>{game.phase_out(destination);},_=>{}}
-        let mut choices=Choices::default();admit(&mut game,&mut queue,&mut choices);resolve(&mut game,&mut choices);assert_eq!(game.player(expected).unwrap().life,19);
+        let mut choices=Choices::default();admit(&mut game,&mut queue,&mut choices);resolve(&mut game,&mut choices);assert_eq!(game.player(expected).unwrap().life,19,"battle={battle} change={change} expected={expected:?}; combat={:?}; stack={:?}",game.combat,game.stack);
     }}}
 }
 #[test]

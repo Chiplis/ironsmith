@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'effects::consult_helpers::replacement_bottom_owner_contract_tests::reveal_offer_departure_retains_original_consultation_match_and_cleanup_identity' panicked at crates/ironsmith-engine/src/effects/consult_helpers.rs:1164:13:
+assertion failed: crate::effects::helpers::resolve_objects_from_spec(&game,
+            &ChooseSpec::Tagged("departed selection".into()),
+            &ctx).unwrap().is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::consult_helpers::replacement_bottom_owner_contract_tests::reveal_offer_departure_retains_original_consultation_match_and_cleanup_identity ... FAILED
+
+failures:
+
+failures:
+    effects::consult_helpers::replacement_bottom_owner_contract_tests::reveal_offer_departure_retains_original_consultation_match_and_cleanup_identity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.06s
+

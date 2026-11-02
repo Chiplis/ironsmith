@@ -199,7 +199,7 @@ fn canonical_complete_body_preserves_arrival_metric_and_permission_marker() {
 fn attack_must_name_a_player_and_resolved_authority_survives_control_loss_and_phasing() {
     for definition in definitions() {
         let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
-        let walker = card(&mut game, B, Zone::Battlefield, "Type: Planeswalker — Witness\nLoyalty: 3");
+        let walker = card(&mut game, B, Zone::Battlefield, "Type: Planeswalker — Jace\nLoyalty: 3");
         attack(&mut game, source, AttackTarget::Planeswalker(walker)); assert!(game.stack.is_empty());
         main(&mut game); card(&mut game, B, Zone::Hand, "Type: Land"); library(&mut game, B, 2);
         attack(&mut game, source, AttackTarget::Player(B)); resolve(&mut game); let member = game.exile[0];

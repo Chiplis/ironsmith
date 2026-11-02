@@ -138,7 +138,7 @@ impl HiddenLibraryAnchor {
 }
 
 /// What an obligation claims about the hidden card.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HiddenIdentityCheck {
     /// The card was chosen for the filter, so it must match it.
     Matches,
@@ -158,6 +158,7 @@ pub enum HiddenIdentityCheck {
     /// The card was foretold face down, so its printed alternative costs must
     /// contain foretell. Kept on every peer until the card is opened.
     Foretell,
+    ExilePreparation { method_index: usize, preparation: crate::alternative_cast::ExilePreparation },
 }
 
 /// The public kind of a face-down cast (CR 702.37, 702.37b, 702.168).
@@ -443,6 +444,7 @@ fn public_claim_outcome(
             snapshot.clone()
         };
         public.strip_to_public_claim_form();
+        public.paid_optional_cost_objects = public.paid_optional_cost_objects.iter().map(|(tag, snapshots)| (tag.clone(), snapshots.iter().map(|snapshot| public_snapshot(snapshot, hidden)).collect())).collect();
         public.chosen_object = public
             .chosen_object
             .take()
@@ -739,6 +741,7 @@ impl GameState {
             placeholder
         };
         public.strip_to_public_claim_form();
+        public.paid_optional_cost_objects = public.paid_optional_cost_objects.iter().map(|(tag, snapshots)| (tag.clone(), snapshots.iter().map(|snapshot| self.public_claim_snapshot(snapshot, hidden_match)).collect())).collect();
         public.chosen_object = public
             .chosen_object
             .take()
@@ -947,6 +950,36 @@ impl GameState {
                 .push(obligation);
         }
     }
+    pub(crate) fn record_hidden_exile_preparation_obligation(&mut self, id: ObjectId, method_index: usize, preparation: crate::alternative_cast::ExilePreparation) {
+        if self.hidden_card_info(id).is_none() {
+            return;
+        }
+        self.mark_hidden_claim_subjects([id]);
+        let Some(object) = self.object(id) else {
+            return;
+        };
+        let obligation = HiddenIdentityObligation {
+            stable_id: object.stable_id,
+            owner: object.owner,
+            zone: Zone::Hand,
+            filter: ObjectFilter::default(),
+            filter_ctx: FilterContext::default(),
+            description: "prepared an exact exile-casting ability".to_string(),
+            check: HiddenIdentityCheck::ExilePreparation { method_index, preparation },
+            library_anchor: None,
+        };
+        if !self
+            .auxiliary_tracking
+            .hidden_identity_obligations
+            .iter()
+            .any(|held| held.same_claim(&obligation))
+        {
+            self.auxiliary_tracking_mut()
+                .hidden_identity_obligations
+                .push(obligation);
+        }
+    }
+
 
     /// Whether this peer still holds an unchecked obligation for `id`.
     pub fn has_hidden_identity_obligation(&self, id: ObjectId) -> bool {
@@ -1409,7 +1442,7 @@ impl GameState {
             .find_map(|obligation| {
                 let mut candidate = opened.clone();
                 candidate.zone = obligation.zone;
-                let satisfied = match obligation.check {
+                let satisfied = match &obligation.check {
                     HiddenIdentityCheck::Matches => obligation.filter.matches_non_recursive(
                         &candidate,
                         &obligation.filter_ctx,
@@ -1423,9 +1456,8 @@ impl GameState {
                     HiddenIdentityCheck::CastFaceDown(kind) => {
                         kind.is_allowed_by(&candidate.abilities)
                     }
-                    HiddenIdentityCheck::Foretell => candidate.alternative_casts.iter().any(|method| {
-                        method.prepares_face_down()
-                    }),
+                    HiddenIdentityCheck::Foretell => candidate.alternative_casts.iter().any(|method| matches!(method,crate::alternative_cast::AlternativeCastingMethod::Foretell { .. })),
+                    HiddenIdentityCheck::ExilePreparation { method_index, preparation } => candidate.alternative_casts.get(*method_index).and_then(|method|method.exile_preparation())==Some(preparation),
                 };
                 (!satisfied).then(|| {
                     format!(

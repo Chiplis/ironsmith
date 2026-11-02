@@ -23,6 +23,21 @@ mod r#conditional_destroy_predicates;
 #[path = "../contracted_suspicion_clear.rs"]
 mod r#contracted_suspicion_clear;
 
+#[path = "../custom_described_viewed_selection.rs"]
+mod r#custom_described_viewed_selection;
+
+#[path = "../custom_living_ritual.rs"]
+mod r#custom_living_ritual;
+
+#[path = "../custom_nonhand_cast_cost.rs"]
+mod r#custom_nonhand_cast_cost;
+
+#[path = "../custom_token_draw_exception.rs"]
+mod r#custom_token_draw_exception;
+
+#[path = "../custom_turn_prevention_budget.rs"]
+mod r#custom_turn_prevention_budget;
+
 #[path = "../cycle_discard_other_triggers.rs"]
 mod r#cycle_discard_other_triggers;
 

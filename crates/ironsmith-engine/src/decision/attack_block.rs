@@ -501,6 +501,14 @@ pub fn compute_legal_blockers(
     combat: &CombatState,
     defending_player: PlayerId,
 ) -> Vec<BlockerOption> {
+    // Blocker restrictions may depend on tapping since the last derived pass.
+    // Refresh the restriction owner as well as its characteristic view.
+    if !game.continuous_state_is_clean() {
+        let mut refreshed = game.clone();
+        if refreshed.refresh_continuous_state().is_err() { return Vec::new(); }
+        return compute_legal_blockers(&refreshed, combat, defending_player);
+    }
+
     use std::collections::HashSet;
 
     let mut options = Vec::new();

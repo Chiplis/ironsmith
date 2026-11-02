@@ -44,6 +44,7 @@ pub(super) fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
     ));
     let program =
         crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::move_to_zone(default_target, Zone::Hand, false)],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 crate::effect::Condition::ThisSpellPaidLabel("Gift".into()),

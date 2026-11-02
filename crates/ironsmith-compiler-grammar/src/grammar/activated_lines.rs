@@ -116,6 +116,7 @@ pub enum ThisSpellReductionRemainder {
 pub struct NextSpellCostReductionSpec {
     pub spell_filter: ObjectFilter,
     pub reduction: ManaCost,
+    pub starts_during_next_turn: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -628,12 +629,20 @@ pub fn parse_this_spell_reduction_remainder_tokens(
 fn parse_next_spell_cost_reduction<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<NextSpellCostReductionSpec> {
-    primitives::phrase(&["the", "next"]).parse_next(input)?;
+    let starts_during_next_turn = alt((
+        primitives::phrase(&["the", "next"]).value(false),
+        primitives::phrase(&["the", "first"]).value(true),
+    )).parse_next(input)?;
     let spell_filter_tokens = repeat_till(0.., any.void(), peek(primitives::kw("spell")))
         .map(|((), _)| ())
         .take()
         .parse_next(input)?;
-    primitives::phrase(&["spell", "you", "cast", "this", "turn"]).parse_next(input)?;
+    primitives::phrase(&["spell", "you", "cast"]).parse_next(input)?;
+    if starts_during_next_turn {
+        primitives::phrase(&["during", "your", "next", "turn"]).parse_next(input)?;
+    } else {
+        primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    }
     let _: &[OwnedLexToken] = repeat_till(0.., any.void(), peek(primitives::kw("costs")))
         .map(|((), _)| ())
         .take()
@@ -645,6 +654,7 @@ fn parse_next_spell_cost_reduction<'a>(
     primitives::phrase(&["less", "to", "cast"]).parse_next(input)?;
     let _: Vec<&OwnedLexToken> = repeat(0.., any).parse_next(input)?;
     Ok(NextSpellCostReductionSpec {
+        starts_during_next_turn,
         spell_filter: super::filters::parse_spell_filter_with_grammar_entrypoint_lexed(
             trim_lexed_commas(spell_filter_tokens),
         ),
@@ -758,3 +768,22 @@ pub fn parse_once_per_turn_restriction_normalization_tokens(
 #[cfg(test)]
 #[path = "activated_lines_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn next_spell_cost_windows_distinguish_immediate_next_from_future_first() {
+ for (text,future) in [
+  ("The next instant or sorcery spell you cast this turn costs {3} less to cast.",false),
+  ("The first instant or sorcery spell you cast during your next turn costs {3} less to cast.",true),
+  ("The first permanent spell you cast during your next turn costs {3} less to cast.",true),
+ ] {
+  let tokens=crate::lexer::lex_line(text,0).unwrap();
+  let parsed=parse_next_spell_cost_reduction_tokens(&tokens).expect("complete timed payment modifier");
+  assert_eq!(parsed.starts_during_next_turn,future);
+  assert_eq!(parsed.reduction.to_oracle(),"{3}");
+ }
+ for text in [
+  "The first instant spell you cast this turn costs {3} less to cast.",
+  "The next instant spell you cast during your next turn costs {3} less to cast.",
+ ] {let tokens=crate::lexer::lex_line(text,0).unwrap();assert!(parse_next_spell_cost_reduction_tokens(&tokens).is_none(),"unimplemented temporal surface must not silently change its meaning: {text}");}
+}

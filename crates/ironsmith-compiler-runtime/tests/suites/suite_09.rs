@@ -20,6 +20,18 @@ mod r#counter_exile_complete_frozen_cards;
 #[path = "../craft_material_costs.rs"]
 mod r#craft_material_costs;
 
+#[path = "../custom_forsake.rs"]
+mod r#custom_forsake;
+
+#[path = "../custom_msem_optional_program.rs"]
+mod r#custom_msem_optional_program;
+
+#[path = "../custom_revolution_waste_cost.rs"]
+mod r#custom_revolution_waste_cost;
+
+#[path = "../custom_tithe.rs"]
+mod r#custom_tithe;
+
 #[path = "../delayed_damage_event_watchers_gameplay.rs"]
 mod r#delayed_damage_event_watchers_gameplay;
 

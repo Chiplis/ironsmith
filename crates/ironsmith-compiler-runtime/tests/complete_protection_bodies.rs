@@ -96,7 +96,8 @@ fn complete_static_qualities_cover_damage_targeting_blocking_and_both_attachment
         let source = witness(&mut game, B, vec![CardType::Creature], vec![subtype], colors, snow, Zone::Battlefield);
         assert_eq!(matching(&game, protected, source), protects, "{name}");
         assert_eq!(ironsmith::rules::combat::can_block(game.object(protected).unwrap(), game.object(source).unwrap(), &game), !protects, "{name}");
-        let spell = witness(&mut game, B, vec![CardType::Instant], vec![subtype], colors, snow, Zone::Stack);
+        // Kindred permits creature subtypes on noncreature spells/permanents.
+        let spell = witness(&mut game, B, vec![CardType::Instant,CardType::Kindred], vec![subtype], colors, snow, Zone::Stack);
         assert_eq!(ironsmith::targeting::compute_legal_targets(&game, &ChooseSpec::target_creature(), B, Some(spell))
             .contains(&Target::Object(protected)), !protects, "{name}");
         DealDamageEffect::new(1, ChooseSpec::SpecificObject(protected))
@@ -107,11 +108,12 @@ fn complete_static_qualities_cover_damage_targeting_blocking_and_both_attachment
                 let aura = compile_to_runtime_definition("Aura witness", "Type: Enchantment — Aura\nEnchant creature", false).unwrap();
                 let id = game.create_object_from_definition(&aura, A, Zone::Battlefield);
                 change(&mut game, id, Modification::SetColors(colors));
+                change(&mut game, id, Modification::AddCardTypes(vec![CardType::Kindred]));
                 change(&mut game, id, Modification::SetSubtypes(vec![Subtype::Aura, subtype]));
                 if snow { change(&mut game, id, Modification::AddSupertypes(vec![Supertype::Snow])); }
                 id
             } else {
-                witness(&mut game, A, vec![card_type], vec![attachment_type, subtype], colors, snow, Zone::Battlefield)
+                witness(&mut game, A, vec![card_type,CardType::Kindred], vec![attachment_type, subtype], colors, snow, Zone::Battlefield)
             };
             attach(&mut game, attachment, protected);
             assert_eq!(game.object(attachment).unwrap().attached_to == Some(AttachmentTarget::Object(protected)), !protects, "{name}");

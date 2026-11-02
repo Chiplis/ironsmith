@@ -1103,7 +1103,7 @@ pub(super) fn attach_compiler_trigger_facts(
                                         one_shot: false,
                                         duration: crate::effect::Until::EndOfCombat,
                                         either_of_watched_objects: false,
-                                        while_any_tagged_object_in_zone: None,
+                                        while_any_tagged_object_in_zone: None, source_collection_scope: None,
                                     },
                                 )],
                                 player: crate::PlayerAst::You,
@@ -1396,7 +1396,23 @@ pub(super) fn dispatch_standard_line(
         allow_unsupported,
     };
     match dispatch_line_family_registry(&ctx) {
-        ParseOutcome::Match(matched) => Ok(matched.value),
+        ParseOutcome::Match(matched) => {
+            let mut result = matched.value;
+            // Trigger recognition parses the body after presentation labels
+            // are stripped. Ownership belongs to the authored ability group.
+            let source_facts = result.lines.iter().any(|line| matches!(line, RecognizedLine::Triggered(_)))
+                .then(|| crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(&line.info.source_tokens));
+            for recognized in &mut result.lines {
+                if let RecognizedLine::Triggered(triggered) = recognized
+                    && let Some(source_facts) = &source_facts {
+                    for name in &source_facts.ability_designations {
+                        let owned = &mut triggered.info.semantic_facts.ability_designations;
+                        if !owned.contains(name) { owned.push(name.clone()); }
+                    }
+                }
+            }
+            Ok(result)
+        },
         ParseOutcome::Error(diagnostic) => Err(diagnostic.into_card_text_error()),
         ParseOutcome::NoMatch => Err(CardTextError::InvariantViolation(format!(
             "line-family registry returned no match for '{}'",

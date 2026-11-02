@@ -1,0 +1,1615 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Abound source-relative optional free cast",
+  "notes": [
+    "All original variants preserved; direct and granted bindings require independent verification."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-276",
+      "keyword": "Abound",
+      "original_reminder": "To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.",
+      "executable_reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+      "source_cards": [
+        "Spectrum Archmage",
+        "Act of Repentance",
+        "Anarchy Storm",
+        "Burgeoning Blooms",
+        "Chance at Redemption",
+        "Conjure Realities",
+        "Ophidian Oracle",
+        "Speaker of the Iris",
+        "Breach Titan",
+        "Skali, the Last Sunfeather"
+      ],
+      "rule_reference": "701.78.",
+      "rule_text": [
+        {
+          "name": "701.78a",
+          "rule": "Abound is a keyword action. “Abound” means “You may cast a spell from your hand with a lesser mana value than this spell or permanent without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "701.78b",
+          "rule": "If an triggered or activated ability instructs you to abound, use the mana value of the source of that ability to determine the mana value. If the ability somehow doesn't have a source, its mana value is 0 and you will be unable to cast a spell with a lesser mana value.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Spectrum Archmage_MS1",
+          "name": "Spectrum Archmage",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Creature — Human Wizard",
+          "power": "3",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Spectrum Archmage_MS1",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spectrum Archmage",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Spectrum Archmage",
+            "cardName": "Spectrum Archmage",
+            "manaCost": "{2}{U}{U}",
+            "typeLine": "Creature — Human Wizard",
+            "rarityLine": "*MS1 Bonus*",
+            "rulesText": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "bonus",
+            "shape": "normal",
+            "setID": "MS1",
+            "cardID": "251",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Jennifer Wuesting",
+            "sdn": 10058,
+            "version": 20260631,
+            "key": "Spectrum Archmage_MS1",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MS1",
+              "MAC",
+              "MSC"
+            ],
+            "rarities": [
+              "bonus",
+              "rare"
+            ],
+            "firstPrint": "Spectrum Archmage_MS1",
+            "printKeys": [
+              "Spectrum Archmage_MS1",
+              "Spectrum Archmage_MAC",
+              "Spectrum Archmage_MSC"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 2.4691358024691357,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Spectrum Archmage",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound.",
+              "original_printed_rules_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound.",
+          "original_printed_rules_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Act of Repentance_MAC",
+          "name": "Act of Repentance",
+          "original_text": "Mana cost: {1}{B}{G}\nType: Instant\nEscalate {1}{W} *(Pay this cost for each mode chosen beyond the first.)*\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {1}{B}{G}\nType: Instant\nEscalate {1}{W}\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{1}{B}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Act of Repentance_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Act of Repentance",
+              "original_text": "Mana cost: {1}{B}{G}\nType: Instant\nEscalate {1}{W} *(Pay this cost for each mode chosen beyond the first.)*\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Act of Repentance",
+            "cardName": "Act of Repentance",
+            "manaCost": "{1}{B}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Escalate {1}{W} *(Pay this cost for each mode chosen beyond the first.)*\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black/Green} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "52",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Jason Chan",
+            "sdn": 6630,
+            "key": "Act of Repentance_MAC",
+            "colorIdentity": [
+              "B",
+              "G",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Act of Repentance_MAC",
+            "printKeys": [
+              "Act of Repentance_MAC"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 3.1262211801484954,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Act of Repentance",
+              "executable_text": "Mana cost: {1}{B}{G}\nType: Instant\nEscalate {1}{W}\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Escalate {1}{W}\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound.",
+              "original_printed_rules_text": "Escalate {1}{W} (Pay this cost for each mode chosen beyond the first.)\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Escalate {1}{W}\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound.",
+          "original_printed_rules_text": "Escalate {1}{W} (Pay this cost for each mode chosen beyond the first.)\nChoose one or both —\n• Return up to two target creature cards from your graveyard to your hand.\n• Abound, abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Anarchy Storm_MAC",
+          "name": "Anarchy Storm",
+          "original_text": "Mana cost: {2}{R}\nType: Sorcery\nDestroy target nonbasic land.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nDestroy target nonbasic land.\nYou may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Anarchy Storm_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Anarchy Storm",
+              "original_text": "Mana cost: {2}{R}\nType: Sorcery\nDestroy target nonbasic land.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Anarchy Storm",
+            "cardName": "Anarchy Storm",
+            "manaCost": "{2}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Destroy target nonbasic land.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "*“I killed you once, and I can do it a second! You're nothing compared to me!”\n—Aerida, to Felice*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "24",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Shahab Alizadeh",
+            "sdn": 6639,
+            "key": "Anarchy Storm_MAC",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC",
+              "LAIR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Anarchy Storm_MAC",
+            "printKeys": [
+              "Anarchy Storm_MAC",
+              "Anarchy Storm (SL31)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 3.292181069958848,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Anarchy Storm",
+              "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nDestroy target nonbasic land.\nYou may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target nonbasic land.\nAbound.",
+              "original_printed_rules_text": "Destroy target nonbasic land.\nAbound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target nonbasic land.\nAbound.",
+          "original_printed_rules_text": "Destroy target nonbasic land.\nAbound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Burgeoning Blooms_MAC",
+          "name": "Burgeoning Blooms",
+          "original_text": "Mana cost: {X}{G}{U}{R}\nType: Sorcery\nDraw X cards, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {X}{G}{U}{R}\nType: Sorcery\nDraw X cards, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{X}{G}{U}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Burgeoning Blooms_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Burgeoning Blooms",
+              "original_text": "Mana cost: {X}{G}{U}{R}\nType: Sorcery\nDraw X cards, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Burgeoning Blooms",
+            "cardName": "Burgeoning Blooms",
+            "manaCost": "{X}{G}{U}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Draw X cards, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "*As their new world unfurled before them, the mages of Arcanum couldn't help but add a touch of extravagance to the proceedings.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue/Red/Green} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "59",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Thomas Chamberlain",
+            "sdn": 6642,
+            "key": "Burgeoning Blooms_MAC",
+            "colorIdentity": [
+              "G",
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC",
+              "MS2",
+              "MSC"
+            ],
+            "rarities": [
+              "rare",
+              "mythic rare"
+            ],
+            "firstPrint": "Burgeoning Blooms_MAC",
+            "printKeys": [
+              "Burgeoning Blooms_MAC",
+              "Burgeoning Blooms_MS2",
+              "Burgeoning Blooms_MSC"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.855421686746988,
+            "pm": 9.769441187964048,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Burgeoning Blooms",
+              "executable_text": "Mana cost: {X}{G}{U}{R}\nType: Sorcery\nDraw X cards, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw X cards, then abound.",
+              "original_printed_rules_text": "Draw X cards, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Draw X cards, then abound.",
+          "original_printed_rules_text": "Draw X cards, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Chance at Redemption_MAC",
+          "name": "Chance at Redemption",
+          "original_text": "Mana cost: {W}{B}{G}\nType: Instant\nEach opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {W}{B}{G}\nType: Instant\nEach opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{W}{B}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Chance at Redemption_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chance at Redemption",
+              "original_text": "Mana cost: {W}{B}{G}\nType: Instant\nEach opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Chance at Redemption",
+            "cardName": "Chance at Redemption",
+            "manaCost": "{W}{B}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Each opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "*In life, sins flooded his veins. In death, there was nothing left but mulch.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black/Green/White} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "60",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Chris Bjors",
+            "sdn": 6645,
+            "key": "Chance at Redemption_MAC",
+            "colorIdentity": [
+              "W",
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Chance at Redemption_MAC",
+            "printKeys": [
+              "Chance at Redemption_MAC"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_faces": [
+            {
+              "name": "Chance at Redemption",
+              "executable_text": "Mana cost: {W}{B}{G}\nType: Instant\nEach opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound.",
+              "original_printed_rules_text": "Each opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound.",
+          "original_printed_rules_text": "Each opponent sacrifices a creature that dealt damage this turn. You gain 2 life, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Conjure Realities_MAC",
+          "name": "Conjure Realities",
+          "original_text": "Mana cost: {2}{G}{U}\nType: Sorcery\nAbound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{G}{U}\nType: Sorcery\nYou may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle.",
+          "mana_cost": "{2}{G}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Conjure Realities_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Conjure Realities",
+              "original_text": "Mana cost: {2}{G}{U}\nType: Sorcery\nAbound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Conjure Realities",
+            "cardName": "Conjure Realities",
+            "manaCost": "{2}{G}{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Abound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "*After centuries of study and preparation, the mages of Arcanum could only look on in awe as they accomplished the impossible.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green/Blue} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "56",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Alex Petruk",
+            "sdn": 6649,
+            "key": "Conjure Realities_MAC",
+            "colorIdentity": [
+              "G",
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC",
+              "MSC",
+              "LAIR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Conjure Realities_MAC",
+            "printKeys": [
+              "Conjure Realities_MAC",
+              "Conjure Realities_MSC",
+              "Conjure Realities (SL50)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ],
+            "pr": 0,
+            "pm": 3.292181069958848,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Conjure Realities",
+              "executable_text": "Mana cost: {2}{G}{U}\nType: Sorcery\nYou may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Abound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle.",
+              "original_printed_rules_text": "Abound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Abound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle.",
+          "original_printed_rules_text": "Abound. Then search your library for a creature, instant, or sorcery card, reveal it, put it into your hand, then shuffle. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "End of Worlds_MAC",
+          "name": "End of Worlds",
+          "original_text": "Mana cost: {4}{R}{R}{R}{R}\nType: Sorcery\nEach player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {4}{R}{R}{R}{R}\nType: Sorcery\nEach player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)",
+          "mana_cost": "{4}{R}{R}{R}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "End of Worlds_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "End of Worlds",
+              "original_text": "Mana cost: {4}{R}{R}{R}{R}\nType: Sorcery\nEach player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "End of Worlds",
+            "cardName": "End of Worlds",
+            "manaCost": "{4}{R}{R}{R}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Each player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 8,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "27",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Dave Greco",
+            "sdn": 6658,
+            "key": "End of Worlds_MAC",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "End of Worlds_MAC",
+            "printKeys": [
+              "End of Worlds_MAC"
+            ],
+            "formats": [
+              "msem"
+            ],
+            "ctags": [
+              "spikey"
+            ]
+          },
+          "executable_faces": [
+            {
+              "name": "End of Worlds",
+              "executable_text": "Mana cost: {4}{R}{R}{R}{R}\nType: Sorcery\nEach player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times.",
+              "original_printed_rules_text": "Each player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times.",
+          "original_printed_rules_text": "Each player discards their hand and sacrifices all permanents they control, draws seven cards, then abounds seven times. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Ophidian Oracle_MAC",
+          "name": "Ophidian Oracle",
+          "original_text": "Mana cost: {3}{U}{R}\nType: Creature — Human Shaman\nPower/Toughness: 4/4\nWhen Ophidian Oracle enters, draw a card, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nRecite {2}{G}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*",
+          "executable_text": "Mana cost: {3}{U}{R}\nType: Creature — Human Shaman\nPower/Toughness: 4/4\nWhen Ophidian Oracle enters, draw a card, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.\nYou may cast this card from your graveyard for {2}{G}{G}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+          "mana_cost": "{3}{U}{R}",
+          "type_line": "Creature — Human Shaman",
+          "power": "4",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Ophidian Oracle_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ophidian Oracle",
+              "original_text": "Mana cost: {3}{U}{R}\nType: Creature — Human Shaman\nPower/Toughness: 4/4\nWhen Ophidian Oracle enters, draw a card, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nRecite {2}{G}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Ophidian Oracle",
+            "cardName": "Ophidian Oracle",
+            "manaCost": "{3}{U}{R}",
+            "typeLine": "Creature — Human Shaman",
+            "rarityLine": "*MAC R*",
+            "rulesText": "When Ophidian Oracle enters, draw a card, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nRecite {2}{G}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Blue/Red} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "51",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Lorenzo Mastroianni",
+            "sdn": 6684,
+            "key": "Ophidian Oracle_MAC",
+            "colorIdentity": [
+              "U",
+              "R",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC",
+              "MPS_MSE",
+              "CHAMPIONS"
+            ],
+            "rarities": [
+              "rare",
+              "masterpiece",
+              "mythic rare"
+            ],
+            "firstPrint": "Ophidian Oracle_MAC",
+            "printKeys": [
+              "Ophidian Oracle_MAC",
+              "Ophidian Oracle_MPS_MSE",
+              "Ophidian Oracle_CHAMPIONS"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 4.938271604938271,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Ophidian Oracle",
+              "executable_text": "Mana cost: {3}{U}{R}\nType: Creature — Human Shaman\nPower/Toughness: 4/4\nWhen Ophidian Oracle enters, draw a card, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.\nYou may cast this card from your graveyard for {2}{G}{G}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+              "custom_keyword_identities": [
+                "abound",
+                "recite"
+              ],
+              "custom_keyword_payments": [
+                "recite"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Ophidian Oracle enters, draw a card, then abound.\nRecite {2}{G}{G}",
+              "original_printed_rules_text": "When Ophidian Oracle enters, draw a card, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)\nRecite {2}{G}{G} (You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound",
+            "recite"
+          ],
+          "custom_keyword_payments": [
+            "recite"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Ophidian Oracle enters, draw a card, then abound.\nRecite {2}{G}{G}",
+          "original_printed_rules_text": "When Ophidian Oracle enters, draw a card, then abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)\nRecite {2}{G}{G} (You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)"
+        },
+        {
+          "id": "Seek Refuge_MAC",
+          "name": "Seek Refuge",
+          "original_text": "Mana cost: {2}{G}\nType: Instant\nLook at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{G}\nType: Instant\nLook at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nYou may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Seek Refuge_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seek Refuge",
+              "original_text": "Mana cost: {2}{G}\nType: Instant\nLook at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Seek Refuge",
+            "cardName": "Seek Refuge",
+            "manaCost": "{2}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Look at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "36",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Grace Liu",
+            "sdn": 6696,
+            "key": "Seek Refuge_MAC",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Seek Refuge_MAC",
+            "printKeys": [
+              "Seek Refuge_MAC"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 3.829620945681907,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Seek Refuge",
+              "executable_text": "Mana cost: {2}{G}\nType: Instant\nLook at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nYou may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Look at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound.",
+              "original_printed_rules_text": "Look at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Look at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound.",
+          "original_printed_rules_text": "Look at the top five cards of your library. You may reveal a creature card or a land card from among them and put it into your hand. Put the rest into your graveyard.\nAbound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Speaker of the Iris_MAC",
+          "name": "Speaker of the Iris",
+          "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nHaste\nWhen Speaker of the Iris enters, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nOther creatures you control have haste.",
+          "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nHaste\nWhen Speaker of the Iris enters, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.\nOther creatures you control have haste.",
+          "mana_cost": "{2}{R}{R}",
+          "type_line": "Creature — Human Wizard",
+          "power": "3",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Speaker of the Iris_MAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Speaker of the Iris",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nHaste\nWhen Speaker of the Iris enters, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nOther creatures you control have haste."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Speaker of the Iris",
+            "cardName": "Speaker of the Iris",
+            "manaCost": "{2}{R}{R}",
+            "typeLine": "Creature — Human Wizard",
+            "rarityLine": "*MAC R*",
+            "rulesText": "Haste\nWhen Speaker of the Iris enters, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nOther creatures you control have haste.",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MAC",
+            "cardID": "29",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "artist": "Bryan Sola",
+            "sdn": 6700,
+            "key": "Speaker of the Iris_MAC",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MAC",
+              "MS2"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Speaker of the Iris_MAC",
+            "printKeys": [
+              "Speaker of the Iris_MAC",
+              "Speaker of the Iris_MS2"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.823045267489712,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Speaker of the Iris",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nHaste\nWhen Speaker of the Iris enters, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.\nOther creatures you control have haste.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nWhen Speaker of the Iris enters, abound.\nOther creatures you control have haste.",
+              "original_printed_rules_text": "Haste\nWhen Speaker of the Iris enters, abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)\nOther creatures you control have haste."
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Haste\nWhen Speaker of the Iris enters, abound.\nOther creatures you control have haste.",
+          "original_printed_rules_text": "Haste\nWhen Speaker of the Iris enters, abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)\nOther creatures you control have haste."
+        },
+        {
+          "id": "Breach Titan_MS2",
+          "name": "Breach Titan",
+          "original_text": "Mana cost: {3}{G}{U}{R}\nType: Creature — Elemental Giant\nPower/Toughness: 6/6\nOther creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+          "executable_text": "Mana cost: {3}{G}{U}{R}\nType: Creature — Elemental Giant\nPower/Toughness: 6/6\nOther creatures you control have haste.\nWhenever Breach Titan enters or attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+          "mana_cost": "{3}{G}{U}{R}",
+          "type_line": "Creature — Elemental Giant",
+          "power": "6",
+          "toughness": "6",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Breach Titan_MS2",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Breach Titan",
+              "original_text": "Mana cost: {3}{G}{U}{R}\nType: Creature — Elemental Giant\nPower/Toughness: 6/6\nOther creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nAt the beginning of your end step, return another target creature you control to its owner's hand."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Breach Titan",
+            "cardName": "Breach Titan",
+            "manaCost": "{3}{G}{U}{R}",
+            "typeLine": "Creature — Elemental Giant",
+            "rarityLine": "*MS2 Bonus*",
+            "rulesText": "Other creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+            "flavorText": "",
+            "power": "6",
+            "toughness": "6",
+            "loyalty": "",
+            "color": "{Blue/Red/Green} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "bonus",
+            "shape": "normal",
+            "setID": "MS2",
+            "cardID": "210",
+            "designer": "Featherfall",
+            "script": "",
+            "notes": [],
+            "artist": "Diegoocunha",
+            "sdn": 10140,
+            "version": 20260631,
+            "key": "Breach Titan_MS2",
+            "colorIdentity": [
+              "G",
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MS2"
+            ],
+            "rarities": [
+              "bonus"
+            ],
+            "firstPrint": "Breach Titan_MS2",
+            "printKeys": [
+              "Breach Titan_MS2"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_faces": [
+            {
+              "name": "Breach Titan",
+              "executable_text": "Mana cost: {3}{G}{U}{R}\nType: Creature — Elemental Giant\nPower/Toughness: 6/6\nOther creatures you control have haste.\nWhenever Breach Titan enters or attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Other creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound.\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+              "original_printed_rules_text": "Other creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)\nAt the beginning of your end step, return another target creature you control to its owner's hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Other creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound.\nAt the beginning of your end step, return another target creature you control to its owner's hand.",
+          "original_printed_rules_text": "Other creatures you control have haste.\nWhenever Breach Titan enters or attacks, abound. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)\nAt the beginning of your end step, return another target creature you control to its owner's hand."
+        },
+        {
+          "id": "Raloran Insurgent_OTH",
+          "name": "Raloran Insurgent",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\nDeception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\n{2}{U}{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Raloran Insurgent deals combat damage to a player, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{4}{U}",
+          "type_line": "Creature — Merfolk Rogue",
+          "power": "4",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Raloran Insurgent_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Raloran Insurgent",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\nDeception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Raloran Insurgent",
+            "cardName": "Raloran Insurgent",
+            "manaCost": "{4}{U}",
+            "typeLine": "Creature — Merfolk Rogue",
+            "rarityLine": "*OTH U*",
+            "rulesText": "Deception {2}{U}{U} *({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever Raloran Insurgent deals combat damage to a player, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "OTH",
+            "cardID": "76",
+            "designer": "Matt & DrChillbrain",
+            "script": "",
+            "notes": [],
+            "artist": "Nognumnoy",
+            "sdn": 12840,
+            "key": "Raloran Insurgent_OTH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OTH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Raloran Insurgent_OTH",
+            "printKeys": [
+              "Raloran Insurgent_OTH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.7097232079489,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Raloran Insurgent",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Merfolk Rogue\nPower/Toughness: 4/4\n{2}{U}{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever Raloran Insurgent deals combat damage to a player, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound",
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deception {2}{U}{U}\nWhenever Raloran Insurgent deals combat damage to a player, abound.",
+              "original_printed_rules_text": "Deception {2}{U}{U} ({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever Raloran Insurgent deals combat damage to a player, abound. (You may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound",
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Deception {2}{U}{U}\nWhenever Raloran Insurgent deals combat damage to a player, abound.",
+          "original_printed_rules_text": "Deception {2}{U}{U} ({2}{U}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever Raloran Insurgent deals combat damage to a player, abound. (You may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        },
+        {
+          "id": "Skali, the Last Sunfeather_SWR",
+          "name": "Skali, the Last Sunfeather",
+          "original_text": "Mana cost: {3}{R/G}{W}\nType: Legendary Creature — Griffin\nPower/Toughness: 3/4\nFlying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {3}{R/G}{W}\nType: Legendary Creature — Griffin\nPower/Toughness: 3/4\nFlying, trample\nWhenever Skali, the Last Sunfeather attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost. If a creature spell is cast this way, you may have that creature enter tapped and attacking.",
+          "mana_cost": "{3}{R/G}{W}",
+          "type_line": "Legendary Creature — Griffin",
+          "power": "3",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Skali, the Last Sunfeather_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skali, the Last Sunfeather",
+              "original_text": "Mana cost: {3}{R/G}{W}\nType: Legendary Creature — Griffin\nPower/Toughness: 3/4\nFlying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Skali, the Last Sunfeather",
+            "cardName": "Skali, the Last Sunfeather",
+            "manaCost": "{3}{R/G}{W}",
+            "typeLine": "Legendary Creature — Griffin",
+            "rarityLine": "*SWR U*",
+            "rulesText": "Flying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Red/Green/White} ",
+            "cmc": 5,
+            "cardType": " Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SWR",
+            "cardID": "287",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Sandara Tang",
+            "sdn": 13533,
+            "key": "Skali, the Last Sunfeather_SWR",
+            "colorIdentity": [
+              "R",
+              "G",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SWR"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Skali, the Last Sunfeather_SWR",
+            "printKeys": [
+              "Skali, the Last Sunfeather_SWR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_faces": [
+            {
+              "name": "Skali, the Last Sunfeather",
+              "executable_text": "Mana cost: {3}{R/G}{W}\nType: Legendary Creature — Griffin\nPower/Toughness: 3/4\nFlying, trample\nWhenever Skali, the Last Sunfeather attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost. If a creature spell is cast this way, you may have that creature enter tapped and attacking.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking.",
+              "original_printed_rules_text": "Flying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking.",
+          "original_printed_rules_text": "Flying, trample\nWhenever Skali, the Last Sunfeather attacks, abound. If a creature spell is cast this way, you may have that creature enter tapped and attacking. (To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative701.78 uses current ability source, including recipient of granted ability, not granting permanent"
+    },
+    {
+      "id": "msem-277",
+      "keyword": "Abound",
+      "original_reminder": "To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.",
+      "executable_reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+      "source_cards": [
+        "Raloran Tidecaller"
+      ],
+      "rule_reference": "701.78.",
+      "rule_text": [
+        {
+          "name": "701.78a",
+          "rule": "Abound is a keyword action. “Abound” means “You may cast a spell from your hand with a lesser mana value than this spell or permanent without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "701.78b",
+          "rule": "If an triggered or activated ability instructs you to abound, use the mana value of the source of that ability to determine the mana value. If the ability somehow doesn't have a source, its mana value is 0 and you will be unable to cast a spell with a lesser mana value.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Raloran Tidecaller_MS2",
+          "name": "Raloran Tidecaller",
+          "original_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.”",
+          "mana_cost": "{U/R}{U/R}",
+          "type_line": "Creature — Merfolk Wizard",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Raloran Tidecaller_MS2",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Raloran Tidecaller",
+              "original_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Raloran Tidecaller",
+            "cardName": "Raloran Tidecaller",
+            "manaCost": "{U/R}{U/R}",
+            "typeLine": "Creature — Merfolk Wizard",
+            "rarityLine": "*MS2 Bonus*",
+            "rulesText": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue/Red} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "bonus",
+            "shape": "normal",
+            "setID": "MS2",
+            "cardID": "221",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "ElinTan",
+            "sdn": 10248,
+            "version": 20260631,
+            "key": "Raloran Tidecaller_MS2",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MS2"
+            ],
+            "rarities": [
+              "bonus"
+            ],
+            "firstPrint": "Raloran Tidecaller_MS2",
+            "printKeys": [
+              "Raloran Tidecaller_MS2"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 1.9455252918287937,
+            "pm": 5.729746936176985,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Raloran Tidecaller",
+              "executable_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.”",
+              "original_printed_rules_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.” (To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.”",
+          "original_printed_rules_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.” (To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative701.78 uses current ability source, including recipient of granted ability, not granting permanent"
+    },
+    {
+      "id": "msem-278",
+      "keyword": "Abound",
+      "original_reminder": "You may cast a spell that costs less than this from your hand without paying its mana cost.",
+      "executable_reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+      "source_cards": [
+        "Gold Retriever",
+        "Raloran Insurgent"
+      ],
+      "rule_reference": "701.78.",
+      "rule_text": [
+        {
+          "name": "701.78a",
+          "rule": "Abound is a keyword action. “Abound” means “You may cast a spell from your hand with a lesser mana value than this spell or permanent without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "701.78b",
+          "rule": "If an triggered or activated ability instructs you to abound, use the mana value of the source of that ability to determine the mana value. If the ability somehow doesn't have a source, its mana value is 0 and you will be unable to cast a spell with a lesser mana value.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Gold Retriever_HZN",
+          "name": "Gold Retriever",
+          "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{4}{R}{R}",
+          "type_line": "Creature — Dragon Hound",
+          "power": "4",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Gold Retriever_HZN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gold Retriever",
+              "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_record": {
+            "fullName": "Gold Retriever",
+            "cardName": "Gold Retriever",
+            "manaCost": "{4}{R}{R}",
+            "typeLine": "Creature — Dragon Hound",
+            "rarityLine": "*HZN R*",
+            "rulesText": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+            "flavorText": "*“Sit! Roll over! Breathe fire! Good boy!”*\n",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "HZN",
+            "cardID": "29",
+            "designer": "Dodger",
+            "script": "",
+            "notes": [],
+            "artist": "James Wolf Strehle",
+            "sdn": 9296,
+            "key": "Gold Retriever_HZN",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "HZN",
+              "KXP"
+            ],
+            "rarities": [
+              "rare",
+              "bonus"
+            ],
+            "firstPrint": "Gold Retriever_HZN",
+            "printKeys": [
+              "Gold Retriever_HZN",
+              "Gold Retriever_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 18.106995884773664,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_faces": [
+            {
+              "name": "Gold Retriever",
+              "executable_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "hound",
+                  "plural": "hounds",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound.",
+              "original_printed_rules_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. (You may cast a spell that costs less than this from your hand without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "hound",
+              "plural": "hounds",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound.",
+          "original_printed_rules_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. (You may cast a spell that costs less than this from your hand without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative701.78 uses current ability source, including recipient of granted ability, not granting permanent"
+    }
+  ],
+  "provenance": {
+    "scope": "msem",
+    "authoritative_corpus": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "corpus_sha256": "3c7102b6cce3627279de1539379b39bb17c528605c748519ce2f55795217ec0e",
+    "preservation": "complete physical source record plus complete shaped source_faces; no clauses omitted",
+    "status": "inputs_preserved_not_materialized_not_executed",
+    "base_equivalent_reminders": "fixtures/custom_mechanics/msem-abound.json"
+  }
+}

@@ -345,6 +345,10 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(player, choices);
             append_object_filter_target_player_choices(filter, choices);
         }
+        PlayerFilter::WithMatchingAttachments { base, filter } => {
+            push_target_player_filter_choices(base, choices);
+            append_object_filter_target_player_choices(filter, choices);
+        }
         PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } | PlayerFilter::ControlsMatchingObject { filter } => {
             append_object_filter_target_player_choices(filter, choices);
         }
@@ -679,7 +683,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             | TurnHistoryCount::EnteredBattlefield(filter)
             | TurnHistoryCount::DealtExcessDamage(filter)
             | TurnHistoryCount::DiedTotalPower(filter)
-            | TurnHistoryCount::MovedZones { filter, .. }
+            | TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::MovedZonesEver { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
             | TurnHistoryCount::SacrificedCardTypes { filter, .. }
             | TurnHistoryCount::SacrificedDistinct { filter, .. }
@@ -1060,6 +1064,16 @@ fn resolve_it_tag_inner(
             refs,
         )
     {
+        // An unresolved antecedent cannot make progress by rebinding `it`
+        // to itself. TappedThisWay is normalized back to It by resolve_it_tag.
+        // Reject these aliases instead of recursively overflowing the worker.
+        if previous == crate::tag::CompilerReferenceTag::It.key()
+            || previous == crate::tag::CompilerReferenceTag::TappedThisWay.key()
+        {
+            return Err(CardTextError::ParseError(
+                "demonstrative object reference has no concrete superseded antecedent".to_string(),
+            ));
+        }
         let mut rebound = filter.clone();
         for constraint in &mut rebound.tagged_constraints {
             if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
@@ -1674,6 +1688,7 @@ pub fn resolve_restriction_it_tag(
                 player, refs,
             )?)
         }
+        Restriction::MoveBetweenZones { .. } => restriction.clone(),
         Restriction::SearchLibraries(player) => {
             Restriction::search_libraries(resolve_contextual_player_filter(player, refs)?)
         }
@@ -2687,6 +2702,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                         from: from.clone(),
                     }
                 }
+                TurnHistoryCount::MovedZonesEver { filter, from, to } => TurnHistoryCount::MovedZonesEver {
+                    filter: resolve_it_tag(filter, refs)?, from: *from, to: *to,
+                },
                 TurnHistoryCount::MovedZones { filter, from, to } => TurnHistoryCount::MovedZones {
                     filter: resolve_it_tag(filter, refs)?,
                     from: *from,
@@ -2917,6 +2935,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::GenericManaInManaCostOf(spec) => Ok(Value::GenericManaInManaCostOf(Box::new(
             resolve_choose_spec_it_tag(spec, refs)?,
         ))),
+        Value::TimesPaidLabelOf {object,reference} => Ok(Value::TimesPaidLabelOf {
+            object: Box::new(resolve_choose_spec_it_tag(object, refs)?), reference: reference.clone(),
+        }),
         Value::KicksPaidOf(spec) => Ok(Value::KicksPaidOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
@@ -3462,6 +3483,56 @@ mod tests {
     use super::*;
     use crate::cards::builders::TagKey;
     use crate::model::reference_state::{RefState, ReferenceFrame, ReferenceImports};
+
+    #[test]
+    fn demonstrative_superseded_antecedent_rejects_recursive_markers() {
+        let filter = ObjectFilter {
+            source_surface: Some(SourceReferenceSurface::ThisPermanentType(
+                "that creature".into(),
+            )),
+            ..ObjectFilter::creature()
+        }
+        .match_tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        for previous in [
+            crate::tag::CompilerReferenceTag::It.key(),
+            crate::tag::CompilerReferenceTag::TappedThisWay.key(),
+        ] {
+            let refs = ReferenceEnv {
+                source_object_antecedent: true,
+                snapshot_tag_aliases: vec![(source_superseded_antecedent_alias(), previous)].into(),
+                ..ReferenceEnv::default()
+            };
+            assert!(matches!(resolve_it_tag(&filter, &refs), Err(CardTextError::ParseError(message))
+                if message.contains("no concrete superseded antecedent")));
+        }
+    }
+
+    #[test]
+    fn demonstrative_superseded_antecedent_preserves_concrete_object() {
+        let filter = ObjectFilter {
+            source_surface: Some(SourceReferenceSurface::ThisPermanentType(
+                "that creature".into(),
+            )),
+            ..ObjectFilter::creature()
+        }
+        .match_tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let previous = TagKey::from("chosen_0");
+        let refs = ReferenceEnv {
+            source_object_antecedent: true,
+            snapshot_tag_aliases: vec![(source_superseded_antecedent_alias(), previous.clone())].into(),
+            ..ReferenceEnv::default()
+        };
+        let resolved = resolve_it_tag(&filter, &refs).expect("resolve the saved concrete object");
+        assert_eq!(resolved.tagged_constraints[0].tag, previous);
+        assert!(!resolved.source);
+        assert_eq!(resolved.card_types, filter.card_types);
+    }
 
     #[test]
     fn repeated_target_opponent_reference_requires_a_matching_announced_target() {

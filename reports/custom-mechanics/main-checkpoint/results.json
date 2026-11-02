@@ -1,0 +1,2387 @@
+[
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::merged_casting_ability_tests::a_face_down_component_does_not_contribute_its_hidden_casting_abilities",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-2048f2356b11.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::merged_casting_ability_tests::merging_above_and_below_preserves_each_copiable_casting_ability_occurrence",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-f296f099f6c4.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::text_change_statics::tests::creation_selection_replacement_visits_player_and_template_but_keeps_catalog_identity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-f41f59b3bc1c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::text_change_statics::tests::derived_preparation_keeps_full_identity_and_printed_price_recipe",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-eac965363c58.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::text_change_statics::tests::named_price_filter_rewrites_but_complete_identity_and_policy_do_not",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-79a917639502.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::text_change_statics::tests::static_type_word_sets_collapse_duplicate_destinations",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-264e2fa7c28a.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::text_change_triggers::characteristic_gain_text_word_tests::subtype_gain_predicate_is_authored_text_but_not_a_named_action_identity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-7f1626b2e45a.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "continuous::text_change_triggers::tests::native_spell_predicate_survives_model_round_trip_and_second_replacement",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ba1fa2e5f4d3.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "cost::announced_mana_price::tests::actual_x_is_locked_before_a_component_discount_and_nonmana_obligations_survive",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-9afa15e68663.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "cost::announced_mana_price::tests::unrelated_dynamic_recipes_are_not_reinterpreted_as_fixed_or_free",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-866c0769a38c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "cost::announced_mana_price::tests::x_and_hybrid_halves_are_bound_before_local_discount_without_losing_nonmana_or_spending_rules",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-d8fd432ba37b.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "decision::mana::tests::actual_any_color_policy_cannot_pay_three_colors_by_selecting_a_noop_reduction",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-97815ef69dde.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "decision::mana::tests::independent_reduction_order_is_a_payer_choice_not_source_enumeration_order",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0225b2575150.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "decision::mana::tests::supplied_same_id_and_price_cast_views_do_not_share_root_payment_memo",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-1d20e736c900.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::action_observation::completed_departure_duration_tests::directly_completed_source_departure_ends_duration_without_pending_event_republication",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c7cbbb5b9ea8.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::action_observation::completed_departure_duration_tests::published_return_child_is_visible_inside_exact_action_observation_scope",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-358f880075eb.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::checklist_presentation_does_not_turn_generated_cards_into_tokens",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8cd6f799e5a6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::chosen_name_uses_each_exact_local_choice_and_allows_repeated_names",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-684cc7bde605.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::chosen_name_without_its_supplied_definition_fails_closed",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8debdbe28405.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::creation_receipt_drives_existing_named_completion_with_actual_created_cards",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-879c4d70940e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::definition_substitution_preserves_actor_count_destination_and_library_position",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-3736347ed85c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::duplicate_back_face_name_selects_the_supplied_physical_front_card",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8cddcfb5fad2.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::duplicate_missing_actual_card_identity_does_not_generate_type_named_token",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-45ce6d7d6ea6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::generated_cards_are_owned_by_actor_and_keep_complete_definition",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0ad99eee7fa6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::independent_random_generation_resamples_each_card_from_the_supplied_pool",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-e5c6d98b46bf.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::independent_replacement_sources_with_same_name_retain_their_own_definitions",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-d1133f3701ca.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::independently_supplied_replacement_definition_is_not_taken_from_creator_pool",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-fb08dfe11e58.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::library_bottom_creation_preserves_existing_top",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c0b43da25e8b.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::missing_chosen_name_receipt_does_not_fall_back_to_persistent_source_names",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8cb364a754e6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::missing_identity_exports_known_empty_receipt_without_fallback",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-b83641731b1c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::random_batch_selects_one_matching_identity_for_all_copies",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-bc69b418a037.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::restart_retains_generated_real_cards",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-fa68f3f2cdef.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards::tests::typed_creation_replacement_does_not_rewrite_other_named_operations",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-44daab3c657e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards_entry::tests::entry_redirection_creates_in_final_zone_without_reapplying_creation_or_moving_a_card",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c8e5589efa5a.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards_entry::tests::impossible_aura_is_not_created_and_does_not_move_to_a_graveyard",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-6522fcdfa5c8.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards_entry::tests::prevented_creation_has_no_arrival_or_unindexed_object",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-78c2f8e92b8d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards_entry::tests::real_cards_enter_through_native_replacements_without_any_old_zone_or_movement",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c1689a4456ca.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards_entry::tests::suspended_as_enters_choice_rolls_back_all_real_cards_and_entry_choices",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-e5dc3ac2902c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::create_cards_entry::tests::uncreated_card_has_no_zone_membership_or_legal_movement_and_only_projects_an_entry",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ff6bd4c9298d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::copied_program_ownership_tests::frozen_copied_abilities_and_counter_definition_dependencies_require_typed_proof",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-9ef1b6fbd8ec.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::native_static_ownership_tests::canonical_only_native_static_children_are_visited_and_checked_inside_a_grant",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0e0bdbf234ef.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::opaque_ownership_test::direct_native_legacy_creation_admission_rejects_hidden_or_unbound_programs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-2fe61132f658.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::opaque_ownership_test::opaque_native_program_cannot_hide_a_dangling_creation_reference",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-a1c510b1aebb.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::tests::native_catalog_rejects_dangling_ids_tokens_duplicates_and_nested_closed_graphs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8cf8d9ba2203.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::tests::native_mutual_catalog_is_finite_and_requires_lexical_binding",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-dc95ccfc370f.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_creation_graph::tests::native_scope_shadowing_is_lexical_and_does_not_leak_to_siblings",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-db47a1447729.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_definition_equivalence::tests::independent_native_leaf_payloads_compare_structurally_and_all_definition_metadata_matters",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-9f6595b5a163.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::native_definition_equivalence::tests::native_wrapper_receipts_and_sequential_child_order_are_not_erased",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-48e87ad9d8f1.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::replacement_definitions::tests::independently_constructed_equivalent_carriers_pass_but_conflicting_programs_fail",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-31a437bf38f5.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::replacement_definitions::tests::source_owned_lookup_keeps_independent_same_name_providers_separate",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-057be6111a99.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::reveal_action_offer::tests::decline_then_accept_uses_one_shared_player_allowance_and_exact_arrival",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-35d23557dfe4.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::reveal_action_offer::tests::prevented_or_redirected_program_does_not_consume_allowance",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-6df81889fa73.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::reveal_action_offer::tests::private_look_does_not_offer_but_real_reveal_enters_same_gateway",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-96fa36b5aa00.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::cards::reveal_action_offer::tests::replacement_child_exiling_same_revealed_card_is_not_the_original_reveal_action",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8ee0518133ac.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::combat::goad::tests::goad_all_with_same_name_as_tagged_name_choice",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-dec0571b26a9.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::choose_mode_runtime::paid_modal_pending_payment_tests::suspended_paid_modal_rolls_back_manual_mana_activation_then_replays_once",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-3295f86bfe81.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::choose_mode_runtime::resolution_mode_payment_tests::canceling_payment_keeps_mana_and_executes_no_mode_body",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-fc7287be9756.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::choose_mode_runtime::resolution_mode_payment_tests::prepaid_spree_modes_are_not_charged_again_during_resolution",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-936fb6ad8543.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::choose_mode_runtime::resolution_mode_payment_tests::resolving_modes_pay_exact_combined_cost_before_any_selected_body",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-7149b5efdf08.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::if_effect::original_result_object_predicates::accepted_payment_and_added_tokens_cannot_replace_original_creation_evidence",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-6260298bdb4c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::if_effect::tap_result_receipt_regression::attempted_selection_does_not_count_as_completed_tap",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-bff68e9fb675.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::named_action_mode_plan::tests::missing_ambiguous_nonresolving_and_out_of_range_owners_fail_before_execution",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-06f14643465c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::named_action_mode_plan::tests::original_menu_is_retained_and_fixed_mode_removed_only_from_remaining_choice",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-70fb2880890d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::named_action_program::created_result_contract_tests::explicit_created_export_preserves_acceptance_and_unrelated_action_facts",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-f53872bf087a.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::named_action_program::created_result_contract_tests::ordinary_named_operation_does_not_acquire_an_empty_creation_result",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-43ea0547a633.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::named_action_program::created_result_contract_tests::original_created_results_exclude_independent_addition_tokens_including_known_empty_original",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-4f4b0ece11cf.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::named_action_program::created_result_contract_tests::original_creation_result_excludes_tokens_from_real_as_enters_replacement_prefix",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-f6bb1f47897c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::tag_matching_objects::tests::exact_parent_capture_alias_preserves_incarnations_and_local_writes_shadow_its_policy",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-278d467f355f.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::composition::tag_triggering_object::tests::test_tag_triggering_object_uses_all_split_meld_result_objects",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ea35ec6268ed.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::consult_helpers::replacement_bottom_owner_contract_tests::reveal_offer_departure_retains_original_consultation_match_and_cleanup_identity",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-21d399782321.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::consult_helpers::replacement_bottom_owner_contract_tests::stale_tag_does_not_follow_a_later_incarnation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c295acb3c2c1.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::counters::put_counter_of_chosen_kind::choice_availability_receipt_tests::original_menu_receipt_records_eligibility_before_placement",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ce000d216f87.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::counters::put_counter_of_chosen_kind::choice_availability_receipt_tests::unavailable_choice_never_means_decline_zero_output_prevention_or_auxiliary_failure",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-f5ca5c4a9e04.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::helpers::paid_tap_reference_role_tests::ordinary_alias_follows_its_authored_move_while_paid_receipt_stays_exact",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-de2f4cc391e6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::permanents::become_creature_type_choice::prior_card_type_tests::chosen_card_type_applies_to_noncreatures_and_does_not_read_stale_creature_choice",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-63731d87f634.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::permanents::become_creature_type_choice::prior_chosen_type_tests::prior_choice_is_snapshotted_and_additive_instead_of_rechosen",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-6e0aaabf40a7.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::permanents::meld::tests::meld_successful_entry_reports_both_physical_exile_origins",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0fdd64a4b202.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::player::cast_tagged::captured_price_receipt_tests::canceled_or_unpayable_named_price_leaves_no_marker_recipe_or_cast",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-d78fac1065fd.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::player::cast_tagged::captured_price_receipt_tests::malformed_named_price_is_rejected_before_proposal_or_payment",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-4ab8882ce88c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::player::cast_tagged::captured_price_receipt_tests::named_price_is_recorded_before_cast_observers_only_after_full_success_and_survives_copy",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-53202f3217b6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::player::cast_tagged::captured_price_receipt_tests::unnamed_price_never_infers_a_paid_name_from_stale_object_metadata",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-2b38b4d328b6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::restrictions::opponent_turn_boundary_tests::opponent_turn_duration_ignores_extra_controller_turn_then_expires_permanently",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-2f78727ca8a2.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::stack::trigger_by_class::invocation_tests::a_mandatory_existing_program_cannot_be_declined_but_zero_minimum_remains_optional",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0f358035b0a8.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::stack::trigger_by_class::invocation_tests::explicit_program_chooser_is_not_the_program_controller_and_no_trigger_cause_is_fabricated",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-35868fe7614c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::create_token::tests::singular_linked_token_owns_only_latest_exiled_incarnation_and_never_falls_back",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-e16ccb35aaf9.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::create_token_copy::retained_entry_proposal_owner_tests::timed_copy_ability_loss_preserves_the_copiable_text_and_expires",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-6f56b3bdbcec.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::lifecycle::retained_token_entry_attachment_tests::original_and_replacement_added_tokens_prepare_exact_ids_and_all_hosts_before_entry",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-244a95131c26.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::lifecycle::retained_token_entry_attachment_tests::pending_host_choice_rolls_back_every_provisional_token_and_entry_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-272377015115.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::named_action_token_grants::tests::a_prepared_creation_keeps_its_own_grant_and_definition_evidence",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0b4e095bff2c.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::named_action_token_grants::tests::count_multiplier_inherits_grant_but_independent_added_program_does_not",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-68c87aa91861.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::named_action_token_grants::tests::original_tokens_gain_copiable_abilities_dependencies_and_outer_scope_restores",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-40b56b4b2c60.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::tokens::named_action_token_grants::tests::provider_is_sampled_when_each_token_original_is_proposed_not_when_operation_begins",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-67b1670558b1.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::zones::battlefield_entry::tests::described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c38d6785c3ac.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::zones::battlefield_entry::tests::discard_hand_as_enters_finishes_before_the_battlefield_zone_change",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-a5ef42d0b801.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::zones::battlefield_entry::tests::simultaneous_entry_batch_skips_instant_without_blocking_legal_permanent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c7083f74b596.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "effects::zones::sacrifice::tests::cause_filtered_sacrifice_protection_distinguishes_effects_and_payments",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-a1bae5ce4b81.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "events::processing::application::counter_kind_entry_projection_tests::counter_kind_entry_projection_preserves_prior_metadata_and_empty_kind_sets",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0c9b166cbeda.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "events::zones::enter_battlefield::tests::test_enter_battlefield_event_creation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ad8d0df93088.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "events::zones::zone_change::tests::original_objects_read_origin_snapshots_when_etb_matching_names_destination",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8ce39adfc3b6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "filter::subject_tests::group_member_snapshot_filter_keeps_exact_departed_source_relation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-dc5ccac2d4ed.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "filter::unrepresented_subtype_relation_tests::subtype_set_difference_allows_partial_overlap_and_uses_only_controlled_creatures",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-71f788ba794e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::priority_apply::sol_78_announced_participants::participant_snapshot_precedes_cost_time_controller_changes",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-5a05a05a4731.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::priority_cast::additional_target_announcement_context_tests::target_chooser_and_actual_spell_caster_keep_distinct_roles",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-97d24c132005.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::priority_cast::additional_target_announcement_context_tests::target_modifier_reads_exact_provisional_spell_before_stack_entry_exists",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-73aede9cf51f.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::priority_mana::tests::indexed_grant_cost_keeps_announcement_method_after_provider_leaves",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-73ada652fb7e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::splice_reveal::tests::accepted_offer_and_nested_decision_replay_only_the_private_child",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ba32ec84fb41.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::splice_reveal::tests::decline_resumes_original_splice_once_through_real_boolean_channel",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-b0bc030c0b30.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::splice_reveal::tests::quota_rechecks_next_frozen_donor_without_revealing_or_splicing_again",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ebc193c4f09f.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::splice_reveal::tests::reprise_moving_source_cost_is_not_reinterpreted_as_a_hand_reveal_offer",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-39c1ebc494c3.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::targeting::nth_spell_phase_hold_tests::future_nth_cast_releases_after_observers_and_skips_untap_phasing",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-d9251173a818.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_loop::targeting::nth_spell_phase_hold_tests::hold_installed_after_second_cast_waits_for_a_future_turn_second_cast",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-05bc2aba9ccf.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::control_transitions::characteristic_gain_transition_tests::derived_subtype_gain_notifies_each_independent_observer_once_and_can_recur_after_loss",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-7788ade905f1.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::control_transitions::characteristic_gain_transition_tests::entry_phase_cycle_and_new_incarnation_do_not_gain_existing_characteristics",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0f555d3d1770.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::control_transitions::characteristic_gain_transition_tests::grouped_multi_characteristic_change_uses_completed_snapshot_and_current_controller",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-0e74c3b23882.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::a_composite_original_checks_every_component_before_any_entry_program_or_removal",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-b67ba2d748a6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::a_prohibited_entry_never_runs_as_entry_effects_and_the_same_fixture_runs_when_allowed",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-5c3a72bf0fe0.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::current_continuous_ability_loss_and_its_expiration_change_the_same_admission_owner",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-acc33667c53d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::direct_moves_observe_provider_entry_departure_and_ability_loss_without_external_refresh",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-7c397659afa2.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::end_of_turn_rule_expires_and_card_copy_is_not_a_physical_card",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-529d21438507.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::sequential_return_instructions_see_a_new_provider_but_one_batched_return_does_not",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-f589b0acca82.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "game_state::zone_movement_admission_tests::simultaneous_originals_retain_admission_when_a_provider_enters_or_departs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-628cfcb9323d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "granted_optional_spell_costs::preview_identity_tests::repeated_uncommitted_recipes_preserve_native_state_provider_identity_and_later_commit",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-d5488a26c667.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "granted_optional_spell_costs::recipe_references::native_recipe_reference_tests::host_referenced_only_ids_are_reserved_without_fabricating_declarations",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-6a91c66f0cc4.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "granted_optional_spell_costs::recipe_references::native_recipe_reference_tests::native_recipe_acquisitions_keep_price_effect_value_and_local_tag_namespaces_distinct",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c461cbad3fc7.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "granted_optional_spell_costs::recipe_references::native_recipe_reference_tests::opaque_native_recipe_fails_without_reserving_partial_ids",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-e74412bcbb6e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::cast_origin_mana_tests::explicitly_retained_mana_operand_survives_original_departure_without_following_it",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8c4e43632f2d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::payment::reveal_admission_tests::compound_and_alternative_reveal_admission_does_not_open_or_complete_actual_payment",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-a7a702520db9.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::actor_turn_and_exact_incarnation_are_bound_to_the_reservation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-5cd56b36498e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::canonical_comparison_retains_alternative_structure_and_all_nonmana_components",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-fb066c12c805.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::completion_cannot_invent_an_opening_for_an_action_that_keeps_its_source_private",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-be90a427a5fe.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::final_opening_rejects_cheap_or_wrong_ordinal_reservations_before_payment",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-e54a4254dd78.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::known_same_price_ability_replacement_cannot_substitute_a_new_body_at_the_same_ordinal",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-4ebb9036aeb9.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::native_callback_without_canonical_cost_cannot_be_authenticated_by_its_display",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-720b2b5cd385.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::native_cost_completion_phase_distinguishes_body_pause_from_partial_payment",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c0f3fd44c757.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::paused_cost_choices_publish_no_resources_source_opening_or_original_action",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-3f2feb593611.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::permission_identity_reference_does_not_open_or_inspect_a_private_provider",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8494e18439ba.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::placeholder_cost_reservation_is_not_payment_authority",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-a8d97793c18a.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::preparation_selected_method_full_cost_is_authenticated_before_mana_or_sacrifice_commits",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-acff1a2482c5.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::public_permission_reference_resolves_native_origin_without_serializing_local_ids",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8a50995e6bc7.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::private_cost_admission::tests::reservation_binds_authenticated_hidden_generation_and_immutable_ciphertext_anchor",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-b0b694293c7f.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "special_actions::retained_counter_follow_on_costs::retained_receipt_drives_native_follow_on_life_cost_and_paid_prefix_rolls_back",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-bf363383489d.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "static_abilities::cost_modifiers::tests::first_keyword_ability_this_turn_reads_the_activators_history",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-84abe79b8f3e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "static_abilities::preview_identity_tests::nested_and_unwound_preview_ids_never_consume_committed_occurrences_or_shared_caches",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-60fabcdbe312.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::class_event_choice::tests::decline_wrong_controller_and_replaced_destination_never_create_occurrences",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-608a48193c08.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::class_event_choice::tests::duplicate_source_rules_offer_once_and_dying_program_retains_its_own_lki",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-55b839fdf0b7.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::class_event_choice::tests::exact_live_event_snapshot_keeps_ability_presence_and_controller_but_old_departed_lookbacks_do_not",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-1b70f3ee838b.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::class_event_choice::tests::nested_action_queue_transfer_retains_unselected_candidates_and_batched_deaths_are_independent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-1aee90233020.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::class_event_choice::tests::official_class_uses_owned_program_identity_not_presentation_or_body_similarity",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ec008238b3a7.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::class_event_choice::tests::selection_and_real_trigger_notifications_finish_before_a_later_instruction_removes_abilities",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c0d0ae4f72c6.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::other::player_plays_land::tests::played_card_status_uses_exact_origin_without_marking_the_entered_permanent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-92bfe0613a8e.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "triggers::other::transforms::own_activation_cause_tests::own_named_activation_uses_retained_cause_identity_not_another_producer_or_current_marker",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-1a16c8c3dd05.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "turn_runner::reveal_offer_tests::accepted_draw_offer_and_nested_choice_commit_once_before_priority",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-84df19e8d7d2.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "turn_runner::reveal_offer_tests::actual_draw_offer_decline_is_explicit_and_does_not_consume_quota",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ae173829ef73.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "turn_runner::reveal_offer_tests::explicit_queued_reveal_continuation_replays_acceptance_and_nested_choice_once",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-583d9b5c8e00.log"
+  },
+  {
+    "package": "ironsmith-engine",
+    "test": "turn_runner::sol_78_face_up_runner_tests::attack_tap_is_preserved_when_face_up_identity_has_vigilance",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-bac87039ed1f.log"
+  },
+  {
+    "package": "ironsmith-text",
+    "test": "compiled_text::normalize_common::condition_rendering::whole_game_movement_condition_tests::whole_game_zone_history_keeps_its_window_and_comparison_in_the_full_renderer",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-text-a9e69703360f.log"
+  },
+  {
+    "package": "ironsmith-text",
+    "test": "compiled_text::render_effects::tests::cost_effect_surfaces::graveyard_permission_survives_sacrificing_its_provider_during_payment",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-text-908493dad4eb.log"
+  },
+  {
+    "package": "ironsmith-text",
+    "test": "compiled_text::render_effects::tests::manifest_dread_counter_bundle::manifest_dread_counter_bundle_requires_a_shared_recipient",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-text-5dc05fb993ec.log"
+  },
+  {
+    "package": "ironsmith-runtime-catalog",
+    "test": "artifact_materializer::native_effect_payload_codec_tests::native_effect_payload_codec_preserves_token_fields_from_actual_executor",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-runtime-catalog-5948f6efeeda.log"
+  },
+  {
+    "package": "ironsmith-runtime-catalog",
+    "test": "artifact_materializer::text_program_codec::tests::token_word_edits_and_fresh_native_codecs_preserve_captured_numeric_pair_evidence",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-runtime-catalog-d6a32e5d8aab.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "filter": "reference_resolution::persistent_rule_",
+    "expected": 0,
+    "matches": [
+      "reference_resolution::persistent_rule_numeric_scope_tests::registration_result_cannot_supply_future_that_many_but_local_child_result_can",
+      "reference_resolution::persistent_rule_reference_scope_tests::future_choice_does_not_replace_registration_antecedents",
+      "reference_resolution::persistent_rule_reference_scope_tests::future_player_reference_is_seeded_from_its_trigger_not_registration_actor"
+    ],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "effect_ast_normalization::tests::finite_additional_repetition_keeps_initial_execution_and_final_suffix",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-5138613f50d7.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "effect_ast_normalization::tests::live_condition_repeat_once_observes_initial_body_and_exports_both_search_receipts",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-fe0dac662ab8.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "effect_ast_normalization::tests::optional_condition_repeat_once_keeps_the_entire_process_and_its_choice",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-dc9712ce49f7.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::local_type_choice_domain_tests::a_land_choice_cannot_reuse_an_older_creature_domain",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-6bb3889b3fd9.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::local_type_choice_domain_tests::immediate_alternatives_are_inspected_but_scheduled_choices_do_not_run_now",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-4a8a2703a4fa.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::local_type_choice_domain_tests::sentence_boundaries_keep_a_direct_local_choice_domain",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-385c1bda430c.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::persistent_rule_numeric_scope_tests::registration_result_cannot_supply_future_that_many_but_local_child_result_can",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-260a1c288180.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::persistent_rule_reference_scope_tests::future_choice_does_not_replace_registration_antecedents",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-b3e06a6b0bf6.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::persistent_rule_reference_scope_tests::future_player_reference_is_seeded_from_its_trigger_not_registration_actor",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-613c458d9fff.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "reference_resolution::remembered_arrival_input_rebinding_tests::input_pronoun_rebinding_preserves_arrival_output_binding_and_producer",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-17e5228575e5.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "tag_support::delayed_registration_import_scope_tests::delayed_local_exile_producer_shadows_only_its_own_later_reads",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-d52fcfd7c98b.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "tag_support::delayed_registration_import_scope_tests::parent_exile_and_it_are_imports_only_for_delayed_registration_frames",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-572f6babe927.log"
+  },
+  {
+    "package": "ironsmith-compiler-resolve",
+    "test": "tag_support::remembered_arrival_tag_tests::remembered_arrivals_publish_a_tag_without_reading_it_or_a_scalar",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-resolve-eecda156a8c3.log"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "filter": "explicit_damage_source_keeps_target_legality_after_reference_capture",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "filter": "unsized_animation_never_invents_or_freezes_a_base_characteristic",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "test": "lower::source_names::tests::accepted_optional_producer_is_stamped_recursively",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-lowering-55a0b94aaeca.log"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "test": "lower::source_names::tests::discovery_cannot_admit_an_unstamped_producer_under_an_unsupported_wrapper",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-lowering-9e5eda87c567.log"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "test": "lowering_support::tests::concrete_attack_player_role_replaces_unbound_import_placeholder",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-lowering-d120831db828.log"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "test": "lowering_support::tests::copied_triggering_spell_owns_the_definite_same_caster_exile_only",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-lowering-43b41e052270.log"
+  },
+  {
+    "package": "ironsmith-compiler-lowering",
+    "test": "lowering_support::tests::typed_trigger_program_replaces_unbound_player_import_at_shared_staging_boundary",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-lowering-9902db63df99.log"
+  },
+  {
+    "package": "ironsmith-compiler-semantic",
+    "test": "model_impl::visit::persistent_player_rule_child_visitors::persistent_rule_body_is_seen_by_shared_immutable_and_mutable_visitors",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-semantic-ebd96411547f.log"
+  },
+  {
+    "package": "ironsmith-compiler-syntax",
+    "test": "lexer::bounded_program_sentence_scope_tests::child_rule_quote_end_cannot_split_its_enclosing_bounded_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-syntax-1295705adb49.log"
+  },
+  {
+    "package": "ironsmith-compiler-syntax",
+    "test": "lexer::bounded_program_sentence_scope_tests::nested_bracket_program_and_quoted_cost_keep_one_outer_instruction",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-syntax-220c903e7e25.log"
+  },
+  {
+    "package": "ironsmith-compiler-syntax",
+    "test": "lexer::quoted_instruction_menu_sentence_tests::quoted_branch_period_does_not_end_an_explicit_pipe_menu",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-syntax-c06dc5bfa84c.log"
+  },
+  {
+    "package": "ironsmith-compiler-syntax",
+    "test": "token_utils::tests::em_dash_label_prefix_split_ignores_quoted_dashes",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-syntax-053be777b9ff.log"
+  },
+  {
+    "package": "ironsmith-compiler-syntax",
+    "test": "token_utils::tests::leading_may_action_parser_detects_actor_and_tail",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-syntax-eb20ad39c167.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::activation_costs::durationless_filtered_unpreventability_admission_tests::timed_or_imperative_damage_programs_remain_resolving",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1163fe441312.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::activation_costs::global_origin_zone_prohibition_tests::complete_origin_prohibition_retains_cards_and_zone_without_game_start_gate",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-67bd177d23a9.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::activation_costs::global_origin_zone_prohibition_tests::incomplete_or_narrower_subject_cannot_become_a_global_zone_prohibition",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1246255c383b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::graveyard_destination_and_controller_tests::battlefield_departure_preserves_controller_and_graveyard_owner",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-88a69c631f53.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::bounded_type_subtype_and_supertype_clauses_use_distinct_facts",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0151f5b4e597.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::distinct_event_union_keeps_its_typed_gain_arm",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-577704e21c18.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::transition_reader_does_not_claim_unrecognized_or_incomplete_suffix",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-c462e05f6c55.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::designated_counter_cause::tests::an_ordinary_counter_event_is_not_named_by_its_permanent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-14373b46cdc7.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::designated_counter_cause::tests::independent_multiword_ability_class_retains_counter_and_recipient",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-dc98dcefa337.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::designated_counter_cause::tests::passive_designation_is_structurally_the_same_event",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0e4891188a79.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::named_action_trigger::named_actor_source_filter_tests::actor_and_source_controller_are_independent_facts",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-aebd5859605e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::named_action_trigger::participant_event_union_tests::heterogeneous_event_arms_keep_their_independent_complete_subjects",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-702a4db4133b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::named_action_trigger::participant_event_union_tests::ordinary_object_or_and_single_participant_are_not_event_unions",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e7a170b91499.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::named_action_trigger::qualified_participant_tests::operation_actor_is_distinct_from_participant_owner_and_multiplicity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-06baafe29c7f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::qualified_source_death_tests::source_death_keeps_token_and_type_predicates",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-99892e01d63d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::source_zone_suffix_tests::a_graveyard_arm_does_not_narrow_the_other_event_arm",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b505a51c1b27.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::source_zone_suffix_tests::action_amount_and_source_graveyard_zone_are_both_retained",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-9ec508aed3f2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_and_restrictions::trigger_clause_core::source_zone_suffix_tests::source_zone_suffix_does_not_claim_an_unrelated_object_or_unknown_zone",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f348d1bbd457.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_without_costs::alternative_action_tests::optional_cast_or_designated_activation_keeps_two_native_instruction_owners",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b4a93c457350.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "activation_without_costs::alternative_action_tests::unrelated_or_in_a_cast_filter_is_not_an_activation_alternative",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-c543f6f779c9.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "consumer_mana::explicit_generic_creature_payment::explicit_generic_scope_uses_the_existing_generic_only_method",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-9c2f393622e2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_identity_filters::recursive_branch_entry_tests::grammar_direct_identity_operand_keeps_exact_name",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-24d449d5a4ba.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_identity_filters::recursive_branch_entry_tests::grammar_union_arms_preserve_custom_identity_operands",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-5ef16926aa5e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_identity_filters::tests::an_explicit_named_price_operand_is_distinct_from_keyword_identity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-918e2df8f85e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_identity_filters::tests::identity_operand_names_and_union_branches_are_independent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ebe9afb8bbac.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_status::collection_record_reader_tests::explicit_collection_name_and_endpoint_zones_are_owned",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d5c52c226af7.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_status::collection_record_reader_tests::incomplete_or_extra_collection_lifetime_is_not_claimed",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-333b0785967a.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_status::literal_status_operand_tests::status_operand_uses_authored_literal_surface_not_source_alias_spelling",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-09f3538c5c7d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "custom_status::status_qualifier_quote_boundary_tests::quoted_literal_names_and_rule_text_are_not_outer_status_qualifiers",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-4083effe9b65.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "document_parser::anaphoric_way_alias_regression::source_short_name_does_not_replace_instruction_qualifier",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-85ca9e293c1f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "document_parser::collection_header_noun_is_not_a_short_source_alias",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-56053f76afe8.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "document_parser::line_recognition::effect_owned_guard_trigger_boundary::linked_face_instruction_keeps_its_guard_in_resolution_not_trigger_condition",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b76b2fe1d381.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "document_parser::passive_damage_rule_entrypoint_tests::all_statement_front_doors_decline_only_complete_durationless_damage_rules",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-cc5f0111a88e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::bounded_source_programs::quantified_colon_regressions::quantified_instruction_after_previous_sentence_keeps_statement_ownership",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-df4edd249360.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::bundle_rules::tests::exile_producer_rebinding_retains_complete_control_duration_and_mana_rider",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-594b539aacae.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::chain_carry::nested_bounded_player_instruction::target_player_program_is_one_clause_under_an_ordinary_conditional",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-962846272668.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::chain_carry::nested_merge_chain_regressions::player_may_keeps_the_complete_merge_transfer_clause",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-5381f64a92cf.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::clause_dispatch::tests::heal_reader_claims_its_verb_and_recipient_preposition_strictly",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-39d0407ed2e8.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::creation_handlers::mixed_copy_identity_program_tests::copied_custom_identity_and_complete_trigger_are_separate_grants",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d40fa302f521.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::creation_handlers::producer_qualified_stat_literal_tests::designation_quotes_are_operands_but_printed_name_quotes_remain_opaque",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-886474b0b0ec.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::dispatch_entry::complete_effect_quote_boundary_tests::unclosed_granted_activation_cannot_fall_back_to_an_unrestricted_grant",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b6cce9b729f6.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::dispatch_entry::optional_instruction_choice_timing_tests::optional_instruction_menu_keeps_resolution_chooser_instead_of_authored_modes",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-6db488413321.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::dispatch_entry::persistent_rule_sentence_dispatch_tests::complete_quoted_future_program_survives_composition_with_prior_sentences",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f95c4b539c1a.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::dispatch_entry::zone_move_prohibitions::tests::authored_apostrophe_source_uses_lexer_word_contract_and_retains_card_scope",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-7b3721564166.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::bounded_instruction_scope_tests::conditional_program_keeps_complete_body_and_independent_tail",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-bfc90d360f19.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::bounded_instruction_scope_tests::malformed_or_unbounded_headers_cannot_claim_other_programs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-92abd218f28b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::bounded_otherwise_program_tests::both_branches_are_bounded_and_independent_followup_stays_outside",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-8ea065097bd0.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::color_or_type_protection_program_tests::union_choice_uses_one_existing_resolution_grant_with_one_target",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-3dc40a738e71.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::explicit_status_program_boundary_tests::quoted_condition_comma_and_following_sibling_keep_their_scopes",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-522a1400eb7c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::explicit_status_program_boundary_tests::trailing_then_is_not_an_empty_successful_instruction",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-25a2fdfeb4dc.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::named_library_program_keeps_closed_body_and_conjoined_followup_separate",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f9de7037a9a6.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::optional_foreach_bounded_header_tests::incomplete_optional_headers_and_empty_programs_do_not_gain_a_foreach_reading",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0725dfea32e1.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::optional_foreach_bounded_header_tests::optional_bounded_program_belongs_inside_each_iteration_and_tail_stays_outside",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-94ca28345aa1.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::optional_foreach_bounded_header_tests::optionality_does_not_change_the_completed_exile_receipt_subject",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0325b35a4b4d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::player_counter_program_is_not_an_object_target_iterator",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ccf2f03e68bf.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::quoted_optional_price_owner_tests::a_nested_paid_creation_program_keeps_its_trailing_entry_rider",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-2b74ffa816d9.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::quoted_optional_price_owner_tests::ordinary_quoted_optional_actions_keep_their_original_owner",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-54fdf68daf80.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::document_readings::quoted_optional_price_owner_tests::quoted_composite_price_is_one_maypay_before_a_complete_bounded_result_branch",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-143696c2b114.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::fanout_family::shared_amount_recipient_set::inherited_damage_recipient_tests::fixed_amount_and_inherited_each_form_one_typed_union",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-961ea12f6cd9.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::fanout_family::shared_amount_recipient_set::inherited_damage_recipient_tests::recipient_union_reader_does_not_reinterpret_target_selection",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e51ecfe58f95.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::fanout_family::shared_amount_recipient_set::tests::references_cannot_become_fresh_targets_or_change_the_damage_source",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-97ecc4b95bba.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::granted_component_readings::complete_quoted_entry_program_tests::quoted_entry_program_retains_both_local_producer_and_source_counter_instruction",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-de5cb631dc4f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::granted_component_readings::named_payment_component_tests::exact_source_payment_rule_precedes_prefix_restriction_with_or_without_outer_quote_role",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b4e577da614c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::mixed_identity_quoted_token_sibling_tests::quoted_identity_oxford_comma_retains_each_independent_rule",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-05d76f3808cf.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::quoted_chapter_owner_tests::a_chapter_with_unknown_body_cannot_be_downgraded_to_a_label_or_empty_grant",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-75c4d0dee778.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::quoted_chapter_owner_tests::already_owned_exact_quote_spans_do_not_install_the_chapters_twice",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-594787a7f89c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::quoted_chapter_owner_tests::uncached_chapter_prefix_precedes_label_stripping_and_retains_its_full_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-918c255e2389.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::tests::custom_keyword_identity_component_is_bounded_and_composes_with_real_activation",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b1aaca4419ce.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::tests::historical_keyword_copy_does_not_consume_a_combined_family_condition",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0c454e12bc52.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::tests::historical_keyword_copy_does_not_read_quoted_name_or_rule_operands_as_keyword_clauses",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f4984efdb490.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::tests::historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-006892828244.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::tests::quoted_identity_operand_and_labeled_trigger_remain_two_complete_grants",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-7183caeb214c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::tests::retained_keyword_list_requires_real_items_around_connectives",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-37b351b98adf.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::triggered_abilities::granted_death_subject_regressions::ordinary_death_filter_is_not_inferred_as_a_token_name",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-072b3a342043.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::triggered_abilities::nested_program_activation_boundary_tests::later_choice_program_colon_does_not_turn_instructions_into_activation_costs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-358ea6ae6e01.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::triggered_abilities::quoted_grant_review_regressions::bare_known_subtype_name_still_means_this_token",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-cb122739cca2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::triggered_abilities::quoted_grant_review_regressions::quoted_mana_restriction_is_transported_as_the_exact_typed_payload",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-8b0a8a667465.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::gain_ability::triggered_abilities::quoted_grant_review_regressions::quoted_unknown_mana_restriction_cannot_become_unrestricted_mana",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-909e4d935b40.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::next_spell_family::bounded_followup_tests::shared_next_spell_selector_owns_cast_timing_and_a_complete_entry_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-cf52fd635180.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::next_spell_family::bounded_followup_tests::unrelated_cast_subjects_and_unbounded_followups_are_not_consumed",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d5b13ce1b6bc.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::next_spell_family::exact_next_entry_followup_tests::entry_followup_does_not_consume_an_independent_instruction_or_other_recipient",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f11db243f646.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::next_spell_family::exact_next_entry_followup_tests::paired_next_creature_grant_keeps_an_external_entry_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1c16d21f60b8.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::pair_procedure::tap_prestate::tests::already_tapped_gate_precedes_tap_and_keeps_action_in_both_branches",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-6004fcfd7c05.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::verb_handlers::inherited_life_unit_addend_tests::bare_addend_preserves_prior_amount_and_rejects_unread_trailing_text",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-5172eea59fdd.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::zone_handlers::exile_actions::exile_until_demonstrative_leaves_retains_a_distinct_watcher",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-500fd37ab2e7.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::zone_handlers::exile_actions::independently_counted_exile_cards_share_only_the_trailing_source_domain",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ff2197504714.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::zone_handlers::exile_actions::tests::explicitly_typed_later_card_domains_are_not_treated_as_bare",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-08fac896fca8.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::zone_handlers::misc_actions::generic_player_counter_get_regressions::named_counter_reader_does_not_discard_qualified_tail",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-76819747f31e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::zone_handlers::misc_actions::generic_player_counter_get_regressions::named_player_counters_reuse_typed_put_counter_operation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1705f9f53d7a.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "effect_sentences::zone_handlers::tap_actions::counted_untapped_resolution_selection::counted_tap_is_exact_resolution_selection_without_targeting",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-61ae92c216c2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::activation_costs::program::quoted_alternative_cost_program_tests::explicit_quoted_price_keeps_both_actions_and_excluded_antecedent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ef7a7b003254.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::activation_costs::simple_segments::referenced_mana_cost_tests::counted_energy_symbols_are_typed_costs_with_or_without_an_explicit_pay_verb",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-7d20f60ed1a2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::activation_costs::simple_segments::referenced_mana_cost_tests::referenced_mana_costs_are_typed_and_do_not_accept_partial_suffixes",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e93099eb9ea3.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::conditions::controlled_entry_history_regressions::had_controlled_entry_is_typed_event_history",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-38b4725ab8ed.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::chain_splitting::recognition::independent_named_operation_arm::a_named_operation_is_not_part_of_the_counter_recipient",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-525f09b93458.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::clause_pattern_shapes::keywords::tests::phase_hold_owns_future_spell_ordinal_duration",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-44c43170d1f6.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::creation_shapes::copy_modifiers::object_action_programs::colorless_descriptor_claim_tests::colorless_copy_descriptors_claim_the_empty_color_set",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-62133cfe463c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::creation_shapes::copy_modifiers::object_action_programs::quoted_identity_copy_tests::dangling_copy_exception_is_not_an_empty_modifier",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-5f1f781667a0.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::creation_shapes::copy_modifiers::object_action_programs::quoted_identity_copy_tests::quoted_copy_exclusions_keep_full_names_and_independent_following_clauses",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-bfa4345a2c2f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::creation_shapes::copy_modifiers::tests::timed_ability_loss_is_an_ordinary_duration_not_a_copiable_deletion",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-fb5563668c8d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::creation_shapes::token_shapes::tests::copy_source_separates_bare_tapped_attacking_suffix",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-62942aa66e92.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::creation_shapes::token_shapes::tests::outer_sentence_period_is_not_a_token_name_but_quoted_period_is_literal",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-9948cd05672c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::labeled_dispatch::labels::explicit_instruction_label_tests::instruction_menu_passes_procedure_admission_but_unknown_labels_do_not",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-66aab50c96c0.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::return_exchange::return_shapes::delayed_main_phase_return_regressions::transformed_return_keeps_next_main_phase_as_a_typed_schedule",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e5e03c717690.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::return_exchange::return_shapes::validated_main_phase_player_filters::return_schedule_keeps_each_complete_validated_participant",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-fa737de9211e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::effects::search_library::duration_shapes::tests::leading_any_opponent_turn_boundary_is_typed_and_bounded",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1b911f64ada1.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::domain_unions::tests::explicit_nonbattlefield_scope_intersects_the_complete_card_type_union",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-757a3a6e026f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::player_relations::completed_ownership_tests::completed_ownership_keeps_the_explicit_player_and_clause_boundary",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d4899e0836c6.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::predicate_phrases::advanced::named_payment_word_ownership_tests::named_outcome_consumers_claim_only_their_complete_typed_predicate",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-4780cf7f3202.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::predicate_phrases::advanced::predicate_readings::fallback::other_death_history_tests::another_creature_death_keeps_source_exclusion_and_event_time_controller",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d74e7116669f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::predicate_phrases::advanced::predicate_readings::fallback::shared_history_window_tests::separate_discard_and_sacrifice_share_only_subject_and_turn_window",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0c0624f1fffa.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::predicate_phrases::advanced::predicate_readings::part_4::named_action_recipient_source_surface_tests::performer_source_presentation_does_not_discard_the_typed_relation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-635667a8ba63.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::predicate_phrases::tests::custom_identity_had_reads_historical_evidence_without_performing_a_program",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0ec3d6d9273d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::predicate_phrases::tests::singular_counter_placement_receipt_keeps_the_referenced_recipient",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-3d2bb3f2e977.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::reference_tag_stage::named_status_filter_entrypoint_tests::complete_filter_retains_status_qualification_and_zone",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d8c0ed29c83e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::filters::simple::nonenchanted_adjective_tests::nonenchanted_is_an_intrinsic_negative_attachment_state_not_a_source_alias",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-6a17aca26443.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::keyword_static_lines::token_templates::first_matching_creation_suffix_tests::first_creation_suffix_preserves_authored_append_once_template",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d2474cefcb45.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::keyword_static_lines::token_templates::tests::token_template_boundary_does_not_drop_conditions_extra_sentences_or_choice_words",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-36af23bbb550.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::line_semantic_facts::authored_designation_case_boundaries::explicit_keyword_group_labels_use_parser_case_and_preserve_complete_names",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-4beab8aa477c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::modal_results::modal_results_core_programs::passive_tap_result_reader_regression::passive_source_tap_keeps_identity_and_typed_action",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e44da2727ed0.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::modal_results::modal_results_object_action_programs::unavailable_choice_result_tests::exact_unavailable_choice_phrase_is_a_distinct_result_predicate",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-3e1811b6b623.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::modal_results::tests::completed_token_creation_requires_typed_original_destination_results",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e848a045fe52.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::modal_results::tests::created_result_descriptor_keeps_the_complete_ordinary_object_filter",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-c776e97b3d45.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::modal_results::tests::parses_modal_result_predicates",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-705dbb8950c5.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::permission_facts::tagged_surface::tests::explicit_any_type_rider_keeps_colorless_payment_permission",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f0199e482f46.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::preprocess::borrow_shapes::present_exiled_borrow_tests::present_and_past_exiled_ability_conditions_share_the_same_typed_population",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-50b2541909ab.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::shared_util::alternative_cost_lines::composed_price_tail_tests::price_amount_sentences_and_all_selected_entry_riders_keep_independent_ownership",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-8100010ecf2e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::shared_util::alternative_cost_lines::copy_cast_permission::tests::conditional_copy_price_retains_condition_and_independent_donor",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f14197a341af.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::shared_util::alternative_cost_lines::copy_cast_permission::tests::copied_card_can_be_cast_transformed_with_selected_entry_instructions",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ad9afcdb671e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::shared_util::alternative_cost_lines::copy_cast_permission::tests::copy_entry_counters_belong_to_the_selected_permission",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-48692259aace.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::shared_util::alternative_cost_lines::copy_cast_permission::tests::granted_copy_permission_has_a_stable_explicit_price_label",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-a5481f420ce3.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::static_keyword_line_shapes::tests::quoted_granted_programs_never_supply_outer_animation_verbs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b33aa5f72fb2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::structure::quoted_instruction_menu_boundaries::grammar_sentence_owner_retains_all_quoted_instruction_branches",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-6f3b58579a4f.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::token_definitions::names::named_token_sentence_boundary_regressions::next_word_index_does_not_own_the_terminal_period_or_next_instruction",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-15b5fe0c8dbb.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "grammar::token_definitions::names::named_token_sentence_boundary_regressions::quoted_terminal_punctuation_and_internal_punctuation_remain_name_data",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-4008ce364891.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "instruction_menu::complete_menu_evidence_tests::one_branch_and_quoted_pipes_do_not_commit_a_menu_reader",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-798c130c0f8d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::attached_static_line_migration_tests::attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b2d780d0e604.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::casting_announcement_payments::normalized_failure_clause_words::authored_contractions_share_parser_words_but_keep_arbitrary_failure_identity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f93591b600d8.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::casting_announcement_payments::tests::declaration_retains_ast_payer_and_complete_payment_label_until_lowering",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0fa680f67c78.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::combat_requirements::must_be_blocked_owner_tests::intrinsic_and_filtered_block_requirements_have_disjoint_owners",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-88576ea9df87.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::combat_requirements::passive_host_requirement_tests::attachment_requirement_is_bound_to_this_source_host",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f3fb23de1d9d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::complete_granted_cost_boundary_tests::an_unrelated_or_extra_sentence_never_becomes_a_cost_companion",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-19caa2da2c05.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::complete_granted_cost_boundary_tests::derived_flashback_companion_preserves_the_whole_permission_on_both_reader_routes",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-76106678d0ff.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::complete_granted_cost_boundary_tests::recognized_complete_cost_definitions_remain_reachable_before_the_outer_guard",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-cc17d8e9104b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::compound_static_body_tests::filtered_face_down_entry_is_one_typed_replacement_without_custom_keyword_semantics",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1ebcb3bb34ff.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::compound_static_body_tests::protection_population_retains_nested_source_collection_from",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1a7054f38dc1.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::conditional_copy_characteristics::tests::complete_exception_keeps_the_entering_token_condition_and_both_changes",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-87986d9d7f26.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::conditional_copy_characteristics::tests::no_mana_cost_exception_does_not_erase_dangling_conjunctions",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-803197b17421.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::coordinated_attached_control_tests::coordinated_control_uses_same_attached_subject_and_complete_sibling",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-3e1116fe0aa2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::copy_source_replacement::tests::copy_definition_replacement_binds_explicit_full_names_and_rejects_other_operations",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b6c5ea6c3432.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::costs_replacements_and_permissions::designated_color_exception_tests::complete_color_count_exception_has_no_as_though_conversion",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-d2285899d80b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::costs_replacements_and_permissions::one_mana_of_any_color_reader_tests::literal_any_color_is_not_an_unconstrained_hybrid_reduction",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-35a1c44ccf6b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::damage_redirection::source_operand_domain_tests::explicit_source_type_and_battlefield_qualifiers_are_independent",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-6c2a834bb457.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::damage_redirection::source_operand_domain_tests::explicit_sources_keep_controller_and_any_zone_domain",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-41ffbd4b9e60.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::derived_blitz_owner_tests::complete_blitz_permission_has_one_owner_and_keeps_subject_qualifiers",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-66492f1b9484.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::distributive_player_keyword_tests::chosen_quality_grants_keep_both_player_and_source_and_each_is_only_distributive",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-adca77c998ad.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::life_change_replacements::additive_loss_tests::additive_loss_keeps_affected_player_and_rejects_a_changed_recipient_or_incomplete_amount",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-23bddbccd1b5.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::life_change_replacements::tests::conditional_draw_requires_one_complete_instead_marker",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-45abf0d1ecd6.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::named_activation_costs::tests::exact_named_activation_has_an_independent_graveyard_object_filter",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ab44c64edd62.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::present_linked_exile_condition_tests::complete_custom_identity_population_is_counted_in_its_own_linked_exile",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ed18e06f9e10.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::quoted_announcement_grant_boundaries::identity_and_complete_quoted_announcement_are_distinct_granted_abilities",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e75f5e9e01cd.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::quoted_player_static_rule_grant_tests::complete_quoted_player_restrictions_remain_recipient_static_rules",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b98fa2b4fc8d.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::spell_resolution_destination::declared_recipe_tests::authored_once_key_and_nested_quote_delimiters_are_typed_fields",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-52db283c3e4c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::spell_resolution_destination::declared_recipe_tests::malformed_declared_keys_do_not_fall_back_to_unkeyed_programs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-c0b716b53cef.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::spell_resolution_destination::declared_recipe_tests::single_word_and_multiword_keys_leave_nested_callback_quotes_owned_by_the_token",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-697e184660de.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::spell_resolution_destination::tests::destination_and_arbitrary_followup_are_independent_of_keyword_identity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-a5841f9c4467.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::spell_resolution_destination::tests::similar_ordinary_exile_and_cast_time_phrases_are_not_terminal_replacements",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-f1d5dfe6c329.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "keyword_static::transform_characteristics::tests::counter_kind_and_opaque_payment_label_are_atomic_static_programs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-5f710340f053.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "object_filters::entry_reference_filter_tests::exact_entry_noun_and_type_comparison_are_independent_operands",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-cc744a7041ad.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "object_filters::explicit_custom_identity_filter_tests::recipient_keyword_membership_is_separate_from_granting_the_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-3efdce0d3ee7.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "object_filters::named_action_role_filter_tests::event_role_nouns_keep_exact_identity_in_both_filter_front_doors",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-497ea9b1c8d5.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "object_filters::named_action_role_filter_tests::first_participant_reference_is_claimed_in_a_complete_named_action_program",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-fc17cbefdf79.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::collection_instruction_owner_tests::counted_collection_keeps_selection_and_iteration_on_public_permission_route",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-eb3f22e0e249.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::referenced_copy_cast_tests::free_cast_of_explicit_exiled_card_copy_keeps_operation_and_reference",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-33cc6b423e58.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::source_exile_duration_tests::source_control_duration_preserves_authored_source_noun",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-3410f37fb976.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::tagged_permission_flash_rider_tests::flash_rider_requires_a_complete_retained_permission_and_exact_timing_words",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-9a3611b9ffc2.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::tagged_permission_flash_rider_tests::retained_card_permission_and_timing_share_exact_tag_player_and_expiry",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-4fb6e4180bc4.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::top_source_color::tests::complete_disjunction_keeps_library_owner_top_and_live_source_relation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-af04659f7d01.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "permission_helpers::top_source_color::tests::incomplete_or_different_permissions_are_not_consumed",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1ebee6daf603.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "preprocess::wrapped_operands::tests::joins_only_the_wrapped_source_operand_and_retains_raw_document",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-e2a570ee807c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "preprocess::wrapped_operands::tests::retains_blank_chapter_and_independent_ability_boundaries",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1c7f93744474.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "semantic_assembly::triggered_group_source_ownership::assembly_retains_authored_group_after_an_alternate_recognition_entry",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-a82885bd655e.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "semantic_line_parsing::lines::lines_trigger_programs::conditional_fallback::quoted_menu_fallback_tests::false_arm_preserves_all_complete_quoted_child_programs",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-a47c1b54c3aa.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "semantic_line_parsing::lines::lines_trigger_programs::conditional_fallback::tests::an_explicit_false_arm_is_control_flow_not_an_action_failure",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1339c1abfa3b.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "util::entry_producer_identity_tests::quoted_entry_producer_identity_is_complete_and_near_names_do_not_alias",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-5865101708f6.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "util::explicit_event_role_targets::entering_and_loyalty_event_roles_keep_the_trigger_object",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b8ff9659d66c.log"
+  },
+  {
+    "package": "ironsmith-compiler-grammar",
+    "test": "util::payment_receipt_references::active_negative_donor_filter_tests::negative_paid_reference_is_exact_and_keeps_ordinary_qualifiers",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-dd251a6b5352.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "facade::activation_zone_payload_admission::actual_typed_activation_zone_permission_does_not_require_a_fake_semantic_id",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-c632cdb692b8.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "facade::announcement_payload_fallback_tests::typed_announcement_program_is_not_an_unidentified_text_fallback",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-01c40335a546.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "facade::tests::facade_can_route_compile_and_analyze_through_backend",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-4f9dde6817c1.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "supplied_definitions::graph_compilation_tests::conflicting_same_named_root_source_is_rejected_before_compilation",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-8e0541767e71.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "supplied_definitions::graph_compilation_tests::cyclic_sources_compile_to_finite_predeclared_references",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-5780a8882c50.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "supplied_definitions::graph_compilation_tests::graph_rejects_ambiguous_full_names_and_restores_outer_scope",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-e4f2e6956054.log"
+  },
+  {
+    "package": "ironsmith-compiler",
+    "test": "supplied_definitions::supplied_real_kind_tests::token_type_header_is_not_silently_reinterpreted_as_a_real_card",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-f246e6f9e346.log"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "authenticated_private_action_body_pause_keeps_exact_pending_world_without_publishing_price_twice",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "cast_copy_source_choice_uses_actual_replay_and_preserves_preproposal_atomicity",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "declining_casualty_keeps_the_creature_and_adds_no_copy_trigger",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "exact_reytali_private_grant_transports_materialized_card_price_and_peer_authenticates_same_occurrence",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "private_cost_wire_rejects_wrong_actor_generation_and_crossed_opening_anchors",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "private_cost_wire_roundtrip_does_not_publish_pending_payment_or_open_source",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "private_source_owner_and_placeholder_peer_replay_same_final_opening_before_public_payment",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-wasm",
+    "filter": "verified_final_opening_hydrates_only_retained_root_then_commits_native_action_once",
+    "expected": 1,
+    "matches": [],
+    "status": "inventory_mismatch"
+  },
+  {
+    "package": "ironsmith-artifact-effect-decoder",
+    "test": "card_graph_tests::card_graph_typed_ids_preserve_other_namespaces_and_arbitrary_json",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-artifact-effect-decoder-d05f40283f1e.log"
+  },
+  {
+    "package": "ironsmith-artifact-effect-decoder",
+    "test": "creation_graph::tests::scoped_definition_references_use_the_existing_typed_card_id_mapper",
+    "status": "failed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-artifact-effect-decoder-ae72225ae95e.log"
+  },
+  {
+    "package": "ironsmith-artifact-effect-decoder",
+    "test": "tests::executable_reference_graph_remaps_typed_nested_refs_and_preserves_literal_data",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-artifact-effect-decoder-6a59b4ea4712.log"
+  },
+  {
+    "package": "ironsmith-artifact-effect-decoder",
+    "test": "tests::routes_representative_effects_to_domain_families",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-artifact-effect-decoder-80e05e13114b.log"
+  },
+  {
+    "package": "ironsmith-artifact-effect-decoder",
+    "test": "tests::source_counter_payload_decodes_and_normalizes_inside_owned_cost",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-artifact-effect-decoder-9c1b16bc6918.log"
+  },
+  {
+    "package": "ironsmith-compiler-runtime",
+    "test": "reminder_identity_tests::reminder_identity_exile_preparation_preserves_visibility_timing_and_separate_identity",
+    "status": "passed",
+    "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-runtime-865784c524f9.log"
+  }
+]

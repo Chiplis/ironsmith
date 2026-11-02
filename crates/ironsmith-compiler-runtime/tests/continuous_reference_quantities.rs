@@ -683,3 +683,28 @@ fn glamdrings_adventure_face_mills_filters_and_exiles_then_allows_the_artifact_c
         );
     }
 }
+
+#[test]
+fn filtered_from_among_milled_cards_uses_only_exact_arrivals_and_allows_an_empty_match() {
+    let input="Type: Sorcery\nMill two cards, then put all instant and sorcery cards from among them into your hand.";
+    let direct=compile_to_runtime_definition("Milled collection control",input,false).unwrap();
+    let (artifact,_)=ironsmith_compiler_runtime::compile_to_artifact("Milled collection control",input,false).unwrap();
+    let restored=CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+    for definition in [direct,ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap()] {
+        for qualifying in [false,true] {
+            let mut g=game();
+            let outsider=g.create_object_from_definition(&resource("Unrelated graveyard instant","Instant"),A,Zone::Graveyard);
+            let outsider=g.object(outsider).unwrap().stable_id;
+            // Library order uses the native top convention explicitly.
+            for i in 0..2 {g.create_object_from_definition(&resource(&format!("Counted mill member {i}"),if qualifying{"Instant"}else{"Artifact"}),A,Zone::Library);}
+            let original=g.player(A).unwrap().library.clone();
+            let source=g.create_object_from_definition(&definition,A,Zone::Stack);
+            let effect=Effect::new(ironsmith::effects::SequenceEffect::new(definition.spell_effect.as_ref().unwrap().all_effects_owned()));
+            execute_effect(&mut g,&effect,&mut EffectContext::new_default(source,A)).unwrap();
+            assert_eq!(g.player(A).unwrap().hand.len(),if qualifying{2}else{0});
+            assert_eq!(g.player(A).unwrap().graveyard.len(),if qualifying{1}else{3});
+            let outsider=g.find_object_by_stable_id(outsider).unwrap();assert_eq!(g.object(outsider).unwrap().zone,Zone::Graveyard,"an eligible outsider is not in the milled producer packet");
+            assert!(original.iter().all(|id|g.object(*id).is_none()),"the selection uses exact resulting arrivals, not retired library incarnations");
+        }
+    }
+}

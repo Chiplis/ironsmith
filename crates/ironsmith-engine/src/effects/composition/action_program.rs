@@ -24,6 +24,7 @@ pub struct ProgramActionScope {
         Option<Option<crate::effects::context::OptionalIdentityGuard>>,
     pub(crate) public_search_reveal_tag: Option<Option<crate::tag::TagKey>>,
     pub(crate) pending_entry_attachment: Option<Option<crate::target::ChooseSpec>>,
+    pub(crate) entry_attachment_receipts: Option<Option<Vec<crate::effect::EntryAttachmentReceipt>>>,
     pub(crate) outer: Option<Box<ProgramActionScope>>,
 }
 
@@ -79,6 +80,9 @@ impl ProgramActionScope {
             if effective.pending_entry_attachment.is_none() {
                 effective.pending_entry_attachment = current.pending_entry_attachment.clone();
             }
+            if effective.entry_attachment_receipts.is_none() {
+                effective.entry_attachment_receipts = current.entry_attachment_receipts.clone();
+            }
             scope = current.outer.as_deref();
         }
         effective.run_local(game, ctx, body)
@@ -131,6 +135,8 @@ impl ProgramActionScope {
             .pending_entry_attachment
             .as_ref()
             .map(|value| std::mem::replace(&mut ctx.pending_entry_attachment, value.clone()));
+        let entry_receipts = self.entry_attachment_receipts.as_ref().map(|value|
+            std::mem::replace(&mut ctx.entry_attachment_receipts, value.clone()));
         let label = self
             .mode_label
             .as_ref()
@@ -148,6 +154,9 @@ impl ProgramActionScope {
         }
         if let Some(reveal) = reveal {
             ctx.public_search_reveal_tag = reveal;
+        }
+        if let Some(receipts) = entry_receipts {
+            ctx.entry_attachment_receipts = receipts;
         }
         if let Some(attachment) = attachment {
             ctx.pending_entry_attachment = attachment;

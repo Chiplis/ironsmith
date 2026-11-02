@@ -611,13 +611,40 @@ pub enum StaticAbilityId {
     /// scope: matching permanents are exempt in every controller's group
     /// (CR 704.5j). Appended for wire compatibility.
     LegendRuleDoesntApplyToMatching,
+    /// Attacker-side filtered blocking permission; appended for wire compatibility.
+    CanBeBlockedAsThoughBlockersWereUntapped,
+    /// Source-scoped static paid action permission; appended for wire compatibility.
+    IntrinsicImmediateAction,
+    /// Ongoing copy of an attachment, preserving recipient types if requested.
+    AttachedIsCopyOfSource,
+    OptionalCostPaymentAlternative,
+    /// Explicit event matching on retained ability occurrences.
+    TriggerEventProjection,
+    OptionalTextFragments,
+    AdditionalSpellTargets,
+    NamedActionPaymentAlternative,
+    NamedActionTokenAbilityGrant,
+    GrantOptionalSpellCost,
+    /// An optional ordinary child program offered at the public reveal boundary.
+    RevealActionOffer,
+    /// Scoped generic reductions of named casting-price components. Appended.
+    NamedCastingPriceReduction,
+    CardCreationSelectionReplacement,
+    CopySourceSelectionReplacement,
 }
 
 impl StaticAbilityId {
     fn exhaustive_classification_guard(id: StaticAbilityId) {
         use StaticAbilityId::*;
         match id {
-            Flying
+            CopySourceSelectionReplacement | CardCreationSelectionReplacement => {},
+            OptionalTextFragments
+            | NamedActionPaymentAlternative
+            | NamedActionTokenAbilityGrant
+            | NamedCastingPriceReduction
+            | RevealActionOffer
+            | OptionalCostPaymentAlternative
+            | Flying
             | FirstStrike
             | DoubleStrike
             | Deathtouch
@@ -697,6 +724,8 @@ impl StaticAbilityId {
             | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanAttackSourceEachCombat
             | CanBlockAsThoughUntapped
+            | TriggerEventProjection
+            | CanBeBlockedAsThoughBlockersWereUntapped
             | CanBlockAsThoughNoLandwalk
             | MaxCreaturesCanBlockEachCombat
             | CantBeBlockedByPowerOrLess
@@ -788,6 +817,7 @@ impl StaticAbilityId {
             | ActivatedAbilityCostIncrease
             | ThisSpellCostReduction
             | ThisSpellCostReductionManaCost
+            | AdditionalSpellTargets
             | CostIncrease
             | CostIncreaseLife
             | CostReductionManaCost
@@ -867,6 +897,7 @@ impl StaticAbilityId {
             | Enchant
             | EnchantedLandIsChosenType
             | AttachedIsCopyOfChosenObject
+            | AttachedIsCopyOfSource
             | SourceLandIsChosenType
             | AddChosenCreatureType
             | AddChosenBasicLandType
@@ -1035,7 +1066,9 @@ impl StaticAbilityId {
             | NativeAlternativeCastFromZone
             | GrantSpellKeyword
             | AlternativeCastFromZoneForFilter
-            | AdditionalSacrificePerManaSymbol => {}
+            | AdditionalSacrificePerManaSymbol
+            | IntrinsicImmediateAction
+            | GrantOptionalSpellCost => {}
         }
     }
 

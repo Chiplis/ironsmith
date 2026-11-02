@@ -1,0 +1,673 @@
+{
+  "schema_version": 1,
+  "scope": "revolution",
+  "source_catalog": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+  "source_scope_proof": "reports/custom-mechanics/older-lexical-source-confirmations.json",
+  "counts": {
+    "base_direct_operator_observer": 29,
+    "additional_outcome_consumers": 4,
+    "whole_waste_family": 33
+  },
+  "mechanics": [
+    {
+      "id": "rev-waste-result-consumers-whole",
+      "keyword": "Waste",
+      "scope": "revolution",
+      "rule_reference": "701.71.",
+      "rule_text": {
+        "name": "701.71.",
+        "rule": "Waste",
+        "subrules": [
+          {
+            "name": "701.71a",
+            "rule": "To waste a permanent means to create a continuous effect. The permanent's name is changed to Wastes, it becomes a basic land, gains “{T}: Add {C},” and loses all other supertypes, card types, subtypes, and abilities.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Desperate Animist",
+          "Exiled Channeler",
+          "Forlorn Firstspear",
+          "Goresand Remnant",
+          "Harvester of Vigor",
+          "Landscape Decay",
+          "Leyline Feeder",
+          "Leyline Reaper",
+          "Leyline Router",
+          "Life Desecrator",
+          "Mirage Oddity",
+          "Neglected Nexus",
+          "Radaran Reclaimer",
+          "Radaran Remnant",
+          "Radaran Stirrings",
+          "Radaran Undying",
+          "Rayak's Prelate",
+          "Realm Siphoner",
+          "Resigned Seraph",
+          "Ruinstorm Remnant",
+          "Sanctis Banneret",
+          "Sanctis Remnant",
+          "Sand Manipulator",
+          "Sandwarp",
+          "Saviour of the Lost",
+          "Sephius, Endtime Scholar",
+          "Sephius's Research",
+          "The Fall of Aethanis",
+          "The Source",
+          "Tradeway Remnant",
+          "Eldritch Growth",
+          "Reality Wanes",
+          "Scape Surveyor",
+          "Reminder",
+          "Wastes Overlay"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Neglected Nexus_VST",
+          "source_card_key": "rev:Neglected Nexus_VST",
+          "raw_source_card_key": "Neglected Nexus_VST",
+          "name": "Neglected Nexus",
+          "original_text": "Type: Land\n{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it.",
+          "executable_text": "Type: Land\n{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a permanent named \"Wastes\", untap it.",
+          "scope": "revolution",
+          "source_scope": "revolution",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "name": "Neglected Nexus",
+              "original_text": "Type: Land\n{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it.",
+              "raw_source_record": {
+                "fullName": "Neglected Nexus",
+                "cardName": "Neglected Nexus",
+                "manaCost": "",
+                "typeLine": "Land",
+                "rarityLine": "*VST C*",
+                "rulesText": "{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it.",
+                "flavorText": "",
+                "power": "",
+                "toughness": "",
+                "loyalty": "",
+                "color": "",
+                "cmc": 0,
+                "cardType": "Land",
+                "rarity": "common",
+                "shape": "normal",
+                "setID": "VST",
+                "cardID": "244",
+                "designer": "Reuben",
+                "script": "",
+                "notes": [],
+                "artist": "qianyi artifact",
+                "instigatorID": 28711,
+                "formats": [
+                  "reveternal",
+                  "reveternalpauper",
+                  "archaeologist"
+                ],
+                "prints": [
+                  "VST"
+                ],
+                "rarities": [
+                  "common"
+                ],
+                "sdn": 137,
+                "firstPrint": "Neglected Nexus_VST",
+                "colorIdentity": [],
+                "spellbook": [],
+                "key": "Neglected Nexus_VST",
+                "printKeys": [
+                  "Neglected Nexus_VST"
+                ],
+                "pr": 142.85714285714286,
+                "pm": 124.35824301197947,
+                "psr": 0,
+                "psm": 0,
+                "per": 0,
+                "pem": 17.89709172259508
+              }
+            }
+          ],
+          "raw_source_record": {
+            "fullName": "Neglected Nexus",
+            "cardName": "Neglected Nexus",
+            "manaCost": "",
+            "typeLine": "Land",
+            "rarityLine": "*VST C*",
+            "rulesText": "{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "",
+            "cmc": 0,
+            "cardType": "Land",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "VST",
+            "cardID": "244",
+            "designer": "Reuben",
+            "script": "",
+            "notes": [],
+            "artist": "qianyi artifact",
+            "instigatorID": 28711,
+            "formats": [
+              "reveternal",
+              "reveternalpauper",
+              "archaeologist"
+            ],
+            "prints": [
+              "VST"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "sdn": 137,
+            "firstPrint": "Neglected Nexus_VST",
+            "colorIdentity": [],
+            "spellbook": [],
+            "key": "Neglected Nexus_VST",
+            "printKeys": [
+              "Neglected Nexus_VST"
+            ],
+            "pr": 142.85714285714286,
+            "pm": 124.35824301197947,
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 17.89709172259508
+          },
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "name_characteristic_outcome_consumer",
+          "executable_faces": [
+            {
+              "name": "Neglected Nexus",
+              "executable_text": "Type: Land\n{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a permanent named \"Wastes\", untap it.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it.",
+              "original_printed_rules_text": "{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it.",
+          "original_printed_rules_text": "{T}, Sacrifice Neglected Nexus: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if that land is a wastes, untap it."
+        },
+        {
+          "id": "rev:Eldritch Growth_SGP",
+          "source_card_key": "rev:Eldritch Growth_SGP",
+          "raw_source_card_key": "Eldritch Growth_SGP",
+          "name": "Eldritch Growth",
+          "original_text": "Mana cost: {3}{G}\nType: Sorcery\nSearch your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+          "executable_text": "Mana cost: {3}{G}\nType: Sorcery\nSearch your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+          "scope": "revolution",
+          "source_scope": "revolution",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "name": "Eldritch Growth",
+              "original_text": "Mana cost: {3}{G}\nType: Sorcery\nSearch your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+              "raw_source_record": {
+                "fullName": "Eldritch Growth",
+                "cardName": "Eldritch Growth",
+                "manaCost": "{3}{G}",
+                "typeLine": "Sorcery",
+                "rarityLine": "*SGP U*",
+                "rulesText": "Search your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+                "flavorText": "*Scion spawning beds were often carved deep in the Salcman's swamps. Around them, decay blossomed and sunlight was forgotten.*\n",
+                "power": "",
+                "toughness": "",
+                "loyalty": "",
+                "color": "{Green} ",
+                "cmc": 4,
+                "cardType": "Sorcery",
+                "rarity": "uncommon",
+                "shape": "normal",
+                "setID": "SGP",
+                "cardID": "183",
+                "designer": "kattalist",
+                "script": "",
+                "notes": [],
+                "artist": "Dongbiao Lu",
+                "sdn": 7556,
+                "version": 20260731,
+                "key": "Eldritch Growth_SGP",
+                "colorIdentity": [
+                  "G"
+                ],
+                "spellbook": [],
+                "prints": [
+                  "SGP"
+                ],
+                "rarities": [
+                  "uncommon"
+                ],
+                "firstPrint": "Eldritch Growth_SGP",
+                "printKeys": [
+                  "Eldritch Growth_SGP"
+                ],
+                "formats": [
+                  "revolution",
+                  "brawl",
+                  "reveternal",
+                  "revplanechase",
+                  "archaeologist"
+                ],
+                "pr": 0,
+                "pm": 8.385744234800839,
+                "psr": 0,
+                "psm": 8.385744234800839
+              }
+            }
+          ],
+          "raw_source_record": {
+            "fullName": "Eldritch Growth",
+            "cardName": "Eldritch Growth",
+            "manaCost": "{3}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SGP U*",
+            "rulesText": "Search your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+            "flavorText": "*Scion spawning beds were often carved deep in the Salcman's swamps. Around them, decay blossomed and sunlight was forgotten.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SGP",
+            "cardID": "183",
+            "designer": "kattalist",
+            "script": "",
+            "notes": [],
+            "artist": "Dongbiao Lu",
+            "sdn": 7556,
+            "version": 20260731,
+            "key": "Eldritch Growth_SGP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SGP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Eldritch Growth_SGP",
+            "printKeys": [
+              "Eldritch Growth_SGP"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ],
+            "pr": 0,
+            "pm": 8.385744234800839,
+            "psr": 0,
+            "psm": 8.385744234800839
+          },
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "name_characteristic_outcome_consumer",
+          "executable_faces": [
+            {
+              "name": "Eldritch Growth",
+              "executable_text": "Mana cost: {3}{G}\nType: Sorcery\nSearch your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Search your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+              "original_printed_rules_text": "Search your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Search your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way.",
+          "original_printed_rules_text": "Search your library for two basic land cards, put them onto the battlefield tapped, then shuffle. Untap each land named Wastes put onto the battlefield this way."
+        },
+        {
+          "id": "rev:Reality Wanes_SGP",
+          "source_card_key": "rev:Reality Wanes_SGP",
+          "raw_source_card_key": "Reality Wanes_SGP",
+          "name": "Reality Wanes",
+          "original_text": "Mana cost: {2}\nType: Sorcery\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+          "executable_text": "Mana cost: {2}\nType: Sorcery\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+          "scope": "revolution",
+          "source_scope": "revolution",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "name": "Reality Wanes",
+              "original_text": "Mana cost: {2}\nType: Sorcery\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+              "raw_source_record": {
+                "fullName": "Reality Wanes",
+                "cardName": "Reality Wanes",
+                "manaCost": "{2}",
+                "typeLine": "Sorcery",
+                "rarityLine": "*SGP C*",
+                "rulesText": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+                "flavorText": "*The first incursion was heralded by a gossamer shimmer, carried on warbling strands of aether from beyond the universe.*\n",
+                "power": "",
+                "toughness": "",
+                "loyalty": "",
+                "color": "",
+                "cmc": 2,
+                "cardType": "Sorcery",
+                "rarity": "common",
+                "shape": "normal",
+                "setID": "SGP",
+                "cardID": "24",
+                "designer": "kattalist",
+                "script": "",
+                "notes": [],
+                "artist": "Mark Erskine",
+                "sdn": 7685,
+                "version": 20260731,
+                "key": "Reality Wanes_SGP",
+                "colorIdentity": [],
+                "spellbook": [],
+                "prints": [
+                  "SGP"
+                ],
+                "rarities": [
+                  "common"
+                ],
+                "firstPrint": "Reality Wanes_SGP",
+                "printKeys": [
+                  "Reality Wanes_SGP"
+                ],
+                "formats": [
+                  "revolution",
+                  "brawl",
+                  "reveternal",
+                  "reveternalpauper",
+                  "revplanechase",
+                  "archaeologist"
+                ]
+              }
+            }
+          ],
+          "raw_source_record": {
+            "fullName": "Reality Wanes",
+            "cardName": "Reality Wanes",
+            "manaCost": "{2}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*SGP C*",
+            "rulesText": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+            "flavorText": "*The first incursion was heralded by a gossamer shimmer, carried on warbling strands of aether from beyond the universe.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "SGP",
+            "cardID": "24",
+            "designer": "kattalist",
+            "script": "",
+            "notes": [],
+            "artist": "Mark Erskine",
+            "sdn": 7685,
+            "version": 20260731,
+            "key": "Reality Wanes_SGP",
+            "colorIdentity": [],
+            "spellbook": [],
+            "prints": [
+              "SGP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Reality Wanes_SGP",
+            "printKeys": [
+              "Reality Wanes_SGP"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "reveternalpauper",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "name_characteristic_outcome_consumer",
+          "executable_faces": [
+            {
+              "name": "Reality Wanes",
+              "executable_text": "Mana cost: {2}\nType: Sorcery\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+              "original_printed_rules_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life.",
+          "original_printed_rules_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle. If a card named Wastes was revealed this way, each opponent loses 1 life and you gain 1 life."
+        },
+        {
+          "id": "rev:Scape Surveyor_SGP",
+          "source_card_key": "rev:Scape Surveyor_SGP",
+          "raw_source_card_key": "Scape Surveyor_SGP",
+          "name": "Scape Surveyor",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Pilot\nPower/Toughness: 1/2\nFlying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Pilot\nPower/Toughness: 1/2\nFlying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+          "scope": "revolution",
+          "source_scope": "revolution",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "name": "Scape Surveyor",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Pilot\nPower/Toughness: 1/2\nFlying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+              "raw_source_record": {
+                "fullName": "Scape Surveyor",
+                "cardName": "Scape Surveyor",
+                "manaCost": "{1}{W}",
+                "typeLine": "Creature — Human Pilot",
+                "rarityLine": "*SGP U*",
+                "rulesText": "Flying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+                "flavorText": "*As the front advances, maps must be redrawn again and again.*\n",
+                "power": "1",
+                "toughness": "2",
+                "loyalty": "",
+                "color": "{White} ",
+                "cmc": 2,
+                "cardType": "Creature",
+                "rarity": "uncommon",
+                "shape": "normal",
+                "setID": "SGP",
+                "cardID": "59",
+                "designer": "kattalist",
+                "script": "",
+                "notes": [],
+                "artist": "Nina Wojcik",
+                "sdn": 7697,
+                "version": 20260731,
+                "key": "Scape Surveyor_SGP",
+                "colorIdentity": [
+                  "W"
+                ],
+                "spellbook": [],
+                "prints": [
+                  "SGP"
+                ],
+                "rarities": [
+                  "uncommon"
+                ],
+                "firstPrint": "Scape Surveyor_SGP",
+                "printKeys": [
+                  "Scape Surveyor_SGP"
+                ],
+                "formats": [
+                  "revolution",
+                  "brawl",
+                  "reveternal",
+                  "revplanechase",
+                  "archaeologist"
+                ],
+                "pr": 41.666666666666664,
+                "pm": 62.893081761006286,
+                "psr": 41.666666666666664,
+                "psm": 62.893081761006286
+              }
+            }
+          ],
+          "raw_source_record": {
+            "fullName": "Scape Surveyor",
+            "cardName": "Scape Surveyor",
+            "manaCost": "{1}{W}",
+            "typeLine": "Creature — Human Pilot",
+            "rarityLine": "*SGP U*",
+            "rulesText": "Flying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+            "flavorText": "*As the front advances, maps must be redrawn again and again.*\n",
+            "power": "1",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "SGP",
+            "cardID": "59",
+            "designer": "kattalist",
+            "script": "",
+            "notes": [],
+            "artist": "Nina Wojcik",
+            "sdn": 7697,
+            "version": 20260731,
+            "key": "Scape Surveyor_SGP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "SGP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Scape Surveyor_SGP",
+            "printKeys": [
+              "Scape Surveyor_SGP"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ],
+            "pr": 41.666666666666664,
+            "pm": 62.893081761006286,
+            "psr": 41.666666666666664,
+            "psm": 62.893081761006286
+          },
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "name_characteristic_outcome_consumer",
+          "executable_faces": [
+            {
+              "name": "Scape Surveyor",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Pilot\nPower/Toughness: 1/2\nFlying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+              "original_printed_rules_text": "Flying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle.",
+          "original_printed_rules_text": "Flying\nWhen this creature enters, you may search your library for a basic Plains card or a land card named Wastes, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "source_cards": [
+        "Neglected Nexus",
+        "Eldritch Growth",
+        "Reality Wanes",
+        "Scape Surveyor"
+      ],
+      "support_status": "preserved_unmaterialized_unexecuted_not_certification",
+      "source_mechanic_id": "rev-waste-003",
+      "executable_definitions": [
+        {
+          "keyword": "Waste",
+          "template": "a non{Name} land you control",
+          "reminder": "Choose a land you control not named {Name}. If you do, that land becomes a basic land named Wastes with \"{T}: Add {C}\" and loses all other supertypes, card types, subtypes, and abilities. Perform the waste action with permanents affected this way.",
+          "paymentReminder": "Have a land you control not named {Name} become a basic land named Wastes with \"{T}: Add {C}\" and loses all other supertypes, card types, subtypes, and abilities and perform the waste action.",
+          "forms": {
+            "eventVerb": "waste",
+            "eventLabel": "waste"
+          },
+          "namedObjectReferences": [
+            {
+              "reference": "a wastes",
+              "name": "Wastes",
+              "controller": "any"
+            }
+          ]
+        }
+      ],
+      "source_inventory_id": "rev-waste-outcome-consumers-full",
+      "source_role": "name_characteristic_outcome_consumer",
+      "definition_provenance": "Waste single-object canonical definition from waste-revive-whole-sources-v2; metadata alias only, no new operation semantics",
+      "semantic_equivalence": {
+        "status": "authored_unexecuted",
+        "evidence": "The result characteristic is ordinary name Wastes. Explicit namedObjectReferences maps source noun a wastes to a permanent named Wastes; explicit named-card consumers remain unchanged. No completion event or keyword marker inferred."
+      }
+    }
+  ],
+  "test_status": "parent_only_unexecuted"
+}

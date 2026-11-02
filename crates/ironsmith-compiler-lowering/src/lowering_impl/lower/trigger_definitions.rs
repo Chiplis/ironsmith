@@ -64,6 +64,14 @@ pub(super) fn authored_root_namespace_with_generated(
     for ability in &mut authored.abilities {
         let program = match &mut ability.kind {
             AbilityKind::Triggered(triggered) => {
+                fn clear_cause(trigger: &mut ironsmith_core::CompilerTrigger) {
+                    match &mut trigger.kind {
+                        ironsmith_core::TriggerKind::CounterPutOn(counter) => counter.activation_definition = None,
+                        ironsmith_core::TriggerKind::AnyOf(branches) => {for branch in branches {clear_cause(branch);}},
+                        _ => {}
+                    }
+                }
+                clear_cause(&mut triggered.trigger);
                 triggered.presentation_label = None;
                 &mut triggered.effects
             },

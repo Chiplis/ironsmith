@@ -297,6 +297,8 @@ pub(super) fn describe_myriad_keyword(
         || !create.enters_tapped
         || create.has_haste
         || create.loses_soulbond
+        || create.ability_loss_until.is_some()
+        || !create.removed_ability_designations.is_empty()
         || !create.enters_attacking
         || !matches!(
             &create.attack_target_mode,
@@ -635,6 +637,8 @@ fn describe_attacking_hand_entry_token_copy(
         || create.exile_at_end_of_combat
         || create.exile_at_end_of_combat_reference_surface.is_some()
         || create.loses_soulbond
+        || create.ability_loss_until.is_some()
+        || !create.removed_ability_designations.is_empty()
         || create.sacrifice_at_next_end_step
         || create
             .sacrifice_at_next_end_step_reference_surface
@@ -1174,7 +1178,7 @@ fn describe_ability_in_zone(
                 }
                 ironsmith_core::TotalCostKind::All(costs) => {
                     for cost in costs {
-                        if let Some(mana) = cost.mana_cost_ref() {
+                        if let Some(mana) = cost.mana_cost_ref().or_else(|| cost.dynamic_mana_cost_ref().map(|dynamic| &dynamic.base)) {
                             // X-allocation and per-unit rules ("spend only
                             // mana of the chosen color") are printed once as
                             // the ability's rider.
@@ -1198,11 +1202,13 @@ fn describe_ability_in_zone(
                     .clone()
                     .try_map(|cost| {
                         Ok::<_, std::convert::Infallible>(
-                            if let Some(mana) = cost.mana_cost_ref() {
+                            if let Some(dynamic) = cost.dynamic_mana_cost_ref() {
+                                let mut bare = dynamic.clone();
+                                bare.base = bare.base.without_spending_restrictions_for_display();
+                                crate::costs::Cost::dynamic_mana(bare)
+                            } else if let Some(mana) = cost.mana_cost_ref() {
                                 crate::costs::Cost::mana(
-                                    mana.clone()
-                                        .without_x_spending_restrictions()
-                                        .without_unit_spending_restrictions(),
+                                    mana.clone().without_spending_restrictions_for_display(),
                                 )
                             } else {
                                 cost
@@ -2117,6 +2123,10 @@ fn describe_ability_in_zone(
                     &mut line,
                     "For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana",
                 );
+            }
+            if activated.mana_cost.mana_cost().is_some_and(|mana| mana.has_artifact_tap_payment()) {
+                append_sentence_clause(&mut line,
+                    "For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana");
             }
             let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,

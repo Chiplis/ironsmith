@@ -4,6 +4,14 @@ struct Opening { pause: bool, pending: bool, requested: Vec<Vec<ObjectId>>, show
 impl DecisionMaker for Opening {
     fn decide_targets(&mut self, _: &GameState, _: &TargetsContext) -> Vec<Target> { vec![Target::Player(B)] }
     fn decide_objects(&mut self, _: &GameState, context: &SelectObjectsContext) -> Vec<ObjectId> {
+        // This scenario has no event-time alternative casting method in
+        // hand. Decline that independent optional disclosure channel, while
+        // preserving the exact mandatory original opening assertions below.
+        if context.description == "You may reveal cards with a casting permission for this event" {
+            assert_eq!(context.min, 0);
+            assert_eq!(context.reveal_policy, ironsmith::decisions::context::SelectionRevealPolicy::Public);
+            return Vec::new();
+        }
         assert_eq!(context.reveal_policy, SelectionRevealPolicy::Public);
         assert_eq!(context.player, B);
         assert_eq!(context.min, 1);

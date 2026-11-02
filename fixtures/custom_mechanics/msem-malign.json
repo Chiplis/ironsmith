@@ -1,0 +1,639 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Malign conditional entry counters and spell ability grants",
+  "notes": [
+    "All three source variants retained. Candidates need native entry, history reset, opponent-history, doubling, and stacked-instance checks."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-968",
+      "keyword": "Malign",
+      "original_reminder": "This creature enters with a +1/+1 counter on it if you attacked this turn.",
+      "executable_reminder": "If you attacked this turn, this creature enters with {Number} +1/+1 counters on it.",
+      "source_cards": [
+        "Angelic Tactician"
+      ],
+      "rule_reference": "702.308.",
+      "rule_text": [
+        {
+          "name": "702.308a",
+          "rule": "Malign is a static ability. “Malign N” means “If you've attacked this turn, this permanent enters with N +1/+1 counters on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.308b",
+          "rule": "If an object has multiple instances of malign, each applies separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Angelic Tactician_LIP",
+          "name": "Angelic Tactician",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn.",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Angel Soldier",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Angelic Tactician_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Angelic Tactician",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Angelic Tactician",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Malign 1\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nFlying\nWhenever Angelic Tactician attacks, target attacking creature without flying gains flying until end of turn.",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Charging Lance_LIP",
+          "name": "Charging Lance",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Knight\nPower/Toughness: 3/3\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Knight\nPower/Toughness: 3/3\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn.",
+          "source_card_key": "Charging Lance_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Human Knight",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 1\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn.",
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Charging Lance",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Knight\nPower/Toughness: 3/3\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nWhenever Charging Lance attacks, create a 1/1 white Soldier creature token that's tapped and attacking. That token gets +2/+2 until end of turn."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Instinctive Commander_LIP",
+          "name": "Instinctive Commander",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Human Soldier\nPower/Toughness: 3/2\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\nCreature tokens you control get +1/+0.",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Soldier\nPower/Toughness: 3/2\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nCreature tokens you control get +1/+0.",
+          "source_card_key": "Instinctive Commander_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Human Soldier",
+          "power": "3",
+          "toughness": "2",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 1\nCreature tokens you control get +1/+0.",
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nCreature tokens you control get +1/+0.",
+          "executable_faces": [
+            {
+              "name": "Instinctive Commander",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Soldier\nPower/Toughness: 3/2\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nCreature tokens you control get +1/+0.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\nCreature tokens you control get +1/+0.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nCreature tokens you control get +1/+0."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Lurid Battlemaster_LIP",
+          "name": "Lurid Battlemaster",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/1\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery.",
+          "source_card_key": "Lurid Battlemaster_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Soldier",
+          "power": "2",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 1\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery.",
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Lurid Battlemaster",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\n{R}, Sacrifice a creature: Target creature gains double strike until end of turn. Activate only as a sorcery."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Rallied Purifier_LIP",
+          "name": "Rallied Purifier",
+          "original_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 2/1\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery.",
+          "executable_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 2/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery.",
+          "source_card_key": "Rallied Purifier_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{W}",
+          "type_line": "Creature — Human Soldier",
+          "power": "2",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 1\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery.",
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Rallied Purifier",
+              "executable_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 2/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\n{1}{W}, Exile Rallied Purifier from your graveyard: Put a +1/+1 counter on target creature you control. Activate only as a sorcery."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Vengeful Purifier_LIP",
+          "name": "Vengeful Purifier",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\nFlying\nOther Angel creatures you control have malign 1.\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nFlying\nOther Angel creatures you control have custom keyword \"malign\", and \"If you attacked this turn, this creature enters with 1 +1/+1 counters on it.\".\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery.",
+          "source_card_key": "Vengeful Purifier_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Angel Soldier",
+          "power": "1",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 1\nFlying\nOther Angel creatures you control have malign 1.\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery.",
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nFlying\nOther Angel creatures you control have malign 1.\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Vengeful Purifier",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 1/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nFlying\nOther Angel creatures you control have custom keyword \"malign\", and \"If you attacked this turn, this creature enters with 1 +1/+1 counters on it.\".\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\nFlying\nOther Angel creatures you control have malign 1.\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nFlying\nOther Angel creatures you control have malign 1.\n{2}{W}: Create a 1/1 white Angel creature token with flying. Activate only as a sorcery."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Vicious Orator_LIP",
+          "name": "Vicious Orator",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Human Bard\nPower/Toughness: 2/1\nMalign 1 *(This creature enters with a +1/+1 counter on it if you attacked this turn.)*\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead.",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Bard\nPower/Toughness: 2/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead.",
+          "source_card_key": "Vicious Orator_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Human Bard",
+          "power": "2",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 1\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead.",
+          "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead.",
+          "executable_faces": [
+            {
+              "name": "Vicious Orator",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Bard\nPower/Toughness: 2/1\nIf you attacked this turn, this creature enters with 1 +1/+1 counters on it.\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 1\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead.",
+              "original_printed_rules_text": "Malign 1 (This creature enters with a +1/+1 counter on it if you attacked this turn.)\nWhen Vicious Orator enters, return target creature card with mana value 2 or less from your graveyard to your hand. If it was put there from the battlefield this turn, you may return it to the battlefield instead."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.308a-b requires an entry replacement conditioned on controller attack history this turn, with independently additive instances; an enters trigger is not equivalent.",
+      "executable_definitions": [
+        {
+          "keyword": "Malign {Number}",
+          "reminder": "If you attacked this turn, this creature enters with {Number} +1/+1 counters on it."
+        }
+      ],
+      "verification": {
+        "status": "focused_native_scenarios_passed",
+        "log": "/tmp/custom-malign-round101.log",
+        "tests": 3,
+        "scope": "Exact materialized source entries direct/artifact and generic condition/reset/additive/replacement controls; does not certify unrelated attacks or all card interactions."
+      }
+    },
+    {
+      "id": "msem-969",
+      "keyword": "Malign",
+      "original_reminder": "This creature enters with two +1/+1 counters on it if you attacked this turn.",
+      "executable_reminder": "If you attacked this turn, this creature enters with {Number} +1/+1 counters on it.",
+      "source_cards": [
+        "Dogmatic Tactician"
+      ],
+      "rule_reference": "702.308.",
+      "rule_text": [
+        {
+          "name": "702.308a",
+          "rule": "Malign is a static ability. “Malign N” means “If you've attacked this turn, this permanent enters with N +1/+1 counters on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.308b",
+          "rule": "If an object has multiple instances of malign, each applies separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dogmatic Tactician_LIP",
+          "name": "Dogmatic Tactician",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nMalign 2 *(This creature enters with two +1/+1 counters on it if you attacked this turn.)*\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Human Soldier",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Dogmatic Tactician_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dogmatic Tactician",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nMalign 2 *(This creature enters with two +1/+1 counters on it if you attacked this turn.)*\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dogmatic Tactician",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 2\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls.",
+              "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls."
+            }
+          ],
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Malign 2\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nWhenever Dogmatic Tactician attacks, tap up to one target creature defending player controls.",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Hateful Hunter_LIP",
+          "name": "Hateful Hunter",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Human Warrior\nPower/Toughness: 3/3\nMalign 2 *(This creature enters with two +1/+1 counters on it if you attacked this turn.)*\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn.",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Warrior\nPower/Toughness: 3/3\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn.",
+          "source_card_key": "Hateful Hunter_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{4}{R}",
+          "type_line": "Creature — Human Warrior",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 2\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn.",
+          "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Hateful Hunter",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Warrior\nPower/Toughness: 3/3\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 2\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn.",
+              "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nMenace\n{R}: Hateful Hunter gets +1/+0 until end of turn."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Reckless Slayer_LIP",
+          "name": "Reckless Slayer",
+          "original_text": "Mana cost: {2}{R}{W}\nType: Creature — Human Soldier\nPower/Toughness: 4/2\nMalign 2 *(This creature enters with two +1/+1 counters on it if you attacked this turn.)*\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life.",
+          "executable_text": "Mana cost: {2}{R}{W}\nType: Creature — Human Soldier\nPower/Toughness: 4/2\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life.",
+          "source_card_key": "Reckless Slayer_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{2}{R}{W}",
+          "type_line": "Creature — Human Soldier",
+          "power": "4",
+          "toughness": "2",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 2\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life.",
+          "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life.",
+          "executable_faces": [
+            {
+              "name": "Reckless Slayer",
+              "executable_text": "Mana cost: {2}{R}{W}\nType: Creature — Human Soldier\nPower/Toughness: 4/2\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 2\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life.",
+              "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nWhen Reckless Slayer dies, it deals 3 damage to any target and you gain 3 life."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Vinza, Adamant Firebrand_LIP",
+          "name": "Vinza, Adamant Firebrand",
+          "original_text": "Mana cost: {3}{R}{W}\nType: Legendary Creature — Angel Soldier\nPower/Toughness: 4/4\nMalign 2 *(This creature enters with two +1/+1 counters on it if you attacked this turn.)*\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control.",
+          "executable_text": "Mana cost: {3}{R}{W}\nType: Legendary Creature — Angel Soldier\nPower/Toughness: 4/4\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control.",
+          "source_card_key": "Vinza, Adamant Firebrand_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "mana_cost": "{3}{R}{W}",
+          "type_line": "Legendary Creature — Angel Soldier",
+          "power": "4",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "malign"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Malign 2\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control.",
+          "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control.",
+          "executable_faces": [
+            {
+              "name": "Vinza, Adamant Firebrand",
+              "executable_text": "Mana cost: {3}{R}{W}\nType: Legendary Creature — Angel Soldier\nPower/Toughness: 4/4\nIf you attacked this turn, this creature enters with 2 +1/+1 counters on it.\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control.",
+              "custom_keyword_identities": [
+                "malign"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Malign 2\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control.",
+              "original_printed_rules_text": "Malign 2 (This creature enters with two +1/+1 counters on it if you attacked this turn.)\nFlying, vigilance\nWhenever an opponent casts a noncreature spell, Vinza deals X damage to them, where X is the number of Angels you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.308a-b requires an entry replacement conditioned on controller attack history this turn, with independently additive instances; an enters trigger is not equivalent.",
+      "executable_definitions": [
+        {
+          "keyword": "Malign {Number}",
+          "reminder": "If you attacked this turn, this creature enters with {Number} +1/+1 counters on it."
+        }
+      ],
+      "verification": {
+        "status": "focused_native_scenarios_passed",
+        "log": "/tmp/custom-malign-round101.log",
+        "tests": 3,
+        "scope": "Exact materialized source entries direct/artifact and generic condition/reset/additive/replacement controls; does not certify unrelated attacks or all card interactions."
+      }
+    },
+    {
+      "id": "msem-970",
+      "keyword": "Malign",
+      "original_reminder": "A creature with malign 1 enters with a +1/+1 counter on it if you attacked this turn.",
+      "executable_reminder": "If you attacked this turn, this creature enters with {Number} +1/+1 counters on it.",
+      "source_cards": [
+        "Fanatical Vanguard"
+      ],
+      "rule_reference": "702.308.",
+      "rule_text": [
+        {
+          "name": "702.308a",
+          "rule": "Malign is a static ability. “Malign N” means “If you've attacked this turn, this permanent enters with N +1/+1 counters on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.308b",
+          "rule": "If an object has multiple instances of malign, each applies separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Fanatical Vanguard_LIP",
+          "name": "Fanatical Vanguard",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain malign 1 as you cast them. *(A creature with malign 1 enters with a +1/+1 counter on it if you attacked this turn.)*",
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain custom keyword \"malign\", and \"If you attacked this turn, this creature enters with 1 +1/+1 counters on it.\" as you cast them.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Human Soldier",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Fanatical Vanguard_LIP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fanatical Vanguard",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain malign 1 as you cast them. *(A creature with malign 1 enters with a +1/+1 counter on it if you attacked this turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fanatical Vanguard",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain custom keyword \"malign\", and \"If you attacked this turn, this creature enters with 1 +1/+1 counters on it.\" as you cast them.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Fanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain malign 1 as you cast them.",
+              "original_printed_rules_text": "Fanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain malign 1 as you cast them. (A creature with malign 1 enters with a +1/+1 counter on it if you attacked this turn.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Fanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain malign 1 as you cast them.",
+          "original_printed_rules_text": "Fanatical Vanguard can't block.\n{R}, Exile Fanatical Vanguard from your graveyard: Creature spells you cast this turn gain malign 1 as you cast them. (A creature with malign 1 enters with a +1/+1 counter on it if you attacked this turn.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.308a-b requires an entry replacement conditioned on controller attack history this turn, with independently additive instances; an enters trigger is not equivalent.",
+      "composition_gaps": [
+        "Grant entry replacement to creature spells cast this turn, effective as cast and preserved through entry; do not replace with an enters trigger."
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Malign {Number}",
+          "reminder": "If you attacked this turn, this creature enters with {Number} +1/+1 counters on it."
+        }
+      ]
+    }
+  ]
+}

@@ -14,6 +14,12 @@ mod r#copy_entry_semantic_integrity;
 #[path = "../craft_filtered_materials.rs"]
 mod r#craft_filtered_materials;
 
+#[path = "../custom_characteristic_transitions.rs"]
+mod r#custom_characteristic_transitions;
+
+#[path = "../custom_source_alias_cost_grammar.rs"]
+mod r#custom_source_alias_cost_grammar;
+
 #[path = "../dice_receipt_resource_boundaries.rs"]
 mod r#dice_receipt_resource_boundaries;
 

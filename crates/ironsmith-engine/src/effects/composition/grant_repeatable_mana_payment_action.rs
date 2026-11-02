@@ -34,6 +34,7 @@ impl EffectExecutor for GrantRepeatableManaPaymentActionUntilEndOfTurnEffect {
         game.effect_store
             .repeatable_mana_payment_actions
             .push(RepeatableManaPaymentAction {
+                restrictions: Default::default(),
                 player,
                 source: ctx.source,
                 controller: ctx.controller,
@@ -72,6 +73,7 @@ impl EffectExecutor for GrantEndThisEffectPaymentEffect {
         game.effect_store
             .repeatable_mana_payment_actions
             .push(RepeatableManaPaymentAction {
+                restrictions: Default::default(),
                 player,
                 source: ctx.source,
                 controller: ctx.controller,
@@ -180,4 +182,66 @@ mod tests {
         game.cleanup_repeatable_mana_payment_actions_end_of_turn();
         assert!(game.effect_store.repeatable_mana_payment_actions.is_empty());
     }
+
+    #[test]
+    fn immediate_action_offer_checks_zone_sorcery_window_and_consumes_uses() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        let card = CardBuilder::new(CardId::new(), "Action source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let grant = GrantRepeatableManaPaymentActionUntilEndOfTurnEffect::new(
+            PlayerFilter::You, ManaCost::from_symbols(vec![]),
+            vec![Effect::new(crate::effects::GainLifeEffect::you(1))],
+        );
+        grant.execute(&mut game, &mut ExecutionContext::new_default(source, alice)).unwrap();
+        game.effect_store.repeatable_mana_payment_actions[0].restrictions =
+            crate::game_state::ImmediateActionRestrictions {
+                source_zone: Some(Zone::Battlefield), sorcery_speed: true,
+                remaining_uses: Some(1), ..Default::default()
+            };
+        let action = SpecialAction::PerformRepeatableManaPaymentAction { action_index: 0 };
+        game.turn.phase = crate::game_state::Phase::Combat;
+        assert!(can_perform_check(&action, &game, alice).is_err());
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        game.effect_store.repeatable_mana_payment_actions[0].restrictions.source_zone = Some(Zone::Hand);
+        assert!(can_perform_check(&action, &game, alice).is_err());
+        game.effect_store.repeatable_mana_payment_actions[0].restrictions.source_zone = Some(Zone::Battlefield);
+        assert!(can_perform_check(&action, &game, alice).is_ok());
+        let before = game.player(alice).unwrap().life;
+        perform(action.clone(), &mut game, alice, &mut SelectFirstDecisionMaker).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, before + 1);
+        assert!(game.stack_is_empty(), "instructions execute immediately");
+        assert!(can_perform_check(&action, &game, alice).is_err(), "the permission is used up");
+    }
+
+    #[test]
+    fn immediate_action_attacking_gate_requires_the_source_to_be_attacking() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.priority_player = Some(alice);
+        let card = CardBuilder::new(CardId::new(), "Attacking action source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let grant = GrantRepeatableManaPaymentActionUntilEndOfTurnEffect::new(
+            PlayerFilter::You, ManaCost::from_symbols(vec![]), vec![],
+        );
+        grant.execute(&mut game, &mut ExecutionContext::new_default(source, alice)).unwrap();
+        game.effect_store.repeatable_mana_payment_actions[0].restrictions.source_attacking = true;
+        let action = SpecialAction::PerformRepeatableManaPaymentAction { action_index: 0 };
+        assert!(can_perform_check(&action, &game, alice).is_err());
+        game.combat = Some(crate::combat_state::CombatState::default());
+        game.combat.as_mut().unwrap().attackers.push(crate::combat_state::AttackerInfo {
+            creature: source, target: crate::combat_state::AttackTarget::Player(bob),
+        });
+        assert!(can_perform_check(&action, &game, alice).is_ok());
+        game.combat.as_mut().unwrap().attackers.clear();
+        assert!(can_perform_check(&action, &game, alice).is_err());
+    }
+
 }

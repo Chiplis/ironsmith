@@ -4,11 +4,13 @@ use crate::cards::builders::ForEachEffectAst;
 pub(super) fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
     match scope {
         ForEachParticipantScope::Opponent => Some(PlayerFilter::Opponent),
+        ForEachParticipantScope::CursedOpponent => Some(with_curse_attached(PlayerFilter::Opponent)),
         ForEachParticipantScope::OpponentExceptDefending => Some(PlayerFilter::excluding(
             PlayerFilter::Opponent,
             PlayerFilter::Defending,
         )),
-        ForEachParticipantScope::OpponentOfThatPlayer
+        ForEachParticipantScope::CursedPlayer
+        | ForEachParticipantScope::OpponentOfThatPlayer
         | ForEachParticipantScope::OpponentOfItsController
         | ForEachParticipantScope::Player
         | ForEachParticipantScope::PlayerExceptYou
@@ -22,6 +24,7 @@ pub(super) fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFi
 pub(super) fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
     match scope {
         ForEachParticipantScope::Player => Some(PlayerFilter::Any),
+        ForEachParticipantScope::CursedPlayer => Some(with_curse_attached(PlayerFilter::Any)),
         ForEachParticipantScope::PlayerExceptYou => Some(PlayerFilter::NotYou),
         ForEachParticipantScope::PlayerExceptTarget => Some(PlayerFilter::excluding(
             PlayerFilter::Any,
@@ -47,7 +50,7 @@ pub(super) fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilt
                 crate::tag::CompilerReferenceTag::It.bind(),
             ))),
         )),
-        ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => {
+        ForEachParticipantScope::Opponent | ForEachParticipantScope::CursedOpponent | ForEachParticipantScope::OpponentExceptDefending => {
             None
         }
     }
@@ -175,12 +178,13 @@ pub fn parse_for_each_player_clause(
     if has_independent_participant_continuation(tokens) {
         return Ok(None);
     }
-    let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
+    let Some(mut outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
         return Ok(None);
     };
-    let Some(iteration_filter) = player_filter(outer.scope) else {
+    let Some(mut iteration_filter) = player_filter(outer.scope) else {
         return Ok(None);
     };
+    super::participant_scopes::read_matching_attachment_qualifier(&mut outer, &mut iteration_filter)?;
     // "Each player with fewer cards in hand than ... draws" / "each player
     // with exactly 13 life ...": a `with` qualifier restricts the iterated
     // players. The participant readings below would read it as the body's
@@ -341,4 +345,31 @@ fn exclude_participant_choice_from_other_discard(
             _ => {}
         }
     }
+}
+
+fn with_curse_attached(base: PlayerFilter) -> PlayerFilter {
+    let mut filter = ObjectFilter::default();
+    filter.subtypes.push(crate::types::Subtype::Curse);
+    PlayerFilter::WithMatchingAttachments { base: Box::new(base), filter: Box::new(filter) }
+}
+
+/// Own only the player's attachment qualifier; the ordinary participant
+/// reader continues to own every action after it.
+pub(super) fn read_matching_attachment_qualifier<'a>(
+    outer: &mut for_each_shapes::ForEachParticipantClauseShape<'a>,
+    base: &mut PlayerFilter,
+) -> Result<(), CardTextError> {
+    let tokens = outer.inner_tokens;
+    if !tokens.first().is_some_and(|token| token.is_word("with")) { return Ok(()); }
+    let Some(attached) = tokens.windows(3).position(|part| part[0].is_word("attached") && part[1].is_word("to") && part[2].is_word("them")) else { return Ok(()); };
+    if attached <= 1 { return Ok(()); }
+    let filter = parse_object_filter(&tokens[1..attached], false)?;
+    if filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Battlefield) { return Ok(()); }
+    let body = crate::lexer::trim_lexed_commas(&tokens[attached + 3..]);
+    if body.is_empty() { return Ok(()); }
+    crate::word_claims::claim_tokens(&tokens[..1]);
+    crate::word_claims::claim_tokens(&tokens[attached..attached + 3]);
+    *base = PlayerFilter::WithMatchingAttachments { base: Box::new(base.clone()), filter: Box::new(filter) };
+    outer.inner_tokens = body;
+    Ok(())
 }

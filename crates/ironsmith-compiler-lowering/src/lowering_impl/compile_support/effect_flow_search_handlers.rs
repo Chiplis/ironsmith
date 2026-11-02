@@ -755,6 +755,18 @@ fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<Effect
     if let [EffectAst::Sequence { effects }] = effects {
         return compound_optional_payment_actions(effects);
     }
+    // A constrained selection followed by tapping exactly that selected
+    // group is an atomic optional payment. A partial group cannot satisfy
+    // an "if you do" consequence, and no crew identity is introduced.
+    if let [
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PermanentState(crate::cards::builders::PermanentStateActionAst::TapAll { filter }), ..
+        }),
+    ] = effects
+        && *filter == ObjectFilter::tagged(tag.clone()) {
+        return Some(effects.to_vec());
+    }
     // Paying mana is a cost even without a second conjunct. An accepted
     // optional offer must not count as paid when no mana is available.
     if let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -853,6 +865,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             };
             let effect = with_optional_payment_mode(effect, payment_actions.is_some());
             (vec![effect], inner_choices)
+        }
+        EffectAst::Permissions(PermissionEffectAst::MayPay { player, effects, payment_receipt }) => {
+            // Resolve the authored payer before local choices can shadow the
+            // enclosing trigger's player reference environment.
+            let payer = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let (inner_effects, choices) = compile_effects_preserving_last_effect(effects, ctx)?;
+            if inner_effects.is_empty() { return Err(CardTextError::ParseError("empty optional cost program".into())); }
+            let optional=crate::effects::MayEffect {
+                decider:Some(payer),effects:vec![Effect::new(crate::effects::SequenceEffect::new(inner_effects))],
+                pay_as_cost:true,payment_receipt:payment_receipt.clone(),
+            };
+            (vec![Effect::new(optional)], choices)
         }
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
             if matches!(effects.as_slice(),
@@ -1591,6 +1615,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     }
                 }
             }
+            let creates_tokens = ironsmith_compiler_resolve::reference_resolution::effects_only_create_tokens(&scoped_effects);
+            let collection_tag = creates_tokens
+                .then(|| ctx.take_reserved_object_result_tag("created"))
+                .flatten();
             let (inner_effects, mut inner_choices) =
                 compile_effects_in_iterated_object_context(&scoped_effects, ctx)?;
             // "put a -1/-1 counter on each creature target player controls"
@@ -1616,7 +1644,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     push_choice(&mut inner_choices, choice);
                 }
             }
-            compiled.push(Effect::for_each(resolved_filter, inner_effects));
+            let mut iteration = Effect::for_each(resolved_filter, inner_effects);
+            if creates_tokens
+                && let Some(created) = collection_tag.or_else(|| ctx.last_object_tag.clone()
+                    .filter(|tag| tag.as_str().starts_with("created_")))
+            {
+                // Like tagged iteration, the enclosing object loop publishes
+                // its complete created collection after all child actions.
+                // A child tag alone would retain only the final iteration.
+                iteration = iteration.tag_all(created.clone());
+                ctx.last_object_tag = Some(created);
+            }
+            compiled.push(iteration);
             // The trailing "then that player shuffles" names the same player.
             if bound_iterated_library_owner
                 && let Some(controller) = iterated_target_controller

@@ -579,6 +579,14 @@ fn parse_heal_damage_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
         return Ok(None);
     };
     let target = parse_target_phrase(&tokens[target_tokens])?;
+    // These literal grammar slots are owned by the complete heal reader;
+    // amount/target readers already retain their independent word claims.
+    if matches!(words[0], "heal" | "heals") {
+        crate::word_claims::claim_words(&words[..1]);
+    }
+    if damage_word > 0 && matches!(words[damage_word-1], "to" | "from" | "on") {
+        crate::word_claims::claim_words(&words[damage_word-1..damage_word]);
+    }
     Ok(Some(EffectAst::subject_verb_heal_damage(target, amount)))
 }
 
@@ -1769,6 +1777,7 @@ fn lower_direct_clause_shape(
 }
 
 pub fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{if let Some(effect)=effects.into_iter().next(){return Ok(effect)}}
     // Clause parsing is a public compiler boundary as well as an internal
     // sentence-parser stage. Lower-level callers and focused tests can enter
     parse_effect_clause_unstacked(tokens)

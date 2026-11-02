@@ -48,6 +48,7 @@
 //! the shared compiled-card domain.
 
 mod action_observation;
+pub(crate) mod target_packets;
 pub mod cards;
 pub mod combat;
 pub mod composition;
@@ -88,6 +89,9 @@ pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 pub const REVEALED_THIS_WAY_TAG: &str = crate::tag::REVEALED_THIS_WAY_TAG;
 
 // Re-export the traits, modal spec, and cost validation error
+#[path="composition/link_objects_to_group.rs"]
+mod link_objects_to_group;
+pub use link_objects_to_group::LinkObjectsToGroupEffect;
 pub use composition::{
     ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion,
     ProgramInstructionSelection, ProgramPreparation,
@@ -147,7 +151,7 @@ pub use composition::{
     ChooseSpellCastHistoryEffect, CipherEffect, CollectEvidenceEffect, CollectManaPaymentsEffect,
     BindXValueEffect,
     ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
-    EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
+    EmitGiftGivenEffect, EmitKeywordActionEffect, PerformNamedActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachObjectCorrelatedResultEffect,
     ForEachAnnouncedTargetSlotEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect,
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
@@ -166,7 +170,7 @@ pub use composition::{
     player_option_choice_tag,
 };
 pub use continuous::{
-    ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification,
+    ApplyContinuousEffect, ChangeTextEffect, RemoveOptionalTextFragmentEffect, ExchangeTextBoxesEffect, RuntimeModification,
 };
 pub use control::{
     DirectionalAdjacentPlayerControlEffect, ExchangeControlEffect, GainControlEffect,
@@ -215,16 +219,17 @@ pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeSaddledUntilEotEffect, ClearSuspectedEffect,
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
-    ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
+    ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MergePermanentsEffect, MonstrosityEffect,
     NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PrepareEffect, PutStickerEffect, ReconfigureEffect,
     RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SetDayNightEffect,
     DayNightDesignation, SneakCostEffect,
-    SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
+    SolveCaseEffect, LinkPermanentsEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
     TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect,
     UnlockRoomDoorEffect, UntapEffect,
 };
-pub use player::{KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, TagPlayersEffect};
+pub use player::{
+    ActivateAbilityWithoutCostsEffect,KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, TagPlayersEffect};
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AdditionalStepAnchor, AdditionalStepKind, AdditionalStepsEffect, AscendEffect,
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
@@ -253,7 +258,7 @@ pub use player::{
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterCounterPlacementReplacementEffect,
-    RegisterDamagedBySourceZoneReplacementEffect, RegisterDrawReplacementEffect,
+    RegisterDamagedBySourceZoneReplacementEffect, RegisterDrawReplacementEffect, RegisterEventReplacementEffect,
     RegisterEnterTappedReplacementEffect, RegisterEnterUnderControlReplacementEffect,
     RegisterEnterWithCountersReplacementEffect, RegisterFutureZoneReplacementEffect,
     RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
@@ -269,13 +274,13 @@ pub use stack::{
     VariableCasualtyPlaneswalkerCopyEffect,
 };
 pub use tokens::{
-    AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, EmpowerJaceEffect,
+    AmassEffect, CreateLinkedFaceTokenEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, EmpowerJaceEffect,
     IncubateEffect, InvestigateEffect, TokenCopyReferenceSurface,
 };
 pub use zones::{
     BattlefieldController, BecomePlottedEffect, BecomeForetoldEffect, DestroyEffect, DestroyNoRegenerationEffect,
     EachPlayerSacrificesEffect, ExchangeZonesEffect, ExileEffect, ExileUntilDuration,
-    ExileUntilEffect, HauntExileEffect, LibraryPlacementOrder, MayMoveToZoneEffect,
+    ExileUntilEffect, LinkExiledCardsEffect, HauntExileEffect, LibraryPlacementOrder, MayMoveToZoneEffect,
     MoveToLibraryNthFromTopEffect, MoveToLibraryTopOrBottomChoiceEffect,
     MoveToZoneAttackTargetMode, MoveToZoneEffect, PutOntoBattlefieldEffect, ReorderGraveyardEffect,
     ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
@@ -304,4 +309,14 @@ pub use damage::DealDamageBySourcesEffect;
 
 pub use damage::DealDamageEachEffect;
 
-pub use ironsmith_core::SetPermanentDesignationEffect;
+pub use ironsmith_core::{SetPermanentDesignationEffect,GrantExileControllerInspectionEffect};
+
+pub use composition::{NamedActionProgramEffect, FirstResolutionEachTurnEffect};
+pub use ironsmith_core::GrantActivationCostAlternativeEffect;
+pub(crate) use stack::{select_copy_source_definition,CopySourceSelection};
+pub use stack::{TriggerAbilitiesByClassEffect,CopyFromDefinitionEffect};
+
+pub(crate) use player::{HandRevealFrame,freeze_hand_reveal_frame,capture_hand_reveal_window,answer_hand_reveal_windows};
+pub use cards::CreateCardsEffect;
+
+pub use cards::NoteObjectNamesEffect;

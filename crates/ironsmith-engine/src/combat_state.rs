@@ -804,7 +804,7 @@ pub fn declare_attackers(
         &declarations,
     ) {
         Ok(()) => {
-            game.defer_trigger_entries(trigger_queue.take_all());
+            trigger_queue.defer_into_game(game);
             Ok(())
         }
         Err(crate::game_loop::GameLoopError::CombatError(error)) => Err(error),
@@ -833,6 +833,12 @@ pub fn declare_blockers(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
 ) -> Result<(), CombatError> {
+    if !game.continuous_state_is_clean() {
+        let mut refreshed = game.clone();
+        refreshed.refresh_continuous_state().map_err(|error| CombatError::InvalidDeclaration(format!("continuous effects could not be refreshed: {error:?}")))?;
+        return declare_blockers(&refreshed, combat, declarations);
+    }
+
     declare_blockers_internal(game, combat, declarations, true, None)?;
     combat.block_declaration_complete = true;
     // Blocking changes continuous conditions even when no object is tapped.
@@ -918,11 +924,7 @@ fn declare_blockers_internal(
         // Must be untapped, unless it can block as though it were untapped
         // (CR 509.1a).
         if game.is_tapped(*blocker_id)
-            && !game.object_has_ability_with_effects(
-                *blocker_id,
-                &StaticAbility::can_block_as_though_untapped(),
-                &all_effects,
-            )
+            && !blocker_ignores_tapping_against(game, *blocker_id, *attacker_id, &all_effects)
         {
             return Err(CombatError::CreatureTapped(*blocker_id));
         }
@@ -1089,7 +1091,7 @@ fn declare_blockers_internal(
     }
 
     if enforce_requirements {
-        let requirements = blocking_requirements(game, combat, &all_effects)
+        let requirements = blocking_requirements(game, combat, &all_effects, &blockers_by_attacker)
             .into_iter()
             .filter(|requirement| {
                 requirement_player.is_none_or(|player| {
@@ -1209,6 +1211,7 @@ fn blocking_requirements<'a>(
     game: &'a GameState,
     combat: &CombatState,
     effects: &[crate::continuous::ContinuousEffect],
+    proposed: &HashMap<ObjectId,Vec<ObjectId>>,
 ) -> Vec<BlockingRequirement<'a>> {
     let mut requirements = Vec::new();
     let defending_players = combat
@@ -1288,6 +1291,10 @@ fn blocking_requirements<'a>(
         }
     }
 
+    for (actors,members) in game.coordinated_combat_groups(){
+        if !proposed.values().flatten().any(|blocker|actors.contains(blocker)){continue}
+        for blocker in members {if game.object(blocker).is_some_and(|object|defending_players.contains(&game.controller_of(object))){requirements.push(BlockingRequirement::BlockerMustBlock(blocker));}}
+    }
     requirements
 }
 
@@ -1402,11 +1409,7 @@ fn legal_block_edge(
             effects,
         )
         && (!game.is_tapped(blocker_id)
-            || game.object_has_ability_with_effects(
-                blocker_id,
-                &StaticAbility::can_block_as_though_untapped(),
-                effects,
-            ))
+            || blocker_ignores_tapping_against(game, blocker_id, attacker_id, effects))
         && !game.object_has_ability_with_effects(blocker_id, &StaticAbility::cant_block(), effects)
         && game.can_block_attacker(blocker_id, attacker_id)
         && game.can_be_blocked(attacker_id)
@@ -1834,6 +1837,26 @@ pub fn set_attacking_band(
 
     combat.attacking_bands.push(deduped);
     Ok(())
+}
+
+/// The tapped-blocker exception is scoped to the attacking object whose
+/// structured permission is being read. It never changes the blocker's state.
+pub(crate) fn blocker_ignores_tapping_against(
+    game: &GameState, blocker: ObjectId, attacker: ObjectId,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> bool {
+    if game.object_has_ability_with_effects(blocker, &StaticAbility::can_block_as_though_untapped(), effects) {
+        return true;
+    }
+    let Some(object) = game.object(blocker) else { return false; };
+    let Some(controller) = game.controller_of_id(attacker) else { return false; };
+    let context = FilterContext::new(controller).with_source(attacker).with_active_player(game.turn.active_player);
+    static_abilities_for_object(game, attacker, effects).iter().any(|ability| {
+        match ability.compiled_model().map(|model| &model.payload) {
+            Some(ironsmith_core::StaticAbilityPayload::CanBeBlockedAsThoughBlockersWereUntapped(filter)) => filter.matches(object, &context, game),
+            _ => false,
+        }
+    })
 }
 
 fn creature_has_banding(game: &GameState, creature: ObjectId) -> bool {

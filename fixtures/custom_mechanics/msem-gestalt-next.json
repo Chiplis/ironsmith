@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Gestalt using generic battlefield merged components",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/mechanic-definitions.json",
+    "card_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "snapshot_fetched": "2026-10-31",
+    "scope": "msem",
+    "status": "unreviewed source inventory; all executable rewrites pending",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces."
+  },
+  "mechanics": [
+    {
+      "id": "msem-689",
+      "keyword": "Gestalt",
+      "original_reminder": "When this or another creature enters under your control, you may merge it with the one in play, keeping counters and attachments. They become the permanent on top plus all abilities from under it.",
+      "executable_reminder": "When this creature enters, you may merge this permanent with another creature you control, choosing which is on top and moving all counters and attachments to the merged permanent.\nWhen another creature you control enters, you may merge that permanent with this permanent, choosing which is on top and moving all counters and attachments to the merged permanent.",
+      "source_cards": [
+        "Face of All"
+      ],
+      "rule_reference": "702.244.",
+      "rule_text": [
+        {
+          "name": "702.244a",
+          "rule": "Gestalt represents two triggered abilities. “Gestalt” means “When this creature enters, you may merge it with a another creature you control. It becomes a gestalt permanent. Move any counters from this creature to the gestalt permanent and attach any cards attached to this creature to the gestalt permanent.” and “When another creature you control enters, you may merge it with this permanent. It becomes a gestalt permanent. Move any counters from that creature to the gestalt permanent and attach any cards attached to that creature to the gestalt permanent.”",
+          "custom": true
+        },
+        {
+          "name": "702.244b",
+          "rule": "A gestalt permanent has all abilities of each card and token that represents it. Its other characteristics are derived from the topmost card or token.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Face of All_MS3",
+          "name": "Face of All",
+          "original_text": "Mana cost: {1}{W}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 3/3\nGestalt *(When this or another creature enters under your control, you may merge it with the one in play, keeping counters and attachments. They become the permanent on top plus all abilities from under it.)*\nVigilance, lifelink\nWhenever an opponent casts a spell, this permanent phases out until end of turn. *(Treat it and anything attached to it as though they don't exist until end of turn.)*",
+          "executable_text": "Mana cost: {1}{W}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 3/3\nWhen this creature enters, you may merge this permanent with another creature you control, choosing which is on top and moving all counters and attachments to the merged permanent.\nWhen another creature you control enters, you may merge that permanent with this permanent, choosing which is on top and moving all counters and attachments to the merged permanent\nVigilance, lifelink\nWhenever an opponent casts a spell, this permanent phases out until end of turn.",
+          "mana_cost": "{1}{W}{U}",
+          "type_line": "Creature — Elemental Shapeshifter",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Face of All_MS3",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Face of All",
+              "original_text": "Mana cost: {1}{W}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 3/3\nGestalt *(When this or another creature enters under your control, you may merge it with the one in play, keeping counters and attachments. They become the permanent on top plus all abilities from under it.)*\nVigilance, lifelink\nWhenever an opponent casts a spell, this permanent phases out until end of turn. *(Treat it and anything attached to it as though they don't exist until end of turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Face of All",
+              "executable_text": "Mana cost: {1}{W}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 3/3\nWhen this creature enters, you may merge this permanent with another creature you control, choosing which is on top and moving all counters and attachments to the merged permanent.\nWhen another creature you control enters, you may merge that permanent with this permanent, choosing which is on top and moving all counters and attachments to the merged permanent\nVigilance, lifelink\nWhenever an opponent casts a spell, this permanent phases out until end of turn.",
+              "custom_keyword_identities": [
+                "gestalt"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Gestalt\nVigilance, lifelink\nWhenever an opponent casts a spell, this permanent phases out until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "gestalt"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Gestalt\nVigilance, lifelink\nWhenever an opponent casts a spell, this permanent phases out until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Gestalt",
+          "reminder": "When this creature enters, you may merge this permanent with another creature you control, choosing which is on top and moving all counters and attachments to the merged permanent.\nWhen another creature you control enters, you may merge that permanent with this permanent, choosing which is on top and moving all counters and attachments to the merged permanent."
+        }
+      ],
+      "implementation_status": "next_wave_existing_merged_component_generalization_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "battlefield-merge-state",
+          "status": "pending",
+          "test_reference": "custom_gestalt_merge::battlefield_merge_preserves_top_abilities_counters_attachments_and_component_owners",
+          "observable": "Top choice and all component abilities; real counter and attachment transfer; distinct physical owners retained on split; no leave/enter notification from merge; token and copied permanent do not recreate extra cards."
+        }
+      ]
+    }
+  ]
+}

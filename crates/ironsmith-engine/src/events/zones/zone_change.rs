@@ -128,6 +128,18 @@ impl ZoneChangeEvent {
         }
     }
 
+    /// Exact origin-zone incarnations represented by this move. `objects`
+    /// also serves ETB matching and can contain destination IDs for moves
+    /// from nonbattlefield zones. Origin consumers must read retained LKI.
+    /// Older events without LKI keep their explicitly supplied object IDs;
+    /// inconsistent retained snapshots never fall back to a later identity.
+    pub fn original_objects(&self) -> Vec<ObjectId> {
+        let snapshots=self.snapshots();
+        if snapshots.is_empty() {return self.objects.clone();}
+        snapshots.iter().filter(|snapshot|snapshot.zone==self.from)
+            .map(|snapshot|snapshot.object_id).collect()
+    }
+
     pub fn with_object_tag(mut self, tag: TagKey, snapshot: ObjectSnapshot) -> Self {
         self.object_tags.entry(tag).or_default().push(snapshot);
         self
@@ -467,4 +479,25 @@ mod tests {
         );
         assert!(batch.display().contains("2 objects"));
     }
+    #[test]
+    fn original_objects_read_origin_snapshots_when_etb_matching_names_destination() {
+        for from in [Zone::Stack,Zone::Graveyard] {
+            let owner=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            let card=crate::card::CardBuilder::new(crate::CardId::new(),"Independent movement origin")
+                .card_types(vec![crate::CardType::Artifact]).build();
+            let old=game.create_object_from_card(&card,owner,from);
+            let to=if from==Zone::Stack{Zone::Graveyard}else{Zone::Battlefield};
+            let new=game.move_object_by_effect(old,to).unwrap();
+            let events=game.take_pending_trigger_events();
+            let event=events.iter().find_map(|event|event.downcast::<ZoneChangeEvent>()).unwrap();
+            assert_eq!(event.objects,vec![new],"actual nonbattlefield publisher exposes the destination for ETB matching");
+            assert_eq!(event.original_objects(),vec![old],"origin identity remains independently authoritative");
+            assert_ne!(old,new);
+            let mut inconsistent=event.clone();inconsistent.snapshots[0].zone=Zone::Exile;
+            assert!(inconsistent.original_objects().is_empty(),"wrong-zone LKI cannot silently become a destination identity");
+        }
+        let legacy=effect_zone_change(ObjectId::from_raw(77),Zone::Stack,Zone::Graveyard);
+        assert_eq!(legacy.original_objects(),vec![ObjectId::from_raw(77)]);
+    }
+
 }

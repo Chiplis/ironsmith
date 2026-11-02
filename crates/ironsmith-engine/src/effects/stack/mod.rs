@@ -4,6 +4,11 @@
 //! such as countering spells and copying spells.
 
 mod choose_new_targets;
+mod copy_source_selection;
+pub(crate) use copy_source_selection::{select_copy_source_definition,CopySourceSelection,ForcedCopySourceDecision};
+mod copy_from_definition;
+pub use copy_from_definition::CopyFromDefinitionEffect;
+pub(crate) use copy_from_definition::definition_copy_source;
 mod copy_spell;
 mod copy_spell_for_each_target;
 mod counter;
@@ -27,3 +32,6 @@ pub use variable_casualty_planeswalker_copy::VariableCasualtyPlaneswalkerCopyEff
 
 mod cast_stored_card_copy;
 pub(crate) use cast_stored_card_copy::CastStoredCardCopyEffect;
+
+mod trigger_by_class;
+pub use trigger_by_class::TriggerAbilitiesByClassEffect;

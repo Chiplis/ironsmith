@@ -25,6 +25,7 @@ pub(crate) enum BattlefieldEntryController {
 #[must_use = "retain and finish every entry receipt after the original batch"]
 pub(crate) struct BattlefieldEntryReceipt {
     pub outcome: BattlefieldEntryOutcome,
+    pub(crate) entry_attachment: Option<crate::effect::EntryAttachmentChoice>,
     original_object: ObjectId,
     published_outputs: Vec<crate::effects::PublishedEffectOutputs>,
     zone_receipt: crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>,
@@ -110,6 +111,8 @@ pub(crate) struct BattlefieldEntryOptions {
     /// onto the battlefield attached to X"). An Aura then doesn't choose what
     /// to enchant (CR 303.4f).
     pub entry_attachment: Option<crate::object::AttachmentTarget>,
+    /// Complete authored role; choose once against resolved prospective entry.
+    pub entry_attachment_candidates: Option<Vec<crate::object::AttachmentTarget>>,
     /// An Aura spell becomes unattached if replacement makes it a non-Aura.
     pub entry_attachment_requires_aura: bool,
     /// An authored host may be undefined; that still forbids choosing another.
@@ -134,6 +137,7 @@ impl BattlefieldEntryOptions {
             initial_counters: Vec::new(),
             entry_modifications: Vec::new(),
             entry_attachment: None,
+            entry_attachment_candidates: None,
             entry_attachment_requires_aura: false,
             entry_attachment_specified: false,
             entry_attachment_filter: None,
@@ -154,6 +158,7 @@ impl BattlefieldEntryOptions {
             initial_counters: Vec::new(),
             entry_modifications: Vec::new(),
             entry_attachment: None,
+            entry_attachment_candidates: None,
             entry_attachment_requires_aura: false,
             entry_attachment_specified: false,
             entry_attachment_filter: None,
@@ -174,6 +179,7 @@ impl BattlefieldEntryOptions {
             initial_counters: Vec::new(),
             entry_modifications: Vec::new(),
             entry_attachment: None,
+            entry_attachment_candidates: None,
             entry_attachment_requires_aura: false,
             entry_attachment_specified: false,
             entry_attachment_filter: None,
@@ -342,6 +348,24 @@ fn transformed_entry_definition(
         )
     }))
     .then_some(transformed)
+}
+
+/// Evaluate attachment permissions using the actual linked back face, while
+/// preserving the resolving front face in the authoritative game state.
+pub(crate) fn transformed_aura_entry_targets(
+    game: &GameState, source: ObjectId, controller: PlayerId,
+    targets: &[crate::object::AttachmentTarget],
+) -> Vec<crate::object::AttachmentTarget> {
+    let Some(definition)=transformed_entry_definition(game,source) else{return Vec::new()};
+    if !definition.card.subtypes.contains(&crate::types::Subtype::Aura){return Vec::new()}
+    let mut preview=game.clone();
+    if !apply_entry_definition(&mut preview,source,&definition){return Vec::new()}
+    let mut result=Vec::new();
+    for target in targets {
+        if !result.contains(target) && preview.attachment_target_exists(*target)
+            && crate::effects::permanents::aura_can_enter_attached_to(&preview,source,controller,*target) { result.push(*target); }
+    }
+    result
 }
 
 fn apply_entry_definition(
@@ -634,6 +658,14 @@ fn prepare_battlefield_entry_batch_inner(
         return Ok(None);
     }
 
+    // Admission belongs to each original source-zone presentation, before
+    // any provisional entry face, copied ability or as-entry program exists.
+    let prohibited_entries = requests.iter().enumerate()
+        .filter_map(|(index, (object, options))| {
+            std::iter::once(*object).chain(options.physical_components.iter().copied())
+                .any(|component| game.zone_move_is_prohibited(component, Zone::Battlefield)).then_some(index)
+        })
+        .collect::<std::collections::HashSet<_>>();
     // Original zone snapshots and observer lookback precede provisional faces,
     // continuous modifications and every entry program in this batch.
     let pre_event_lookback = game.try_trigger_source_lookback_snapshots()?;
@@ -650,6 +682,7 @@ fn prepare_battlefield_entry_batch_inner(
         .collect::<Result<std::collections::HashMap<_, _>, ExecutionError>>()?;
     let mut physical_entries = std::collections::HashMap::new();
     for (index, (primary, options)) in requests.iter().enumerate() {
+        if prohibited_entries.contains(&index) { continue; }
         if options.physical_components.is_empty() {
             continue;
         }
@@ -710,6 +743,7 @@ fn prepare_battlefield_entry_batch_inner(
     // later entrant's conditions must see every other original in its source
     // zone with its real face and characteristics, not another projection.
     for (index, (object, options)) in requests.iter().enumerate() {
+        if prohibited_entries.contains(&index) { continue; }
         let Some(original) = working.object(*object).cloned() else {
             continue;
         };
@@ -769,8 +803,16 @@ fn prepare_battlefield_entry_batch_inner(
     }
     let mut eligible_indices = std::collections::HashSet::new();
     for (index, (object, options)) in requests.iter().enumerate() {
+        if prohibited_entries.contains(&index) { continue; }
         if let Some(projection) = projections.get_mut(object) {
             projection.activate(&mut working)?;
+        }
+        #[cfg(test)]
+        if !options.entry_modifications.is_empty() {
+            eprintln!("ENTRY_PROJECTION eligibility object={object:?} raw={:?} current={:?} forbidden={} effects={:?}",
+                working.object(*object).map(|object| object.card_types.to_vec()),
+                working.current_card_types(*object), working.card_cannot_enter_battlefield(*object),
+                working.effect_store.continuous_effects.effects());
         }
         let eligible = !working
             .object(*object)
@@ -997,10 +1039,36 @@ fn prepare_battlefield_entry_batch_inner(
         prepared.entry_attachment_specified = options.entry_attachment_specified;
         prepared.entry_attachment_filter = options.entry_attachment_filter.clone();
         controllers[index] = entering_controller.or_else(|| working.current_controller(*object));
+        #[cfg(test)]
+        if !options.entry_modifications.is_empty() {
+            eprintln!("ENTRY_PROJECTION prepared object={object:?} prevented={} new_destination={:?} current={:?}",
+                prepared.result.prevented, prepared.result.new_destination, working.current_card_types(*object));
+        }
         prepared_entries[index] = Some((old_zone, prepared));
         if let Some(projection) = projections.get_mut(object) {
             projection.detach(&mut working)?;
         }
+    }
+
+    // Every replacement/as-enters preparation is complete. Freeze every
+    // authored host choice before companions or any original entry mutate.
+    for (index, (object, options)) in requests.iter().enumerate() {
+        if prohibited_entries.contains(&index) { continue; }
+        let Some(destinations) = &options.entry_attachment_candidates else { continue; };
+        let Some((_, prepared)) = prepared_entries[index].as_mut() else { continue; };
+        if prepared.result.prevented { continue; }
+        if let Some(projection) = projections.get_mut(object) { projection.activate(&mut working)?; }
+        let prospective = working.prepared_entry_attachment_game_state(*object, prepared, controllers[index])?
+            .ok_or_else(|| ExecutionError::IncompleteEvidence("prepared entry lost its prospective attachment world".into()))?;
+        let target = crate::effects::permanents::choose_attachment_destination(
+            &prospective, ctx, *object, destinations,
+        )?;
+        if let Some(projection) = projections.get_mut(object) { projection.detach(&mut working)?; }
+        if ctx.decision_maker.awaiting_choice() {
+            game.retain_pending_decision_controllers_from(&mut working);
+            return Ok(None);
+        }
+        prepared.entry_attachment = target;
     }
 
     if opened_spent_scope {
@@ -1067,6 +1135,7 @@ impl PreparedBattlefieldEntryBatch {
             return Ok(None);
         }
         let mut outcomes = vec![BattlefieldEntryOutcome::Prevented; requests.len()];
+        let mut entry_attachments = vec![None; requests.len()];
         for (index, (object, options)) in requests.iter().enumerate() {
             let Some((old_zone, prepared_entry)) = prepared_entries[index].take() else {
                 continue;
@@ -1090,6 +1159,11 @@ impl PreparedBattlefieldEntryBatch {
                 &mut ctx.decision_maker,
             );
             let mut committed = committed?;
+            #[cfg(test)]
+            if !options.entry_modifications.is_empty() {
+                eprintln!("ENTRY_PROJECTION committed object={object:?} pending={} outcome={:?} current={:?}",
+                    committed.pending, committed.original, working.current_card_types(*object));
+            }
             if committed.pending || ctx.decision_maker.awaiting_choice() {
                 game.retain_pending_decision_controllers_from(&mut working);
                 return Ok(None);
@@ -1104,6 +1178,7 @@ impl PreparedBattlefieldEntryBatch {
                 crate::events::processing::EventOutcome::Prevented
                 | crate::events::processing::EventOutcome::NotApplicable => continue,
             };
+            entry_attachments[index] = result.entry_attachment;
             // Provisional modifications participate in replacement matching above;
             // lasting entry effects belong only to an actual battlefield entrant.
             if working
@@ -1218,6 +1293,7 @@ impl PreparedBattlefieldEntryBatch {
                     BattlefieldEntryOutcome::Prevented => EventOutcome::Prevented,
                 };
                 BattlefieldEntryReceipt {
+                    entry_attachment: entry_attachments[index],
                     outcome,
                     original_object: requests[index].0,
                     published_outputs: std::mem::take(&mut published_outputs[index]),
@@ -1802,6 +1878,50 @@ mod tests {
             game.object(*id)
                 .is_some_and(|object| object.name == "Batch Bear")
         }));
+    }
+
+    #[test]
+    fn described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings() {
+        use crate::continuous::Modification;
+        let alice = PlayerId::from_index(0);
+        // Replacing Sorcery admits entry; adding Creature while retaining
+        // Sorcery does not. Conversely, a Creature described as an Instant
+        // cannot enter even though its printed types are permanent types.
+        for (printed, modification, should_enter) in [
+            (CardType::Sorcery, Modification::SetCardTypes(vec![CardType::Creature]), true),
+            (CardType::Sorcery, Modification::AddCardTypes(vec![CardType::Creature]), false),
+            (CardType::Creature, Modification::SetCardTypes(vec![CardType::Instant]), false),
+        ] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let entrant = game.new_object_id();
+            let card = CardBuilder::new(CardId::from_raw(entrant.0 as u32), "Described entrant")
+                .card_types(vec![printed]).build();
+            game.add_object(Object::from_card(entrant, &card, alice, Zone::Hand));
+            let stable = game.object(entrant).unwrap().stable_id;
+            let sibling = game.new_object_id();
+            let card = CardBuilder::new(CardId::from_raw(sibling.0 as u32), "Undescribed sorcery")
+                .card_types(vec![CardType::Sorcery]).build();
+            game.add_object(Object::from_card(sibling, &card, alice, Zone::Hand));
+            let mut dm = InspectColorChoiceDm::synchronous(Color::Green);
+            let mut ctx = ExecutionContext::new(ObjectId::from_raw(9_033), alice, &mut dm);
+            let outcomes = move_to_battlefield_batch_with_options(&mut game, &mut ctx, vec![
+                (entrant, BattlefieldEntryOptions::preserve(false).with_entry_modifications(vec![modification])),
+                (sibling, BattlefieldEntryOptions::preserve(false)),
+            ]).unwrap();
+            let current = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(current).unwrap().zone,
+                if should_enter { Zone::Battlefield } else { Zone::Hand },
+                "printed={printed:?} expected_entry={should_enter} actual_current={:?}", game.current_card_types(current));
+            assert_eq!(matches!(outcomes[0].assert_without_additions(), BattlefieldEntryOutcome::Moved(_)), should_enter);
+            assert!(matches!(outcomes[1].assert_without_additions(), BattlefieldEntryOutcome::Prevented));
+            assert_eq!(game.object(sibling).unwrap().zone, Zone::Hand);
+            if should_enter {
+                assert!(game.current_has_card_type(current, CardType::Creature));
+                assert!(!game.current_has_card_type(current, CardType::Sorcery));
+            } else {
+                assert_eq!(game.object(entrant).unwrap().card_types.as_slice(), &[printed]);
+            }
+        }
     }
 
     #[test]
@@ -2575,3 +2695,16 @@ mod replacement_invalid_entry_answer_contract_tests {
 #[cfg(test)]
 #[path = "battlefield_entry_preparation_tests.rs"]
 mod preparation_tests;
+
+/// Creation and movement obey the same native simultaneous-entry timestamps.
+pub(crate) fn order_simultaneous_creation_entry_timestamps(
+    game: &mut GameState, ctx: &mut ExecutionContext, entries: &[ObjectId],
+) -> Result<bool, ExecutionError> {
+    let relevant = entries.iter().copied()
+        .filter(|id| entrant_generates_continuous_effects(game, *id)).collect::<Vec<_>>();
+    if relevant.len() < 2 { return Ok(true); }
+    let Some(order) = choose_simultaneous_timestamp_order(game, ctx.decision_maker, &relevant) else { return Ok(false); };
+    for object in order { game.effect_store.continuous_effects.record_entry(object); }
+    game.mark_continuous_state_dirty();
+    Ok(true)
+}

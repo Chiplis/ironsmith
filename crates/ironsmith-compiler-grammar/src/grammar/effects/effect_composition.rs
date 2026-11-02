@@ -310,6 +310,7 @@ pub struct OutsideGamePutShape {
     pub optional: bool,
     pub filter_tokens: Vec<OwnedLexToken>,
     pub to_library_top: bool,
+    pub to_command: bool,
 }
 
 pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideGamePutShape> {
@@ -320,7 +321,7 @@ pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideG
         ["put", ..] => (false, 0),
         _ => return None,
     };
-    if !matches!(words.get(put_word + 1), Some(&("a" | "an"))) {
+    if !matches!(words.get(put_word + 1), Some(&("a" | "an" | "another"))) {
         return None;
     }
     let own_word = sequence_offset(
@@ -332,6 +333,7 @@ pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideG
     }
     let tail = &words[own_word + 6..];
     let to_library_top = match tail {
+        ["into", "the", "command", "zone"] => false,
         ["into", "your", "hand"] => false,
         ["on", "top", "of", "your", "library"] => true,
         _ => return None,
@@ -343,6 +345,7 @@ pub fn parse_outside_game_put_shape(tokens: &[OwnedLexToken]) -> Option<OutsideG
         optional,
         filter_tokens,
         to_library_top,
+        to_command: tail == ["into", "the", "command", "zone"],
     })
 }
 

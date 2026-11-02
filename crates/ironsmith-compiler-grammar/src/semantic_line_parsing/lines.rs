@@ -1554,14 +1554,16 @@ fn parse_statement_to_chunks_impl(
         .statement
         .as_enters_effect_program
         .is_some()
-        && split_lexed_sentences(parse_tokens).len() > 1
-        && token_word_refs(parse_tokens)
+        && (token_word_refs(parse_tokens)
             .iter()
             .any(|word| matches!(*word, "result" | "results"))
+            || entry_words.word_windows(2).any(|words| matches!(words, ["that", "many"] | ["this", "way"])))
     {
         // The entry header belongs to the static program owner, not to its
         // executable body. Keep every following sentence in the same scope
-        // so the counter instruction can consume the local dice result.
+        // so later instructions consume their own local result. A later
+        // "that many" or "sacrificed this way" is also a producer reference;
+        // a second entry program would execute with an empty result scope.
         let body_start = parse_tokens.iter().position(OwnedLexToken::is_comma)
             .ok_or_else(|| CardTextError::ParseError("as-enters program has no body boundary".into()))? + 1;
         let effects = parse_effect_sentences_preserving_source_boundaries(&parse_tokens[body_start..])?;
@@ -1644,6 +1646,16 @@ fn parse_statement_to_chunks_impl(
     if authored_words.contains(&"cast")
         && authored_words.contains(&"instead")
         && let Ok(Some(abilities)) = parse_static_ability_ast_line_lexed(authored)
+    {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
+    }
+    // `Otherwise` depends on the condition of the preceding static sentence.
+    // Ask the complete static owner before presentation grouping can split
+    // the alternative into an independent source/recipient restriction.
+    let static_sentences = split_lexed_sentences(authored);
+    if matches!(static_sentences.as_slice(), [_, second]
+        if second.first().is_some_and(|token| token.is_word("otherwise")))
+        && let Some(abilities) = parse_static_ability_ast_line_lexed(authored)?
     {
         return Ok(vec![LineAst::StaticAbilities(abilities)]);
     }
@@ -2731,7 +2743,7 @@ use lines_ability_programs::{
     try_lower_partner_variant_keyword,
 };
 pub use lines_ability_programs::{parse_keyword_special_cases, parse_static_line};
-pub(crate) use lines_ability_programs::{parse_descriptive_static_program, parse_optional_payment_modifier_program};
+pub(crate) use lines_ability_programs::{parse_descriptive_static_program, parse_optional_payment_modifier_program, parse_optional_tap_power_granted_policy};
 #[cfg(test)]
 use lines_ability_programs::{
     standard_flanking_reminder_is_typed_without_broad_keyword_expansion,

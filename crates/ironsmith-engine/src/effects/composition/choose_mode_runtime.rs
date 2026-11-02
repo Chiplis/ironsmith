@@ -261,6 +261,37 @@ pub(crate) fn run_choose_mode_with_outputs(
     ctx: &mut ExecutionContext,
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if effect.has_resolution_mana_costs() {
+        return super::execute_optional_transaction(game, ctx, |game, ctx| {
+            let Some(program) = select_mode_program(effect, game, ctx, purpose)? else { return Ok(None); };
+            let indices = match &program {
+                SelectedModeProgram::NoAction => &[][..],
+                SelectedModeProgram::Actions { chosen_indices, .. } => chosen_indices.as_slice(),
+            };
+            let mut cost = crate::mana::ManaCost::new();
+            for &index in indices {
+                let mode_cost = effect.mode_additional_mana_costs.get(index).ok_or_else(||
+                    ExecutionError::IncompleteEvidence("selected mode lacks its required mana cost".into()))?;
+                cost = crate::decision::add_mana_cost(&cost, mode_cost);
+            }
+            let mut children = Vec::new();
+            if !indices.is_empty() {
+                let prior_reason = ctx.mana.payment_reason.replace(crate::costs::PaymentReason::Effect);
+                let payment = crate::effects::EffectExecutor::execute_with_outputs(
+                    &crate::effects::PayManaEffect::new(cost, crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You)), game, ctx);
+                ctx.mana.payment_reason = prior_reason;
+                let payment = payment?;
+                if ctx.decision_maker.awaiting_choice() || !payment.outcome.status.is_success() {
+                    return Ok(None);
+                }
+                children.push(payment);
+            }
+            let actions = execute_selected_mode_program_with_outputs(effect, program, game, ctx, purpose)?;
+            children.push(actions);
+            Ok(Some(crate::effects::CompletedEffectOutputs::from_children(children, EffectOutcome::aggregate)))
+        }).map(|outputs| outputs.unwrap_or_else(||
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible())));
+    }
     super::execute_transaction(
         game,
         ctx,
@@ -391,6 +422,19 @@ pub(super) fn select_mode_program(
             let program = effect.common_prefix_effects.iter().chain(&mode.effects)
                 .cloned().collect::<Vec<_>>();
             payable_modes[index] = match crate::costs::check_effect_cost_program(&program, game, ctx, reason) {
+                Ok(()) => true,
+                Err(crate::effects::CostValidationError::ExecutionFailed(error)) => return Err(error),
+                Err(_) => false,
+            };
+        }
+    }
+    if effect.has_resolution_mana_costs() && !modes_were_announced {
+        for index in 0..effect.modes.len() {
+            let Some(cost) = effect.mode_additional_mana_costs.get(index) else { payable_modes[index] = false; continue; };
+            let payment = crate::effect::Effect::new(crate::effects::PayManaEffect::new(
+                cost.clone(), crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You)));
+            payable_modes[index] &= match crate::costs::check_effect_cost_program(
+                &[payment], game, ctx, crate::costs::PaymentReason::Effect) {
                 Ok(()) => true,
                 Err(crate::effects::CostValidationError::ExecutionFailed(error)) => return Err(error),
                 Err(_) => false,
@@ -1277,5 +1321,106 @@ mod tests {
             Some([creature].as_slice())
         );
         assert_eq!(captured.options[1].related_object_ids, None);
+    }
+}
+
+#[cfg(test)]
+mod resolution_mode_payment_tests {
+    use super::*;
+    use crate::effect::{Effect, EffectMode, Value};
+    use crate::mana::{ManaCost, ManaSymbol};
+    fn effect() -> ChooseModeEffect {
+        ChooseModeEffect::new(vec![
+            EffectMode::new("Gain three", vec![Effect::gain_life(3)]),
+            EffectMode::new("Gain seven", vec![Effect::gain_life(7)]),
+        ], Value::Fixed(0), Value::Fixed(2), false).with_resolution_mana_costs(vec![
+            ManaCost::from_symbols(vec![ManaSymbol::White]), ManaCost::from_symbols(vec![ManaSymbol::Blue]),
+        ])
+    }
+    #[test]
+    fn resolving_modes_pay_exact_combined_cost_before_any_selected_body() {
+        for (selected, blue, life, remaining) in [
+            (vec![], false, 20, 1), (vec![0], false, 23, 0),
+            (vec![0,1], true, 30, 0), (vec![0,1], false, 20, 1),
+        ] {
+            let a=PlayerId(0); let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            let source=game.new_object_id();
+            game.player_mut(a).unwrap().mana_pool.add(ManaSymbol::White,1);
+            if blue {game.player_mut(a).unwrap().mana_pool.add(ManaSymbol::Blue,1);}
+            let mut ctx=ExecutionContext::new_default(source,a).with_chosen_modes(Some(selected));
+            run_choose_mode(&effect(),&mut game,&mut ctx).unwrap();
+            assert_eq!(game.player(a).unwrap().life,life);
+            assert_eq!(game.player(a).unwrap().mana_pool.total(),remaining);
+        }
+    }
+    #[test]
+    fn prepaid_spree_modes_are_not_charged_again_during_resolution() {
+        let a=PlayerId(0); let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let source=game.new_object_id();let mut ctx=ExecutionContext::new_default(source,a).with_chosen_modes(Some(vec![0]));
+        let mut prepaid=effect();prepaid.spree=true;
+        run_choose_mode(&prepaid,&mut game,&mut ctx).unwrap();
+        assert_eq!(game.player(a).unwrap().life,23);
+    }
+    struct Cancel;
+    impl crate::decision::DecisionMaker for Cancel {
+        fn decide_mana_payment(&mut self,_:&GameState,_:&crate::decisions::context::ManaPaymentContext)->crate::mana_payment::ManaPaymentResponse {
+            crate::mana_payment::ManaPaymentResponse::Cancel
+        }
+    }
+    #[test]
+    fn canceling_payment_keeps_mana_and_executes_no_mode_body() {
+        let a=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);let source=game.new_object_id();
+        game.player_mut(a).unwrap().mana_pool.add(ManaSymbol::White,1);
+        let mut dm=Cancel;let mut ctx=ExecutionContext::new(source,a,&mut dm).with_chosen_modes(Some(vec![0]));
+        let result=run_choose_mode(&effect(),&mut game,&mut ctx).unwrap();
+        assert!(!result.status.is_success());assert_eq!(game.player(a).unwrap().life,20);assert_eq!(game.player(a).unwrap().mana_pool.total(),1);
+    }
+}
+
+#[cfg(test)]
+mod paid_modal_pending_payment_tests {
+    use super::*;
+    use crate::effect::{Effect,EffectMode,Value};
+    use crate::mana::{ManaCost,ManaSymbol};
+    struct ManualPayment {land:ObjectId,prompts:usize,suspend:bool,pending:bool}
+    impl crate::decision::DecisionMaker for ManualPayment {
+        fn awaiting_choice(&self)->bool{self.pending}
+        fn decide_mana_payment(&mut self,game:&GameState,ctx:&crate::decisions::context::ManaPaymentContext)->crate::mana_payment::ManaPaymentResponse{
+            self.prompts+=1;
+            if self.prompts==1 {
+                crate::mana_payment::ManaPaymentResponse::Activate{source:self.land,ability_index:0}
+            } else {
+                assert!(game.is_tapped(self.land),"suspend only after the manual mana activation completed");
+                assert_eq!(game.player(PlayerId(0)).unwrap().mana_pool.white,1);
+                if self.suspend {self.pending=true;crate::mana_payment::ManaPaymentResponse::Cancel}
+                else {crate::mana_payment::ManaPaymentResponse::Confirm{plan_id:ctx.plan.id,request_hash:ctx.plan.request_hash}}
+            }
+        }
+    }
+    #[test]
+    fn suspended_paid_modal_rolls_back_manual_mana_activation_then_replays_once() {
+        let a=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::ids::CardId::new(),"Independent mana source")
+            .card_types(vec![crate::CardType::Land]).build();
+        let land=game.create_object_from_card(&card,a,crate::Zone::Battlefield);
+        game.object_mut(land).unwrap().abilities_mut().push(crate::ability::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),vec![ManaSymbol::White]));
+        game.take_pending_trigger_events();
+        let effect=ChooseModeEffect::new(vec![EffectMode::new("Gain three",vec![Effect::gain_life(3)])],
+            Value::Fixed(0),Value::Fixed(1),false).with_resolution_mana_costs(vec![ManaCost::from_symbols(vec![ManaSymbol::White])]);
+        let mut suspended=ManualPayment{land,prompts:0,suspend:true,pending:false};
+        {
+            let mut ctx=ExecutionContext::new(land,a,&mut suspended).with_chosen_modes(Some(vec![0]));
+            run_choose_mode(&effect,&mut game,&mut ctx).unwrap();
+            assert_eq!(ctx.chosen_modes,Some(vec![0]));
+        }
+        assert_eq!(suspended.prompts,2);assert!(suspended.pending);
+        assert!(!game.is_tapped(land));assert_eq!(game.player(a).unwrap().mana_pool.total(),0);
+        assert_eq!(game.player(a).unwrap().life,20);assert!(game.take_pending_trigger_events().is_empty());
+        let mut completed=ManualPayment{land,prompts:0,suspend:false,pending:false};
+        let mut ctx=ExecutionContext::new(land,a,&mut completed).with_chosen_modes(Some(vec![0]));
+        let result=run_choose_mode(&effect,&mut game,&mut ctx).unwrap();
+        assert!(result.status.is_success());assert!(game.is_tapped(land));
+        assert_eq!(game.player(a).unwrap().mana_pool.total(),0);assert_eq!(game.player(a).unwrap().life,23);
     }
 }

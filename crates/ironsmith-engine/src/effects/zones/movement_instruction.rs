@@ -216,7 +216,19 @@ impl SimultaneousEffectProposal for PreparedMovementInstruction {
                         CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
                     ));
                 }
-                let original = projection(game, ctx, &receipts, pending_start)?;
+                let mut original = projection(game, ctx, &receipts, pending_start)?;
+                let objects=receipts.iter().filter_map(|(id,receipt)|match &receipt.original {
+                    crate::events::processing::EventOutcome::Proceed(change) if !change.new_object_ids.is_empty()=>Some(*id),_=>None,
+                }).collect::<Vec<_>>();
+                let mut sources=Vec::new();let mut seen=std::collections::HashSet::new();
+                for event in &game.effect_store.pending_trigger_events[pending_start..] {
+                    let Some(change)=event.downcast::<crate::events::ZoneChangeEvent>() else{continue};
+                    if !change.objects.iter().any(|id|objects.contains(id)){continue;}
+                    for source in event.lookback_source_snapshots(){
+                        if seen.insert(source.object_id){sources.push(source.clone());}
+                    }
+                }
+                original.execution_facts.push(crate::effect::ExecutionFact::OriginalZoneMoveObservers {objects,sources});
                 Ok(draws.finish(original, receipts, ctx).into_retained())
             }
             MovementInstructionState::Selection(_)

@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Abound source-relative optional free cast",
+  "notes": [
+    "All original variants preserved; direct and granted bindings require independent verification."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-276",
+      "keyword": "Abound",
+      "original_reminder": "To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.",
+      "executable_reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+      "source_cards": [
+        "Spectrum Archmage",
+        "Act of Repentance",
+        "Anarchy Storm",
+        "Burgeoning Blooms",
+        "Chance at Redemption",
+        "Conjure Realities",
+        "Ophidian Oracle",
+        "Speaker of the Iris",
+        "Breach Titan",
+        "Skali, the Last Sunfeather"
+      ],
+      "rule_reference": "701.78.",
+      "rule_text": [
+        {
+          "name": "701.78a",
+          "rule": "Abound is a keyword action. “Abound” means “You may cast a spell from your hand with a lesser mana value than this spell or permanent without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "701.78b",
+          "rule": "If an triggered or activated ability instructs you to abound, use the mana value of the source of that ability to determine the mana value. If the ability somehow doesn't have a source, its mana value is 0 and you will be unable to cast a spell with a lesser mana value.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Spectrum Archmage_MS1",
+          "name": "Spectrum Archmage",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Creature — Human Wizard",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Spectrum Archmage_MS1",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spectrum Archmage",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound. *(To abound, you may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Spectrum Archmage",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/1\nFlash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound."
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flash\nFlying\nWhen Spectrum Archmage enters, return target spell to its owner's hand, then abound.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative701.78 uses current ability source, including recipient of granted ability, not granting permanent"
+    },
+    {
+      "id": "msem-277",
+      "keyword": "Abound",
+      "original_reminder": "To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.",
+      "executable_reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+      "source_cards": [
+        "Raloran Tidecaller"
+      ],
+      "rule_reference": "701.78.",
+      "rule_text": [
+        {
+          "name": "701.78a",
+          "rule": "Abound is a keyword action. “Abound” means “You may cast a spell from your hand with a lesser mana value than this spell or permanent without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "701.78b",
+          "rule": "If an triggered or activated ability instructs you to abound, use the mana value of the source of that ability to determine the mana value. If the ability somehow doesn't have a source, its mana value is 0 and you will be unable to cast a spell with a lesser mana value.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Raloran Tidecaller_MS2",
+          "name": "Raloran Tidecaller",
+          "original_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.”",
+          "mana_cost": "{U/R}{U/R}",
+          "type_line": "Creature — Merfolk Wizard",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Raloran Tidecaller_MS2",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Raloran Tidecaller",
+              "original_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, abound.” *(To abound, you may cast a spell that costs less than that creature from your hand without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Raloran Tidecaller",
+              "executable_text": "Mana cost: {U/R}{U/R}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/2\nEach Merfolk and Wizard you control has “Whenever this creature attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "original_display_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.”"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Each Merfolk and Wizard you control has “Whenever this creature attacks, abound.”",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative701.78 uses current ability source, including recipient of granted ability, not granting permanent"
+    },
+    {
+      "id": "msem-278",
+      "keyword": "Abound",
+      "original_reminder": "You may cast a spell that costs less than this from your hand without paying its mana cost.",
+      "executable_reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+      "source_cards": [
+        "Gold Retriever",
+        "Raloran Insurgent"
+      ],
+      "rule_reference": "701.78.",
+      "rule_text": [
+        {
+          "name": "701.78a",
+          "rule": "Abound is a keyword action. “Abound” means “You may cast a spell from your hand with a lesser mana value than this spell or permanent without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "701.78b",
+          "rule": "If an triggered or activated ability instructs you to abound, use the mana value of the source of that ability to determine the mana value. If the ability somehow doesn't have a source, its mana value is 0 and you will be unable to cast a spell with a lesser mana value.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Gold Retriever_HZN",
+          "name": "Gold Retriever",
+          "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*",
+          "executable_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+          "mana_cost": "{4}{R}{R}",
+          "type_line": "Creature — Dragon Hound",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Gold Retriever_HZN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gold Retriever",
+              "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound. *(You may cast a spell that costs less than this from your hand without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Gold Retriever",
+              "executable_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon Hound\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost.",
+              "custom_keyword_identities": [
+                "abound"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound."
+            }
+          ],
+          "custom_keyword_identities": [
+            "abound"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "This spell costs {1} less to cast for each permanent you control that's a Dragon or a Hound.\nFlying, haste\nWhenever Gold Retriever attacks, abound.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Abound",
+          "reminder": "You may cast a spell from your hand with mana value less than this card's mana value without paying its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "authoritative701.78 uses current ability source, including recipient of granted ability, not granting permanent"
+    }
+  ]
+}

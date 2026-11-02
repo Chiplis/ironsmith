@@ -18,7 +18,9 @@ use crate::cards::builders::TurnStructureActionAst;
 pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
     matches!(
         action,
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
@@ -76,6 +78,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 LifeResourceActionAst::DrawForEachTaggedMatching { .. }
             )
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Earthbend { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
@@ -83,7 +86,11 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Endure { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeControl { .. })
@@ -111,6 +118,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantProtectionChoice { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. })
@@ -256,6 +264,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
     )
 }
 
@@ -480,6 +489,26 @@ pub(super) fn compile_subject_verb_early(
     let role = subject_verb_role(subject_verb.subject.role);
     let player = subject_verb.subject.player;
     let result = match &subject_verb.action {
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { label, program }) => {
+            let (effects, choices) = compile_effects(program, ctx)?;
+            Ok((vec![Effect::new(ironsmith_core::FirstResolutionEachTurnEffect { label: label.clone(), effects })], choices))
+        },
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { class,sources,source_selector,maximum,minimum,chooser,action_name }) => {
+            let sources=resolve_it_tag(sources,&current_reference_env(ctx))?;
+            let (source_selector,choices)=if let Some(selector)=source_selector {
+                let (selector,choices)=resolve_target_spec_with_choices(selector,&current_reference_env(ctx))?;
+                (Some(selector),choices)
+            } else {(None,Vec::new())};
+            Ok((vec![Effect::new(ironsmith_core::TriggerAbilitiesByClassEffect {class:class.clone(),sources,source_selector,maximum:*maximum,minimum:*minimum,chooser:chooser.clone(),action_name:action_name.clone()})],choices))
+        },
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom {target,source,keywords,duration,last_known}) => {
+            let (target,mut choices)=resolve_target_spec_with_choices(target,&current_reference_env(ctx))?;
+            let (source,source_choices)=resolve_target_spec_with_choices(source,&current_reference_env(ctx))?;
+            for choice in source_choices {push_choice(&mut choices,choice);}
+            let mut grant=crate::effects::GrantAbilitiesTargetEffect::new(target,Vec::new(),duration.clone());
+            grant.keyword_from=Some(ironsmith_core::KeywordAbilitySource {source,keywords:keywords.clone(),last_known:*last_known});
+            Ok((vec![Effect::new(grant)],choices))
+        }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom {
             target, source, duration, each_recipient, symbol_as_any_color,
         }) => {
@@ -770,7 +799,77 @@ pub(super) fn compile_subject_verb_early(
                 ]),
             ])], Vec::new()))
         }
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, status, replacement_cost, max_uses_per_ability_each_turn, nonloyalty_only }) => compile_effect_for_target(target, ctx, |spec| Effect::new(ironsmith_core::GrantActivationCostAlternativeEffect {
+            target: spec, status: status.clone(), replacement_cost: replacement_cost.clone(),
+            max_uses_per_ability_each_turn: *max_uses_per_ability_each_turn, nonloyalty_only: *nonloyalty_only,
+        })),
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { target, designation, invocation_action }) => compile_effect_for_target(target, ctx, |source| Effect::new(ironsmith_core::ActivateAbilityWithoutCostsEffect { source, designation: designation.clone(), invocation_action: invocation_action.clone() })),
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { from, zone, tag }) => {
+            if *from == crate::effect::EffectId::PENDING_PRIOR_ACTION { return Err(CardTextError::ParseError("unresolved original movement receipt".into())); }
+            Ok((vec![Effect::new(ironsmith_core::effect::RememberOriginalMovementArrivalsEffect { from:*from,zone:*zone,tag:tag.key.clone() })],Vec::new()))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection { target, source_tag, name, source_zone, member_zone }) => {
+            let refs=current_reference_env(ctx);
+            let source_tag=source_tag.as_ref().map(|tag|resolve_it_tag_key(&tag.key,&refs)).transpose()?;
+            compile_effect_for_target(target,ctx,|spec|Effect::new(ironsmith_core::RecordSourceCollectionEffect{target:spec,source_tag,name:name.clone(),source_zone:*source_zone,member_zone:*member_zone}))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection {target,sources}) => {
+            let (sources,source_choices)=resolve_target_spec_with_choices(sources,&current_reference_env(ctx))?;
+            if !source_choices.is_empty(){return Err(CardTextError::InvariantViolation("created-object inspection cannot announce targets".into()));}
+            compile_effect_for_target(target,ctx,|target|Effect::new(ironsmith_core::GrantExileControllerInspectionEffect {
+                target,sources:sources.clone(),
+            }))
+        },
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { target, designation }) => compile_effect_for_target(target, ctx, |spec| Effect::new(ironsmith_core::SetPermanentDesignationEffect { target: spec, designation: designation.clone() })),
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { program_completion, label, performer, objects, prior_objects, program }) => {
+            if let Some(program) = program {
+                if performer.is_some() || prior_objects.is_some() {
+                    return Err(CardTextError::ParseError("named action program cannot bind a separate performer or prior receipt".into()));
+                }
+                if *program_completion == ironsmith_core::effect::NamedActionProgramCompletion::NonemptyObjects && objects.is_none() {
+                    return Err(CardTextError::ParseError("a nonempty-object operation must declare its original object packet".into()));
+                }
+                if *program_completion == ironsmith_core::effect::NamedActionProgramCompletion::AcceptedPayment
+                    && !matches!(program.as_slice(), [EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayPay { .. })]) {
+                    return Err(CardTextError::ParseError("named paid operation requires exactly one owning optional payment program".into()));
+                }
+                // Freeze the declared actor against the enclosing reference
+                // environment before any child program changes those aliases.
+                let action_subject = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
+                let action_player = action_subject.clone_player_filter();
+                let action_choices = action_subject.into_choices();
+                let proposed=if program_completion.captures_proposed_objects() {
+                    let object=objects.as_ref().ok_or_else(||CardTextError::ParseError("proposed action has no declared input".into()))?;
+                    Some(resolve_target_spec_with_choices(object,&current_reference_env(ctx))?)
+                }else{None};
+                let (effects,mut choices)=if proposed.is_some() {
+                    with_preserved_lowering_context(ctx,|_|{},|ctx|compile_effects(program,ctx))?
+                }else{compile_effects(program,ctx)?};
+                choices.extend(action_choices);
+                let wrapper = |objects| Effect::new(crate::effects::NamedActionProgramEffect {
+                    label: label.clone(), player: action_player.clone(), effects: effects.clone(),
+                    completion: *program_completion, objects,
+                });
+                let compiled = if let Some((spec,input_choices))=proposed {
+                    choices.extend(input_choices);vec![wrapper(Some(spec))]
+                }else if let Some(objects) = objects {
+                    let (compiled, object_choices) = compile_effect_for_target(objects, ctx, |spec| wrapper(Some(spec)))?;
+                    choices.extend(object_choices);
+                    compiled
+                } else { vec![wrapper(None)] };
+                return Ok(Some((compiled, choices)));
+            }
+
+            if prior_objects.as_ref().is_some_and(|(id, _)| *id == crate::effect::EffectId::PENDING_PRIOR_ACTION) {
+                return Err(CardTextError::ParseError("unresolved named-action prior-object receipt".into()));
+            }
+            if let Some(performer)=performer {
+                if objects.is_some() {return Err(crate::cards::builders::CardTextError::ParseError("explicit performer action cannot also bind a second independent object program".into()));}
+                compile_effect_for_target(performer,ctx,|spec| Effect::new(crate::effects::PerformNamedActionEffect {label:label.clone(),performer:Some(spec),objects:None,prior_objects:*prior_objects}))
+            }else if let Some(objects) = objects {
+                compile_effect_for_target(objects, ctx, |spec| Effect::new(crate::effects::PerformNamedActionEffect {label: label.clone(), performer:None, objects: Some(spec), prior_objects: *prior_objects}))
+            } else { Ok((vec![Effect::new(crate::effects::PerformNamedActionEffect {label: label.clone(), performer:None, objects: None, prior_objects: *prior_objects})], Vec::new())) }
+        }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
             action,
             amount,
@@ -999,7 +1098,7 @@ pub(super) fn compile_subject_verb_early(
                 crate::alternative_cast::AlternativeCastingMethod::Composed {
                     name: "Parsed exile casting price".into(),
                     total_cost: crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?,
-                    condition: None, prototype_power_toughness: None,
+                    condition: None, prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
                 }
             } else {
                 crate::alternative_cast::AlternativeCastingMethod::alternative_cost("Airbend",
@@ -1533,6 +1632,7 @@ pub(super) fn compile_subject_verb_early(
             choice.exclude_source_history = *exclude_source_history;
             effects.push(Effect::new(choice));
             ctx.last_object_tag = Some(tag.clone().into());
+            ctx.last_card_name_choice_tag = Some(tag.clone().into());
             ctx.last_player_filter = Some(chooser);
             Ok((effects, subject.into_choices()))
         }
@@ -2090,6 +2190,10 @@ pub(super) fn compile_subject_verb_early(
             }
             effects.push(Effect::new(attach));
             Ok((effects, choices))
+        }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target, relation, require_creatures }) => {
+            let (target, choices)=resolve_target_spec_with_choices(target,&current_reference_env(ctx))?;
+            Ok((vec![Effect::new(crate::effects::LinkPermanentsEffect { source: ChooseSpec::Source, target, relation: relation.clone(), require_creatures: *require_creatures })], choices))
         }
         SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) => {
             let (mut objects, choices) =
@@ -2723,11 +2827,14 @@ pub(super) fn compile_subject_verb_early(
             manifest,
             shuffle_before,
             described_face_down,
+            no_turn_up_permission,
+            exile_cast_permission,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = quantified_object_spec_as_all(spec);
             if *controller == ReturnControllerAst::Owner && !*cloak && !*manifest {
                 // Ownership is per object, including a captured collection
                 // with several owners. The native movement owner already
@@ -2754,12 +2861,7 @@ pub(super) fn compile_subject_verb_early(
             }
             let controller_filter = match controller {
                 ReturnControllerAst::Preserve => chooser,
-                ReturnControllerAst::You => PlayerFilter::You,
-                ReturnControllerAst::Owner => {
-                    return Err(CardTextError::ParseError(
-                        "put-onto-battlefield under owner control is unsupported".to_string(),
-                    ));
-                }
+                ReturnControllerAst::You | ReturnControllerAst::Owner => PlayerFilter::You,
             };
             let mut all_choices = subject.into_choices();
             for choice in choices {
@@ -2771,6 +2873,9 @@ pub(super) fn compile_subject_verb_early(
                 let mut face_down =
                     crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter);
                 face_down.descriptive = *described_face_down;
+                face_down.no_turn_up_permission = *no_turn_up_permission;
+                face_down.exile_cast_permission = exile_cast_permission.clone();
+                face_down.under_owner_control = *controller == ReturnControllerAst::Owner;
                 if *cloak {
                     face_down = face_down.cloak();
                 }

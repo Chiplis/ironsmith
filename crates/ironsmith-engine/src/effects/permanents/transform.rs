@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_tagged_object_id};
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::other::{ConvertedEvent, TransformedEvent};
 use crate::game_state::GameState;
@@ -22,13 +22,15 @@ impl TransformLikeAction {
         self,
         target_id: crate::ids::ObjectId,
         provenance: crate::provenance::ProvNodeId,
+        cause: &crate::events::cause::EventCause,
+        snapshot: crate::snapshot::ObjectSnapshot,
     ) -> TriggerEvent {
         match self {
             Self::Transform => {
-                TriggerEvent::new_with_provenance(TransformedEvent::new(target_id), provenance)
+                TriggerEvent::new_with_provenance(TransformedEvent::new(target_id).with_cause(cause.clone()).with_snapshot(Some(snapshot)).with_complete_source_lookback(), provenance)
             }
             Self::Convert => {
-                TriggerEvent::new_with_provenance(ConvertedEvent::new(target_id), provenance)
+                TriggerEvent::new_with_provenance(ConvertedEvent::new(target_id).with_snapshot(Some(snapshot)).with_complete_source_lookback(), provenance)
             }
         }
     }
@@ -89,6 +91,8 @@ fn source_transform_like_action_is_stale(
     target_id: crate::ids::ObjectId,
 ) -> bool {
     target_id == ctx.source
+        && matches!(ctx.cause.resolving_ability,
+            Some(ironsmith_core::CauseAbilityKind::Activated | ironsmith_core::CauseAbilityKind::Triggered))
         && ctx
             .source_snapshot
             .as_ref()
@@ -133,107 +137,59 @@ fn execute_transform_like_action_inner(
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     game.refresh_continuous_state()
         .map_err(ExecutionError::ContinuousDiscovery)?;
-    let target_id = if matches!(target.base(), ChooseSpec::Source) {
-        // A source that left the battlefield is a different object if it
-        // returns. An old transform ability cannot follow that incarnation.
-        if !game
-            .object(ctx.source)
-            .is_some_and(|object| object.zone == Zone::Battlefield)
-        {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        ctx.source
-    } else if let ChooseSpec::Tagged(tag) = target {
-        ctx.get_tagged_all(tag)
-            .and_then(|snapshots| {
-                snapshots
-                    .iter()
-                    .find_map(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
-            })
-            .ok_or(ExecutionError::InvalidTarget)?
-    } else {
-        resolve_single_object_for_effect(game, ctx, target)?
-    };
-
+    let targets = if matches!(target.base(), ChooseSpec::Source) {
+        if !game.object(ctx.source).is_some_and(|object| object.zone == Zone::Battlefield) {
+            Vec::new()
+        } else { vec![ctx.source] }
+    } else { resolve_objects_for_effect(game, ctx, target)? };
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
     }
-
-    if source_transform_like_action_is_stale(game, ctx, target_id) {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-
-    if !game.can_transform(target_id) {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-
-    let Some(target) = game.object(target_id) else {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    };
-    if target.zone != Zone::Battlefield {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-    // CR 702.145b/e: only a permanent that currently has daybound/nightbound
-    // (layer 6) is restricted to transforming via day/night. The restriction
-    // applies to both transform and convert.
-    if game.permanent_has_day_or_nightbound(target_id) {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-
-    if !game
-        .transform_permanent(target_id)
-        .map_err(ExecutionError::ContinuousDiscovery)?
-    {
-        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::count(0),
-        ));
-    }
-
-    game.refresh_continuous_state()
+    // Freeze every original recipient's restrictions before changing any face.
+    let admitted = targets.into_iter().filter(|id| {
+        !source_transform_like_action_is_stale(game, ctx, *id)
+            && game.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)
+            && !game.permanent_has_day_or_nightbound(*id)
+    }).collect::<Vec<_>>();
+    let changed = game.transform_permanents_in_instruction(&admitted)
         .map_err(ExecutionError::ContinuousDiscovery)?;
-
-    let (children, observations) = if matches!(action, TransformLikeAction::Transform) {
-        let controller = game
-            .current_controller(target_id)
-            .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-        let (children, observations) = crate::effects::with_action_observations(game, |game| {
-            game.execute_as_transforms_effect_programs_with_outputs(
-                target_id,
-                controller,
-                ctx.decision_maker,
-            )
+    if changed.is_empty() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+    }
+    // Every admitted original changes face before any atomic adjustment or
+    // added program. Rewrite characteristics before freezing event observers.
+    if matches!(action, TransformLikeAction::Transform) {
+        for &id in &changed {
+            game.apply_atomic_transform_characteristics(id, Some(&ctx.cause), Some(&ctx.mana.activation_payment))?;
+        }
+    }
+    // All flips are committed. Capture every resulting face, observer and
+    // program before an added program can move/retransform another recipient.
+    let lookback = game.try_trigger_source_lookback_snapshots()?;
+    let mut events = Vec::new();
+    let mut programs = Vec::new();
+    for &id in &changed {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, id)
+            .ok_or(ExecutionError::ObjectNotFound(id))?;
+        let controller = snapshot.controller;
+        events.push(action.event(id, ctx.provenance, &ctx.cause, snapshot)
+            .with_lookback_source_snapshots(lookback.clone()));
+        if matches!(action, TransformLikeAction::Transform) {
+            programs.push(game.capture_transform_programs(id, controller)?);
+        }
+    }
+    let mut children = Vec::new();
+    for program in &programs {
+        let (completed, observations) = crate::effects::with_action_observations(game, |game| {
+            game.execute_captured_transform_programs_with_outputs(program, ctx.decision_maker)
         })?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
         }
-        (children, observations)
-    } else {
-        (Vec::new(), Vec::new())
-    };
-
-    let mut events = vec![action.event(target_id, ctx.provenance)];
-    crate::effects::observe_lifecycle_completions_with_observations(
-        game,
-        &mut events,
-        &observations,
-    )?;
-    let mut outcome = EffectOutcome::with_objects(vec![target_id]);
+        children.extend(completed);
+        crate::effects::observe_lifecycle_completions_with_observations(game, &mut events, &observations)?;
+    }
+    let mut outcome = EffectOutcome::with_objects(changed);
     outcome.events = events;
     let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome);
     outputs.retain_published_children(children);
@@ -241,6 +197,8 @@ fn execute_transform_like_action_inner(
 }
 
 impl EffectExecutor for TransformEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { &self.target == spec }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -272,6 +230,8 @@ impl EffectExecutor for TransformEffect {
 }
 
 impl EffectExecutor for ConvertEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { &self.target == spec }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -924,6 +884,7 @@ mod tests {
 
         let mut stale_ctx =
             ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
+        stale_ctx.cause.resolving_ability = Some(ironsmith_core::CauseAbilityKind::Activated);
         let outcome = TransformEffect::source()
             .execute(&mut game, &mut stale_ctx)
             .expect("stale self-transform should resolve as a no-op");
@@ -1089,6 +1050,7 @@ mod tests {
 
         let mut stale_ctx =
             ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
+        stale_ctx.cause.resolving_ability = Some(ironsmith_core::CauseAbilityKind::Activated);
         let outcome = ConvertEffect::source()
             .execute(&mut game, &mut stale_ctx)
             .expect("stale self-convert should resolve as a no-op");

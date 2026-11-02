@@ -43,4 +43,5 @@ pub enum TriggeringPredicateAst {
     /// The triggering keyword action was this action ("if it's an art
     /// sticker" after "whenever you place a sticker").
     TriggeringKeywordActionIs(crate::events::KeywordActionKind),
+    TriggeringNamedActionPaidMana {label:String,required:Vec<ManaSymbol>},
 }

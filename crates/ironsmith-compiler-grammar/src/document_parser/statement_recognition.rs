@@ -167,6 +167,41 @@ fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<
 pub(super) fn recognize_statement_line(
     line: &PreprocessedLine,
 ) -> Result<Option<RecognizedStatementLine>, CardTextError> {
+    // Named/labeled and other direct entrypoints call this recognizer
+    // without traversing the statement line-family guards. Keep ownership
+    // here too: only a complete durationless passive rule declines.
+    if crate::grammar::activation_restrictions::parse_filtered_unpreventability(&line.tokens).is_some() {
+        return Ok(None);
+    }
+    // A colon after a typed repeat header separates a bounded process body;
+    // it is an instruction delimiter rather than an activation-cost colon.
+    let words = crate::lexer::parser_token_word_refs(&line.tokens);
+    // A quantified participant is a scope, not a standalone nominal clause.
+    if crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(&line.tokens)
+        .is_some_and(|shape| !shape.participant_is_actor && crate::lexer::parser_token_word_refs(shape.inner_tokens).starts_with(&["you", "may"])) {
+        let effects = parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
+        return Ok(Some(RecognizedStatementLine { info:line.info.clone(),text:line.info.raw_line.clone(),parse_tokens:line.tokens.clone(),parse_groups:vec![line.tokens.clone()],parsed_effects:Some(effects) }));
+    }
+
+    if crate::effect_sentences::bounded_source_programs::has_optional_cost_program_head(&line.tokens) {
+        let effects=parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
+        return Ok(Some(RecognizedStatementLine {
+            info:line.info.clone(),text:line.info.raw_line.clone(),
+            parse_tokens:line.tokens.clone(),parse_groups:vec![line.tokens.clone()],parsed_effects:Some(effects),
+        }));
+    }
+    if (crate::effect_sentences::bounded_source_programs::has_bounded_header(&line.tokens)
+        || words.starts_with(&["repeat", "the", "following", "process"])
+        || words.starts_with(&["perform", "the"]) && (words.windows(3).any(|part| part == ["action", "as", "follows"]) || words.windows(2).any(|part| part == ["action", "on"]) && words.windows(2).any(|part| part == ["as", "follows"]) || words.windows(6).any(|part| part == ["tokens", "created", "this", "way", "as", "follows"]) || words.windows(8).any(|part| part == ["tokens", "created", "this", "way", "if", "any", "are", "created"]) || words.windows(4).any(|part| part == ["following", "cost", "is", "paid"])))
+        && line.tokens.iter().any(|token| token.kind == TokenKind::Colon)
+    {
+        let effects = parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
+        return Ok(Some(RecognizedStatementLine {
+            info: line.info.clone(), text: line.info.raw_line.clone(),
+            parse_tokens: line.tokens.clone(), parse_groups: vec![line.tokens.clone()],
+            parsed_effects: Some(effects),
+        }));
+    }
     if structure::classify_statement_line_family_lexed(&line.tokens)
         == Some(structure::StatementLineFamily::ArtRating)
         && split_lexed_sentences(&line.tokens)
@@ -486,6 +521,8 @@ fn recognize_statement_line_general(
         || parse_create_head_tokens(&line.tokens).is_some()
         || crate::grammar::effects::for_each_shapes::parse_for_each_object_effect_shape(&line.tokens)
             .is_some_and(|shape| shape.effect_tokens.first().is_some_and(|token| token.is_word("create")));
+    let typed_imperative_player_loop = crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(&line.tokens)
+        .is_some_and(|shape| !shape.participant_is_actor && shape.inner_tokens.first().is_some_and(|token| token.is_word("you")));
     let typed_energy_payment_threshold =
         super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(&line.tokens).is_some();
     let typed_counter_linked_land_subtype = super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(&line.tokens)
@@ -513,7 +550,8 @@ fn recognize_statement_line_general(
         }));
     }
     let force_surface = statement_shapes::parse_statement_force_shape(&line.tokens);
-    let persistent_static_modifier = !typed_create_statement
+    let persistent_static_modifier = !typed_imperative_player_loop
+        && !typed_create_statement
         && !typed_energy_payment_threshold
         && !typed_counter_linked_land_subtype
         && !typed_persistent_player_rule
@@ -528,7 +566,8 @@ fn recognize_statement_line_general(
     if persistent_static_modifier {
         return Ok(None);
     }
-    let force_statement = typed_source_gain_ability
+    let force_statement = typed_imperative_player_loop
+        || typed_source_gain_ability
         || typed_create_statement
         || typed_energy_payment_threshold
         || typed_counter_linked_land_subtype

@@ -15,6 +15,7 @@ pub fn parse_leading_affected_object_counter_duration_shape(
         return None;
     }
     let consumed_tokens = tokens.len().checked_sub(rest.len())?;
+    crate::word_claims::claim_tokens(&tokens[..consumed_tokens]);
     Some(LeadingGainDurationShape {
         consumed_words: TokenWordView::new(&tokens[..consumed_tokens]).len(),
         duration,

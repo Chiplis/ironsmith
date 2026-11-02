@@ -95,11 +95,8 @@ fn parse_as_enters_effect_program_facts(
             primitives::phrase(&["it", "enters", "with"])
         })
         .is_some()
-            || crate::word_primitives::parse_sequence_start(
-                &body_word_refs,
-                &explicit_source_entry,
-            )
-            .is_some();
+            || body_word_refs.windows(explicit_source_entry.len())
+                .any(|words| words == explicit_source_entry.as_slice());
     Some(AsEntersEffectProgramFacts {
         subject: super::super::lexer::render_token_slice(&tokens[1..subject_end_idx]),
         also_turns_face_up,
@@ -326,6 +323,7 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
     });
 
     LineSemanticFacts {
+        ability_designations: parse_ability_designations(tokens),
         ability_cant_be_countered: super::ability_stack_rules::remove_cant_be_countered_instruction(tokens).is_some(),
         intrinsic_basic_land_mana_reminder: None,
         station_creature_threshold: None,
@@ -642,5 +640,56 @@ mod tests {
         assert!(unrelated.statement.replacement_surfaces.is_empty());
         assert!(!unrelated.statement.creature_type_choice_buff);
         assert!(unrelated.statement.trailing_instead_if_predicate.is_none());
+    }
+}
+
+#[cfg(test)]
+mod entry_local_counter_reference_tests {
+    #[test]
+    fn later_explicit_source_counter_sentence_stays_bound_to_the_entrant() {
+        let tokens = crate::lexer::lex_line("As this permanent enters, you may sacrifice up to two artifacts and/or creatures. This permanent enters with that many +1/+1 counters on it.", 0).unwrap();
+        let facts = super::parse_line_semantic_facts_tokens(&tokens).statement.as_enters_effect_program.unwrap();
+        assert!(facts.source_reference_enters_with_counter_surface);
+    }
+}
+
+/// Labels carry source-level designation data. An explicit keyword-ability
+/// header also groups all clauses emitted by one custom keyword definition.
+fn parse_ability_designations(mut tokens: &[OwnedLexToken]) -> Vec<String> {
+    let mut designations = Vec::new();
+    while let Some(split) = document_shapes::parse_statement_label_split_tokens(tokens) {
+        let label = split.label_tokens;
+        // Source tokens retain authored case. Match syntax through parser
+        // words while rendering only the quoted designation operand below.
+        let words = crate::lexer::parser_token_word_refs(label);
+        let designation = if label.len() >= 5 && words.get(..2) == Some(&["keyword", "ability"])
+            && label.get(2).is_some_and(|token| token.kind == crate::lexer::TokenKind::Quote)
+            && label.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Quote)
+            && label[3..label.len()-1].iter().all(|token| token.kind == crate::lexer::TokenKind::Word) {
+            Some(crate::lexer::render_token_slice(&label[3..label.len()-1]).trim().to_ascii_lowercase())
+        } else if !label.is_empty() && label.iter().all(|token| token.kind == crate::lexer::TokenKind::Word)
+            && words.len() <= 5 {
+            Some(words.join(" ").to_ascii_lowercase())
+        } else { None };
+        if let Some(name) = designation && !name.is_empty() && !designations.contains(&name) {
+            designations.push(name);
+        }
+        tokens = split.body_tokens;
+    }
+    designations
+}
+
+#[cfg(test)]
+mod authored_designation_case_boundaries {
+    use super::*;
+    #[test]
+    fn explicit_keyword_group_labels_use_parser_case_and_preserve_complete_names() {
+        for prefix in ["Keyword ability", "keyword ability", "KEYWORD ABILITY"] {
+            let text=format!("{prefix} \"Moon Echo\" — Whenever this creature attacks, you gain 1 life.");
+            let tokens=crate::lexer::lex_line(&text,0).unwrap();
+            assert_eq!(parse_line_semantic_facts_tokens(&tokens).ability_designations,vec!["moon echo".to_string()]);
+        }
+        let tokens=crate::lexer::lex_line("Whenever this creature attacks, you gain 1 life.",0).unwrap();
+        assert!(parse_line_semantic_facts_tokens(&tokens).ability_designations.is_empty());
     }
 }

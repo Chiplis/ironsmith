@@ -63,7 +63,7 @@ pub use ironsmith_compiler_semantic::cards::builders::GrantedAbilityAst;
 pub use crate::lexer::OwnedLexToken;
 
 pub use crate::model::ast::{
-    CharacteristicActionAst, ChoiceActionAst, ChooseOneModeAst, ConditionalEffectAst,
+    CardCreationSelectionAst, CharacteristicActionAst, ChoiceActionAst, ChooseOneModeAst, ConditionalEffectAst,
     ControlActionAst, CounterActionAst, DamageActionAst, DamagePreventionActionAst,
     DelayedEffectAst, EffectAst, ExchangeActionAst, ForEachEffectAst, GameActionAst,
     GrantActionAst, KeywordActionAst, LibraryActionAst, LifeResourceActionAst, ManaActionAst,

@@ -25,7 +25,27 @@ impl SpecialAction {
             | Self::ActivateManaAbility { .. } => return Ok(None),
             Self::Plot { card_id } => (card_id, TotalCost::mana(plot_special_action_cost(game, player, card_id)?), PaymentReason::Other),
             Self::Suspend { card_id } => (card_id, TotalCost::mana(suspend_spec(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?.1), PaymentReason::Other),
-            Self::Foretell { card_id } => (card_id, TotalCost::mana(foretell_special_action_quote(game, player, card_id)?.0), PaymentReason::Foretell),
+            Self::PrepareExile { card_id, method_index, ref preparation } => {
+                // A public preparation with a source-derived price cannot be
+                // quoted from a hidden placeholder. Authenticate/open its
+                // selected definition before admission; never infer a free or
+                // mana-only price from absent source characteristics.
+                if game.is_hidden_card_placeholder(card_id)
+                    && matches!(preparation, crate::alternative_cast::ExilePreparation::FaceUpSorcery { .. }) {
+                    return Err(ActionError::NoSuchAbility);
+                }
+                let method = game.object(card_id).and_then(|object| object.alternative_casts.get(method_index));
+                let cost = method.and_then(|method| method.preparation_total_cost()).cloned()
+                    .unwrap_or_else(|| legacy_preparation_cost(preparation));
+                (card_id, cost, PaymentReason::Other)
+            }
+            Self::PrepareGrantedExile { card_id, ref grant, ref preparation } => {
+                let selected = selected_granted_exile_preparation(game, player, card_id, grant, preparation)?;
+                let cost = selected.method.preparation_total_cost().cloned()
+                    .unwrap_or_else(|| legacy_preparation_cost(preparation));
+                (card_id, cost, PaymentReason::Other)
+            }
+            Self::Foretell { card_id } => (card_id, TotalCost::mana(foretell_special_action_quote(game, player, card_id)?.0),PaymentReason::Foretell),
             Self::Companion { card_id } => (card_id, TotalCost::mana(companion_action_cost()), PaymentReason::Other),
             Self::TurnFaceUp { permanent_id, method } => {
                 let object = game.object(permanent_id).ok_or(ActionError::ObjectNotFound)?;
@@ -41,6 +61,10 @@ impl SpecialAction {
             }
             Self::IgnoreAttachedRestriction { source_id, ability_index } => (source_id, ignore_attached_restriction_total_cost(game, source_id, ability_index), PaymentReason::Other),
             Self::IgnoreSourceEffect { source_id, ability_index } => (source_id, ignore_source_effect_total_cost(game, source_id, ability_index)?, PaymentReason::Other),
+            Self::PerformIntrinsicAction { source_id, ability_index } => {
+                let action = super::intrinsic_action::validate(game, player, source_id, ability_index)?;
+                (source_id, action.cost, PaymentReason::Other)
+            }
             Self::PayDelayedTrigger { delayed_trigger_index } => {
                 let payment = delayed_trigger_prepayment(game, delayed_trigger_index)?;
                 (payment.source, payment.cost.clone(), PaymentReason::Other)
@@ -626,4 +650,13 @@ mod reveal_admission_tests {
             assert_eq!(game.object(selected).unwrap().zone, Zone::Hand);
         }
     }
+}
+
+fn legacy_preparation_cost(preparation: &crate::alternative_cast::ExilePreparation) -> crate::cost::TotalCost {
+    use crate::alternative_cast::ExilePreparation;
+    let price = match preparation {
+        ExilePreparation::FaceDown { price } | ExilePreparation::FaceDownSorcery { price }
+            | ExilePreparation::FaceUpSorcery { price, .. } => price.clone(),
+    };
+    crate::cost::TotalCost::mana(price)
 }

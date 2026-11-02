@@ -1,3 +1,5 @@
+import { isCoinCallDecision } from '@/lib/priority-policy.js';
+import { Checkbox } from '@/components/ui/checkbox';
 import ChoiceWithSubmit from "./ChoiceWithSubmit";
 import TriggerMatchingControl from './TriggerMatchingControl';
 import PriorityShortcutHint from "./PriorityShortcutHint";
@@ -570,7 +572,14 @@ function SingleSelectDecision({
   toolbarSearchTarget = null,
 }) {
   const ui = useUiText();
-  const { dispatch, state, playerAccentOverrides } = useGame();
+  const { dispatch, state, playerAccentOverrides, priorityPolicy } = useGame();
+  const coinCall = isCoinCallDecision(decision);
+  const [rememberCoinChoice, setRememberCoinChoice] = useState(false);
+  const submitOption = useCallback((option) => {
+    if (!canAct || option.legal === false) return;
+    if (coinCall && rememberCoinChoice) priorityPolicy?.setCoinChoice(option.description, state);
+    dispatch({ type: "select_options", option_indices: [option.index] }, option.description);
+  }, [canAct, coinCall, rememberCoinChoice, priorityPolicy, state, dispatch]);
   const { t } = useI18n();
   // Option labels quote the source card's costs, so they follow its localized text.
   const localizeDecisionText = useTranslatedDecisionText(decision);
@@ -612,11 +621,11 @@ function SingleSelectDecision({
       const index = event?.detail?.optionIndex;
       const option = options.find((candidate) => String(candidate.index) === String(index));
       if (option?.legal === false) return;
-      if (option) dispatch({ type: "select_options", option_indices: [option.index] }, option.description);
+      if (option) submitOption(option);
     };
     window.addEventListener("ironsmith:select-option-choice", onLookCardChoice);
     return () => window.removeEventListener("ironsmith:select-option-choice", onLookCardChoice);
-  }, [canAct, dispatch, options]);
+  }, [canAct, submitOption, options]);
   const decisionDescription = String(decision?.description || "");
   const normalizedDecisionDescription = decisionDescription.trim().toLowerCase();
   const searchResetKey = `${decisionDescription}|${decision?.source_id || ""}|${optionsSignature(options)}`;
@@ -784,11 +793,8 @@ function SingleSelectDecision({
   const canSubmitSingle = canAct && !!singleLegalOption;
   const submitSingle = useCallback(() => {
     if (!singleLegalOption || singleLegalOption.legal === false) return;
-    dispatch(
-      { type: "select_options", option_indices: [singleLegalOption.index] },
-      singleLegalOption.description || "Submit",
-    );
-  }, [dispatch, singleLegalOption]);
+    submitOption(singleLegalOption);
+  }, [submitOption, singleLegalOption]);
   const singleSubmitLabel = useMemo(() => {
     if (!singleLegalOption) return t("decision.submitPlain");
     const description = String(singleLegalOption.description || "").trim();
@@ -901,6 +907,13 @@ function SingleSelectDecision({
             )}
           </div>
         )}
+        {coinCall && (
+          <label className="flex items-center gap-2 px-2 py-1 text-[12px]">
+            <Checkbox checked={rememberCoinChoice} disabled={!canAct}
+              onCheckedChange={checked => setRememberCoinChoice(Boolean(checked))} />
+            {ui("Remember my choice for future coin flips")}
+          </label>
+        )}
         {renderedSearchField}
         <div
           className={cn(
@@ -965,16 +978,13 @@ function SingleSelectDecision({
                   onSubmit={() => {
                     if (!canAct || opt.legal === false) return;
                     clearHover();
-                    dispatch({ type: "select_options", option_indices: [opt.index] }, opt.description);
+                    submitOption(opt);
                   }}
                   onClick={() => {
                     const selectedOption = opt.grouped_options?.find(
                       (candidate) => candidate.legal !== false,
                     ) || opt;
-                    dispatch(
-                      { type: "select_options", option_indices: [selectedOption.index] },
-                      selectedOption.description,
-                    );
+                    submitOption(selectedOption);
                   }}
                 />
               );

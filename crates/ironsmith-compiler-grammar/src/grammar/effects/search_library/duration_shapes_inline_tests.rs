@@ -62,3 +62,14 @@ fn named_player_step_is_not_a_search_or_permission_duration() {
         assert!(parse_search_restriction_duration_shape_lexed(&tokens).unwrap().is_none());
     }
 }
+
+#[test]
+fn leading_any_opponent_turn_boundary_is_typed_and_bounded() {
+    let tokens = lex_line("Until an opponent's next turn, you can't lose the game and you can't gain life.", 0).unwrap();
+    let parsed = parse_search_restriction_duration_shape_lexed(&tokens).unwrap().unwrap();
+    assert_eq!(parsed.duration, Until::OpponentsNextTurn);
+    assert_eq!(parsed.placement, SearchRestrictionDurationPlacement::Prefix);
+    assert!(parsed.remainder.first().unwrap().is_word("you"));
+    let tokens = lex_line("Until an opponent's next turn draw a card.", 0).unwrap();
+    assert!(parse_search_restriction_duration_shape_lexed(&tokens).unwrap().is_none());
+}

@@ -70,6 +70,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("object-filter-inner-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("source-collection-membership"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_source_collection_suffix(input.tokens, input.other)),
+    },
+    Reading {
         id: RuleId::new("quantified-spell-cost-or-target-suffix"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -400,4 +406,24 @@ mod cast_quantity_filter_tests {
             assert!(crate::object_filters::parse_object_filter_lexed(&tokens, false).is_err(), "{text}");
         }
     }
+}
+
+/// A source-owned collection names a live set of exact object incarnations.
+/// The label is data; ordinary characteristic and zone grammar owns the prefix.
+pub(super) fn read_source_collection_suffix(tokens: &[OwnedLexToken], other: bool) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(start) = tokens.windows(2).position(|pair|
+        pair[0].is_word("from") && pair[1].is_word("the")) else { return Ok(None); };
+    let suffix = &tokens[start + 2..];
+    if suffix.len() < 2 || !suffix.last().is_some_and(|token| token.is_word("collection")) {
+        return Ok(None);
+    }
+    let Some(label) = suffix[..suffix.len() - 1].iter().map(OwnedLexToken::as_word).collect::<Option<Vec<_>>>() else {
+        return Ok(None);
+    };
+    if start == 0 || label.iter().any(|word| matches!(*word, "and" | "or" | "from" | "in")) {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(&tokens[..start], other)?;
+    crate::word_claims::claim_tokens(&tokens[start..]);
+    Ok(Some(filter.match_tagged(format!("source_collection:{}", label.join(" ")), TaggedOpbjectRelation::SameObjectId)))
 }

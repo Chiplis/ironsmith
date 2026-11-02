@@ -116,7 +116,9 @@ pub fn parse_activated_block_requirement_words(
     if words_are_exact(
         words,
         &["this", "creature", "must", "be", "blocked", "if", "able"],
-    ) || words_are_exact(words, &["this", "must", "be", "blocked", "if", "able"])
+    ) || words_are_exact(words, &["this", "creature", "must", "be", "blocked", "each", "combat", "if", "able"])
+      || words_are_exact(words, &["this", "must", "be", "blocked", "each", "combat", "if", "able"])
+      || words_are_exact(words, &["this", "must", "be", "blocked", "if", "able"])
     {
         return Some(ActivatedBlockRequirement::SourceMustBeBlocked);
     }

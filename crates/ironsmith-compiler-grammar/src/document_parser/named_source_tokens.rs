@@ -246,6 +246,9 @@ fn normalize_named_source_sentence_tokens_cased(
     card: &crate::card::CardBuilder,
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
+    // An entire recognized keyword declaration is an ability, even when
+    // its spelling happens to equal the card's proper name (for example Reach).
+    if parse_ability_line_lexed(tokens).is_some() { return None; }
     let subject = named_source_subject_for_builder(card);
     let aliases = aliases_for_builder(card);
     let all_words = alias_word_lists(&aliases);

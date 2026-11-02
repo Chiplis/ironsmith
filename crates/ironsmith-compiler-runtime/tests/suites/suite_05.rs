@@ -14,6 +14,18 @@ mod r#compound_recipient_unions;
 #[path = "../copied_cards_cast.rs"]
 mod r#copied_cards_cast;
 
+#[path = "../custom_action_use_receipts.rs"]
+mod r#custom_action_use_receipts;
+
+#[path = "../custom_policy_source_guards.rs"]
+mod r#custom_policy_source_guards;
+
+#[path = "../custom_subtype_word_forms.rs"]
+mod r#custom_subtype_word_forms;
+
+#[path = "../custom_unveil_attack_tax.rs"]
+mod r#custom_unveil_attack_tax;
+
 #[path = "../damage_amount_ownership.rs"]
 mod r#damage_amount_ownership;
 

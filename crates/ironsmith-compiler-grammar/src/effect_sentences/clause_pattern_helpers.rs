@@ -3109,7 +3109,26 @@ pub fn parse_keyword_mechanic_clause(
             subject,
             until_source_leaves,
             until_visit_roll_at_most,
-        } => match subject {
+            until_controller_casts_nth_spell,
+            until_end_of_turn,
+        } => {
+          let apply_duration = |mut effect: EffectAst| {
+            if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::PermanentState(
+                    crate::cards::builders::PermanentStateActionAst::PhaseOut { duration, .. }
+                    | crate::cards::builders::PermanentStateActionAst::PhaseOutAll { duration, .. }), ..
+            }) = &mut effect {
+                if until_end_of_turn {
+                    *duration = crate::effects::PhaseOutDuration::UntilEndOfTurn;
+                } else if let Some(nth) = until_controller_casts_nth_spell {
+                    *duration = crate::effects::PhaseOutDuration::UntilControllerCastsNthSpellInTurn(nth);
+                } else if let Some(maximum) = until_visit_roll_at_most {
+                    *duration = crate::effects::PhaseOutDuration::UntilVisitRollAtMost(maximum);
+                }
+            }
+            effect
+          };
+          match subject {
             clause_shapes::PhaseSubjectShape::All(filter_tokens) => {
                 let mut filter = parse_object_filter(filter_tokens, false)?;
                 filter.zone.get_or_insert(Zone::Battlefield);
@@ -3122,7 +3141,7 @@ pub fn parse_keyword_mechanic_clause(
                             filter,
                             phase_source_surface(source),
                         ),
-                        None => EffectAst::subject_verb_phase_out_all(filter),
+                        None => apply_duration(EffectAst::subject_verb_phase_out_all(filter)),
                     },
                 }
             }
@@ -3155,7 +3174,7 @@ pub fn parse_keyword_mechanic_clause(
                                 *duration =
                                     crate::effects::PhaseOutDuration::UntilVisitRollAtMost(max_result);
                             }
-                            phase_out
+                            apply_duration(phase_out)
                         }
                     },
                 };
@@ -3208,6 +3227,7 @@ pub fn parse_keyword_mechanic_clause(
                     phase(parse_target_phrase(target_tokens)?)
                 }
             }
+        }
         },
         clause_shapes::KeywordMechanicShape::OpenAttraction { reminder } => {
             EffectAst::subject_verb_open_attraction(PlayerAst::Implicit, reminder)

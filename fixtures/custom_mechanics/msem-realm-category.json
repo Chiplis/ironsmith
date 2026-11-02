@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Realm category 743 exact full source",
+  "source_card_count": 3,
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "policy": "Immutable original source; authored generic equivalents unverified until root runs native routes."
+  },
+  "mechanics": [
+    {
+      "id": "msem-category-743",
+      "keyword": "Realm and Favor",
+      "rule_reference": "743.",
+      "source_cards": [
+        "Lorilyf, Home-Tree",
+        "Hinode, Glorious Peak",
+        "Realms of the Goliaths"
+      ],
+      "representative_cards": [
+        {
+          "id": "Lorilyf, Home-Tree_HZN",
+          "source_card_key": "Lorilyf, Home-Tree_HZN",
+          "name": "Lorilyf, Home-Tree",
+          "original_text": "Mana cost: {G}\nType: Legendary Enchantment — Realm\n*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+          "original_printed_text": "*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+          "executable_text": "Mana cost: {G}\nType: Legendary Enchantment — Realm\n(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+          "mana_cost": "{G}",
+          "type_line": "Legendary Enchantment — Realm",
+          "custom_subtypes": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "source_card_key": "Lorilyf, Home-Tree_HZN",
+              "name": "Lorilyf, Home-Tree",
+              "rules_text": "*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+              "original_text": "Mana cost: {G}\nType: Legendary Enchantment — Realm\n*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lorilyf, Home-Tree",
+              "executable_text": "Mana cost: {G}\nType: Legendary Enchantment — Realm\n(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+              "original_printed_rules_text": "(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card.",
+          "original_printed_rules_text": "(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{G}: You may play an additional land this turn.\n{1}{G}: Search your library for a basic Forest card, reveal it, put it into your hand, then shuffle.\n{2}{G}: Search your library for an Elf card, reveal it, put it into your hand, then shuffle.\nFavor — Whenever you cast an Elf spell, draw a card."
+        },
+        {
+          "id": "Hinode, Glorious Peak_MSC",
+          "source_card_key": "Hinode, Glorious Peak_MSC",
+          "name": "Hinode, Glorious Peak",
+          "original_text": "Mana cost: {W}\nType: Legendary Enchantment — Realm\n*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2. *(Choose a creature with the least power among creatures you control and put two +1/+1 counters on it.)*\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+          "original_printed_text": "*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2. *(Choose a creature with the least power among creatures you control and put two +1/+1 counters on it.)*\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+          "executable_text": "Mana cost: {W}\nType: Legendary Enchantment — Realm\n{W}: Put a first strike counter on target creature.\n{1}{W}: Choose a creature you control with the least power among creatures you control. Put 2 +1/+1 counters on it.\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+          "mana_cost": "{W}",
+          "type_line": "Legendary Enchantment — Realm",
+          "custom_subtypes": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "source_card_key": "Hinode, Glorious Peak_MSC",
+              "name": "Hinode, Glorious Peak",
+              "rules_text": "*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2. *(Choose a creature with the least power among creatures you control and put two +1/+1 counters on it.)*\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+              "original_text": "Mana cost: {W}\nType: Legendary Enchantment — Realm\n*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2. *(Choose a creature with the least power among creatures you control and put two +1/+1 counters on it.)*\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hinode, Glorious Peak",
+              "executable_text": "Mana cost: {W}\nType: Legendary Enchantment — Realm\n{W}: Put a first strike counter on target creature.\n{1}{W}: Choose a creature you control with the least power among creatures you control. Put 2 +1/+1 counters on it.\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+              "custom_keyword_identities": [
+                "invigorate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2.\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+              "original_printed_rules_text": "(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2. (Choose a creature with the least power among creatures you control and put two +1/+1 counters on it.)\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink."
+            }
+          ],
+          "custom_keyword_identities": [
+            "invigorate"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2.\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink.",
+          "original_printed_rules_text": "(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{W}: Put a first strike counter on target creature.\n{1}{W}: Invigorate 2. (Choose a creature with the least power among creatures you control and put two +1/+1 counters on it.)\n{2}{W}: Create two 1/1 white Soldier creature tokens.\nFavor — Creatures you control with counters on them have flying and lifelink."
+        },
+        {
+          "id": "Realms of the Goliaths_OTH",
+          "source_card_key": "Realms of the Goliaths_OTH",
+          "name": "Realms of the Goliaths",
+          "original_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Enchantment — Realm\n*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5. *(Choose a creature with the least power among creatures you control and put five +1/+1 counters on it.)*\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+          "original_printed_text": "*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5. *(Choose a creature with the least power among creatures you control and put five +1/+1 counters on it.)*\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+          "executable_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Enchantment — Realm\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Choose a creature you control with the least power among creatures you control. Put 5 +1/+1 counters on it.\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+          "mana_cost": "{W}{U}{B}{R}{G}",
+          "type_line": "Legendary Enchantment — Realm",
+          "custom_subtypes": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "source_card_key": "Realms of the Goliaths_OTH",
+              "name": "Realms of the Goliaths",
+              "rules_text": "*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5. *(Choose a creature with the least power among creatures you control and put five +1/+1 counters on it.)*\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+              "original_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Enchantment — Realm\n*(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)*\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5. *(Choose a creature with the least power among creatures you control and put five +1/+1 counters on it.)*\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Realms of the Goliaths",
+              "executable_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Enchantment — Realm\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Choose a creature you control with the least power among creatures you control. Put 5 +1/+1 counters on it.\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+              "custom_keyword_identities": [
+                "invigorate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5.\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+              "original_printed_rules_text": "(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5. (Choose a creature with the least power among creatures you control and put five +1/+1 counters on it.)\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible."
+            }
+          ],
+          "custom_keyword_identities": [
+            "invigorate"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5.\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible.",
+          "original_printed_rules_text": "(Activate each ability only once as a sorcery. You gain the realm's favor after activating them all.)\n{1}: Search your library for a legendary creature card, reveal it, put it into your hand, then shuffle.\n{2}: Invigorate 5. (Choose a creature with the least power among creatures you control and put five +1/+1 counters on it.)\n{3}: Draw cards equal to the greatest power among creatures you control.\nFavor — Other permanents you control have hexproof and indestructible."
+        }
+      ]
+    }
+  ]
+}

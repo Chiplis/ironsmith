@@ -1,0 +1,707 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Bare owner-controlled face-down entry candidate",
+  "notes": [
+    "Candidate preserves source and independently reads ordinary exile and face-down entry. Complete Submerge status lifecycle still pending; do not certify solely from compilation."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-264",
+      "keyword": "Submerge",
+      "original_reminder": "To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.",
+      "executable_reminder": "Exile {Object}. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+      "source_cards": [
+        "An and En, Destined Souls",
+        "Bathophobia",
+        "Beckon from the Depths",
+        "Coax Under",
+        "Demystifying Tide",
+        "Engulfing Incubus",
+        "Forlorn Murklurker",
+        "Ing'Wei of the Flood Realm",
+        "Isle Conservator",
+        "Keeper of Blue Incense",
+        "Lost Among the Lilies",
+        "Rise from the Depths",
+        "Shojiro, the Wavewaker",
+        "Surging Stream",
+        "Into the Flood Realm"
+      ],
+      "rule_reference": "701.74.",
+      "rule_text": [
+        {
+          "name": "701.74a",
+          "rule": "To submerge a card, exile it face up, then put it onto the battlefield face down under its owner's control as a 2/2 face-down creature card with no text, no name, no subtypes, and no mana cost. That permanent is a submerged permanent as long as it remains face down. The effect defining its characteristics works while the card is face down and ends when it’s turned face up.",
+          "custom": true
+        },
+        {
+          "name": "701.74b",
+          "rule": "Unlike manifest, a submerged card can not turn face up again on its own.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "An and En, Destined Souls_GNJ",
+          "name": "An and En, Destined Souls",
+          "original_text": "Mana cost: {1}{W}{U}\nType: Legendary Creature — Spirit\nPower/Toughness: 2/2\nFlying\n{1}{W}{U}: Submerge another target creature. When An and En, Destined Souls leaves the battlefield, turn that creature face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {1}{W}{U}\nType: Legendary Creature — Spirit\nPower/Toughness: 2/2\nFlying\n{1}{W}{U}: Exile another target creature. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up. When An and En, Destined Souls leaves the battlefield, turn that creature face up.",
+          "mana_cost": "{1}{W}{U}",
+          "type_line": "Legendary Creature — Spirit",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "An and En, Destined Souls_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "An and En, Destined Souls",
+              "original_text": "Mana cost: {1}{W}{U}\nType: Legendary Creature — Spirit\nPower/Toughness: 2/2\nFlying\n{1}{W}{U}: Submerge another target creature. When An and En, Destined Souls leaves the battlefield, turn that creature face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "An and En, Destined Souls",
+              "executable_text": "Mana cost: {1}{W}{U}\nType: Legendary Creature — Spirit\nPower/Toughness: 2/2\nFlying\n{1}{W}{U}: Exile another target creature. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up. When An and En, Destined Souls leaves the battlefield, turn that creature face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\n{1}{W}{U}: Submerge another target creature. When An and En, Destined Souls leaves the battlefield, turn that creature face up."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\n{1}{W}{U}: Submerge another target creature. When An and En, Destined Souls leaves the battlefield, turn that creature face up."
+        },
+        {
+          "id": "Bathophobia_GNJ",
+          "name": "Bathophobia",
+          "original_text": "Mana cost: {U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Submerge enchanted creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Exile enchanted creature. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{U}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Bathophobia_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bathophobia",
+              "original_text": "Mana cost: {U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Submerge enchanted creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bathophobia",
+              "executable_text": "Mana cost: {U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Exile enchanted creature. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Submerge enchanted creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nEnchanted creature gets -2/-0.\n{3}{U}{U}: Submerge enchanted creature."
+        },
+        {
+          "id": "Beckon from the Depths_GNJ",
+          "name": "Beckon from the Depths",
+          "original_text": "Mana cost: {2}{U}\nType: Sorcery\nLook at the top two cards of your library. Put one of them into your hand, then submerge the other. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nLook at the top two cards of your library. Put one of them into your hand, then Exile the other. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Beckon from the Depths_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Beckon from the Depths",
+              "original_text": "Mana cost: {2}{U}\nType: Sorcery\nLook at the top two cards of your library. Put one of them into your hand, then submerge the other. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Beckon from the Depths",
+              "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nLook at the top two cards of your library. Put one of them into your hand, then Exile the other. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Look at the top two cards of your library. Put one of them into your hand, then submerge the other."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Look at the top two cards of your library. Put one of them into your hand, then submerge the other."
+        },
+        {
+          "id": "Coax Under_GNJ",
+          "name": "Coax Under",
+          "original_text": "Mana cost: {2}{U}\nType: Instant\nSubmerge each creature you control. At the beginning of the next end step, you may turn any number of face down creatures you control face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Instant\nFor each creature you control, do the following: [Exile that permanent; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up]. At the beginning of the next end step, you may turn any number of face down creatures you control face up.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Coax Under_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Coax Under",
+              "original_text": "Mana cost: {2}{U}\nType: Instant\nSubmerge each creature you control. At the beginning of the next end step, you may turn any number of face down creatures you control face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Coax Under",
+              "executable_text": "Mana cost: {2}{U}\nType: Instant\nFor each creature you control, do the following: [Exile that permanent; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up]. At the beginning of the next end step, you may turn any number of face down creatures you control face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Submerge each creature you control. At the beginning of the next end step, you may turn any number of face down creatures you control face up."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Submerge each creature you control. At the beginning of the next end step, you may turn any number of face down creatures you control face up."
+        },
+        {
+          "id": "Demystifying Tide_GNJ",
+          "name": "Demystifying Tide",
+          "original_text": "Mana cost: {W}\nType: Instant\nSubmerge target artifact or enchantment. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nExile target artifact or enchantment. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Demystifying Tide_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Demystifying Tide",
+              "original_text": "Mana cost: {W}\nType: Instant\nSubmerge target artifact or enchantment. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Demystifying Tide",
+              "executable_text": "Mana cost: {W}\nType: Instant\nExile target artifact or enchantment. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Submerge target artifact or enchantment."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Submerge target artifact or enchantment.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        },
+        {
+          "id": "Engulfing Incubus_GNJ",
+          "name": "Engulfing Incubus",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Creature — Spirit\nPower/Toughness: 2/1\nFirst strike\nWhen Engulfing Incubus enters, you may submerge target nontoken creature an opponent controls. When Engulfing Incubus is no longer on the battlefield, turn that card face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Creature — Spirit\nPower/Toughness: 2/1\nFirst strike\nWhen Engulfing Incubus enters, You may do the following: [Exile target nontoken creature an opponent controls; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up]. When Engulfing Incubus is no longer on the battlefield, turn that card face up.",
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Creature — Spirit",
+          "power": "2",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Engulfing Incubus_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Engulfing Incubus",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Creature — Spirit\nPower/Toughness: 2/1\nFirst strike\nWhen Engulfing Incubus enters, you may submerge target nontoken creature an opponent controls. When Engulfing Incubus is no longer on the battlefield, turn that card face up. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Engulfing Incubus",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Creature — Spirit\nPower/Toughness: 2/1\nFirst strike\nWhen Engulfing Incubus enters, You may do the following: [Exile target nontoken creature an opponent controls; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up]. When Engulfing Incubus is no longer on the battlefield, turn that card face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nWhen Engulfing Incubus enters, you may submerge target nontoken creature an opponent controls. When Engulfing Incubus is no longer on the battlefield, turn that card face up."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "First strike\nWhen Engulfing Incubus enters, you may submerge target nontoken creature an opponent controls. When Engulfing Incubus is no longer on the battlefield, turn that card face up.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        },
+        {
+          "id": "Forlorn Murklurker_GNJ",
+          "name": "Forlorn Murklurker",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 1/1\nWhen Forlorn Murklurker dies, submerge the top card of your library. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 1/1\nWhen Forlorn Murklurker dies, Exile the top card of your library. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Zombie",
+          "power": "1",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Forlorn Murklurker_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Forlorn Murklurker",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 1/1\nWhen Forlorn Murklurker dies, submerge the top card of your library. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Forlorn Murklurker",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 1/1\nWhen Forlorn Murklurker dies, Exile the top card of your library. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Forlorn Murklurker dies, submerge the top card of your library."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Forlorn Murklurker dies, submerge the top card of your library."
+        },
+        {
+          "id": "Ing'Wei of the Flood Realm_GNJ",
+          "name": "Ing'Wei of the Flood Realm",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nHexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, you may submerge that creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*\n{1}{U}{U}: Turn target face-down creature you control face up.",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nHexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, You may do the following: [Exile that creature; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].\n{1}{U}{U}: Turn target face-down creature you control face up.",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Legendary Creature — Human Wizard",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Ing'Wei of the Flood Realm_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ing'Wei of the Flood Realm",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nHexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, you may submerge that creature. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*\n{1}{U}{U}: Turn target face-down creature you control face up."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ing'Wei of the Flood Realm",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nHexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, You may do the following: [Exile that creature; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].\n{1}{U}{U}: Turn target face-down creature you control face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Hexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, you may submerge that creature.\n{1}{U}{U}: Turn target face-down creature you control face up."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Hexproof\nWhenever another creature you control becomes the target of a spell an opponent controls, you may submerge that creature.\n{1}{U}{U}: Turn target face-down creature you control face up.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        },
+        {
+          "id": "Isle Conservator_GNJ",
+          "name": "Isle Conservator",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Drake\nPower/Toughness: 2/5\nWhen Isle Conservator enters, if you control a legendary creature, submerge target creature an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Drake\nPower/Toughness: 2/5\nWhen Isle Conservator enters, if you control a legendary creature, Exile target creature an opponent controls. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{4}{U}",
+          "type_line": "Creature — Drake",
+          "power": "2",
+          "toughness": "5",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Isle Conservator_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Isle Conservator",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Drake\nPower/Toughness: 2/5\nWhen Isle Conservator enters, if you control a legendary creature, submerge target creature an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Isle Conservator",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Drake\nPower/Toughness: 2/5\nWhen Isle Conservator enters, if you control a legendary creature, Exile target creature an opponent controls. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Isle Conservator enters, if you control a legendary creature, submerge target creature an opponent controls."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Isle Conservator enters, if you control a legendary creature, submerge target creature an opponent controls.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        },
+        {
+          "id": "Keeper of Blue Incense_GNJ",
+          "name": "Keeper of Blue Incense",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nWhen Keeper of Blue Incense enters, submerge target card from your graveyard. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nWhen Keeper of Blue Incense enters, Exile target card from your graveyard. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Creature — Human Wizard",
+          "power": "3",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Keeper of Blue Incense_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Keeper of Blue Incense",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nWhen Keeper of Blue Incense enters, submerge target card from your graveyard. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Keeper of Blue Incense",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 3/2\nWhen Keeper of Blue Incense enters, Exile target card from your graveyard. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Keeper of Blue Incense enters, submerge target card from your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Keeper of Blue Incense enters, submerge target card from your graveyard."
+        },
+        {
+          "id": "Lost Among the Lilies_GNJ",
+          "name": "Lost Among the Lilies",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nSubmerge target spell. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nExile target spell. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Lost Among the Lilies_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lost Among the Lilies",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nSubmerge target spell. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lost Among the Lilies",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nExile target spell. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up.",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Submerge target spell."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Submerge target spell."
+        },
+        {
+          "id": "Rise from the Depths_GNJ",
+          "name": "Rise from the Depths",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nSubmerge all creature cards in graveyards. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nFor each creature card in graveyards, do the following: [Exile that card; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+          "mana_cost": "{3}{B}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Rise from the Depths_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rise from the Depths",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nSubmerge all creature cards in graveyards. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rise from the Depths",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nFor each creature card in graveyards, do the following: [Exile that card; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Submerge all creature cards in graveyards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Submerge all creature cards in graveyards."
+        },
+        {
+          "id": "Shojiro, the Wavewaker_GNJ",
+          "name": "Shojiro, the Wavewaker",
+          "original_text": "Mana cost: {6}{U}{U}\nType: Legendary Creature — Octopus\nPower/Toughness: 8/8\nWhen Shojiro, the Wavewaker enters, submerge up to eight target creatures your opponents control. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {6}{U}{U}\nType: Legendary Creature — Octopus\nPower/Toughness: 8/8\nWhen Shojiro, the Wavewaker enters, Choose up to eight target creatures your opponents control. For each permanent chosen this way, do the following: [Exile that permanent; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+          "mana_cost": "{6}{U}{U}",
+          "type_line": "Legendary Creature — Octopus",
+          "power": "8",
+          "toughness": "8",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Shojiro, the Wavewaker_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shojiro, the Wavewaker",
+              "original_text": "Mana cost: {6}{U}{U}\nType: Legendary Creature — Octopus\nPower/Toughness: 8/8\nWhen Shojiro, the Wavewaker enters, submerge up to eight target creatures your opponents control. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Shojiro, the Wavewaker",
+              "executable_text": "Mana cost: {6}{U}{U}\nType: Legendary Creature — Octopus\nPower/Toughness: 8/8\nWhen Shojiro, the Wavewaker enters, Choose up to eight target creatures your opponents control. For each permanent chosen this way, do the following: [Exile that permanent; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Shojiro, the Wavewaker enters, submerge up to eight target creatures your opponents control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Shojiro, the Wavewaker enters, submerge up to eight target creatures your opponents control."
+        },
+        {
+          "id": "Surging Stream_GNJ",
+          "name": "Surging Stream",
+          "original_text": "Mana cost: {3}{W}\nType: Instant\nSubmerge up to two target attacking nontoken creatures an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Instant\nChoose up to two target attacking nontoken creatures an opponent controls. For each permanent chosen this way, do the following: [Exile that permanent; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+          "mana_cost": "{3}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Surging Stream_GNJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Surging Stream",
+              "original_text": "Mana cost: {3}{W}\nType: Instant\nSubmerge up to two target attacking nontoken creatures an opponent controls. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Surging Stream",
+              "executable_text": "Mana cost: {3}{W}\nType: Instant\nChoose up to two target attacking nontoken creatures an opponent controls. For each permanent chosen this way, do the following: [Exile that permanent; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Submerge up to two target attacking nontoken creatures an opponent controls."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Submerge up to two target attacking nontoken creatures an opponent controls.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        },
+        {
+          "id": "Into the Flood Realm_OTH",
+          "name": "Into the Flood Realm",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Instant\nDraw three cards, then you may submerge a card from your hand. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Instant\nDraw three cards, then You may do the following: [Exile a card from your hand; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Into the Flood Realm_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Into the Flood Realm",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Instant\nDraw three cards, then you may submerge a card from your hand. *(To submerge a card, exile it, then put it on the battlefield face down under its owner's control as a 2/2 creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Into the Flood Realm",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Instant\nDraw three cards, then You may do the following: [Exile a card from your hand; Put that card onto the battlefield face down under its owner's control as a 2/2 creature; Give that creature the submerged status until it turns face up].",
+              "custom_keyword_identities": [
+                "submerge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw three cards, then you may submerge a card from your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "submerge"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Draw three cards, then you may submerge a card from your hand."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Submerge",
+          "template": "{Object}",
+          "reminder": "Exile {Object}. Put that card onto the battlefield face down under its owner's control as a 2/2 creature. Give that creature the submerged status until it turns face up."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_source_behavioral_verification",
+      "remaining_obligations": [
+        "Complete source leaves-trigger must retain returned card identity.",
+        "Cross-card submerged adjective references require status-filter binding."
+      ]
+    }
+  ]
+}

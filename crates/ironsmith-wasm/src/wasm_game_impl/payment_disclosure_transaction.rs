@@ -97,6 +97,9 @@ impl WasmGame {
     }
 
     fn payment_transaction_subject(&self) -> Option<(ObjectId, PlayerId)> {
+        if let Some(PendingReplayAction { root: ReplayRoot::PrivateHandSpecialAction(reservation), .. }) = self.pending_replay_action.as_ref() {
+            return Some((reservation.source(), reservation.actor()));
+        }
         // Casting moves to a new ObjectId. The original opaque exile
         // incarnation and actor own this whole disclosure transaction.
         if let Some(opened) = self.priority_state.opened_exile_play.as_ref() {

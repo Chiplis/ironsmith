@@ -1,0 +1,981 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Mirage selected-method timing and cleanup",
+  "mechanics": [
+    {
+      "id": "msem-445",
+      "keyword": "Mirage",
+      "original_reminder": "You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.",
+      "executable_reminder": "Any time you could cast an instant, you may cast this spell from your hand for {Cost} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+      "source_cards": [
+        "Antithesis",
+        "Bath in the Solitude",
+        "Dawn Silhouette",
+        "Haze Raptor",
+        "Mesmerizing Shimmer",
+        "Preserving Cloak",
+        "Sandborn Mage",
+        "Sandmouth Dragon",
+        "Through the Dust",
+        "Wall of Fog",
+        "Choking Despair",
+        "Evanescier Greypelt",
+        "Hollow Hooligan",
+        "Lost in Fugue",
+        "Moonshadow Remnant",
+        "Mystic's Mantle",
+        "Dunehaze Revolutionary",
+        "Arcane Figment",
+        "Walking with Ancestors"
+      ],
+      "rule_reference": "702.202.",
+      "rule_text": [
+        {
+          "name": "702.202a",
+          "rule": "Mirage represents two static abilities, one that functions while the card with mirage is on the stack, and one which may create a delayed triggered ability. “Mirage (cost)” means “You may cast this card as though it had flash by paying (cost) rather than its mana cost,” and “If this spell's mirage cost was paid, sacrifice the permanent this spell becomes at the beginning of the next cleanup step.”",
+          "custom": true
+        },
+        {
+          "name": "702.202b",
+          "rule": "Permanents with mirage will leave the battlefield after damage is removed from permanents and 'until end of turn' and 'this turn' effects end.",
+          "custom": true
+        },
+        {
+          "name": "702.202c",
+          "rule": "If the triggered ability of mirage is countered, it will not trigger again.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Antithesis_POA",
+          "name": "Antithesis",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Enchantment\nCreatures you don't control get -1/-1.\nMirage {1}{B} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Enchantment\nCreatures you don't control get -1/-1.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{B} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "mana_cost": "{3}{B}{B}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Antithesis_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Antithesis",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Enchantment\nCreatures you don't control get -1/-1.\nMirage {1}{B} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Antithesis",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Enchantment\nCreatures you don't control get -1/-1.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{B} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Creatures you don't control get -1/-1.\nMirage {1}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Creatures you don't control get -1/-1.\nMirage {1}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Bath in the Solitude_POA",
+          "name": "Bath in the Solitude",
+          "original_text": "Mana cost: {3}{U}\nType: Enchantment\nCreatures you control have “{T}: Add {C}.”\nMirage {1}{U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {3}{U}\nType: Enchantment\nCreatures you control have “{T}: Add {C}.”\nAny time you could cast an instant, you may cast this spell from your hand for {1}{U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Bath in the Solitude_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bath in the Solitude",
+              "original_text": "Mana cost: {3}{U}\nType: Enchantment\nCreatures you control have “{T}: Add {C}.”\nMirage {1}{U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{3}{U}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Bath in the Solitude",
+              "executable_text": "Mana cost: {3}{U}\nType: Enchantment\nCreatures you control have “{T}: Add {C}.”\nAny time you could cast an instant, you may cast this spell from your hand for {1}{U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Creatures you control have “{T}: Add {C}.”\nMirage {1}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Creatures you control have “{T}: Add {C}.”\nMirage {1}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Dawn Silhouette_POA",
+          "name": "Dawn Silhouette",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Human Illusion\nPower/Toughness: 2/2\nWhen Dawn Silhouette enters, you may exile target creature not named Dawn Silhouette you control. Return that card to the battlefield under your control at the beginning of the next end step.\nMirage {1}{W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Illusion\nPower/Toughness: 2/2\nWhen Dawn Silhouette enters, you may exile target creature not named Dawn Silhouette you control. Return that card to the battlefield under your control at the beginning of the next end step.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Dawn Silhouette_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dawn Silhouette",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Human Illusion\nPower/Toughness: 2/2\nWhen Dawn Silhouette enters, you may exile target creature not named Dawn Silhouette you control. Return that card to the battlefield under your control at the beginning of the next end step.\nMirage {1}{W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Human Illusion",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Dawn Silhouette",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Illusion\nPower/Toughness: 2/2\nWhen Dawn Silhouette enters, you may exile target creature not named Dawn Silhouette you control. Return that card to the battlefield under your control at the beginning of the next end step.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Dawn Silhouette enters, you may exile target creature not named Dawn Silhouette you control. Return that card to the battlefield under your control at the beginning of the next end step.\nMirage {1}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Dawn Silhouette enters, you may exile target creature not named Dawn Silhouette you control. Return that card to the battlefield under your control at the beginning of the next end step.\nMirage {1}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Haze Raptor_POA",
+          "name": "Haze Raptor",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Lizard Illusion\nPower/Toughness: 2/2\nHaste *(This creature can attack and {T} as soon as it comes under your control.)*\nMirage {R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Lizard Illusion\nPower/Toughness: 2/2\nHaste\nAny time you could cast an instant, you may cast this spell from your hand for {R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Haze Raptor_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Haze Raptor",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Lizard Illusion\nPower/Toughness: 2/2\nHaste *(This creature can attack and {T} as soon as it comes under your control.)*\nMirage {R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Lizard Illusion",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Haze Raptor",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Lizard Illusion\nPower/Toughness: 2/2\nHaste\nAny time you could cast an instant, you may cast this spell from your hand for {R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Haste\nMirage {R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Haste\nMirage {R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mesmerizing Shimmer_POA",
+          "name": "Mesmerizing Shimmer",
+          "original_text": "Mana cost: {4}{U}{R}\nType: Enchantment — Aura\nEnchant creature\nWhen Mesmerizing Shimmer enters, untap enchanted creature. It gains haste until end of turn.\nYou control enchanted creature.\nMirage {2}{U}{R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {4}{U}{R}\nType: Enchantment — Aura\nEnchant creature\nWhen Mesmerizing Shimmer enters, untap enchanted creature. It gains haste until end of turn.\nYou control enchanted creature.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{U}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Mesmerizing Shimmer_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mesmerizing Shimmer",
+              "original_text": "Mana cost: {4}{U}{R}\nType: Enchantment — Aura\nEnchant creature\nWhen Mesmerizing Shimmer enters, untap enchanted creature. It gains haste until end of turn.\nYou control enchanted creature.\nMirage {2}{U}{R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{4}{U}{R}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Mesmerizing Shimmer",
+              "executable_text": "Mana cost: {4}{U}{R}\nType: Enchantment — Aura\nEnchant creature\nWhen Mesmerizing Shimmer enters, untap enchanted creature. It gains haste until end of turn.\nYou control enchanted creature.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{U}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Enchant creature\nWhen Mesmerizing Shimmer enters, untap enchanted creature. It gains haste until end of turn.\nYou control enchanted creature.\nMirage {2}{U}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Enchant creature\nWhen Mesmerizing Shimmer enters, untap enchanted creature. It gains haste until end of turn.\nYou control enchanted creature.\nMirage {2}{U}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Preserving Cloak_POA",
+          "name": "Preserving Cloak",
+          "original_text": "Mana cost: {1}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +0/+1 and has hexproof.\nMirage {U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +0/+1 and has hexproof.\nAny time you could cast an instant, you may cast this spell from your hand for {U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Preserving Cloak_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Preserving Cloak",
+              "original_text": "Mana cost: {1}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +0/+1 and has hexproof.\nMirage {U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{1}{U}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Preserving Cloak",
+              "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +0/+1 and has hexproof.\nAny time you could cast an instant, you may cast this spell from your hand for {U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +0/+1 and has hexproof.\nMirage {U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Enchant creature\nEnchanted creature gets +0/+1 and has hexproof.\nMirage {U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sandborn Mage_POA",
+          "name": "Sandborn Mage",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Wizard Illusion\nPower/Toughness: 2/3\nWhen Sandborn Mage enters, you may return target instant or sorcery card from your graveyard to your hand.\nMirage {2}{U}{U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Wizard Illusion\nPower/Toughness: 2/3\nWhen Sandborn Mage enters, you may return target instant or sorcery card from your graveyard to your hand.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{U}{U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Sandborn Mage_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sandborn Mage",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Wizard Illusion\nPower/Toughness: 2/3\nWhen Sandborn Mage enters, you may return target instant or sorcery card from your graveyard to your hand.\nMirage {2}{U}{U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Creature — Wizard Illusion",
+          "power": "2",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Sandborn Mage",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Wizard Illusion\nPower/Toughness: 2/3\nWhen Sandborn Mage enters, you may return target instant or sorcery card from your graveyard to your hand.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{U}{U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Sandborn Mage enters, you may return target instant or sorcery card from your graveyard to your hand.\nMirage {2}{U}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Sandborn Mage enters, you may return target instant or sorcery card from your graveyard to your hand.\nMirage {2}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sandmouth Dragon_POA",
+          "name": "Sandmouth Dragon",
+          "original_text": "Mana cost: {3}{R}{R}\nType: Creature — Dragon Illusion\nPower/Toughness: 3/3\nWhen Sandmouth Dragon enters, another target creature you control gets +3/+0 until end of turn.\nMirage {2}{R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {3}{R}{R}\nType: Creature — Dragon Illusion\nPower/Toughness: 3/3\nWhen Sandmouth Dragon enters, another target creature you control gets +3/+0 until end of turn.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Sandmouth Dragon_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sandmouth Dragon",
+              "original_text": "Mana cost: {3}{R}{R}\nType: Creature — Dragon Illusion\nPower/Toughness: 3/3\nWhen Sandmouth Dragon enters, another target creature you control gets +3/+0 until end of turn.\nMirage {2}{R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{3}{R}{R}",
+          "type_line": "Creature — Dragon Illusion",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Sandmouth Dragon",
+              "executable_text": "Mana cost: {3}{R}{R}\nType: Creature — Dragon Illusion\nPower/Toughness: 3/3\nWhen Sandmouth Dragon enters, another target creature you control gets +3/+0 until end of turn.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Sandmouth Dragon enters, another target creature you control gets +3/+0 until end of turn.\nMirage {2}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Sandmouth Dragon enters, another target creature you control gets +3/+0 until end of turn.\nMirage {2}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Through the Dust_POA",
+          "name": "Through the Dust",
+          "original_text": "Mana cost: {4}{U}{U}{U}\nType: Enchantment\nWhen Through the Dust enters, it becomes an Aura with enchant creature. Reveal the top seven cards of your library, put a creature card revealed this way onto the battlefield and attach Through the Dust to it. Then put the rest on the bottom of your library in any order. When Through the Dust is no longer on the battlefield, enchanted creature's controller sacrifices it.\nMirage {1}{U}{U}{U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {4}{U}{U}{U}\nType: Enchantment\nWhen Through the Dust enters, it becomes an Aura with enchant creature. Reveal the top seven cards of your library, put a creature card revealed this way onto the battlefield and attach Through the Dust to it. Then put the rest on the bottom of your library in any order. When Through the Dust is no longer on the battlefield, enchanted creature's controller sacrifices it.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{U}{U}{U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Through the Dust_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Through the Dust",
+              "original_text": "Mana cost: {4}{U}{U}{U}\nType: Enchantment\nWhen Through the Dust enters, it becomes an Aura with enchant creature. Reveal the top seven cards of your library, put a creature card revealed this way onto the battlefield and attach Through the Dust to it. Then put the rest on the bottom of your library in any order. When Through the Dust is no longer on the battlefield, enchanted creature's controller sacrifices it.\nMirage {1}{U}{U}{U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{4}{U}{U}{U}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Through the Dust",
+              "executable_text": "Mana cost: {4}{U}{U}{U}\nType: Enchantment\nWhen Through the Dust enters, it becomes an Aura with enchant creature. Reveal the top seven cards of your library, put a creature card revealed this way onto the battlefield and attach Through the Dust to it. Then put the rest on the bottom of your library in any order. When Through the Dust is no longer on the battlefield, enchanted creature's controller sacrifices it.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{U}{U}{U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Through the Dust enters, it becomes an Aura with enchant creature. Reveal the top seven cards of your library, put a creature card revealed this way onto the battlefield and attach Through the Dust to it. Then put the rest on the bottom of your library in any order. When Through the Dust is no longer on the battlefield, enchanted creature's controller sacrifices it.\nMirage {1}{U}{U}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Through the Dust enters, it becomes an Aura with enchant creature. Reveal the top seven cards of your library, put a creature card revealed this way onto the battlefield and attach Through the Dust to it. Then put the rest on the bottom of your library in any order. When Through the Dust is no longer on the battlefield, enchanted creature's controller sacrifices it.\nMirage {1}{U}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Wall of Fog_POA",
+          "name": "Wall of Fog",
+          "original_text": "Mana cost: {U}\nType: Creature — Wall Illusion\nPower/Toughness: 0/3\nDefender *(This creature can't attack.)*\nMirage {0} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {U}\nType: Creature — Wall Illusion\nPower/Toughness: 0/3\nDefender\nAny time you could cast an instant, you may cast this spell from your hand for {0} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Wall of Fog_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wall of Fog",
+              "original_text": "Mana cost: {U}\nType: Creature — Wall Illusion\nPower/Toughness: 0/3\nDefender *(This creature can't attack.)*\nMirage {0} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Creature — Wall Illusion",
+          "power": "0",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Wall of Fog",
+              "executable_text": "Mana cost: {U}\nType: Creature — Wall Illusion\nPower/Toughness: 0/3\nDefender\nAny time you could cast an instant, you may cast this spell from your hand for {0} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Defender\nMirage {0}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Defender\nMirage {0}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Choking Despair_KLC",
+          "name": "Choking Despair",
+          "original_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-2.\nMirage—{B}, Discard a card. *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-2.\nAny time you could cast an instant, you may cast this spell from your hand for {B}, Discard a card rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Choking Despair_KLC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Choking Despair",
+              "original_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-2.\nMirage—{B}, Discard a card. *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Choking Despair",
+              "executable_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets -2/-2.\nAny time you could cast an instant, you may cast this spell from your hand for {B}, Discard a card rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Enchant creature\nEnchanted creature gets -2/-2.\nMirage—{B}, Discard a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Enchant creature\nEnchanted creature gets -2/-2.\nMirage—{B}, Discard a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Evanescier Greypelt_KLC",
+          "name": "Evanescier Greypelt",
+          "original_text": "Mana cost: {3}{G}\nType: Creature — Illusion Bear\nPower/Toughness: 2/2\nWhen Evanescier Greypelt enters, it fights target creature.\nMirage {3}{G} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {3}{G}\nType: Creature — Illusion Bear\nPower/Toughness: 2/2\nWhen Evanescier Greypelt enters, it fights target creature.\nAny time you could cast an instant, you may cast this spell from your hand for {3}{G} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Evanescier Greypelt_KLC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Evanescier Greypelt",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Illusion Bear\nPower/Toughness: 2/2\nWhen Evanescier Greypelt enters, it fights target creature.\nMirage {3}{G} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{3}{G}",
+          "type_line": "Creature — Illusion Bear",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Evanescier Greypelt",
+              "executable_text": "Mana cost: {3}{G}\nType: Creature — Illusion Bear\nPower/Toughness: 2/2\nWhen Evanescier Greypelt enters, it fights target creature.\nAny time you could cast an instant, you may cast this spell from your hand for {3}{G} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Evanescier Greypelt enters, it fights target creature.\nMirage {3}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Evanescier Greypelt enters, it fights target creature.\nMirage {3}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Hollow Hooligan_KLC",
+          "name": "Hollow Hooligan",
+          "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Illusion Rogue\nPower/Toughness: 3/2\nWhen Hollow Hooligan enters, up to two target creatures can't block this turn.\nMirage {1}{R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Illusion Rogue\nPower/Toughness: 3/2\nWhen Hollow Hooligan enters, up to two target creatures can't block this turn.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Hollow Hooligan_KLC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hollow Hooligan",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Illusion Rogue\nPower/Toughness: 3/2\nWhen Hollow Hooligan enters, up to two target creatures can't block this turn.\nMirage {1}{R} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{2}{R}{R}",
+          "type_line": "Creature — Illusion Rogue",
+          "power": "3",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Hollow Hooligan",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Illusion Rogue\nPower/Toughness: 3/2\nWhen Hollow Hooligan enters, up to two target creatures can't block this turn.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Hollow Hooligan enters, up to two target creatures can't block this turn.\nMirage {1}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Hollow Hooligan enters, up to two target creatures can't block this turn.\nMirage {1}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Lost in Fugue_KLC",
+          "name": "Lost in Fugue",
+          "original_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nMirage {W/U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nAny time you could cast an instant, you may cast this spell from your hand for {W/U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Lost in Fugue_KLC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lost in Fugue",
+              "original_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nMirage {W/U} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}{U}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Lost in Fugue",
+              "executable_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nAny time you could cast an instant, you may cast this spell from your hand for {W/U} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Enchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nMirage {W/U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Enchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.\nMirage {W/U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Moonshadow Remnant_KLC",
+          "name": "Moonshadow Remnant",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Creature — Illusion Assassin\nPower/Toughness: 2/2\nWhen Moonshadow Remnant enters, destroy target tapped creature.\nMirage {3}{W}{W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Creature — Illusion Assassin\nPower/Toughness: 2/2\nWhen Moonshadow Remnant enters, destroy target tapped creature.\nAny time you could cast an instant, you may cast this spell from your hand for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Moonshadow Remnant_KLC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Moonshadow Remnant",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Creature — Illusion Assassin\nPower/Toughness: 2/2\nWhen Moonshadow Remnant enters, destroy target tapped creature.\nMirage {3}{W}{W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}{W}",
+          "type_line": "Creature — Illusion Assassin",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Moonshadow Remnant",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Creature — Illusion Assassin\nPower/Toughness: 2/2\nWhen Moonshadow Remnant enters, destroy target tapped creature.\nAny time you could cast an instant, you may cast this spell from your hand for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Moonshadow Remnant enters, destroy target tapped creature.\nMirage {3}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Moonshadow Remnant enters, destroy target tapped creature.\nMirage {3}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mystic's Mantle_KLC",
+          "name": "Mystic's Mantle",
+          "original_text": "Mana cost: {1}{G}\nType: Enchantment — Aura\nEnchant creature\nWhen Mystic's Mantle enters, draw a card.\nEnchanted creature gets +1/+1.\nMirage {G} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Enchantment — Aura\nEnchant creature\nWhen Mystic's Mantle enters, draw a card.\nEnchanted creature gets +1/+1.\nAny time you could cast an instant, you may cast this spell from your hand for {G} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Mystic's Mantle_KLC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mystic's Mantle",
+              "original_text": "Mana cost: {1}{G}\nType: Enchantment — Aura\nEnchant creature\nWhen Mystic's Mantle enters, draw a card.\nEnchanted creature gets +1/+1.\nMirage {G} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Mystic's Mantle",
+              "executable_text": "Mana cost: {1}{G}\nType: Enchantment — Aura\nEnchant creature\nWhen Mystic's Mantle enters, draw a card.\nEnchanted creature gets +1/+1.\nAny time you could cast an instant, you may cast this spell from your hand for {G} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Enchant creature\nWhen Mystic's Mantle enters, draw a card.\nEnchanted creature gets +1/+1.\nMirage {G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Enchant creature\nWhen Mystic's Mantle enters, draw a card.\nEnchanted creature gets +1/+1.\nMirage {G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Dunehaze Revolutionary_OTH",
+          "name": "Dunehaze Revolutionary",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Human Rebel Nomad\nPower/Toughness: 3/3\nLifelink\nErratic *(When this creature dies, reveal the top four cards of your library. Put a creature card that costs less than this revealed this way onto the battlefield and the rest on the bottom in a random order.)*\nMirage {2}{W}{W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Human Rebel Nomad\nPower/Toughness: 3/3\nLifelink\nWhen this creature dies, reveal the top four cards of your library. Put a creature card with mana value less than this creature from among them onto the battlefield. Put the rest on the bottom of your library in any order\nAny time you could cast an instant, you may cast this spell from your hand for {2}{W}{W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Dunehaze Revolutionary_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dunehaze Revolutionary",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Human Rebel Nomad\nPower/Toughness: 3/3\nLifelink\nErratic *(When this creature dies, reveal the top four cards of your library. Put a creature card that costs less than this revealed this way onto the battlefield and the rest on the bottom in a random order.)*\nMirage {2}{W}{W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{4}{W}",
+          "type_line": "Creature — Human Rebel Nomad",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Dunehaze Revolutionary",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Human Rebel Nomad\nPower/Toughness: 3/3\nLifelink\nWhen this creature dies, reveal the top four cards of your library. Put a creature card with mana value less than this creature from among them onto the battlefield. Put the rest on the bottom of your library in any order\nAny time you could cast an instant, you may cast this spell from your hand for {2}{W}{W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage",
+                "erratic"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Lifelink\nErratic\nMirage {2}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage",
+            "erratic"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Lifelink\nErratic\nMirage {2}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Arcane Figment_HQZ",
+          "name": "Arcane Figment",
+          "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Elk Illusion\nPower/Toughness: 6/4\nWhen Arcane Figment dies, you may return target noncreature, nonland card from your graveyard to your hand.\nMirage—{2}{U}, Discard a card. *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {4}{U}{U}\nType: Creature — Elk Illusion\nPower/Toughness: 6/4\nWhen Arcane Figment dies, you may return target noncreature, nonland card from your graveyard to your hand.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{U}, Discard a card rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Arcane Figment_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Arcane Figment",
+              "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Elk Illusion\nPower/Toughness: 6/4\nWhen Arcane Figment dies, you may return target noncreature, nonland card from your graveyard to your hand.\nMirage—{2}{U}, Discard a card. *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{4}{U}{U}",
+          "type_line": "Creature — Elk Illusion",
+          "power": "6",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Arcane Figment",
+              "executable_text": "Mana cost: {4}{U}{U}\nType: Creature — Elk Illusion\nPower/Toughness: 6/4\nWhen Arcane Figment dies, you may return target noncreature, nonland card from your graveyard to your hand.\nAny time you could cast an instant, you may cast this spell from your hand for {2}{U}, Discard a card rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Arcane Figment dies, you may return target noncreature, nonland card from your graveyard to your hand.\nMirage—{2}{U}, Discard a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Arcane Figment dies, you may return target noncreature, nonland card from your graveyard to your hand.\nMirage—{2}{U}, Discard a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Walking with Ancestors_HQZ",
+          "name": "Walking with Ancestors",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment\nWhen Walking with Ancestors enters, exile up to one target creature until Walking with Ancestors leaves the battlefield.\nMirage {W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nWhen Walking with Ancestors enters, exile up to one target creature until Walking with Ancestors leaves the battlefield.\nAny time you could cast an instant, you may cast this spell from your hand for {W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "source_card_key": "Walking with Ancestors_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Walking with Ancestors",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment\nWhen Walking with Ancestors enters, exile up to one target creature until Walking with Ancestors leaves the battlefield.\nMirage {W} *(You may cast this spell as though it had flash for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Walking with Ancestors",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nWhen Walking with Ancestors enters, exile up to one target creature until Walking with Ancestors leaves the battlefield.\nAny time you could cast an instant, you may cast this spell from your hand for {W} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "When Walking with Ancestors enters, exile up to one target creature until Walking with Ancestors leaves the battlefield.\nMirage {W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "When Walking with Ancestors enters, exile up to one target creature until Walking with Ancestors leaves the battlefield.\nMirage {W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "pending_generic_plumbing": "Alternative cost grants flash only for that casting method and creates next-cleanup sacrifice tied to resulting object, including controller changes.",
+      "required_behavioral_assertions": [
+        "flash timing only for alternate payment",
+        "normal casting at sorcery speed",
+        "countered spell creates no delayed trigger",
+        "next cleanup rather than end step",
+        "current controller sacrifices",
+        "blinking loses delayed reference"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mirage {Cost}",
+          "reminder": "Any time you could cast an instant, you may cast this spell from your hand for {Cost} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step."
+        }
+      ]
+    },
+    {
+      "id": "msem-446",
+      "keyword": "Mirage",
+      "original_reminder": "You may cast this spell for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.",
+      "executable_reminder": "Any time you could cast an instant, you may cast this spell from your hand for {Cost} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+      "source_cards": [
+        "Pyramid Lord"
+      ],
+      "rule_reference": "702.202.",
+      "rule_text": [
+        {
+          "name": "702.202a",
+          "rule": "Mirage represents two static abilities, one that functions while the card with mirage is on the stack, and one which may create a delayed triggered ability. “Mirage (cost)” means “You may cast this card as though it had flash by paying (cost) rather than its mana cost,” and “If this spell's mirage cost was paid, sacrifice the permanent this spell becomes at the beginning of the next cleanup step.”",
+          "custom": true
+        },
+        {
+          "name": "702.202b",
+          "rule": "Permanents with mirage will leave the battlefield after damage is removed from permanents and 'until end of turn' and 'this turn' effects end.",
+          "custom": true
+        },
+        {
+          "name": "702.202c",
+          "rule": "If the triggered ability of mirage is countered, it will not trigger again.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Pyramid Lord_POA",
+          "name": "Pyramid Lord",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Wizard Illusion\nPower/Toughness: 3/1\nFlash\nWhen Pyramid Lord enters, copy target instant or sorcery spell. You may choose new targets for the copy.\nMirage {1}{R}{R} *(You may cast this spell for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Wizard Illusion\nPower/Toughness: 3/1\nFlash\nWhen Pyramid Lord enters, copy target instant or sorcery spell. You may choose new targets for the copy.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{R}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Wizard Illusion",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Pyramid Lord_POA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pyramid Lord",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Wizard Illusion\nPower/Toughness: 3/1\nFlash\nWhen Pyramid Lord enters, copy target instant or sorcery spell. You may choose new targets for the copy.\nMirage {1}{R}{R} *(You may cast this spell for its mirage cost. If you do, sacrifice it at the beginning of the next cleanup step.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Pyramid Lord",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Wizard Illusion\nPower/Toughness: 3/1\nFlash\nWhen Pyramid Lord enters, copy target instant or sorcery spell. You may choose new targets for the copy.\nAny time you could cast an instant, you may cast this spell from your hand for {1}{R}{R} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step.",
+              "custom_keyword_identities": [
+                "mirage"
+              ],
+              "custom_keyword_payments": [
+                "mirage"
+              ],
+              "original_display_text": "Flash\nWhen Pyramid Lord enters, copy target instant or sorcery spell. You may choose new targets for the copy.\nMirage {1}{R}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mirage"
+          ],
+          "custom_keyword_payments": [
+            "mirage"
+          ],
+          "original_display_text": "Flash\nWhen Pyramid Lord enters, copy target instant or sorcery spell. You may choose new targets for the copy.\nMirage {1}{R}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "pending_generic_plumbing": "Alternative cost grants flash only for that casting method and creates next-cleanup sacrifice tied to resulting object, including controller changes.",
+      "required_behavioral_assertions": [
+        "flash timing only for alternate payment",
+        "normal casting at sorcery speed",
+        "countered spell creates no delayed trigger",
+        "next cleanup rather than end step",
+        "current controller sacrifices",
+        "blinking loses delayed reference"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mirage {Cost}",
+          "reminder": "Any time you could cast an instant, you may cast this spell from your hand for {Cost} rather than pay its mana cost. If you cast this spell this way, sacrifice it at the beginning of the next cleanup step."
+        }
+      ]
+    }
+  ]
+}

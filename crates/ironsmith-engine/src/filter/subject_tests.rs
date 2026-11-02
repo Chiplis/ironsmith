@@ -172,3 +172,25 @@ fn prospective_spell_can_match_its_cast_origin_before_entering_the_stack() {
         "the original zone constraint still applies"
     );
 }
+
+
+#[test]
+fn group_member_snapshot_filter_keeps_exact_departed_source_relation() {
+    let (mut game,source,member,player)=fixture();
+    let card=CardBuilder::new(CardId::new(),"Unrelated group candidate")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1,1)).build();
+    let outsider=game.create_object_from_card(&card,player,Zone::Battlefield);
+    game.link_object_group(Some(source),&[member],true);
+    let mut filter=ObjectFilter::creature();
+    filter.group_member_of=Some(Box::new(ChooseSpec::Source));
+    let ctx=FilterContext::new(player).with_source(source);
+    assert!(filter.matches(game.object(member).unwrap(),&ctx,&game));
+    assert!(!filter.matches(game.object(outsider).unwrap(),&ctx,&game));
+    assert!(!filter.matches(game.object(source).unwrap(),&ctx,&game));
+    let retained=ObjectSnapshot::from_object_with_calculated_characteristics(game.object(member).unwrap(),&game);
+    let unrelated=ObjectSnapshot::from_object_with_calculated_characteristics(game.object(outsider).unwrap(),&game);
+    game.move_object_by_effect(source,Zone::Graveyard).unwrap();
+    assert!(filter.matches_snapshot(&retained,&ctx,&game));
+    assert!(!filter.matches_snapshot(&unrelated,&ctx,&game));
+}

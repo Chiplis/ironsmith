@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::distinct_event_union_keeps_its_typed_gain_arm' panicked at crates/ironsmith-compiler-grammar/src/activation_and_restrictions/semantic/semantic_trigger.rs:7499:9:
+assertion failed: matches!(trigger, TriggerSpec::Either(..) | TriggerSpec::AnyOf(..))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::distinct_event_union_keeps_its_typed_gain_arm ... FAILED
+
+failures:
+
+failures:
+    activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::distinct_event_union_keeps_its_typed_gain_arm
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.03s
+

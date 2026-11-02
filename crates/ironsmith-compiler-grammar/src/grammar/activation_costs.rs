@@ -58,6 +58,15 @@ pub struct ActivationCostCst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivationCostSegmentCst {
+    /// A selected object set is converted using the ordinary characteristic
+    /// descriptor grammar. Descriptor tokens are consumed at semantic assembly.
+    ConvertObjects {
+        count: ChoiceCount,
+        filter: ObjectFilter,
+        descriptor: Vec<OwnedLexToken>,
+        completion: Option<String>,
+    },
+    EffectProgram(Vec<crate::cards::builders::EffectAst>),
     Mana(ManaCost),
     DynamicMana(ironsmith_core::DynamicManaCost),
     Tap,

@@ -599,6 +599,11 @@ pub enum PhaseOutDuration {
     /// Attractions" (Ferris Wheel): held phased out until the effect's
     /// controller's visit roll (CR 701.52a) is at most this result.
     UntilVisitRollAtMost(u32),
+    /// Keep phased out until the effect controller completes their nth spell cast in a turn.
+    UntilControllerCastsNthSpellInTurn(u32),
+    /// Phase in as the current turn's until-end-of-turn durations expire.
+    /// Appended; every existing serialized discriminant remains unchanged.
+    UntilEndOfTurn,
 }
 
 impl PhaseOutDuration {
@@ -1230,6 +1235,9 @@ pub struct GrantPlayTaggedEffect<C> {
     /// created). Appended; absent in older artifacts.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub while_player_controls: Option<ObjectFilter>,
+    /// A resolving effect duration: ends permanently when its player no longer controls a match.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub control_duration: Option<ObjectFilter>,
     /// "If you do, it enters tapped." (Kaldring, the Rimestaff): a land
     /// played or a permanent spell cast through this permission enters the
     /// battlefield tapped. Appended; absent in older artifacts.
@@ -1289,6 +1297,7 @@ impl<C> GrantPlayTaggedEffect<C> {
             during_your_turns: false,
             alternative_cost_x_is_mana_value: false,
             while_player_controls: None,
+            control_duration: None,
             permanents_enter_tapped: false,
         }
     }
@@ -1478,6 +1487,23 @@ pub struct RegisterFutureZoneReplacementEffect {
     /// The authored rider refers to a collection as "those spells".
     #[cfg_attr(feature = "serde", serde(default))]
     pub those_spells_surface: bool,
+}
+
+/// Register an event-local program over a future event, independently of
+/// the registering spell or ability remaining on the battlefield.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterEventReplacementEffect<E = ()> {
+    /// When present, bind one exact object at registration rather than
+    /// permitting a later incarnation of a tagged physical card to match.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub target: Option<ChooseSpec>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resolving_object_only: bool,
+    pub event: crate::ReplacedEventSpec,
+    pub replacement_effects: Vec<E>,
+    pub mode: ReplacementApplyMode,
+    pub display: String,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5129,7 +5155,7 @@ pub struct ReturnFromGraveyardToBattlefieldEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ReturnFromGraveyardOrExileToBattlefieldEffect {
     pub tapped: bool,
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub returning_player: Option<PlayerFilter>,
 }
 
@@ -5439,6 +5465,22 @@ impl SoulbondPairEffect {
     }
 }
 
+/// Remove one still-present group from a compiler-owned typed text plan.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RemoveOptionalTextFragmentEffect { pub target: ChooseSpec, pub until: Until }
+/// Establish one directed named relationship from a source to a permanent.
+/// New relationships of the same name replace that source's prior target;
+/// different sources may share a target. Both ends retain their controller.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct LinkPermanentsEffect {
+    pub source: ChooseSpec,
+    pub target: ChooseSpec,
+    pub relation: String,
+    pub require_creatures: bool,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct TransformEffect {
@@ -5516,6 +5558,10 @@ pub struct CastTaggedEffect<C> {
     /// Other additional costs still apply. None preserves the ordinary price.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub alternative_cost: Option<crate::TotalCost<C>>,
+    /// A captured named replacement price. A later grant/index change cannot
+    /// change either the paid name or the complete retained cost.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_cost_label: Option<String>,
     /// While casting, the caster may activate only mana abilities of lands
     /// they control, and that mana funds only this spell or other such land
     /// mana abilities (Word of Command).
@@ -5562,6 +5608,7 @@ impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
             && self.mana_spend_mode == other.mana_spend_mode
             && self.alternative_payment == other.alternative_payment
             && self.alternative_cost == other.alternative_cost
+            && self.alternative_cost_label == other.alternative_cost_label
             && self.caster_land_mana_abilities_only == other.caster_land_mana_abilities_only
             && self.control_caster_while_spell_resolves
                 == other.control_caster_while_spell_resolves
@@ -5586,6 +5633,7 @@ impl<C> CastTaggedEffect<C> {
             mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             alternative_payment: None,
             alternative_cost: None,
+            alternative_cost_label: None,
             caster_land_mana_abilities_only: false,
             control_caster_while_spell_resolves: false,
             required_zone: None,
@@ -5623,6 +5671,7 @@ impl<C> CastTaggedEffect<C> {
             additional_mana_cost: self.additional_mana_cost, cost_reduction: self.cost_reduction,
             mana_spend_mode: self.mana_spend_mode, alternative_payment: self.alternative_payment,
             alternative_cost: self.alternative_cost.map(|cost| cost.try_map(&mut map)).transpose()?,
+            alternative_cost_label: self.alternative_cost_label,
             caster_land_mana_abilities_only: self.caster_land_mana_abilities_only,
             control_caster_while_spell_resolves: self.control_caster_while_spell_resolves,
             required_zone: self.required_zone,
@@ -6394,6 +6443,10 @@ impl<E> ManaRetainedEffect<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct MayEffect<E> {
+    /// Bind an optional total-cost result to its authored payment label.
+    /// The runtime retains the actual payer and result, never inferred text.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if="Option::is_none"))]
+    pub payment_receipt: Option<String>,
     pub decider: Option<PlayerFilter>,
     pub effects: Vec<E>,
     /// The complete optional program is a cost, paid atomically before its
@@ -6745,7 +6798,7 @@ pub enum LoyaltyActivationAllowance {
 
 /// Which permanents a loyalty-activation allowance covers.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum LoyaltyActivationScope {
     /// The resolving ability's source ("loyalty abilities of Kaito").
     Source,
@@ -6755,11 +6808,13 @@ pub enum LoyaltyActivationScope {
     /// Planeswalkers the resolving player controls at any time this turn,
     /// optionally of one subtype ("Jace planeswalkers you control").
     ControlledPlaneswalkers { subtype: Option<Subtype> },
+    /// The ordinary resolved object selector, including explicit targets.
+    Objects(ChooseSpec),
 }
 
 /// Relax the loyalty-ability activation rule for the rest of this turn.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct GrantLoyaltyActivationAllowanceEffect {
     pub scope: LoyaltyActivationScope,
     pub allowance: LoyaltyActivationAllowance,
@@ -6873,4 +6928,66 @@ mod program_compatibility_tests {
         };
         assert_eq!(serde_json::from_value::<Value>(serde_json::to_value(&value).unwrap()).unwrap(), value);
     }
+}
+
+/// A named action receipt, composed after the operations that implement it.
+/// `objects` is an untargeted or explicitly targeted ordinary object operand;
+/// absence records one action with no affected object packet.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct PerformNamedActionEffect {
+    pub label: String,
+    #[cfg_attr(feature="serde",serde(default,skip_serializing_if="Option::is_none"))]
+    pub performer: Option<ChooseSpec>,
+    pub objects: Option<ChooseSpec>,
+    /// Exact prior instruction receipt, independent of later selections.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub prior_objects: Option<(EffectId, crate::PriorEffectAction)>,
+}
+
+/// The owner that authorizes an operation completion receipt. Material
+/// quantities and incidental events are never completion evidence.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum NamedActionProgramCompletion {
+    #[default]
+    ProgramCompleted,
+    AcceptedPayment,
+    /// Complete only when the explicitly bound original object packet is nonempty.
+    NonemptyObjects,
+    /// Capture `objects` before proposing the action. Completion remains a
+    /// full-program boundary, independent of whether the set is empty.
+    ProposedObjects,
+    /// Capture inputs before replacement, but publish completion only when the
+    /// original child program reports at least one choice and all were available.
+    ProposedObjectsWithAvailableChoices,
+}
+impl NamedActionProgramCompletion {
+    pub fn captures_proposed_objects(self) -> bool {
+        matches!(self, Self::ProposedObjects | Self::ProposedObjectsWithAvailableChoices)
+    }
+}
+
+/// A named operation whose ordinary program is proposed before it executes.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct NamedActionProgramEffect<E> {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub completion: NamedActionProgramCompletion,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub objects: Option<ChooseSpec>,
+    pub label: String,
+    pub player: PlayerFilter,
+    pub effects: Vec<E>,
+}
+/// Instruction to activate one current ability of an object while waiving
+/// every component of its activation cost. Optionality is ordinary May.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ActivateAbilityWithoutCostsEffect {
+    pub source: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub designation: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub invocation_action: Option<String>,
 }

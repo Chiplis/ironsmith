@@ -34,6 +34,8 @@ pub enum DynamicThisWayMetric {
     /// "for each creature tapped this way": permanents tapped by the spell's
     /// own optional or additional tap cost (Explosive Singularity).
     Tapped,
+    /// Objects affected by this spell's own completed additional payment.
+    Affected,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,6 +277,7 @@ fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_
             ("discarded", DynamicThisWayMetric::Discarded),
             ("exiled", DynamicThisWayMetric::Exiled),
             ("tapped", DynamicThisWayMetric::Tapped),
+            ("affected", DynamicThisWayMetric::Affected),
         ] {
             if has_word(tokens, word) {
                 return DynamicCostValueShape::ThisWayMetric(metric);

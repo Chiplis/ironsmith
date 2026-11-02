@@ -264,6 +264,9 @@ fn looked_partition_count(input: &mut LexStream<'_>) -> WResult<ChoiceCount> {
             )),
         )
             .map(|(count, _)| count),
+        // The enclosing partition proves the destination and exact remainder;
+        // a bare counted pick refers to the previously viewed card set.
+        leaf::parse_leaf_choice_count_prefix_lexed,
     ))
     .parse_next(input)
 }
@@ -406,11 +409,18 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
         ));
     }
     primitives::kw("and").parse_next(input)?;
-    opt(primitives::kw("the")).parse_next(input)?;
-    alt((primitives::kw("rest"), primitives::kw("other")))
-        .void()
-        .parse_next(input)?;
-    let remainder_destination = looked_partition_destination.parse_next(input)?;
+    let remainder_destination = alt((
+        (
+            primitives::kw("exile"),
+            opt(primitives::kw("the")),
+            alt((primitives::kw("rest"), primitives::kw("other"))),
+        ).value(LookedPartitionDestination::Exile),
+        (
+            opt(primitives::kw("the")),
+            alt((primitives::kw("rest"), primitives::kw("other"))),
+            looked_partition_destination,
+        ).map(|(_, _, destination)| destination),
+    )).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
 
     let selected_then_library_top = matches!(
@@ -438,7 +448,11 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
             LookedPartitionDestination::Graveyard
         )
     );
-    if !(selected_then_library_top || selected_hand_then_graveyard || selected_top_then_graveyard)
+    let selected_top_then_exile = matches!(
+        (selected_destination, remainder_destination),
+        (LookedPartitionDestination::LibraryTop(_), LookedPartitionDestination::Exile)
+    );
+    if !(selected_then_library_top || selected_hand_then_graveyard || selected_top_then_graveyard || selected_top_then_exile)
     {
         return Err(primitives::backtrack_err(
             "looked-card partition",

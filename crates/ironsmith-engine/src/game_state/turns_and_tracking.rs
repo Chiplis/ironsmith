@@ -622,6 +622,71 @@ impl GameState {
     ///
     /// For departed players this remains available only until their next turn
     /// after leaving would have begun, as required by CR 800.4i.
+    /// Record once per completed player operation, never once per recipient.
+    pub fn record_player_named_action(&mut self, player: PlayerId, label: &str) -> Result<(), crate::effects::ExecutionError> {
+        self.record_player_named_actions(std::iter::once((player, label)))
+    }
+    /// Validate the entire completion batch before changing any history.
+    pub fn record_player_named_actions<'a>(&mut self, actions: impl IntoIterator<Item=(PlayerId, &'a str)>) -> Result<(), crate::effects::ExecutionError> {
+        let mut turn_updates = std::collections::HashMap::new();
+        let mut combat_updates = std::collections::HashMap::new();
+        let history = &self.turn_store.turn_history;
+        for (player, label) in actions {
+            let label = label.trim().to_ascii_lowercase();
+            if label.is_empty() { continue; }
+            let key = (player, label.clone());
+            let combat_key = (self.turn_store.combat_phases_started_this_turn, player, label);
+            let total = turn_updates.get(&key).copied().or_else(||history.player_named_actions.get(&key).copied()).unwrap_or(0u32).checked_add(1)
+                .ok_or_else(|| crate::effects::ExecutionError::Impossible("player action history overflow".into()))?;
+            if matches!(self.turn.phase, crate::game_state::Phase::Combat) {
+                let combat_total = combat_updates.get(&combat_key).copied().or_else(||history.player_named_actions_by_combat.get(&combat_key).copied()).unwrap_or(0u32).checked_add(1)
+                    .ok_or_else(|| crate::effects::ExecutionError::Impossible("player combat action history overflow".into()))?;
+                combat_updates.insert(combat_key, combat_total);
+            }
+            turn_updates.insert(key, total);
+        }
+        if !turn_updates.is_empty() {
+            self.turn_store.turn_history.player_named_actions.extend(turn_updates);
+            self.turn_store.turn_history.player_named_actions_by_combat.extend(combat_updates);
+            self.mark_continuous_state_dirty();
+        }
+        Ok(())
+    }
+    /// Amount predicates read the existing authoritative completion journal,
+    /// not a source's incarnation counter or an event-shaped announcement.
+    pub fn player_named_action_count_with_minimum_amount(&self, player: PlayerId, label: &str, window: ironsmith_core::value_model::PlayerActionWindow, minimum_amount: u32) -> Result<u32, crate::effects::ExecutionError> {
+        use ironsmith_core::value_model::PlayerActionWindow;
+        if matches!(window, PlayerActionWindow::ThisCombat) && !matches!(self.turn.phase, crate::game_state::Phase::Combat) { return Ok(0); }
+        let history = match window {
+            PlayerActionWindow::ThisTurn | PlayerActionWindow::ThisCombat => Some(&self.turn_store.turn_history),
+            PlayerActionWindow::LastOwnTurn => self.last_turn_history_for_player(player),
+        };
+        let Some(history) = history else { return Ok(0); };
+        let mut count = 0u32;
+        for record in history.projected_records() {
+            if record.event.completed_action_provenance().is_none() { continue; }
+            let Some(action) = record.event.downcast::<crate::events::NamedActionEvent>() else { continue; };
+            if action.player != player || !action.label.eq_ignore_ascii_case(label.trim()) || action.amount < minimum_amount { continue; }
+            if matches!(window, PlayerActionWindow::ThisCombat) {
+                // Authoritative producers stamp None for a noncombat operation.
+                if action.combat_phase != Some(self.turn_store.combat_phases_started_this_turn) { continue; }
+            }
+            count = count.checked_add(1).ok_or_else(||crate::effects::ExecutionError::Impossible("completed player action count overflow".into()))?;
+        }
+        Ok(count)
+    }
+    pub fn player_named_action_count(&self, player: PlayerId, label: &str, window: ironsmith_core::value_model::PlayerActionWindow) -> u32 {
+        use ironsmith_core::value_model::PlayerActionWindow;
+        let key = (player, label.trim().to_ascii_lowercase());
+        match window {
+            PlayerActionWindow::ThisTurn => self.turn_store.turn_history.player_named_actions.get(&key).copied().unwrap_or(0),
+            PlayerActionWindow::ThisCombat => if matches!(self.turn.phase, crate::game_state::Phase::Combat) {
+                self.turn_store.turn_history.player_named_actions_by_combat.get(&(self.turn_store.combat_phases_started_this_turn, key.0, key.1)).copied().unwrap_or(0)
+            } else { 0 },
+            PlayerActionWindow::LastOwnTurn => self.last_turn_history_for_player(player).and_then(|history| history.player_named_actions.get(&key)).copied().unwrap_or(0),
+        }
+    }
+
     pub fn last_turn_history_for_player(&self, player: PlayerId) -> Option<&TurnHistory> {
         if self
             .players
@@ -2107,6 +2172,7 @@ impl GameState {
     }
 
     pub fn mark_combat_phase_started(&mut self) {
+        self.mark_continuous_state_dirty();
         if let Some(combat) = self.combat.as_mut() {
             combat.last_attack_declaration_step_players = None;
         }
@@ -3264,13 +3330,44 @@ impl GameState {
             .get(&TurnCounterKey::Named(name.to_string()))
     }
 
+    pub(crate) fn activation_group_receipt(&self, source: ObjectId, ability_index: usize) -> Option<ActivationGroupReceipt> {
+        let ability = self.current_ability(source, ability_index)?;
+        let crate::ability::AbilityKind::Activated(activated) = &ability.kind else { return None; };
+        let Some(ironsmith_core::ActivatedAbilityKeyword::Grouped { family, group, step, rule }) = activated.keyword else { return None; };
+        let acquisition = self.current_characteristics(source)?.abilities.origin(ability_index)?.acquisition_origin();
+        Some(ActivationGroupReceipt { family, source, acquisition, group, step, rule })
+    }
+
+    pub(crate) fn activation_group_allows(&self, source: ObjectId, ability_index: usize) -> bool {
+        let Some(receipt) = self.activation_group_receipt(source, ability_index) else {
+            return !self.current_ability(source, ability_index).is_some_and(|ability| matches!(&ability.kind,
+                crate::ability::AbilityKind::Activated(activated) if matches!(activated.keyword,
+                    Some(ironsmith_core::ActivatedAbilityKeyword::Grouped { .. }))));
+        };
+        let history = &self.turn_store.activation_group_receipts;
+        if history.contains(&receipt) { return false; }
+        match receipt.rule {
+            ironsmith_core::ActivationGroupRule::Once => true,
+            ironsmith_core::ActivationGroupRule::Sequential => {
+                let previous = history.iter().filter(|other| other.source == source
+                    && other.family == receipt.family && other.group == receipt.group
+                    && other.acquisition == receipt.acquisition && other.rule == receipt.rule
+                    && other.step < receipt.step).count();
+                previous >= receipt.step as usize && (0..receipt.step).all(|step|
+                    history.contains(&ActivationGroupReceipt { step, ..receipt.clone() }))
+            },
+            ironsmith_core::ActivationGroupRule::Exclusive => !history.iter().any(|other|
+                other.source == source && other.family == receipt.family && other.rule == ironsmith_core::ActivationGroupRule::Exclusive),
+        }
+    }
+
     pub(crate) fn announce_exhaust_activation(
         &mut self,
         source: ObjectId,
         ability_index: usize,
     ) -> Option<ExhaustActivationAnnouncement> {
         if !self.current_ability(source, ability_index).is_some_and(|ability|
-            matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated) if activated.is_exhaust_ability()))
+            matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated) if activated.is_exhaust_ability() || matches!(activated.keyword, Some(ironsmith_core::ActivatedAbilityKeyword::Grouped { .. }))))
         { return None; }
         let origin = self
             .current_characteristics(source)
@@ -3320,6 +3417,8 @@ impl GameState {
             .turn_store
             .exhaust_activations_in_progress
             .contains(&(source, ability_index));
+        let group_receipt = self.activation_group_receipt(source, ability_index)
+            .map(|receipt| { let existed = self.turn_store.activation_group_receipts.contains(&receipt); (receipt, existed) });
         self.begin_exhaust_activation(source, ability_index);
         let origin = origin.map(|origin| {
             let after = self
@@ -3355,6 +3454,7 @@ impl GameState {
             was_activated,
             was_exhausted,
             was_in_progress,
+            group_receipt,
         })
     }
 
@@ -3371,7 +3471,9 @@ impl GameState {
             was_activated,
             was_exhausted,
             was_in_progress,
+            group_receipt,
         } = announcement;
+        if let Some((receipt, false)) = group_receipt { self.turn_store.activation_group_receipts.remove(&receipt); }
         if let Some((origin, before, added)) = origin {
             let key = (source, origin);
             let turn_key = (source, key.1.clone(), definition);
@@ -3435,10 +3537,10 @@ impl GameState {
             .current_ability(source, ability_index)
             .is_some_and(|ability| {
                 matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
-                if activated.is_exhaust_ability())
+                if activated.is_exhaust_ability() || matches!(activated.keyword, Some(ironsmith_core::ActivatedAbilityKeyword::Grouped { .. })))
             })
         {
-            self.record_ability_activation(source, ability_index);
+            self.record_ability_activation_legacy(source, ability_index, false);
             self.turn_store
                 .exhaust_activations_in_progress
                 .insert((source, ability_index));
@@ -3448,6 +3550,10 @@ impl GameState {
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
+        self.record_ability_activation_legacy(source, ability_index, true);
+    }
+
+    fn record_ability_activation_legacy(&mut self, source: ObjectId, ability_index: usize, committed_without_evidence: bool) {
         let origin = self
             .current_characteristics(source)
             .and_then(|chars| chars.abilities.origin(ability_index).cloned());
@@ -3455,6 +3561,53 @@ impl GameState {
             crate::ability::AbilityKind::Activated(ability) => ability.effects.activation_definition,
             _ => None,
         });
+        if committed_without_evidence && let Some(origin) = &origin {
+            self.turn_store.activation_mana_colors.insert((source, origin.clone(), definition), None);
+        }
+        self.record_ability_activation_with_origin(source, ability_index, origin, definition);
+    }
+
+    pub(crate) fn unused_activation_mana_colors(
+        &self, source: ObjectId, origin: Option<&crate::continuous::AbilityOrigin>,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
+    ) -> crate::color::ColorSet {
+        let Some(origin) = origin else { return crate::color::ColorSet::COLORLESS; };
+        let spent = match self.turn_store.activation_mana_colors.get(&(source, origin.clone(), definition)) {
+            None => crate::color::ColorSet::COLORLESS,
+            Some(Some(spent)) => *spent,
+            Some(None) => return crate::color::ColorSet::COLORLESS,
+        };
+        crate::color::Color::ALL.into_iter().filter(|color| !spent.contains(*color))
+            .fold(crate::color::ColorSet::COLORLESS, |set, color| set.union(crate::color::ColorSet::from_color(color)))
+    }
+
+    /// Commit history together with the activation, after complete payment and
+    /// before its effects execute. Mana-as-any-color never changes unit.symbol.
+    pub(crate) fn record_ability_activation_with_payment(
+        &mut self, source: ObjectId, ability_index: usize, activator: PlayerId,
+        origin: Option<crate::continuous::AbilityOrigin>,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
+        evidence: Option<&crate::events::mana::ManaSpendEvidence>,
+    ) {
+        if let Some(origin) = &origin {
+            if let Some(definition) = definition {
+                let count = self.turn_store.ability_activations_by_actor
+                    .entry((source, origin.clone(), definition, activator)).or_default();
+                *count = count.saturating_add(1);
+                self.bump_mutation_revision();
+                self.mark_continuous_state_dirty();
+            }
+            let observed = evidence.map(|evidence| evidence.units.iter().filter_map(|unit|unit.symbol.unit_color())
+                .fold(crate::color::ColorSet::COLORLESS, |set,color|set.union(crate::color::ColorSet::from_color(color))));
+            let key = (source, origin.clone(), definition);
+            let previous = self.turn_store.activation_mana_colors.get(&key).copied();
+            let combined = match (previous, observed) {
+                (None, colors) => colors,
+                (Some(Some(before)), Some(now)) => Some(before.union(now)),
+                _ => None,
+            };
+            self.turn_store.activation_mana_colors.insert(key, combined);
+        }
         self.record_ability_activation_with_origin(source, ability_index, origin, definition);
     }
 
@@ -3471,6 +3624,9 @@ impl GameState {
             .remove(&(source, ability_index))
         {
             return;
+        }
+        if let Some(receipt) = self.activation_group_receipt(source, ability_index) {
+            self.turn_store.activation_group_receipts.insert(receipt);
         }
         if let Some(origin) = origin {
             if let Some(counts) = self.turn_store.turn_history.ability_activation_counts.as_mut() {
@@ -3785,7 +3941,8 @@ impl GameState {
         // makes a new object the resolution can't follow (CR 400.7).
         if entry.triggering_event.is_none() {
             for (tag, snapshots) in entry.tagged_objects.iter_mut() {
-                if tag.as_str() == crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG
+                if (tag.as_str().starts_with("__additional_cost_tap:")||tag.as_str().starts_with("__additional_cost_tap_instance:"))
+                    || tag.as_str() == crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG
                     || tag.as_str() == crate::tag::SOURCE_EMERGE_SACRIFICE_TAG
                     || matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag), Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
                     || tag.as_str().starts_with("__paid_departure__")

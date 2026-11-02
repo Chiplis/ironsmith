@@ -22,6 +22,8 @@ pub enum MetadataLine {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LineSemanticFacts {
+    /// Parsed source-level ability-group names, not inferred from runtime text.
+    pub ability_designations: Vec<String>,
     /// A complete instruction about this ability on the stack (CR 603.1a).
     pub ability_cant_be_countered: bool,
     /// Exact standalone parenthesized CR 305.6 reminder, recognized from the
@@ -193,6 +195,9 @@ pub struct IdGenContext {
 
 #[derive(Debug, Clone, Default)]
 pub struct LoweringFrame {
+    /// Concrete ordinary card-name choice producer; never an arbitrary object alias.
+    /// Exported and joined independently of general object/pronoun references.
+    pub last_card_name_choice_tag: Option<TagKey>,
     /// Exact authored declarations referenced again by a later instruction.
     pub declared_target_references: Vec<crate::TargetAst>,
     pub last_effect_id: Option<EffectId>,
@@ -394,6 +399,7 @@ impl EffectLoweringContext {
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
         self.counter_removal_cost = frame.counter_removal_cost;
         self.last_object_tag = frame.last_object_tag;
+        self.last_card_name_choice_tag = frame.last_card_name_choice_tag;
         self.snapshot_tag_aliases = frame.snapshot_tag_aliases;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
         // ReferenceEnv does not model the concrete exile collection. Preserve

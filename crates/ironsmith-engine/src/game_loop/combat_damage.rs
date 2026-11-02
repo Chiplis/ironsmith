@@ -693,10 +693,10 @@ fn capture_combat_consequence_triggers(
         .map(|snapshot| snapshot.controller)
         .or_else(|| game.current_controller(source))
         .unwrap_or(game.turn.active_player);
-    let ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
     crate::effects::capture_triggers_before_added_program(
         game,
-        &ctx,
+        &mut ctx,
         None,
         events.iter_mut().flat_map(|event| {
             event.damage_receipt.iter_mut().chain(

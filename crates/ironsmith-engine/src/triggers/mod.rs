@@ -43,6 +43,7 @@
 use crate::events::KeywordActionKind;
 
 pub mod check;
+pub(crate) mod class_event_choice;
 pub(crate) mod acquisition;
 pub mod event;
 pub mod matcher_trait;
@@ -170,7 +171,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
@@ -228,7 +229,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
@@ -322,6 +323,9 @@ impl PartialEq for Trigger {
 }
 
 impl Trigger {
+    pub fn characteristic_gained(trigger: ironsmith_core::trigger_model::CharacteristicGainTrigger) -> Self {
+        Self::new(trigger)
+    }
     pub fn player_becomes_monarch(player: PlayerFilter) -> Self {
         Self::new(other::PlayerBecomesMonarchTrigger { player })
     }
@@ -1459,6 +1463,8 @@ impl Trigger {
     }
 
     /// Create a "when [player] copies a spell" trigger.
+    pub fn spell_resolves(controller: PlayerFilter) -> Self {Self::new(SpellResolvesTrigger::new(controller))}
+
     pub fn spell_copied(filter: Option<ObjectFilter>, copier: PlayerFilter) -> Self {
         Self::new(SpellCopiedTrigger::new(filter, copier))
     }

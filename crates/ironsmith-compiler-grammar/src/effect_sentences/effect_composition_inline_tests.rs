@@ -1013,3 +1013,19 @@ fn unsupported_prior_result_replacements_cannot_become_additive_conditionals() {
         );
     }
 }
+
+#[test]
+fn exile_producer_rebinding_retains_complete_control_duration_and_mana_rider() {
+    let first=crate::lexer::lex_line("Exile the top card of target opponent's library.",0).unwrap();
+    let second=crate::lexer::lex_line("You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",0).unwrap();
+    let original=crate::permission_helpers::parse_cast_or_play_tagged_clause(&second).unwrap().unwrap();
+    let linked=super::parse_exile_top_library_then_play_bundle(&first,&second,None).unwrap().unwrap();
+    let mut expected=original;
+    let Some(EffectAst::SubjectVerb(actual))=linked.last() else{panic!("complete linked permission: {linked:?}")};
+    let EffectAst::SubjectVerb(subject)=&mut expected else{panic!("complete original permission")};
+    let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {tag:actual_tag,control_duration,..})=&actual.action else{panic!("typed linked grant")};
+    assert!(control_duration.is_some(),"the authored duration must survive producer binding");
+    let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {tag,..})=&mut subject.action else{panic!("typed original grant")};
+    *tag=actual_tag.clone();
+    assert_eq!(linked.last(),Some(&expected),"producer rebinding changes only the exact producer tag");
+}

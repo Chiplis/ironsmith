@@ -9,6 +9,7 @@ use std::any::Any;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+pub mod creation_graph;
 mod combat;
 mod composition_a_l;
 mod composition_m_z;
@@ -45,25 +46,24 @@ pub enum EffectFamily {
 
 pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
     match kind {
+        "ActivateAbilityWithoutCostsEffect" => Some(EffectFamily::Resources),
+        "ActivateManaAbilityOfEachLandEffect" => Some(EffectFamily::Resources),
         "AdaptEffect" => Some(EffectFamily::CompositionAL),
         "AddManaEffect" => Some(EffectFamily::Resources),
+        "AddManaEqualToManaCostEffect" => Some(EffectFamily::Resources),
+        "AddManaLostThisWayEffect" => Some(EffectFamily::Resources),
         "AddManaFromCommanderColorIdentityEffect" => Some(EffectFamily::Resources),
         "AddManaOfAnyColorEffect" => Some(EffectFamily::Resources),
         "AddManaOfAnyOneColorEffect" => Some(EffectFamily::Resources),
         "AddManaOfChosenColorEffect" => Some(EffectFamily::Resources),
         "AddManaOfColorsAmongEffect" => Some(EffectFamily::Resources),
-        "AddManaEqualToManaCostEffect" => Some(EffectFamily::Resources),
-        "AddManaLostThisWayEffect" => Some(EffectFamily::Resources),
         "AddManaOfImprintedColorsEffect" => Some(EffectFamily::Resources),
         "AddManaOfLandProducedTypesEffect" => Some(EffectFamily::Resources),
         "AddOneManaOfAnyColorAmongEffect" => Some(EffectFamily::Resources),
         "AddScaledManaEffect" => Some(EffectFamily::Resources),
         "AdditionalLandPlaysEffect" => Some(EffectFamily::Player),
         "AdditionalPhasesEffect" => Some(EffectFamily::Player),
-        "AdditionalStepsEffect" => Some(EffectFamily::Player),
         "AmassEffect" => Some(EffectFamily::Permanent),
-        "CollectEvidenceEffect" => Some(EffectFamily::ZoneLibrary),
-        "EmpowerJaceEffect" => Some(EffectFamily::Permanent),
         "AmplifyEffect" => Some(EffectFamily::CompositionAL),
         "ApplyContinuousEffect" => Some(EffectFamily::Permanent),
         "AscendEffect" => Some(EffectFamily::Player),
@@ -79,6 +79,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "BecomeSaddledUntilEotEffect" => Some(EffectFamily::Permanent),
         "BeholdEffect" => Some(EffectFamily::CompositionAL),
         "BidLifeEffect" => Some(EffectFamily::CompositionAL),
+        "BindXValueEffect" => Some(EffectFamily::CompositionAL),
         "BolsterEffect" => Some(EffectFamily::CompositionAL),
         "CantEffect" => Some(EffectFamily::StackEvent),
         "CastSourceEffect" => Some(EffectFamily::Player),
@@ -86,15 +87,12 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ChooseCardNameEffect" => Some(EffectFamily::Player),
         "ChooseCardTypeEffect" => Some(EffectFamily::Player),
         "ChangeTextEffect" => Some(EffectFamily::Permanent),
+        "RemoveOptionalTextFragmentEffect" => Some(EffectFamily::Permanent),
         "ChooseColorEffect" => Some(EffectFamily::Player),
         "ChooseCreatureTypeEffect" => Some(EffectFamily::Player),
         "ChooseLandTypeEffect" => Some(EffectFamily::Player),
         "ChooseModeEffect" => Some(EffectFamily::CompositionAL),
         "ChooseNamedOptionEffect" => Some(EffectFamily::Player),
-        "ChoosePlayerOptionEffect" => Some(EffectFamily::Player),
-        "ControlVotesThisTurnEffect" => Some(EffectFamily::Player),
-        "RippleEffect" => Some(EffectFamily::Player),
-        "ChooseNumberEffect" => Some(EffectFamily::Player),
         "ChooseNewTargetsEffect" => Some(EffectFamily::StackEvent),
         "ChooseObjectsEffect" => Some(EffectFamily::CompositionAL),
         "ChoosePlayerEffect" => Some(EffectFamily::Player),
@@ -110,18 +108,21 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ControlCombatChoicesThisTurnEffect" => Some(EffectFamily::Player),
         "ControlPlayerEffect" => Some(EffectFamily::Player),
         "ConvertEffect" => Some(EffectFamily::Permanent),
+        "TriggerAbilitiesByClassEffect" => Some(EffectFamily::StackEvent),
         "CopySpellEffect" => Some(EffectFamily::StackEvent),
         "CopySpellForEachTargetEffect" => Some(EffectFamily::StackEvent),
         "CounterEffect" => Some(EffectFamily::StackEvent),
         "CreateEmblemEffect" => Some(EffectFamily::Player),
+        "CreateLinkedFaceTokenEffect" => Some(EffectFamily::Permanent),
         "CreateTokenCopyEffect" => Some(EffectFamily::Permanent),
+        "CopyFromDefinitionEffect" => Some(EffectFamily::Permanent),
+        "NoteObjectNamesEffect" | "CreateCardsEffect" => Some(EffectFamily::Permanent),
+        "CardDefinitionScopeEffect" => Some(EffectFamily::Permanent),
+        "LinkExiledCardsEffect" => Some(EffectFamily::Permanent),
         "CreateTokenEffect" => Some(EffectFamily::Permanent),
         "CrewCostEffect" => Some(EffectFamily::Permanent),
         "CumulativeUpkeepEffect" => Some(EffectFamily::CompositionAL),
         "DealDamageEffect" => Some(EffectFamily::Combat),
-        "DealDamageToRecipientsEffect" => Some(EffectFamily::Combat),
-        "DealDamageBySourcesEffect" => Some(EffectFamily::Combat),
-        "DealDamageEachEffect" => Some(EffectFamily::Combat),
         "DealDistributedDamageEffect" => Some(EffectFamily::Combat),
         "DestroyEffect" => Some(EffectFamily::ZoneLibrary),
         "DestroyNoRegenerationEffect" => Some(EffectFamily::ZoneLibrary),
@@ -140,8 +141,8 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "EarthbendEffect" => Some(EffectFamily::Permanent),
         "EmitGiftGivenEffect" => Some(EffectFamily::CompositionAL),
         "EmitKeywordActionEffect" => Some(EffectFamily::CompositionAL),
+        "PerformNamedActionEffect" => Some(EffectFamily::CompositionAL),
         "EmptyManaPoolEffect" => Some(EffectFamily::Resources),
-        "ActivateManaAbilityOfEachLandEffect" => Some(EffectFamily::Resources),
         "EndCombatPhaseEffect" => Some(EffectFamily::Player),
         "EndTurnEffect" => Some(EffectFamily::Player),
         "EnergyCountersEffect" => Some(EffectFamily::Player),
@@ -174,8 +175,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ForEachObjectCorrelatedResultEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedPlayerEffect" => Some(EffectFamily::CompositionAL),
-        "CollectManaPaymentsEffect" => Some(EffectFamily::CompositionAL),
-        "BindXValueEffect" => Some(EffectFamily::CompositionAL),
         "ForPlayersEffect" => Some(EffectFamily::CompositionAL),
         "GivePlayerCountersEffect" => Some(EffectFamily::Player),
         "GainLifeEffect" => Some(EffectFamily::Resources),
@@ -197,6 +196,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "IncreaseSpeedEffect" => Some(EffectFamily::Player),
         "IncubateEffect" => Some(EffectFamily::Permanent),
         "InvestigateEffect" => Some(EffectFamily::Permanent),
+        "KeepGreatestManaValuePlayersEffect" => Some(EffectFamily::Player),
         "LearnEffect" => Some(EffectFamily::ZoneLibrary),
         "LocalRewriteEffect" => Some(EffectFamily::CompositionAL),
         "LookAtHandEffect" => Some(EffectFamily::ZoneLibrary),
@@ -214,10 +214,11 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "MayEffect" => Some(EffectFamily::CompositionMZ),
         "MayMoveToZoneEffect" => Some(EffectFamily::ZoneLibrary),
         "MeldEffect" => Some(EffectFamily::Permanent),
+        "MergePermanentsEffect" => Some(EffectFamily::Permanent),
         "MillEffect" => Some(EffectFamily::ZoneLibrary),
         "ModifyPowerToughnessEffect" => Some(EffectFamily::Combat),
         "ModifyPowerToughnessForEachEffect" => Some(EffectFamily::Combat),
-        "SetPermanentDesignationEffect" => Some(EffectFamily::Permanent),
+        "GrantExileControllerInspectionEffect" => Some(EffectFamily::Permanent),
         "MonstrosityEffect" => Some(EffectFamily::Permanent),
         "MoveAllCountersEffect" => Some(EffectFamily::Resources),
         "MoveCountersEffect" => Some(EffectFamily::Resources),
@@ -228,17 +229,13 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "NinjutsuCostEffect" => Some(EffectFamily::Permanent),
         "NinjutsuEffect" => Some(EffectFamily::Permanent),
         "NoteLifeTotalEffect" => Some(EffectFamily::Resources),
-        "RedistributeLifeTotalsEffect" => Some(EffectFamily::Resources),
         "OpenAttractionEffect" => Some(EffectFamily::CompositionMZ),
+        "PutRetainedSpellCopyOntoStackEffect" => Some(EffectFamily::Player),
+        "RetainSpellChoicesEffect" => Some(EffectFamily::Player),
         "RollToVisitAttractionsEffect" => Some(EffectFamily::CompositionMZ),
         "RollPlanarDieEffect" => Some(EffectFamily::CompositionMZ),
         "PayAnyEnergyEffect" => Some(EffectFamily::Player),
         "PayAnyLifeEffect" => Some(EffectFamily::Player),
-        "TagPlayersEffect" => Some(EffectFamily::Player),
-        "KeepGreatestManaValuePlayersEffect" => Some(EffectFamily::Player),
-        "RollDieKeepHighestPlayersEffect" => Some(EffectFamily::Player),
-        "RetainSpellChoicesEffect" => Some(EffectFamily::Player),
-        "PutRetainedSpellCopyOntoStackEffect" => Some(EffectFamily::Player),
         "PayEnergyEffect" => Some(EffectFamily::Player),
         "PayLifeEffect" => Some(EffectFamily::Resources),
         "PayManaEffect" => Some(EffectFamily::Resources),
@@ -255,8 +252,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "PreventNextTimeDamageEffect" => Some(EffectFamily::Combat),
         "ProliferateEffect" => Some(EffectFamily::Resources),
         "PutCounterOfChosenKindEffect" => Some(EffectFamily::Resources),
-        "PutCounterOfKindChosenFromEffect" => Some(EffectFamily::Resources),
-        "PutCounterOfRandomKindEffect" => Some(EffectFamily::Resources),
         "PutCountersEffect" => Some(EffectFamily::Resources),
         "PutOntoBattlefieldEffect" => Some(EffectFamily::ZoneLibrary),
         "PutStickerEffect" => Some(EffectFamily::Permanent),
@@ -271,6 +266,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RegenerateEffect" => Some(EffectFamily::Permanent),
         "RegisterDamagedBySourceZoneReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterDrawReplacementEffect" => Some(EffectFamily::StackEvent),
+        "RegisterEventReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterEnterTappedReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterEnterUnderControlReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterFutureZoneReplacementEffect" => Some(EffectFamily::StackEvent),
@@ -278,10 +274,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RegisterManaRewriteEffect" => Some(EffectFamily::StackEvent),
         "RegisterManaSpendPermissionEffect" => Some(EffectFamily::StackEvent),
         "RegisterCounterPlacementReplacementEffect" => Some(EffectFamily::StackEvent),
-        "RegisterDamageMultiplierEffect" => Some(EffectFamily::StackEvent),
-        "RegisterDamageCounterReplacementEffect" => Some(EffectFamily::StackEvent),
-        "RegisterDamageAdditionEffect" => Some(EffectFamily::StackEvent),
-        "RegisterTokenCreationMultiplierEffect" => Some(EffectFamily::StackEvent),
         "RegisterEnterWithCountersReplacementEffect" => Some(EffectFamily::StackEvent),
         "RegisterNextBatchEnterAsCopyEffect" => Some(EffectFamily::StackEvent),
         "RegisterNextBatchEnterWithCountersEffect" => Some(EffectFamily::StackEvent),
@@ -289,7 +281,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RemoveAnyCountersAmongEffect" => Some(EffectFamily::Resources),
         "RemoveAnyCountersFromSourceEffect" => Some(EffectFamily::Resources),
         "RemoveCountersEffect" => Some(EffectFamily::Resources),
-        "BecomeBlockedEffect" => Some(EffectFamily::Combat),
         "RemoveFromCombatEffect" => Some(EffectFamily::Combat),
         "ReselectAttackTargetEffect" => Some(EffectFamily::Combat),
         "ExchangeBlocksEffect" => Some(EffectFamily::Combat),
@@ -321,6 +312,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "RingTemptsYouEffect" => Some(EffectFamily::Player),
         "RollDiceChooseResultEffect" => Some(EffectFamily::Player),
         "RollDieEffect" => Some(EffectFamily::Player),
+        "RollDieKeepHighestPlayersEffect" => Some(EffectFamily::Player),
         "SacrificeEffect" => Some(EffectFamily::ZoneLibrary),
         "SacrificePlayerEffect" => Some(EffectFamily::ZoneLibrary),
         "SacrificeTargetEffect" => Some(EffectFamily::ZoneLibrary),
@@ -342,7 +334,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "SkipDrawStepEffect" => Some(EffectFamily::Player),
         "PlayWithHandRevealedEffect" => Some(EffectFamily::Player),
         "RevealSourceInHandUntilOwnersNextTurnEffect" => Some(EffectFamily::Player),
-        "SkipScheduledEffect" => Some(EffectFamily::Player),
         "SkipMainPhasesThisTurnEffect" => Some(EffectFamily::Player),
         "SkipNextCombatPhaseThisTurnEffect" => Some(EffectFamily::Player),
         "SkipTurnEffect" => Some(EffectFamily::Player),
@@ -350,12 +341,15 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "SolveCaseEffect" => Some(EffectFamily::Permanent),
         "SetClassLevelEffect" => Some(EffectFamily::Permanent),
         "SetDayNightEffect" => Some(EffectFamily::Permanent),
+        "LinkPermanentsEffect" => Some(EffectFamily::Permanent),
         "SoulbondPairEffect" => Some(EffectFamily::Permanent),
         "SupportEffect" => Some(EffectFamily::CompositionMZ),
         "SurveilEffect" => Some(EffectFamily::ZoneLibrary),
         "SuspectEffect" => Some(EffectFamily::Permanent),
         "TagAttachedToSourceEffect" => Some(EffectFamily::CompositionMZ),
         "TagMatchingObjectsEffect" => Some(EffectFamily::CompositionMZ),
+        "TagPlayersEffect" => Some(EffectFamily::Player),
+        "RememberOriginalMovementArrivalsEffect" => Some(EffectFamily::CompositionMZ),
         "TagOtherBlockParticipantEffect" => Some(EffectFamily::CompositionMZ),
         "TagTriggeringAttackerEffect" => Some(EffectFamily::CompositionMZ),
         "TagTriggeringBlockersEffect" => Some(EffectFamily::CompositionMZ),
@@ -370,7 +364,6 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "TargetOnlyEffect" => Some(EffectFamily::CompositionMZ),
         "TicketCountersEffect" => Some(EffectFamily::Player),
         "TransformEffect" => Some(EffectFamily::Permanent),
-        "TurnFaceDownEffect" => Some(EffectFamily::Permanent),
         "TurnFaceUpEffect" => Some(EffectFamily::Permanent),
         "UnattachObjectsEffect" => Some(EffectFamily::Permanent),
         "UnearthEffect" => Some(EffectFamily::Permanent),
@@ -386,27 +379,57 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "WithIdEffect" => Some(EffectFamily::CompositionMZ),
         "ImprintFromHandEffect" => Some(EffectFamily::ZoneLibrary),
         "ScaleXValueEffect" => Some(EffectFamily::StackEvent),
-        "RevealChosenSubtypeEffect" => Some(EffectFamily::Player),
         "RevealChosenPlayerEffect" => Some(EffectFamily::Player),
+        "RevealChosenSubtypeEffect" => Some(EffectFamily::Player),
         "BecomePlottedEffect" => Some(EffectFamily::ZoneLibrary),
         "BecomeForetoldEffect" => Some(EffectFamily::ZoneLibrary),
         "GrantLoyaltyActivationAllowanceEffect" => Some(EffectFamily::Player),
         "GrantTapUncontrolledLandsForManaEffect" => Some(EffectFamily::Player),
-        "GrantPayLifeManaAbilityUntilEndOfTurnEffect" => Some(EffectFamily::Player),
-        "RollAndStoreDieResultsEffect" => Some(EffectFamily::Player),
-        "DeclareBlockersByRandomPilesThisTurnEffect" => Some(EffectFamily::Player),
-        "RerollStoredDieResultsEffect" => Some(EffectFamily::Player),
         "GrantEndThisEffectPaymentEffect" => Some(EffectFamily::Player),
         "SaddleCostEffect" => Some(EffectFamily::Permanent),
         "AddManaOfNotedTypeEffect" => Some(EffectFamily::Resources),
-        "CastFaceDownUsingActivationManaEffect" => Some(EffectFamily::Resources),
-        "RegisterExtraDieReplacementEffect" => Some(EffectFamily::Resources),
-        "NoteActivationManaPaymentEffect" => Some(EffectFamily::Resources),
         "NoteActivationManaTypeEffect" => Some(EffectFamily::Resources),
         "NoteTriggeringCreatureTypeEffect" => Some(EffectFamily::Resources),
         "NoteCountersEffect" => Some(EffectFamily::Resources),
         "MayCastForMiracleCostEffect" => Some(EffectFamily::Player),
         "ResolvesDespiteIllegalTargetsEffect" => Some(EffectFamily::CompositionMZ),
+        "BecomeBlockedEffect" => Some(EffectFamily::Combat),
+        "ChooseNumberEffect" => Some(EffectFamily::Player),
+        "CollectEvidenceEffect" => Some(EffectFamily::ZoneLibrary),
+        "DealDamageBySourcesEffect" => Some(EffectFamily::Combat),
+        "DealDamageEachEffect" => Some(EffectFamily::Combat),
+        "DealDamageToRecipientsEffect" => Some(EffectFamily::Combat),
+        "EmpowerJaceEffect" => Some(EffectFamily::Permanent),
+        "RegisterDamageMultiplierEffect" => Some(EffectFamily::StackEvent),
+        "RegisterDamageCounterReplacementEffect" => Some(EffectFamily::StackEvent),
+        "SkipScheduledEffect" => Some(EffectFamily::Player),
+        "RippleEffect" => Some(EffectFamily::Player),
+        "RegisterDamageAdditionEffect" => Some(EffectFamily::StackEvent),
+        "RegisterTokenCreationMultiplierEffect" => Some(EffectFamily::StackEvent),
+        "CollectManaPaymentsEffect" => Some(EffectFamily::CompositionAL),
+        "ChoosePlayerOptionEffect" => Some(EffectFamily::Player),
+        "ControlVotesThisTurnEffect" => Some(EffectFamily::Player),
+        "PutCounterOfKindChosenFromEffect" => Some(EffectFamily::Resources),
+        "PutCounterOfRandomKindEffect" => Some(EffectFamily::Resources),
+        "RegisterExtraDieReplacementEffect" => Some(EffectFamily::Resources),
+        "NoteActivationManaPaymentEffect" => Some(EffectFamily::Resources),
+        "CastFaceDownUsingActivationManaEffect" => Some(EffectFamily::Resources),
+        "FirstResolutionEachTurnEffect" => Some(EffectFamily::CompositionMZ),
+        "NamedActionProgramEffect" => Some(EffectFamily::CompositionMZ),
+        "AdditionalStepsEffect" => Some(EffectFamily::Player),
+        "ChooseNumberAtRandomEffect" => Some(EffectFamily::Player),
+        "DeclareBlockersByRandomPilesThisTurnEffect" => Some(EffectFamily::Player),
+        "ForEachAnnouncedTargetSlotEffect" => Some(EffectFamily::CompositionAL),
+        "GrantActivationCostAlternativeEffect" => Some(EffectFamily::Permanent),
+        "GrantPayLifeManaAbilityUntilEndOfTurnEffect" => Some(EffectFamily::Player),
+        "NextAdaptIgnoresCountersEffect" => Some(EffectFamily::Permanent),
+        "RedistributeLifeTotalsEffect" => Some(EffectFamily::Resources),
+        "RerollStoredDieResultsEffect" => Some(EffectFamily::Player),
+        "RollAndStoreDieResultsEffect" => Some(EffectFamily::Player),
+        "SetPermanentDesignationEffect" => Some(EffectFamily::Permanent),
+        "TurnFaceDownEffect" => Some(EffectFamily::Permanent),
+        "RecordSourceCollectionEffect" => Some(EffectFamily::Permanent),
+        "LinkObjectsToGroupEffect" => Some(EffectFamily::Permanent),
         _ => None,
     }
 }
@@ -469,6 +492,34 @@ mod tests {
         assert_eq!(family_for_kind("NotAnEffect"), None);
     }
 
+    #[test]
+    fn executable_reference_graph_remaps_typed_nested_refs_and_preserves_literal_data() {
+        use ironsmith_compiled_artifact::WireEffect;
+        use ironsmith_core::{EffectId, RemoveAnyCountersFromSourceEffect, WithIdEffect};
+        let effect = WireEffect::new("RemoveAnyCountersFromSourceEffect", serde_json::to_value(
+            RemoveAnyCountersFromSourceEffect { counter_type: None, display_x: false, remove_all: false }
+        ).unwrap());
+        let nested = WireEffect::new("WithIdEffect", serde_json::to_value(
+            WithIdEffect::new(EffectId(73), effect)
+        ).unwrap());
+        let input = (
+            ironsmith_core::tag::TagKey::from("local"),
+            ironsmith_core::tag::TagKey::from("parent"),
+            EffectId(73), nested, "local", serde_json::json!({"id":73,"tag":"local"}),
+        );
+        let (mapped, producers) = super::execution_reference_graph(
+            &input, &mut |tag| Ok(if tag == "local" { "occurrence:local".into() } else { tag.into() }),
+            &mut |id| Ok(if id == 73 { 91 } else { id }),
+        ).unwrap();
+        assert_eq!(mapped[0], "occurrence:local");
+        assert_eq!(mapped[1], "parent");
+        assert_eq!(mapped[2], 91);
+        assert_eq!(mapped[3]["payload"]["id"], 91);
+        assert_eq!(mapped[4], "local");
+        assert_eq!(mapped[5], serde_json::json!({"id":73,"tag":"local"}));
+        assert_eq!(producers, vec![91]);
+    }
+
     // UNRUN: source-only regression for the measured payload registration gap.
     #[test]
     fn source_counter_payload_decodes_and_normalizes_inside_owned_cost() {
@@ -511,6 +562,7 @@ pub fn remap_card_ids<T: serde::Serialize>(
 ) -> Result<Value, String> {
     let context = card_graph::Context {
         bind: std::cell::RefCell::new(bind),
+        bind_tag:None, bind_effect:None, effect_producers:None,
         authored_definition: false,
         retained_definition: std::cell::Cell::new(false),
         generated_definitions: &[],
@@ -519,6 +571,26 @@ pub fn remap_card_ids<T: serde::Serialize>(
     value
         .serialize(card_graph::Serializer { context: &context })
         .map_err(|error| error.to_string())
+}
+
+/// Rewrite executable references through canonical typed payloads. Ordinary
+/// text, CardIds and arbitrary JSON remain unchanged; nested WireEffects are
+/// decoded by their exact registered schema before their fields are visited.
+pub fn execution_reference_graph<T:serde::Serialize>(
+    value:&T,
+    tags:&mut dyn FnMut(&str)->Result<String,String>,
+    effects:&mut dyn FnMut(u32)->Result<u32,String>,
+)->Result<(Value,Vec<u32>),String>{
+    let mut cards=|id|Ok(id);
+    let producers=std::cell::RefCell::new(Vec::new());
+    let context=card_graph::Context{
+        bind:std::cell::RefCell::new(&mut cards),
+        bind_tag:Some(std::cell::RefCell::new(tags)),bind_effect:Some(std::cell::RefCell::new(effects)),effect_producers:Some(&producers),
+        authored_definition:false,retained_definition:std::cell::Cell::new(false),generated_definitions:&[],normalized_definitions:std::cell::RefCell::new(std::collections::BTreeMap::new()),
+    };
+    let mapped=value.serialize(card_graph::Serializer{context:&context}).map_err(|error|error.to_string())?;
+    drop(context);
+    Ok((mapped,producers.into_inner()))
 }
 
 /// Normalize an authored definition through the same typed graph owner as
@@ -532,6 +604,7 @@ pub fn authored_definition_graph<T: serde::Serialize>(
 ) -> Result<(Value, bool), String> {
     let context = card_graph::Context {
         bind: std::cell::RefCell::new(bind),
+        bind_tag:None, bind_effect:None, effect_producers:None,
         authored_definition: true,
         retained_definition: std::cell::Cell::new(false),
         generated_definitions,
@@ -562,12 +635,15 @@ fn remap_effect_payload(
 }
 
 mod card_graph {
-    use serde::ser::{self, Serialize};
+    use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
     use serde_json::{Value, value};
     use std::cell::RefCell;
 
     pub(super) struct Context<'b> {
         pub(super) bind: RefCell<&'b mut dyn FnMut(u32) -> Result<u32, String>>,
+        pub(super) bind_tag:Option<RefCell<&'b mut dyn FnMut(&str)->Result<String,String>>>,
+        pub(super) bind_effect:Option<RefCell<&'b mut dyn FnMut(u32)->Result<u32,String>>>,
+        pub(super) effect_producers:Option<&'b RefCell<Vec<u32>>>,
         pub(super) authored_definition: bool,
         pub(super) retained_definition: std::cell::Cell<bool>,
         pub(super) generated_definitions: &'b [ironsmith_core::LinkedExileDefinition],
@@ -682,6 +758,16 @@ mod card_graph {
                     return mapped.serialize(value::Serializer);
                 }
                 self.context.retained_definition.set(true);
+            }
+            if name=="TagKey" && let Some(bind)=&self.context.bind_tag {
+                let raw=value.serialize(value::Serializer)?;
+                let tag=raw.as_str().ok_or_else(||<Self::Error as ser::Error>::custom("invalid typed TagKey"))?;
+                return (bind.borrow_mut())(tag).map(Value::String).map_err(<Self::Error as ser::Error>::custom);
+            }
+            if name=="EffectId" && let Some(bind)=&self.context.bind_effect {
+                let raw=value.serialize(value::Serializer)?;
+                let id=raw.as_u64().and_then(|id|u32::try_from(id).ok()).ok_or_else(||<Self::Error as ser::Error>::custom("invalid typed EffectId"))?;
+                return (bind.borrow_mut())(id).map(Value::from).map_err(<Self::Error as ser::Error>::custom);
             }
             if name == "CardId" {
                 let raw = value.serialize(value::Serializer)?;
@@ -837,6 +923,11 @@ mod card_graph {
                 return Ok(());
             }
             let mapped = self.mapped(value)?;
+            if self.name==Some("WithIdEffect") && key=="id"
+                && let Some(producers)=self.context.effect_producers
+                && let Some(id)=mapped.as_u64().and_then(|id|u32::try_from(id).ok()) {
+                if !producers.borrow().contains(&id){producers.borrow_mut().push(id);}
+            }
             self.inner.serialize_field(key, &mapped)
         }
         fn end(self) -> Result<Value, Self::Error> {
@@ -900,7 +991,7 @@ mod card_graph_tests {
         let tagged = ironsmith_core::TaggedEffect {
             tag: "created".into(),
             effect: Box::new(effect),
-            outcome_only: false,
+            outcome_only: false, action:None,
         };
         wire::WireEffect::new("TaggedEffect", serde_json::to_value(tagged).unwrap())
     }
@@ -1020,3 +1111,4 @@ mod card_graph_tests {
             authored_definition_graph(&second, &mut |id| Ok(id), &[]).unwrap());
     }
 }
+

@@ -138,6 +138,9 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
                     duration: effect_duration,
                     ..
+                } | CharacteristicActionAst::RemoveOptionalTextFragment {
+                    duration: effect_duration,
+                    ..
                 }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration: effect_duration,
                     ..

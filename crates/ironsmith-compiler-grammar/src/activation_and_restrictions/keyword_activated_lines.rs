@@ -119,6 +119,7 @@ pub fn parse_cycling_line_lexed(
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Hand],
         }
         .into(),
@@ -284,6 +285,7 @@ pub fn parse_craft_line_lexed(
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
@@ -537,6 +539,7 @@ fn build_equip_ability(
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
@@ -629,6 +632,7 @@ pub fn parse_reconfigure_line_lexed(
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: false,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             }
             .into(),

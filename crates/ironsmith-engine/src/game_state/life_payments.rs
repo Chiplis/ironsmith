@@ -230,7 +230,7 @@ impl GameState {
     /// history together before any replacement-added program runs.
     pub(crate) fn observe_prepared_life_payment_originals<'a>(
         &mut self,
-        ctx: &crate::effects::ExecutionContext,
+        ctx: &mut crate::effects::ExecutionContext,
         events: impl IntoIterator<Item = &'a mut TriggerEvent>,
     ) -> Result<crate::effects::composition::OriginalTriggerObservation, ExecutionError> {
         use crate::effects::composition::OriginalTriggerObservation;
@@ -292,7 +292,7 @@ impl GameState {
             events,
             true,
         )?;
-        self.defer_trigger_entries(matched.take_all());
+        matched.defer_into_game(self);
         for outcome in outcomes {
             for event in &mut outcome.events {
                 event.mark_triggers_captured();

@@ -571,6 +571,7 @@ fn arena_style_land_definition() -> crate::cards::CardDefinition {
             }],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     CardDefinitionBuilder::new(CardId::new(), "Arena Style Land")
@@ -1810,6 +1811,7 @@ fn indexed_grant_cost_keeps_announcement_method_after_provider_leaves() {
     game.turn.active_player = alice;
     game.turn.phase = Phase::FirstMain;
     let cost_method = |amount| crate::alternative_cast::AlternativeCastingMethod::FromZone {
+        preparation_total_cost: None,
         name: "Indexed graveyard permission".into(),
         zone: Zone::Graveyard,
         total_cost: TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(amount)])),

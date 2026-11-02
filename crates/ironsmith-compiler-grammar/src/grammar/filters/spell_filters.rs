@@ -429,12 +429,28 @@ fn split_trailing_color_count_phrase_tokens(
 }
 
 pub fn parse_spell_filter_with_grammar_entrypoint_lexed(tokens: &[OwnedLexToken]) -> ObjectFilter {
+    if let Some((base,owner))=crate::object_filters::source_noted_names::split_clause(tokens){
+        let mut filter=parse_spell_filter_with_grammar_entrypoint_lexed(&base);filter.name_noted_for=Some(Box::new(owner));return filter;
+    }
+    if let Some((base,history))=crate::object_filters::split_named_action_object_name_clause(tokens){
+        let mut filter=parse_spell_filter_with_grammar_entrypoint_lexed(&base);
+        filter.shares_name_with_named_action_objects=Some(history);
+        return filter;
+    }
     let words_view = GrammarFilterNormalizedWords::new(tokens);
     let words = non_article_word_refs(&words_view.to_word_refs());
     parse_spell_filter_words_with_noun_phrase_union(&words)
 }
 
 pub fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
+    if let Some((base,owner))=crate::object_filters::source_noted_names::split_clause(tokens){
+        let mut filter=parse_spell_filter_with_grammar_entrypoint(&base);filter.name_noted_for=Some(Box::new(owner));return filter;
+    }
+    if let Some((base,history))=crate::object_filters::split_named_action_object_name_clause(tokens){
+        let mut filter=parse_spell_filter_with_grammar_entrypoint(&base);
+        filter.shares_name_with_named_action_objects=Some(history);
+        return filter;
+    }
     let words = non_article_token_word_refs(tokens);
     parse_spell_filter_words_with_noun_phrase_union(&words)
 }

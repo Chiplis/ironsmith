@@ -1,0 +1,1085 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "scope": "All12Master reminder variants and all12associatedactualsourcecards",
+    "validation": "GenericName/Type frontend declaration binding; strict compile and native behavior tracked independently."
+  },
+  "mechanics": [
+    {
+      "id": "rev-master-096",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Frost Breath into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Frost Breath, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Arctic Drake_KUT",
+          "name": "Arctic Drake",
+          "original_text": "Type: Creature — Elemental Drake \nMana cost: {3}{U}{U}\nPower/Toughness: 3/3\nMaster of Frost Breath *(When this enters, you may put Frost Breath into your hand from your library, then shuffle.)*\nFlying\nWhenever Arctic Drake attacks, target tapped creature defending player controls doesn't untap during its controller's next untap step.",
+          "executable_text": "Type: Creature — Elemental Drake \nMana cost: {3}{U}{U}\nPower/Toughness: 3/3\nWhen this permanent enters, search your library for a card named Frost Breath, reveal it, put it into your hand, then shuffle\nFlying\nWhenever Arctic Drake attacks, target tapped creature defending player controls doesn't untap during its controller's next untap step.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Frost Breath\nFlying\nWhenever Arctic Drake attacks, target tapped creature defending player controls doesn't untap during its controller's next untap step.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Arctic Drake"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-097",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Butani Shaman into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Butani Shaman, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Butani Warleader_KUT",
+          "name": "Butani Warleader",
+          "original_text": "Type: Creature — Yeti Warrior \nMana cost: {1}{G}{G}\nPower/Toughness: 3/3\nMaster of Butani Shaman *(When this enters, you may put Butani Shaman into your hand from your library, then shuffle.)*\nWhenever Butani Warleader attacks, another target attacking creature you control gets +X/+X until end of turn, where X is Butani Warleader's power.",
+          "executable_text": "Type: Creature — Yeti Warrior \nMana cost: {1}{G}{G}\nPower/Toughness: 3/3\nWhen this permanent enters, search your library for a card named Butani Shaman, reveal it, put it into your hand, then shuffle\nWhenever Butani Warleader attacks, another target attacking creature you control gets +X/+X until end of turn, where X is Butani Warleader's power.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Butani Shaman\nWhenever Butani Warleader attacks, another target attacking creature you control gets +X/+X until end of turn, where X is Butani Warleader's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Butani Warleader"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-098",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Monument to the Thirty into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Monument to the Thirty, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Curator of Myth_KUT",
+          "name": "Curator of Myth",
+          "original_text": "Type: Artifact Creature — Monument Golem \nMana cost: {2}\nPower/Toughness: 1/3\nMaster of Monument to the Thirty *(When this enters, you may put Monument to the Thirty into your hand from your library, then shuffle.)*\n{30}: Curator of Myth deals 30 damage to any target.",
+          "executable_text": "Type: Artifact Creature — Monument Golem \nMana cost: {2}\nPower/Toughness: 1/3\nWhen this permanent enters, search your library for a card named Monument to the Thirty, reveal it, put it into your hand, then shuffle\n{30}: Curator of Myth deals 30 damage to any target.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Monument to the Thirty\n{30}: Curator of Myth deals 30 damage to any target.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Curator of Myth"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-099",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Purge from Memory into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Purge from Memory, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Herald of Anigul_KUT",
+          "name": "Herald of Anigul",
+          "original_text": "Type: Creature — Yeti \nMana cost: {1}{B}\nPower/Toughness: 2/1\nMaster of Purge from Memory *(When this enters, you may put Purge from Memory into your hand from your library, then shuffle.)*\nWhenever an opponent discards one or more cards, put a +1/+1 counter on Herald of Anigul.",
+          "executable_text": "Type: Creature — Yeti \nMana cost: {1}{B}\nPower/Toughness: 2/1\nWhen this permanent enters, search your library for a card named Purge from Memory, reveal it, put it into your hand, then shuffle\nWhenever an opponent discards one or more cards, put a +1/+1 counter on Herald of Anigul.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Purge from Memory\nWhenever an opponent discards one or more cards, put a +1/+1 counter on Herald of Anigul.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Herald of Anigul"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-100",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put any Mantra into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a Mantra card, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Hundred-Chant Elder_KUT",
+          "name": "Hundred-Chant Elder",
+          "original_text": "Type: Creature — Human Monk \nMana cost: {2}{R}\nPower/Toughness: 2/2\nMaster of any Mantra *(When this enters, you may put any Mantra into your hand from your library, then shuffle.)*\nYou may spend mana as though it were mana of any color to cast Mantra spells.",
+          "executable_text": "Type: Creature — Human Monk \nMana cost: {2}{R}\nPower/Toughness: 2/2\nWhen this permanent enters, search your library for a Mantra card, reveal it, put it into your hand, then shuffle.\nYou may spend mana as though it were mana of any color to cast Mantra spells.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of any Mantra\nYou may spend mana as though it were mana of any color to cast Mantra spells.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Hundred-Chant Elder"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of any {Type}",
+          "reminder": "When this permanent enters, search your library for a {Type} card, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-101",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Student of Inner Peace into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Student of Inner Peace, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Mentor of Inner Peace_KUT",
+          "name": "Mentor of Inner Peace",
+          "original_text": "Type: Creature — Cat Monk \nMana cost: {2}{W}\nPower/Toughness: 1/1\nMaster of Student of Inner Peace *(When this enters, you may put Student of Inner Peace into your hand from your library, then shuffle.)*\nWhenever you gain life, put that many +1/+1 counters on Mentor of Inner Peace.",
+          "executable_text": "Type: Creature — Cat Monk \nMana cost: {2}{W}\nPower/Toughness: 1/1\nWhen this permanent enters, search your library for a card named Student of Inner Peace, reveal it, put it into your hand, then shuffle\nWhenever you gain life, put that many +1/+1 counters on Mentor of Inner Peace.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Student of Inner Peace\nWhenever you gain life, put that many +1/+1 counters on Mentor of Inner Peace.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Mentor of Inner Peace"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-102",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Caldera Elemental into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Caldera Elemental, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Narwa Igniter (Avatar)_PRO_KUT",
+          "name": "Narwa Igniter",
+          "original_text": "Type: Creature — Human Warrior \nMana cost: {1}{R}\nPower/Toughness: 2/2\nMaster of Caldera Elemental *(When this enters, you may put Caldera Elemental into your hand from your library, then shuffle.)*\n{T}: Add {R}{R}. Spend this mana only to cast Elemental spells or activate abilities of Elementals.",
+          "executable_text": "Type: Creature — Human Warrior \nMana cost: {1}{R}\nPower/Toughness: 2/2\nWhen this permanent enters, search your library for a card named Caldera Elemental, reveal it, put it into your hand, then shuffle\n{T}: Add {R}{R}. Spend this mana only to cast Elemental spells or activate abilities of Elementals.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Caldera Elemental\n{T}: Add {R}{R}. Spend this mana only to cast Elemental spells or activate abilities of Elementals.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Narwa Igniter"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-103",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Pressure Point into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Pressure Point, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Peerless Monk_KUT",
+          "name": "Peerless Monk",
+          "original_text": "Type: Creature — Human Monk \nMana cost: {1}{W}\nPower/Toughness: 3/1\nMaster of Pressure Point *(When this enters, you may put Pressure Point into your hand from your library, then shuffle.)*\nPeerless Monk has vigilance as long as an opponent controls a tapped creature.",
+          "executable_text": "Type: Creature — Human Monk \nMana cost: {1}{W}\nPower/Toughness: 3/1\nWhen this permanent enters, search your library for a card named Pressure Point, reveal it, put it into your hand, then shuffle\nPeerless Monk has vigilance as long as an opponent controls a tapped creature.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Pressure Point\nPeerless Monk has vigilance as long as an opponent controls a tapped creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Peerless Monk"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-104",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Wrap in Flames into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Wrap in Flames, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Solara's Pyromancer (Avatar)_PRO_KUT",
+          "name": "Solara's Pyromancer",
+          "original_text": "Type: Creature — Human Shaman \nMana cost: {2}{R}\nPower/Toughness: 2/1\nMaster of Wrap in Flames *(When this enters, you may put Wrap in Flames into your hand from your library, then shuffle.)*\nWhenever Solara's Pyromancer deals combat damage to a player, put a +1/+1 counter on it.",
+          "executable_text": "Type: Creature — Human Shaman \nMana cost: {2}{R}\nPower/Toughness: 2/1\nWhen this permanent enters, search your library for a card named Wrap in Flames, reveal it, put it into your hand, then shuffle\nWhenever Solara's Pyromancer deals combat damage to a player, put a +1/+1 counter on it.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Wrap in Flames\nWhenever Solara's Pyromancer deals combat damage to a player, put a +1/+1 counter on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Solara's Pyromancer"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-105",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Subjugated Spirit into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Subjugated Spirit, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Soul Slaver_KUT",
+          "name": "Soul Slaver",
+          "original_text": "Type: Creature — Human Shaman \nMana cost: {2}{U}\nPower/Toughness: 1/3\nMaster of Subjugated Spirit *(When this enters, you may put Subjugated Spirit into your hand from your library, then shuffle.)*\nWhenever one or more creatures you control deal combat damage to an opponent, draw a card.",
+          "executable_text": "Type: Creature — Human Shaman \nMana cost: {2}{U}\nPower/Toughness: 1/3\nWhen this permanent enters, search your library for a card named Subjugated Spirit, reveal it, put it into your hand, then shuffle\nWhenever one or more creatures you control deal combat damage to an opponent, draw a card.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Subjugated Spirit\nWhenever one or more creatures you control deal combat damage to an opponent, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Soul Slaver"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-106",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Blightling into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Blightling, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Spreader of Veilblight_KUT",
+          "name": "Spreader of Veilblight",
+          "original_text": "Type: Creature — Spirit Horror \nMana cost: {3}{B}\nPower/Toughness: 3/3\nMaster of Blightling *(When this enters, you may put Blightling into your hand from your library, then shuffle.)*\nSwamps you control have “{T}, Pay 1 life: Add {B}{B}.”",
+          "executable_text": "Type: Creature — Spirit Horror \nMana cost: {3}{B}\nPower/Toughness: 3/3\nWhen this permanent enters, search your library for a card named Blightling, reveal it, put it into your hand, then shuffle\nSwamps you control have “{T}, Pay 1 life: Add {B}{B}.”",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Blightling\nSwamps you control have “{T}, Pay 1 life: Add {B}{B}.”",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Spreader of Veilblight"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-master-107",
+      "keyword": "Master",
+      "scope": "revolution",
+      "rule_reference": "702.200.",
+      "rule_text": {
+        "name": "702.200.",
+        "rule": "Master",
+        "subrules": [
+          {
+            "name": "702.200a",
+            "rule": "Master is a triggered ability of some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.200b",
+            "rule": "“Master of [name]” means “When this permanent enters, search your library for a card named [name], reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          },
+          {
+            "name": "702.200c",
+            "rule": "“Master of any [quality]” means “When this permanent enters, search your library for a [quality] card, reveal it, put it into your hand, then shufle.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Arctic Drake",
+          "Butani Warleader",
+          "Curator of Myth",
+          "Herald of Anigul",
+          "Hundred-Chant Elder",
+          "Mentor of Inner Peace",
+          "Narwa Igniter",
+          "Peerless Monk",
+          "Solara's Pyromancer",
+          "Soul Slaver",
+          "Spreader of Veilblight",
+          "Ujuraq's Tusk",
+          "Narwa Igniter (Avatar)",
+          "Solara's Pyromancer (Avatar)"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this enters, you may put Elder's Might into your hand from your library, then shuffle.",
+      "executable_reminder": "When this permanent enters, search your library for a card named Elder's Might, reveal it, put it into your hand, then shuffle.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule702.200b/c uses library search for named card or quality, reveal,hand,shuffle. A hidden-zone search may fail to find; this is not an optional visible put operation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Ujuraq's Tusk_KUT",
+          "name": "Ujuraq's Tusk",
+          "original_text": "Type: Creature — Elephant Warrior \nMana cost: {2}{G}\nPower/Toughness: 3/3\nMaster of Elder's Might *(When this enters, you may put Elder's Might into your hand from your library, then shuffle.)*\nCreatures with power less than Ujuraq's Tusk's power can't block it.",
+          "executable_text": "Type: Creature — Elephant Warrior \nMana cost: {2}{G}\nPower/Toughness: 3/3\nWhen this permanent enters, search your library for a card named Elder's Might, reveal it, put it into your hand, then shuffle\nCreatures with power less than Ujuraq's Tusk's power can't block it.",
+          "custom_keyword_identities": [
+            "master"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Master of Elder's Might\nCreatures with power less than Ujuraq's Tusk's power can't block it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Ujuraq's Tusk"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "search-reveal-hand",
+          "status": "pending",
+          "test_reference": "custom_revolution_standard_effects::revolution_master_searches_only_matching_cards_and_can_fail_to_find",
+          "observable": "ETB search moves one named card to hand; nonmatching card stays in library; empty matching set resolves."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Master",
+        "template": "of {Name}",
+        "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Master",
+          "template": "of {Name}",
+          "reminder": "When this permanent enters, search your library for a card named {Name}, reveal it, put it into your hand, then shuffle."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    }
+  ]
+}

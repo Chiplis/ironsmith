@@ -4341,3 +4341,21 @@ pub(super) fn rewrite_if_clause_binds_that_enchantment_and_created_token_referen
         "expected attachment destination to bind the created token, got {target:?}"
     );
 }
+
+#[test]
+pub(super) fn modal_imperative_producer_before_reflexive_choice_is_not_an_outer_trigger() {
+    for prefix in ["Create a 1/1 green Saproling creature token.","You gain 1 life."] {
+        let text=format!("{prefix} When you do, pay for and choose any number.");
+        let header=parse_modal_header_for_test(&text).unwrap().unwrap();
+        assert!(header.trigger.is_none(),"{header:?}");
+        assert_eq!(header.prefix_effects_ast.len(),1,"the complete producer is retained");
+        assert!(header.descriptive_mode_costs);
+        assert!(matches!(header.modal_gate,Some(crate::cards::builders::ParsedModalGate{reflexive:true,predicate:crate::effect::EffectPredicate::Happened,..})));
+    }
+}
+#[test]
+pub(super) fn modal_actual_outer_trigger_and_later_reflexive_gate_keep_both_boundaries() {
+    let header=parse_modal_header_for_test("Whenever this creature attacks, create a 1/1 green Saproling creature token. When you do, pay for and choose any number.").unwrap().unwrap();
+    assert!(header.trigger.is_some());assert_eq!(header.prefix_effects_ast.len(),1);
+    assert!(matches!(header.modal_gate,Some(crate::cards::builders::ParsedModalGate{reflexive:true,..})));
+}

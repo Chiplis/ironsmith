@@ -101,7 +101,7 @@ fn matching_cost_candidates(
         if obj.zone == crate::zone::Zone::Hand {
             hand_ids.push(id);
         }
-        if filter.matches(obj, &filter_ctx, game) {
+        if !game.zone_move_is_prohibited(id, Zone::Exile) && filter.matches(obj, &filter_ctx, game) {
             candidates.push(id);
         }
     });
@@ -109,7 +109,7 @@ fn matching_cost_candidates(
     // hand"): count their placeholders as payable (see
     // `game_state::hidden_hand_choices`).
     for id in game.hidden_hand_payable_placeholders(filter, &filter_ctx, hand_ids) {
-        if id != source && !candidates.contains(&id) {
+        if id != source && !candidates.contains(&id) && !game.zone_move_is_prohibited(id, Zone::Exile) {
             candidates.push(id);
         }
     }
@@ -117,6 +117,8 @@ fn matching_cost_candidates(
 }
 
 impl EffectExecutor for ExileEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.spec==*spec}
+
     fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
         vec![self.spec.clone()]
     }
@@ -401,6 +403,20 @@ impl ZoneMovementInstruction for ExileEffect {
                     &snapshots,
                     pending_start,
                 )?;
+                // This instruction owns a known empty latest-result frame.
+                // Prevention or redirection cannot revive an earlier exile.
+                let last=crate::tag::TagKey::from(ironsmith_core::tag::LAST_EXILED_RESULT_TAG);
+                ctx.set_tagged_objects(last.clone(),Vec::new());
+                ctx.exact_object_reference_tags.insert(last);
+                // Exiling a card already in exile has no zone-change event,
+                // but later instructions can still refer to that exact card.
+                for snapshot in snapshots.values().filter(|snapshot|snapshot.zone==Zone::Exile) {
+                    if game.object(snapshot.object_id).is_some_and(|object|object.zone==Zone::Exile) {
+                        let last=crate::tag::TagKey::from(ironsmith_core::tag::LAST_EXILED_RESULT_TAG);
+                        ctx.set_tagged_objects(last.clone(),vec![snapshot.clone()]);
+                        ctx.exact_object_reference_tags.insert(last);
+                    }
+                }
                 let mut affected = Vec::new();
                 let mut memories = Vec::new();
                 let mut original_arrivals = Vec::new();
@@ -486,11 +502,17 @@ impl ZoneMovementInstruction for ExileEffect {
                         .unwrap_or_else(|| before.clone());
                     ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![after]);
                 }
+                // A singular/plural explicit exiled-card reference belongs
+                // to this instruction's completed destinations. A prevented
+                // or redirected exile shadows an earlier receipt with empty.
+                ctx.set_tagged_objects(crate::tag::PRIOR_EXILED_CARD_TAG,
+                    original_arrivals.iter().filter(|snapshot|snapshot.zone==Zone::Exile).cloned().collect());
                 if let Some(new_source) = moved_source {
                     ctx.source = new_source;
                 }
                 let outcome = if effect.spec.is_target()
                     && effect.spec.is_single()
+                    && !crate::effects::target_packets::multiple(ctx,&effect.spec)
                     && matches!(
                         effect.spec.base(),
                         ChooseSpec::Object(_)
@@ -535,11 +557,20 @@ impl CostExecutableEffect for ExileEffect {
         {
             // The entire current set is the cost, including an empty set.
             // Choosing to pay it remains distinct from declining the offer.
-            return if game.player(controller).is_some_and(|player| player.is_in_game()) { Ok(()) }
-                else { Err(crate::effects::CostValidationError::Other("payer not in game".into())) };
+            if !game.player(controller).is_some_and(|player| player.is_in_game()) {
+                return Err(crate::effects::CostValidationError::Other("payer not in game".into()));
+            }
+            let context = FilterContext::new(controller).with_source(source);
+            if game.zone_ids(Zone::Graveyard).any(|id|
+                game.object(id).is_some_and(|object| filter.matches(object, &context, game)) && game.zone_move_is_prohibited(id, Zone::Exile)) {
+                return Err(crate::effects::CostValidationError::Other("the entire graveyard cannot be exiled".into()));
+            }
+            return Ok(());
         }
         if matches!(self.spec.base(), ChooseSpec::Source) && game.object(source).is_some() {
-            return Ok(());
+            return if game.zone_move_is_prohibited(source, Zone::Exile) {
+                Err(crate::effects::CostValidationError::Other("source cannot leave its zone for exile".into()))
+            } else { Ok(()) };
         }
 
         if let Some((filter, count)) = material_cost_filter(self) {
@@ -1080,5 +1111,33 @@ mod tests {
             "re-exiled face-down cards should keep their existing look permission"
         );
         assert!(game.object(card_id).is_none(), "old object should be gone");
+    }
+}
+
+#[cfg(test)]
+mod explicit_exile_receipt_reference_tests {
+    use super::*;
+    #[test]
+    fn prevented_or_redirected_local_exile_cannot_reuse_parent_receipt(){
+        for prevent in [false,true]{
+            let player=crate::PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            let card=crate::card::CardBuilder::new(crate::CardId::new(),"Rejected exile receipt").card_types(vec![crate::CardType::Sorcery]).build();
+            let parent=game.create_object_from_card(&card,player,Zone::Exile);let selected=game.create_object_from_card(&card,player,Zone::Hand);
+            let mut replacement=crate::replacement::ZoneReplacementSpec::new(ObjectFilter::specific(selected),Zone::Graveyard).from_zone(Zone::Hand).to_zone(Zone::Exile).build(parent,player);
+            if prevent{replacement.replacement=crate::replacement::ReplacementAction::Prevent;}game.effect_store.replacement_effects.add_one_shot_effect(replacement);
+            let snapshot=ObjectSnapshot::from_object(game.object(parent).unwrap(),&game);let mut ctx=ExecutionContext::new_default(parent,player);ctx.set_tagged_objects(crate::tag::PRIOR_EXILED_CARD_TAG,vec![snapshot]);
+            ExileEffect::with_spec(ChooseSpec::SpecificObject(selected)).execute(&mut game,&mut ctx).unwrap();
+            assert!(ctx.get_tagged_all(crate::tag::PRIOR_EXILED_CARD_TAG).is_some_and(|snapshots|snapshots.is_empty()),"an attempted new producer shadows its parent with no successful exile card");
+        }
+    }
+    #[test]
+    fn local_exile_exports_its_exact_arrival_instead_of_parent_or_source_links(){
+        let player=crate::PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Exile receipt").card_types(vec![crate::CardType::Sorcery]).build();
+        let parent=game.create_object_from_card(&card,player,Zone::Exile);let selected=game.create_object_from_card(&card,player,Zone::Hand);let stable=game.object(selected).unwrap().stable_id;
+        let parent_snapshot=ObjectSnapshot::from_object(game.object(parent).unwrap(),&game);let mut ctx=ExecutionContext::new_default(parent,player);ctx.set_tagged_objects(crate::tag::PRIOR_EXILED_CARD_TAG,vec![parent_snapshot]);
+        ExileEffect::with_spec(ChooseSpec::SpecificObject(selected)).execute(&mut game,&mut ctx).unwrap();
+        let arrival=game.find_object_by_stable_id(stable).unwrap();assert_ne!(arrival,selected);
+        assert_eq!(ctx.get_tagged(crate::tag::PRIOR_EXILED_CARD_TAG).unwrap().object_id,arrival);assert_ne!(arrival,parent);
     }
 }

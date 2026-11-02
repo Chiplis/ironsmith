@@ -1,0 +1,9 @@
+[
+  "crates/ironsmith-compiler-runtime/tests/continuous_reference_quantities.rs",
+  "crates/ironsmith-compiler-runtime/tests/craft_material_costs.rs",
+  "crates/ironsmith-compiler-runtime/tests/custom_colored_resource_costs.rs",
+  "crates/ironsmith-compiler-runtime/tests/custom_final_all_sources_next_wave.rs",
+  "crates/ironsmith-compiler-runtime/tests/custom_gestalt_merge.rs",
+  "crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs",
+  "crates/ironsmith-compiler-runtime/tests/custom_module.rs"
+]

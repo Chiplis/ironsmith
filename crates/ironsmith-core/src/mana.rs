@@ -5,7 +5,7 @@ mod x_payment;
 mod payment_budget;
 pub use payment_budget::ManaPaymentBudget;
 mod waterbend;
-pub use waterbend::{WaterbendCapacity, WaterbendObligation, WaterbendPaymentScope};
+pub use waterbend::{WaterbendCapacity, WaterbendObligation, WaterbendPaymentScope, TapPaymentMethod};
 pub use x_payment::{XPaymentScope, XManaAllocation, ActualManaAllocation};
 
 /// Atomic mana payment options.
@@ -99,6 +99,15 @@ pub enum ManaSpendingRestriction {
     /// "Spend only snow mana ...": every unit spent must come from a snow
     /// source (CR 107.4h).
     Snow,
+    /// Minimum number of actual colored mana types spent on the whole cost.
+    /// Colorless and nonmana substitutes do not contribute.
+    AtLeastColors(u8),
+    /// Each counter placed on a controlled creature pays one generic mana,
+    /// bounded by that creature's remaining toughness (toughness minus damage).
+    GenericManaByMinusOneCounters,
+    /// Actual colors not previously spent to activate this exact occurrence.
+    /// The activation cost owner resolves this against its retained identity.
+    UnspentActivationColors,
 }
 
 impl ManaSymbol {
@@ -146,6 +155,8 @@ impl ManaSpendingRestriction {
                 text
             },
             Self::NoMana => format!("You can't spend mana to cast {scope}"),
+            Self::AtLeastColors(count) => format!("Spend mana of at least {count} different colors to cast {scope}"),
+            Self::GenericManaByMinusOneCounters => "For each generic mana in this spell's total cost, you may put a -1/-1 counter on a creature you control up to its remaining toughness rather than pay that mana".into(),
             _ => format!("Spend only {} to cast {scope}", self.unit_requirement_description()),
         }
     }
@@ -156,6 +167,8 @@ impl ManaSpendingRestriction {
         match self {
             Self::OnX { .. } => self.cast_description(false),
             Self::NoMana => "You can't spend mana to activate this ability".to_string(),
+            Self::AtLeastColors(count) => format!("Spend mana of at least {count} different colors to activate this ability"),
+            Self::GenericManaByMinusOneCounters => "For each generic mana in this ability's total cost, you may put a -1/-1 counter on a creature you control up to its remaining toughness rather than pay that mana".into(),
             _ => format!(
                 "Spend only {} to activate this ability",
                 self.unit_requirement_description()
@@ -169,6 +182,7 @@ impl ManaSpendingRestriction {
         match self {
             Self::ProducedBy(filter) => format!("mana produced by {}", filter.description()),
             Self::SourceChosenColor => "mana of the chosen color".to_string(),
+            Self::UnspentActivationColors => "mana of a color that has not been spent this way".to_string(),
             Self::Colors(colors) if colors.count() == 5 => "colored mana".to_string(),
             Self::Colors(colors) => format!(
                 "{} mana",
@@ -181,7 +195,7 @@ impl ManaSpendingRestriction {
             ),
             Self::Colorless => "colorless mana".to_string(),
             Self::Snow => "snow mana".to_string(),
-            Self::OnX { .. } | Self::NoMana => "mana".to_string(),
+            Self::OnX { .. } | Self::NoMana | Self::AtLeastColors(_) | Self::GenericManaByMinusOneCounters => "mana".to_string(),
         }
     }
 
@@ -202,8 +216,8 @@ impl ManaSpendingRestriction {
             Self::Colors(colors) => symbol.unit_color().is_some_and(|color| colors.contains(color)),
             Self::Colorless => symbol == ManaSymbol::Colorless,
             Self::Snow => from_snow_source,
-            Self::NoMana => false,
-            Self::ProducedBy(_) | Self::OnX { .. } => true,
+            Self::NoMana | Self::UnspentActivationColors => false,
+            Self::ProducedBy(_) | Self::OnX { .. } | Self::AtLeastColors(_) | Self::GenericManaByMinusOneCounters => true,
         }
     }
 }
@@ -258,6 +272,24 @@ impl ManaCost {
         }
     }
 
+    /// Bind a retained activation's history before payment is locked. Other
+    /// spending restrictions and all payment-allocation metadata survive.
+    pub fn resolve_activation_history_colors(mut self, allowed: ColorSet) -> Self {
+        for rule in &mut self.spending_restrictions {
+            if matches!(rule, ManaSpendingRestriction::UnspentActivationColors) {
+                *rule = ManaSpendingRestriction::Colors(allowed);
+            }
+        }
+        self
+    }
+
+    /// A designated activation permission removes this rule alone. Preserve
+    /// snow/source restrictions, X allocations, exact payment and every pip.
+    pub fn without_minimum_color_requirement(mut self) -> Self {
+        self.spending_restrictions.retain(|rule| !matches!(rule, ManaSpendingRestriction::AtLeastColors(_)));
+        self
+    }
+
     pub fn spending_restrictions(&self) -> &[ManaSpendingRestriction] {
         &self.spending_restrictions
     }
@@ -303,7 +335,16 @@ impl ManaCost {
     /// as the ability's rider instead of inside the price.
     pub fn without_unit_spending_restrictions(mut self) -> Self {
         self.spending_restrictions
-            .retain(|rule| matches!(rule, ManaSpendingRestriction::OnX { .. }));
+            .retain(|rule| matches!(rule, ManaSpendingRestriction::OnX { .. } | ManaSpendingRestriction::AtLeastColors(_) | ManaSpendingRestriction::GenericManaByMinusOneCounters));
+        self
+    }
+
+    /// A renderer may print every consumer rider separately from the nominal
+    /// price. Only its display clone may erase all riders; payment keeps them.
+    pub fn without_spending_restrictions_for_display(mut self) -> Self {
+        self.spending_restrictions.clear();
+        self.x_payment_scope = None;
+        self.required_actual_payment = None;
         self
     }
 
@@ -393,9 +434,11 @@ impl ManaCost {
         *self = base.with_pips(pips);
     }
 
-    /// Returns true if this mana cost is empty (costs nothing).
+    /// No mana pips or transaction spending obligations remain. A zero-pip
+    /// cost with a spending requirement still needs authoritative validation.
     pub fn is_empty(&self) -> bool {
         self.pips.is_empty() && !self.has_waterbend_obligation()
+            && self.spending_restrictions.is_empty()
     }
 
     /// Returns the number of pips in this mana cost.
@@ -465,6 +508,12 @@ impl ManaCost {
     /// Hybrid halves remain choices; Phyrexian reduction symbols never reduce life.
     /// The base cost must already have its X value expanded; X in the reduction is zero.
     pub fn reduced_by_mana_cost_options(&self, reduction: &ManaCost) -> Vec<ManaCost> {
+        self.reduced_by_mana_cost_options_with_spill(reduction, true)
+    }
+
+    /// Preserve every exact payment branch. Colored-only reductions do not
+    /// reduce generic mana when their chosen color is absent.
+    pub fn reduced_by_mana_cost_options_with_spill(&self, reduction: &ManaCost, spill: bool) -> Vec<ManaCost> {
         fn rank(symbol: &ManaSymbol) -> (u8, u8) {
             match symbol {
                 ManaSymbol::Generic(n) => (0, *n),
@@ -521,7 +570,7 @@ impl ManaCost {
                                 remaining.iter().position(|symbol| *symbol == colored)
                             {
                                 remaining.remove(index);
-                            } else {
+                            } else if spill {
                                 generic_reduction += 1;
                             }
                         }
@@ -535,6 +584,46 @@ impl ManaCost {
             }
         }
         results
+    }
+
+    /// "One mana of any color less": remove one existing colored
+    /// requirement. A generic reduction is the fallback only when none exists.
+    pub fn reduced_by_one_mana_of_any_color_options(&self) -> Vec<ManaCost> {
+        self.reduced_by_one_mana_of_any_color_options_with_generic_fallback(true)
+    }
+
+    pub fn reduced_by_one_mana_of_any_color_options_with_generic_fallback(&self, generic_fallback: bool) -> Vec<ManaCost> {
+        let mut branches = vec![Vec::new()];
+        for pip in &self.pips {
+            let mut next = Vec::new();
+            for branch in &branches {
+                for symbol in pip {
+                    let mut pips = branch.clone();
+                    pips.push(vec![*symbol]);
+                    if !next.contains(&pips) { next.push(pips); }
+                }
+            }
+            branches = next;
+        }
+        let mut options = Vec::new();
+        for pips in branches {
+            let colored = pips.iter().enumerate().filter_map(|(index, pip)| {
+                matches!(pip.as_slice(), [ManaSymbol::White | ManaSymbol::Blue |
+                    ManaSymbol::Black | ManaSymbol::Red | ManaSymbol::Green]).then_some(index)
+            }).collect::<Vec<_>>();
+            if colored.is_empty() {
+                let reduced = self.with_pips(pips);
+                let reduced = if generic_fallback { reduced.reduce_generic(1) } else { reduced };
+                if !options.contains(&reduced) { options.push(reduced); }
+            } else {
+                for index in colored {
+                    let mut reduced = pips.clone();reduced.remove(index);
+                    let reduced = self.with_pips(reduced);
+                    if !options.contains(&reduced) { options.push(reduced); }
+                }
+            }
+        }
+        options
     }
 
     /// Returns a new ManaCost with additional generic mana appended.
@@ -902,4 +991,54 @@ mod mana_output_rewrite_wire_contract {
 pub(crate) fn deserialize_required_mana_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where D: serde::Deserializer<'de>, T: serde::Deserialize<'de> {
     <Option<T> as serde::Deserialize>::deserialize(deserializer)
+}
+
+#[cfg(test)]
+mod reduction_branch_policy_regressions {
+    use super::*;
+    #[test]
+    fn whole_cost_choices_preserve_distinct_colored_pairs_and_spending_policy() {
+        use ManaSymbol::*;
+        let restriction=ManaSpendingRestriction::Colors([crate::Color::White,crate::Color::Blue].into_iter().collect());
+        let cost=ManaCost::from_symbols(vec![White,Blue,Black]).with_spending_restriction(restriction.clone());
+        let options=cost.reduced_by_mana_cost_options_with_spill(&ManaCost::from_pips(vec![vec![White,Blue,Black]]),true);
+        let mut strings=options.iter().map(ManaCost::to_oracle).collect::<Vec<_>>();strings.sort();
+        assert_eq!(strings,vec!["{U}{B}","{W}{B}","{W}{U}"]);
+        assert!(options.iter().all(|option|option.spending_restrictions()==std::slice::from_ref(&restriction)));
+        let only_generic=ManaCost::from_symbols(vec![Generic(2)]);
+        let colored=ManaCost::from_symbols(vec![White]);
+        assert_eq!(only_generic.reduced_by_mana_cost_options_with_spill(&colored,false),vec![only_generic.clone()]);
+        assert_eq!(only_generic.reduced_by_mana_cost_options_with_spill(&colored,true),vec![ManaCost::from_symbols(vec![Generic(1)])]);
+    }
+}
+
+#[cfg(test)]
+mod actual_colored_requirement_reduction_tests {
+    use super::*;
+    #[test]
+    fn any_color_policy_cannot_choose_absent_color_or_reduce_a_generic_component_first() {
+        use ManaSymbol::*;
+        let mut options=ManaCost::from_symbols(vec![White,Blue,Black])
+            .reduced_by_one_mana_of_any_color_options().iter().map(ManaCost::to_oracle).collect::<Vec<_>>();
+        options.sort();assert_eq!(options,vec!["{U}{B}","{W}{B}","{W}{U}"]);
+        let options=ManaCost::from_symbols(vec![Generic(1),White,Blue,Black]).reduced_by_one_mana_of_any_color_options();
+        assert!(options.iter().all(|cost|cost.generic_mana_total()==1));
+        assert_eq!(ManaCost::from_symbols(vec![Generic(2),Colorless]).reduced_by_one_mana_of_any_color_options(),vec![ManaCost::from_symbols(vec![Generic(1),Colorless])]);
+        assert_eq!(ManaCost::from_symbols(vec![Snow]).reduced_by_one_mana_of_any_color_options(),vec![ManaCost::from_symbols(vec![Snow])]);
+        let mut hybrid=ManaCost::from_pips(vec![vec![White,Blue],vec![Black]])
+            .reduced_by_one_mana_of_any_color_options().iter().map(ManaCost::to_oracle).collect::<Vec<_>>();
+        hybrid.sort();assert_eq!(hybrid,vec!["{B}","{U}","{W}"]);
+    }
+}
+
+#[cfg(test)]
+mod minimum_color_exception_tests {
+ use super::*;
+ #[test]fn removing_minimum_colors_preserves_pips_and_independent_snow_rule(){
+  let cost=ManaCost::from_symbols(vec![ManaSymbol::Generic(2),ManaSymbol::Blue])
+   .with_spending_restriction(ManaSpendingRestriction::AtLeastColors(3))
+   .with_spending_restriction(ManaSpendingRestriction::Snow);
+  let expected=ManaCost::from_symbols(vec![ManaSymbol::Generic(2),ManaSymbol::Blue]).with_spending_restriction(ManaSpendingRestriction::Snow);
+  assert_eq!(cost.without_minimum_color_requirement(),expected);
+ }
 }

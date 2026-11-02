@@ -156,6 +156,7 @@ pub enum SubtypeFamily {
     Spell,
     Planeswalker,
     Battle,
+    Planar,
 }
 
 impl SubtypeFamily {
@@ -168,6 +169,7 @@ impl SubtypeFamily {
             SubtypeFamily::Spell => "spell type",
             SubtypeFamily::Planeswalker => "planeswalker type",
             SubtypeFamily::Battle => "battle type",
+            SubtypeFamily::Planar => "planar type",
         }
     }
 
@@ -185,6 +187,7 @@ impl SubtypeFamily {
             SubtypeFamily::Spell => Subtype::all_spell_types(),
             SubtypeFamily::Planeswalker => Subtype::all_planeswalker_types(),
             SubtypeFamily::Battle => Subtype::all_battle_types(),
+            SubtypeFamily::Planar => Subtype::all_planar_types(),
         }
     }
 }
@@ -1404,6 +1407,8 @@ impl Subtype {
 
     /// CR 205.3n / 311.3: the planar type whose full name is `name`.
     pub fn planar_type_from_name(name: &str) -> Option<Subtype> {
+        if let Some(subtype) = crate::custom_subtypes::lookup(name)
+            && subtype.belongs_to_family(SubtypeFamily::Planar) { return Some(subtype); }
         const NAMES: &[(&str, Subtype)] = &[
             ("The Abyss", Subtype::TheAbyss),
             ("Alara", Subtype::Alara),
@@ -1496,7 +1501,7 @@ impl Subtype {
     }
 
     pub fn is_planar_subtype(&self) -> bool {
-        Self::all_planar_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Planar)) || Self::all_planar_types().contains(self)
     }
 
     /// CR 205.3p: the dungeon types.
@@ -1563,28 +1568,28 @@ impl Subtype {
     /// to replace. Non-land subtypes (Saga, Aura, creature types, etc.)
     /// are preserved.
     pub fn is_land_subtype(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Land) || self.is_basic_land_type() || Self::nonbasic_land_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Land)) || self.is_basic_land_type() || Self::nonbasic_land_types().contains(self)
     }
 
     /// Returns true if this is a creature type.
     pub fn is_creature_type(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Creature) || Self::all_creature_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Creature)) || Self::all_creature_types().contains(self)
     }
 
     pub fn is_artifact_subtype(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Artifact) || Self::all_artifact_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Artifact)) || Self::all_artifact_types().contains(self)
     }
 
     pub fn is_enchantment_subtype(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Enchantment) || Self::all_enchantment_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Enchantment)) || Self::all_enchantment_types().contains(self)
     }
 
     pub fn is_spell_subtype(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Spell) || Self::all_spell_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Spell)) || Self::all_spell_types().contains(self)
     }
 
     pub fn is_planeswalker_subtype(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Planeswalker) || Self::all_planeswalker_types().contains(self)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Planeswalker)) || Self::all_planeswalker_types().contains(self)
     }
 
     pub fn belongs_to_family(&self, family: SubtypeFamily) -> bool {
@@ -1596,11 +1601,12 @@ impl Subtype {
             SubtypeFamily::Spell => self.is_spell_subtype(),
             SubtypeFamily::Planeswalker => self.is_planeswalker_subtype(),
             SubtypeFamily::Battle => self.is_battle_subtype(),
+            SubtypeFamily::Planar => self.is_planar_subtype(),
         }
     }
 
     pub fn is_battle_subtype(&self) -> bool {
-        matches!(self, Subtype::Custom(value) if value.family == SubtypeFamily::Battle) || matches!(self, Subtype::Siege)
+        matches!(self, Subtype::Custom(value) if value.belongs_to_family(SubtypeFamily::Battle)) || matches!(self, Subtype::Siege)
     }
 }
 

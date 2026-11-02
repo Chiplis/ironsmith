@@ -168,7 +168,7 @@ fn choice_destination(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, after_choice)) = primitives::parse_prefix(
         tokens,
         (
-            primitives::phrase(&["choice", "of"]),
+            opt(primitives::phrase(&["choice", "of"])) ,
             opt(primitives::kw("either")),
             opt(primitives::kw("the")),
         )
@@ -212,7 +212,7 @@ pub fn parse_library_choice_destination_shape(
 fn placement_start(
     tokens: &[OwnedLexToken],
 ) -> Option<(usize, LibraryPlacementShape, &[OwnedLexToken])> {
-    let top = primitives::find_prefix(tokens, || primitives::phrase(&["on", "top", "of"]).void())
+    let top = primitives::find_prefix(tokens, || (primitives::kw("on"), opt(primitives::kw("the")), primitives::kw("top"), opt(primitives::kw("of"))).void())
         .map(|(index, _, rest)| (index, LibraryPlacementShape::Top, rest));
     let bottom = primitives::find_prefix(tokens, || {
         (

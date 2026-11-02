@@ -88,7 +88,7 @@ pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<U
         | Until::ThisLeavesTheBattlefield | Until::SourceUntaps | Until::YouStopControllingThis
         | Until::ObjectIsCast { .. } | Until::YourNextUntapStep
         | Until::UntilControllersNextUntapStep { .. }
-        | Until::AnyPlayerCastsCreatureSpell { .. } => until.clone(),
+        | Until::AnyPlayerCastsCreatureSpell { .. } | Until::OpponentsNextTurn => until.clone(),
     })
 }
 
@@ -149,7 +149,7 @@ pub(crate) fn rewrite_modification_words(modification: &Modification, change: Te
         Modification::CopyOf { .. } | Modification::MergeComponent { .. } | Modification::SetTextBox(_) => {}
         // RewriteText is a completed runtime selection. Rewriting its values
         // could make a valid replacement an invalid identity substitution.
-        Modification::RewriteText(_) => {}
+        Modification::RewriteText(_) | Modification::RemoveOptionalTextFragments(_) => {}
         // RegisteredRestriction owns a canonical wordless unit ability and its
         // occurrence; cloning keeps that acquisition identity exactly.
         Modification::Restriction(_) => {}
@@ -276,7 +276,8 @@ mod tests {
             ])),
             ..Default::default()
         };
-        let original = Modification::CopyOf { retain_original_name: false,
+        let original = Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
             target_id: crate::ids::ObjectId::from_raw(21), copiable_values: Box::new(values.clone()),
             preserve_source_abilities: true, name_override: Some("Black Knight".into()),
             name_override_surface: None, add_supertypes: vec![ironsmith_core::Supertype::Legendary],
@@ -290,7 +291,8 @@ mod tests {
         assert_eq!(name_override.as_deref(), Some("Black Knight"));
         let crate::snapshot::SpellProgramState::Present(program) = &copiable_values.spell_effect else { unreachable!() };
         assert_eq!(program[0].downcast_ref::<DrawCardsEffect>().unwrap().count, Value::Count(black()));
-        let unavailable = Modification::CopyOf { retain_original_name: false,
+        let unavailable = Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
             target_id: crate::ids::ObjectId::from_raw(22),
             copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: false, name_override: None, name_override_surface: None,

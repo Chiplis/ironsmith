@@ -34,6 +34,11 @@ pub(super) fn parse_attachment_transition_trigger(
     };
     let attachment = participant(&tokens[..attachment_end])?;
     let recipient_tokens = &tokens[recipient_start..];
+    if let Some(recipient) = trigger_subject_player_selector_lexed(recipient_tokens) {
+        return Ok(Some(TriggerSpec::AttachmentChangedToPlayer {
+            attachment, recipient, attached: words[index + 1] == "attached",
+        }));
+    }
     // "... becomes attached to a nonland permanent an opponent controls with
     // mana value less than or equal to that Aura's mana value" (Eriette):
     // the comparison's operand is the attachment participant of the same

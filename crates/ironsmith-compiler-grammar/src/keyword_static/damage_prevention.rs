@@ -95,6 +95,39 @@ fn shared_recipient_union_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken>
     union
 }
 
+/// A recipient-local per-turn budget, distinct from per-damage-event absorb.
+pub fn parse_per_turn_damage_prevention_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>,CardTextError> {
+    let clean=trim_edge_punctuation_tokens(tokens);
+    let Some((_,tail))=crate::grammar::primitives::parse_prefix(clean,crate::grammar::primitives::phrase(&["prevent"])) else{return Ok(None)};
+    let (all_but,tail)=if let Some((_,tail))=crate::grammar::primitives::parse_prefix(tail,crate::grammar::primitives::phrase(&["all","but","the","first"])) {(true,tail)}
+        else if let Some((_,tail))=crate::grammar::primitives::parse_prefix(tail,crate::grammar::primitives::phrase(&["the","first"])) {(false,tail)}
+        else{return Ok(None)};
+    let Some(amount_token)=tail.first() else{return Ok(None)};
+    let Some(amount)=parse_number_word_i32(amount_token.parser_text()).and_then(|n|u32::try_from(n).ok()) else{return Ok(None)};
+    let Some((_,recipient))=crate::grammar::primitives::parse_prefix(&tail[1..],crate::grammar::primitives::phrase(&["damage","that","would","be","dealt","to"])) else{return Ok(None)};
+    if recipient.len()<3 || !recipient[recipient.len()-2].is_word("each") || !recipient[recipient.len()-1].is_word("turn") {return Ok(None)};
+    let recipient=&recipient[..recipient.len()-2];
+    let words=parser_token_word_refs(recipient);
+    // A plural/union without an explicit distributive quantifier describes
+    // one shared budget. This reader implements recipient-local budgets only.
+    if words.iter().any(|word|matches!(*word,"and"|"or"|"and/or")) {return Ok(None);}
+    let each=recipient.first().is_some_and(|token|token.is_word("each"));
+    let body=if each {&recipient[1..]} else {recipient};
+    let body_words=parser_token_word_refs(body);
+    let singleton=is_source_reference_words(&body_words)
+        || matches!(body_words.as_slice(),["you"]|["enchanted",_]|["equipped",_]|["fortified",_]);
+    if !each && !singleton {return Ok(None);}
+    let (players,objects)=prevention_recipient_filters(body)?;
+    if players.is_none() && objects.is_none() || players.is_some() && objects.is_some(){return Ok(None)}
+    crate::word_claims::claim_tokens(clean);
+    Ok(Some(StaticAbility::prevent_matching_damage(PreventMatchingDamageSpec{
+        source_filter:ObjectFilter::default(),target_player_filter:players,target_object_filter:objects,
+        combat_only:false,noncombat_only:false,maximum_damage:None,optional_by_controller:false,
+        amount:if all_but{StaticDamagePreventionAmount::AllButFirstEachTurn(amount)}else{StaticDamagePreventionAmount::FirstEachTurn(amount)},
+        display:render_token_slice(clean),
+    })))
+}
+
 pub fn parse_filtered_damage_prevention_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

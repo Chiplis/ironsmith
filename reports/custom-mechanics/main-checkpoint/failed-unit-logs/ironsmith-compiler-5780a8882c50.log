@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'supplied_definitions::graph_compilation_tests::cyclic_sources_compile_to_finite_predeclared_references' panicked at crates/ironsmith-compiler/src/supplied_definitions.rs:148:9:
+assertion `left == right` failed
+  left: 4
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test supplied_definitions::graph_compilation_tests::cyclic_sources_compile_to_finite_predeclared_references ... FAILED
+
+failures:
+
+failures:
+    supplied_definitions::graph_compilation_tests::cyclic_sources_compile_to_finite_predeclared_references
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 31 filtered out; finished in 0.33s
+

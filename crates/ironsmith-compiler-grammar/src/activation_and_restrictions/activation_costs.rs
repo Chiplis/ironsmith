@@ -1055,6 +1055,29 @@ fn ability_kind_cause_protection_static_ability(
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A complete, global origin-zone prohibition. Restrict the subject to
+    // cards: a narrower authored object filter must never become global.
+    let zone_tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let zone_view = crate::lexer::TokenWordView::new(zone_tokens);
+    let zone_words = zone_view.word_refs();
+    if let ["cards", "can't" | "cant", "leave", location @ ..] = zone_words.as_slice() {
+        let zone = match location {
+            ["graveyards"] => Some(Zone::Graveyard),
+            ["libraries"] => Some(Zone::Library),
+            ["hands"] => Some(Zone::Hand),
+            ["the", "battlefield"] => Some(Zone::Battlefield),
+            ["the", "stack"] => Some(Zone::Stack),
+            ["exile"] => Some(Zone::Exile),
+            ["the", "command", "zone"] => Some(Zone::Command),
+            _ => None,
+        };
+        if let Some(from) = zone {
+            crate::word_claims::claim_tokens(zone_tokens);
+            return Ok(Some(vec![StaticAbility::restriction(crate::effect::Restriction::MoveBetweenZones {
+                from, to: None, initial_state: None, cards_only: true,
+            }, format_negated_restriction_display(zone_tokens))]));
+        }
+    }
     if let Some(abilities) = opponent_cause_protection_static_abilities(tokens) {
         return Ok(Some(abilities));
     }
@@ -1172,7 +1195,8 @@ fn parse_cant_clauses_unbound(
     if matches!(
         crate::grammar::semantic_lowering::parse_statement_effect_preference_tokens(tokens),
         Some(crate::grammar::semantic_lowering::StatementEffectPreference::LeadingEffectVerb)
-    ) {
+    ) && crate::grammar::activation_restrictions::parse_filtered_unpreventability(tokens).is_none()
+    {
         return Ok(None);
     }
     // These complete compound predicates retain the earlier stat setting or
@@ -2184,5 +2208,56 @@ mod filtered_block_cost_tests {
             format!("{cost:?}").contains("Life"),
             "life payment: {cost:#?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod durationless_filtered_unpreventability_admission_tests {
+    use super::*;
+    use crate::util::tokenize_line;
+
+    #[test]
+    fn complete_passive_damage_rule_is_static_despite_damage_effect_head() {
+        for text in [
+            "Damage dealt by sources with text added from this card can't be prevented.",
+            "Damage that would be dealt by red creatures can't be prevented.",
+        ] {
+            let tokens = tokenize_line(text, 0);
+            assert!(parse_cant_clauses(&tokens).unwrap().is_some(), "{text}");
+        }
+    }
+
+    #[test]
+    fn timed_or_imperative_damage_programs_remain_resolving() {
+        for text in [
+            "Damage dealt by red creatures can't be prevented this turn.",
+            "Deal 2 damage to any target. Damage can't be prevented this turn.",
+        ] {
+            let tokens = tokenize_line(text, 0);
+            assert!(parse_cant_clauses(&tokens).unwrap().is_none(), "{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod global_origin_zone_prohibition_tests {
+    use super::*;
+    #[test]
+    fn complete_origin_prohibition_retains_cards_and_zone_without_game_start_gate() {
+        let tokens = crate::lexer::lex_line("Cards can't leave graveyards.", 0).unwrap();
+        let abilities = parse_cant_clauses(&tokens).unwrap().unwrap();
+        let [ability] = abilities.as_slice() else { panic!("one global restriction") };
+        assert!(matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::MoveBetweenZones { from: Zone::Graveyard, to: None, initial_state: None, cards_only: true }, ..
+        }));
+    }
+    #[test]
+    fn incomplete_or_narrower_subject_cannot_become_a_global_zone_prohibition() {
+        for text in ["Red cards can't leave graveyards.", "Cards can't leave graveyards unless you pay 2 life.", "Cards can't leave vaults."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let result = parse_cant_clauses(&tokens);
+            assert!(!matches!(result, Ok(Some(ref abilities)) if abilities.iter().any(|ability|
+                matches!(ability.payload, ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction: crate::effect::Restriction::MoveBetweenZones { .. }, .. }))), "{text}");
+        }
     }
 }

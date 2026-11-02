@@ -1,0 +1,1401 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "sha256": "ace692b92427156ca7b153706071365ffdde27c00303f8a52ac297ee2a4a84f1",
+    "policy": "Complete immutable physical sources; runtime and equivalent definitions must be reviewed separately.",
+    "formal_ambiguity": {
+      "rule": "701.76b",
+      "exact_text": "The term “integrated onto” describes the relationship between the card exiled by the integrate ability and the permanent chosen when the spell represented by that card resolves",
+      "conflict": "701.76a and all reminder variants require exile then immediate optional host selection. Library, graveyard, battlefield and permanent-spell sources do not all later resolve as a spell. No delayed resolution timing is inferred."
+    }
+  },
+  "mechanics": [
+    {
+      "id": "rev-integrate-016",
+      "keyword": "Integrate",
+      "scope": "revolution",
+      "rule_reference": "701.76.",
+      "rule_text": {
+        "name": "701.76.",
+        "rule": "Integrate",
+        "subrules": [
+          {
+            "name": "701.76a",
+            "rule": "Some abilities instruct a player to integrate a card or permanent. To do so, exile it, then for each card the object was represented by exiled this way, you may choose any nonland permanent.",
+            "custom": true
+          },
+          {
+            "name": "701.76b",
+            "rule": "The term “integrated onto” describes the relationship between the card exiled by the integrate ability and the permanent chosen when the spell represented by that card resolves",
+            "custom": true
+          },
+          {
+            "name": "701.76c",
+            "rule": "The exiled card remains integrated onto the chosen permanent as long as the integrated card remains exiled and the permanent remains on the battlefield. The card remains integrated onto that object even if it changes controller, as long as it remains on the battlefield.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Augmented Ruffians",
+          "Beckoner of Ends",
+          "Capital Skyraiders",
+          "Corpsepyre Fiend",
+          "Cull Populace",
+          "Data Weaver",
+          "Dissect Intel",
+          "Dissolve into Data",
+          "Dregstreet Inquisitor",
+          "Earthly Penchants",
+          "Essence Archivist",
+          "Fleshbearer",
+          "Inessence",
+          "Leyline Leecher",
+          "Lure into Lunacy",
+          "Mirrormeld Spire",
+          "Offerings to Sky Gods",
+          "Silverbone Chromate",
+          "Stratos Sentry",
+          "Taste for Malice",
+          "Tithe to the Machine",
+          "Unmolded One",
+          "Xavvac, Corrupter Core",
+          "Xavvac's Reprocessing",
+          "Xiv, Replisparked"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Exile it, then you may choose a nonland permanent it's integrated onto.",
+      "source_cards": [
+        "Augmented Ruffians",
+        "Beckoner of Ends",
+        "Capital Skyraiders",
+        "Corpsepyre Fiend",
+        "Dissect Intel",
+        "Dissolve into Data",
+        "Dregstreet Inquisitor",
+        "Essence Archivist",
+        "Fleshbearer",
+        "Inessence",
+        "Leyline Leecher",
+        "Mirrormeld Spire",
+        "Offerings to Sky Gods",
+        "Stratos Sentry",
+        "Taste for Malice",
+        "Unmolded One"
+      ],
+      "executable_reminder": "Exile {Object}. For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship.]].",
+      "representative_cards": [
+        {
+          "id": "rev:Augmented Ruffians_CYB",
+          "source_card_key": "Augmented Ruffians_CYB",
+          "name": "Augmented Ruffians",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Human Warrior \nPower/Toughness: 3/3\nWhenever Augmented Ruffians attacks, integrate the top card of defending player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nAugmented Ruffians gets +1/+1 for each card integrated onto it.",
+          "source_faces": [
+            {
+              "name": "Augmented Ruffians",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Human Warrior \nPower/Toughness: 3/3\nWhenever Augmented Ruffians attacks, integrate the top card of defending player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nAugmented Ruffians gets +1/+1 for each card integrated onto it."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Warrior \nPower/Toughness: 3/3\nWhenever Augmented Ruffians attacks, Perform the integrate action on the top card of defending player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nAugmented Ruffians gets +1/+1 for each card linked to this permanent under the integrated relationship.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever Augmented Ruffians attacks, integrate the top card of defending player's library.\nAugmented Ruffians gets +1/+1 for each card integrated onto it.",
+          "original_printed_rules_text": "Whenever Augmented Ruffians attacks, integrate the top card of defending player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nAugmented Ruffians gets +1/+1 for each card integrated onto it.",
+          "executable_faces": [
+            {
+              "name": "Augmented Ruffians",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Warrior \nPower/Toughness: 3/3\nWhenever Augmented Ruffians attacks, Perform the integrate action on the top card of defending player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nAugmented Ruffians gets +1/+1 for each card linked to this permanent under the integrated relationship.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Augmented Ruffians attacks, integrate the top card of defending player's library.\nAugmented Ruffians gets +1/+1 for each card integrated onto it.",
+              "original_printed_rules_text": "Whenever Augmented Ruffians attacks, integrate the top card of defending player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nAugmented Ruffians gets +1/+1 for each card integrated onto it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Beckoner of Ends_CYB",
+          "source_card_key": "Beckoner of Ends_CYB",
+          "name": "Beckoner of Ends",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Shaman \nPower/Toughness: 2/2\nWhen Beckoner of Ends enters, target player discards a card. Integrate that card. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nBeckoner of Ends has deathtouch as long as a land card is integrated onto it.",
+          "source_faces": [
+            {
+              "name": "Beckoner of Ends",
+              "original_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Shaman \nPower/Toughness: 2/2\nWhen Beckoner of Ends enters, target player discards a card. Integrate that card. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nBeckoner of Ends has deathtouch as long as a land card is integrated onto it."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Shaman \nPower/Toughness: 2/2\nWhen Beckoner of Ends enters, target player discards a card. Perform the integrate action on that card as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nBeckoner of Ends has deathtouch as long as there is a land card linked to this permanent under the integrated relationship.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Beckoner of Ends enters, target player discards a card. Integrate that card.\nBeckoner of Ends has deathtouch as long as a land card is integrated onto it.",
+          "original_printed_rules_text": "When Beckoner of Ends enters, target player discards a card. Integrate that card. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nBeckoner of Ends has deathtouch as long as a land card is integrated onto it.",
+          "executable_faces": [
+            {
+              "name": "Beckoner of Ends",
+              "executable_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Shaman \nPower/Toughness: 2/2\nWhen Beckoner of Ends enters, target player discards a card. Perform the integrate action on that card as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nBeckoner of Ends has deathtouch as long as there is a land card linked to this permanent under the integrated relationship.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Beckoner of Ends enters, target player discards a card. Integrate that card.\nBeckoner of Ends has deathtouch as long as a land card is integrated onto it.",
+              "original_printed_rules_text": "When Beckoner of Ends enters, target player discards a card. Integrate that card. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nBeckoner of Ends has deathtouch as long as a land card is integrated onto it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Capital Skyraiders_CYB",
+          "source_card_key": "Capital Skyraiders_CYB",
+          "name": "Capital Skyraiders",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {B}\nType: Creature — Bird Soldier \nPower/Toughness: 1/1\nFlying\nWhenever Capital Skyraiders deals combat damage to a player, integrate the top card of that player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nCapital Skyraiders gets +3/+3 as long as four or more cards are integrated onto it.",
+          "source_faces": [
+            {
+              "name": "Capital Skyraiders",
+              "original_text": "Mana cost: {B}\nType: Creature — Bird Soldier \nPower/Toughness: 1/1\nFlying\nWhenever Capital Skyraiders deals combat damage to a player, integrate the top card of that player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nCapital Skyraiders gets +3/+3 as long as four or more cards are integrated onto it."
+            }
+          ],
+          "executable_text": "Mana cost: {B}\nType: Creature — Bird Soldier \nPower/Toughness: 1/1\nFlying\nWhenever Capital Skyraiders deals combat damage to a player, Perform the integrate action on the top card of that player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nCapital Skyraiders gets +3/+3 as long as there are four or more cards linked to this permanent under the integrated relationship.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhenever Capital Skyraiders deals combat damage to a player, integrate the top card of that player's library.\nCapital Skyraiders gets +3/+3 as long as four or more cards are integrated onto it.",
+          "original_printed_rules_text": "Flying\nWhenever Capital Skyraiders deals combat damage to a player, integrate the top card of that player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nCapital Skyraiders gets +3/+3 as long as four or more cards are integrated onto it.",
+          "executable_faces": [
+            {
+              "name": "Capital Skyraiders",
+              "executable_text": "Mana cost: {B}\nType: Creature — Bird Soldier \nPower/Toughness: 1/1\nFlying\nWhenever Capital Skyraiders deals combat damage to a player, Perform the integrate action on the top card of that player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nCapital Skyraiders gets +3/+3 as long as there are four or more cards linked to this permanent under the integrated relationship.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever Capital Skyraiders deals combat damage to a player, integrate the top card of that player's library.\nCapital Skyraiders gets +3/+3 as long as four or more cards are integrated onto it.",
+              "original_printed_rules_text": "Flying\nWhenever Capital Skyraiders deals combat damage to a player, integrate the top card of that player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nCapital Skyraiders gets +3/+3 as long as four or more cards are integrated onto it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Corpsepyre Fiend_CYB",
+          "source_card_key": "Corpsepyre Fiend_CYB",
+          "name": "Corpsepyre Fiend",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {C/B}{C/B}\nType: Creature — Vukoroq Demon\nPower/Toughness: 3/2\n{C/B}: Integrate target card in a graveyard. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nAs long as a creature card with flying is integrated onto Corpsepyre Fiend, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+          "source_faces": [
+            {
+              "name": "Corpsepyre Fiend",
+              "original_text": "Mana cost: {C/B}{C/B}\nType: Creature — Vukoroq Demon\nPower/Toughness: 3/2\n{C/B}: Integrate target card in a graveyard. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nAs long as a creature card with flying is integrated onto Corpsepyre Fiend, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance."
+            }
+          ],
+          "executable_text": "Mana cost: {C/B}{C/B}\nType: Creature — Vukoroq Demon\nPower/Toughness: 3/2\n{C/B}: Perform the integrate action on target card in a graveyard as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nas long as there is a creature card with flying linked to Corpsepyre Fiend under the integrated relationship, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{C/B}: Integrate target card in a graveyard.\nAs long as a creature card with flying is integrated onto Corpsepyre Fiend, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+          "original_printed_rules_text": "{C/B}: Integrate target card in a graveyard. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nAs long as a creature card with flying is integrated onto Corpsepyre Fiend, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+          "executable_faces": [
+            {
+              "name": "Corpsepyre Fiend",
+              "executable_text": "Mana cost: {C/B}{C/B}\nType: Creature — Vukoroq Demon\nPower/Toughness: 3/2\n{C/B}: Perform the integrate action on target card in a graveyard as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nas long as there is a creature card with flying linked to Corpsepyre Fiend under the integrated relationship, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{C/B}: Integrate target card in a graveyard.\nAs long as a creature card with flying is integrated onto Corpsepyre Fiend, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+              "original_printed_rules_text": "{C/B}: Integrate target card in a graveyard. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nAs long as a creature card with flying is integrated onto Corpsepyre Fiend, it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Dissect Intel_CYB",
+          "source_card_key": "Dissect Intel_CYB",
+          "name": "Dissect Intel",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and integrate it. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Dissect Intel",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and integrate it. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and Perform the integrate action on it as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target opponent reveals their hand. You choose a nonland card from it and integrate it.",
+          "original_printed_rules_text": "Target opponent reveals their hand. You choose a nonland card from it and integrate it. (Exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Dissect Intel",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a nonland card from it and Perform the integrate action on it as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target opponent reveals their hand. You choose a nonland card from it and integrate it.",
+              "original_printed_rules_text": "Target opponent reveals their hand. You choose a nonland card from it and integrate it. (Exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Dissolve into Data_CYB",
+          "source_card_key": "Dissolve into Data_CYB",
+          "name": "Dissolve into Data",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {4}{B}\nType: Instant\nIntegrate target creature. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Dissolve into Data",
+              "original_text": "Mana cost: {4}{B}\nType: Instant\nIntegrate target creature. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{B}\nType: Instant\nPerform the integrate action on target creature as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Integrate target creature.",
+          "original_printed_rules_text": "Integrate target creature. (Exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Dissolve into Data",
+              "executable_text": "Mana cost: {4}{B}\nType: Instant\nPerform the integrate action on target creature as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Integrate target creature.",
+              "original_printed_rules_text": "Integrate target creature. (Exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Dregstreet Inquisitor_CYB",
+          "source_card_key": "Dregstreet Inquisitor_CYB",
+          "name": "Dregstreet Inquisitor",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\n{T}: Integrate the top card of target player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards integrated onto Dregstreet Inquisitor.",
+          "source_faces": [
+            {
+              "name": "Dregstreet Inquisitor",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\n{T}: Integrate the top card of target player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards integrated onto Dregstreet Inquisitor."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\n{T}: Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards linked to Dregstreet Inquisitor under the integrated relationship.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Integrate the top card of target player's library.\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards integrated onto Dregstreet Inquisitor.",
+          "original_printed_rules_text": "{T}: Integrate the top card of target player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards integrated onto Dregstreet Inquisitor.",
+          "executable_faces": [
+            {
+              "name": "Dregstreet Inquisitor",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\n{T}: Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards linked to Dregstreet Inquisitor under the integrated relationship.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Integrate the top card of target player's library.\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards integrated onto Dregstreet Inquisitor.",
+              "original_printed_rules_text": "{T}: Integrate the top card of target player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\n{B}, Sacrifice Dregstreet Inquisitor: Target player loses life equal to the number of cards integrated onto Dregstreet Inquisitor."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Essence Archivist_CYB",
+          "source_card_key": "Essence Archivist_CYB",
+          "name": "Essence Archivist",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Wizard \nPower/Toughness: 1/4\nWhen Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then integrate the other. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nPermanents you control with cards integrated onto them have “Ward—Pay 3 life.”",
+          "source_faces": [
+            {
+              "name": "Essence Archivist",
+              "original_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Wizard \nPower/Toughness: 1/4\nWhen Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then integrate the other. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nPermanents you control with cards integrated onto them have “Ward—Pay 3 life.”"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Wizard \nPower/Toughness: 1/4\nWhen Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then Perform the integrate action on the other as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nPermanents you control with cards linked under the integrated relationship have “Ward—Pay 3 life.”",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then integrate the other.\nPermanents you control with cards integrated onto them have “Ward—Pay 3 life.”",
+          "original_printed_rules_text": "When Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then integrate the other. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nPermanents you control with cards integrated onto them have “Ward—Pay 3 life.”",
+          "executable_faces": [
+            {
+              "name": "Essence Archivist",
+              "executable_text": "Mana cost: {2}{C/B}\nType: Creature — Vukoroq Wizard \nPower/Toughness: 1/4\nWhen Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then Perform the integrate action on the other as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nPermanents you control with cards linked under the integrated relationship have “Ward—Pay 3 life.”",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then integrate the other.\nPermanents you control with cards integrated onto them have “Ward—Pay 3 life.”",
+              "original_printed_rules_text": "When Essence Archivist enters, look at the top two cards of your library. Put one into your hand, then integrate the other. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nPermanents you control with cards integrated onto them have “Ward—Pay 3 life.”"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Fleshbearer_CYB",
+          "source_card_key": "Fleshbearer_CYB",
+          "name": "Fleshbearer",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {4}{C/B}\nType: Creature — Vukoroq Zombie \nPower/Toughness: 4/4\nWhenever a creature dealt damage by Fleshbearer this turn dies, integrate that creature. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nFleshbearer gets +2/+0 and has menace as long as a creature card is integrated onto it.",
+          "source_faces": [
+            {
+              "name": "Fleshbearer",
+              "original_text": "Mana cost: {4}{C/B}\nType: Creature — Vukoroq Zombie \nPower/Toughness: 4/4\nWhenever a creature dealt damage by Fleshbearer this turn dies, integrate that creature. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nFleshbearer gets +2/+0 and has menace as long as a creature card is integrated onto it."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{C/B}\nType: Creature — Vukoroq Zombie \nPower/Toughness: 4/4\nWhenever a creature dealt damage by Fleshbearer this turn dies, Perform the integrate action on that creature as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nFleshbearer gets +2/+0 and has menace as long as there is a creature card linked to this permanent under the integrated relationship.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever a creature dealt damage by Fleshbearer this turn dies, integrate that creature.\nFleshbearer gets +2/+0 and has menace as long as a creature card is integrated onto it.",
+          "original_printed_rules_text": "Whenever a creature dealt damage by Fleshbearer this turn dies, integrate that creature. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nFleshbearer gets +2/+0 and has menace as long as a creature card is integrated onto it.",
+          "executable_faces": [
+            {
+              "name": "Fleshbearer",
+              "executable_text": "Mana cost: {4}{C/B}\nType: Creature — Vukoroq Zombie \nPower/Toughness: 4/4\nWhenever a creature dealt damage by Fleshbearer this turn dies, Perform the integrate action on that creature as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nFleshbearer gets +2/+0 and has menace as long as there is a creature card linked to this permanent under the integrated relationship.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever a creature dealt damage by Fleshbearer this turn dies, integrate that creature.\nFleshbearer gets +2/+0 and has menace as long as a creature card is integrated onto it.",
+              "original_printed_rules_text": "Whenever a creature dealt damage by Fleshbearer this turn dies, integrate that creature. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nFleshbearer gets +2/+0 and has menace as long as a creature card is integrated onto it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Inessence_CYB",
+          "source_card_key": "Inessence_CYB",
+          "name": "Inessence",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{C}\nType: Instant\nIntegrate target permanent spell. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Inessence",
+              "original_text": "Mana cost: {2}{C}\nType: Instant\nIntegrate target permanent spell. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{C}\nType: Instant\nPerform the integrate action on target permanent spell as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Integrate target permanent spell.",
+          "original_printed_rules_text": "Integrate target permanent spell. (Exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Inessence",
+              "executable_text": "Mana cost: {2}{C}\nType: Instant\nPerform the integrate action on target permanent spell as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Integrate target permanent spell.",
+              "original_printed_rules_text": "Integrate target permanent spell. (Exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Leyline Leecher_CYB",
+          "source_card_key": "Leyline Leecher_CYB",
+          "name": "Leyline Leecher",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {C}\nType: Creature — Vukoroq Bat \nPower/Toughness: 1/1\nWhenever Leyline Leecher attacks, you may pay {1}. If you do, integrate target card from a graveyard. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nLeyline Leecher gets +1/+0 and has flying as long as an instant or sorcery card is integrated onto it.",
+          "source_faces": [
+            {
+              "name": "Leyline Leecher",
+              "original_text": "Mana cost: {C}\nType: Creature — Vukoroq Bat \nPower/Toughness: 1/1\nWhenever Leyline Leecher attacks, you may pay {1}. If you do, integrate target card from a graveyard. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nLeyline Leecher gets +1/+0 and has flying as long as an instant or sorcery card is integrated onto it."
+            }
+          ],
+          "executable_text": "Mana cost: {C}\nType: Creature — Vukoroq Bat \nPower/Toughness: 1/1\nWhenever Leyline Leecher attacks, you may pay {1}. If you do, Perform the integrate action on target card from a graveyard as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nLeyline Leecher gets +1/+0 and has flying as long as there is an instant or sorcery card linked to this permanent under the integrated relationship.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever Leyline Leecher attacks, you may pay {1}. If you do, integrate target card from a graveyard.\nLeyline Leecher gets +1/+0 and has flying as long as an instant or sorcery card is integrated onto it.",
+          "original_printed_rules_text": "Whenever Leyline Leecher attacks, you may pay {1}. If you do, integrate target card from a graveyard. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nLeyline Leecher gets +1/+0 and has flying as long as an instant or sorcery card is integrated onto it.",
+          "executable_faces": [
+            {
+              "name": "Leyline Leecher",
+              "executable_text": "Mana cost: {C}\nType: Creature — Vukoroq Bat \nPower/Toughness: 1/1\nWhenever Leyline Leecher attacks, you may pay {1}. If you do, Perform the integrate action on target card from a graveyard as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nLeyline Leecher gets +1/+0 and has flying as long as there is an instant or sorcery card linked to this permanent under the integrated relationship.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Leyline Leecher attacks, you may pay {1}. If you do, integrate target card from a graveyard.\nLeyline Leecher gets +1/+0 and has flying as long as an instant or sorcery card is integrated onto it.",
+              "original_printed_rules_text": "Whenever Leyline Leecher attacks, you may pay {1}. If you do, integrate target card from a graveyard. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nLeyline Leecher gets +1/+0 and has flying as long as an instant or sorcery card is integrated onto it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Mirrormeld Spire_CYB",
+          "source_card_key": "Mirrormeld Spire_CYB",
+          "name": "Mirrormeld Spire",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Type: Land\nMirrormeld Spire has all abilities of land cards integrated onto permanents you control.\n{T}: Add {C}.\n{C}, {T}: Integrate the top card of target player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Mirrormeld Spire",
+              "original_text": "Type: Land\nMirrormeld Spire has all abilities of land cards integrated onto permanents you control.\n{T}: Add {C}.\n{C}, {T}: Integrate the top card of target player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Type: Land\nMirrormeld Spire has all abilities of land cards linked to permanents you control under the integrated relationship.\n{T}: Add {C}.\n{C}, {T}: Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mirrormeld Spire has all abilities of land cards integrated onto permanents you control.\n{T}: Add {C}.\n{C}, {T}: Integrate the top card of target player's library.",
+          "original_printed_rules_text": "Mirrormeld Spire has all abilities of land cards integrated onto permanents you control.\n{T}: Add {C}.\n{C}, {T}: Integrate the top card of target player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Mirrormeld Spire",
+              "executable_text": "Type: Land\nMirrormeld Spire has all abilities of land cards linked to permanents you control under the integrated relationship.\n{T}: Add {C}.\n{C}, {T}: Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mirrormeld Spire has all abilities of land cards integrated onto permanents you control.\n{T}: Add {C}.\n{C}, {T}: Integrate the top card of target player's library.",
+              "original_printed_rules_text": "Mirrormeld Spire has all abilities of land cards integrated onto permanents you control.\n{T}: Add {C}.\n{C}, {T}: Integrate the top card of target player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Offerings to Sky Gods_CYB",
+          "source_card_key": "Offerings to Sky Gods_CYB",
+          "name": "Offerings to Sky Gods",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{C}\nType: Enchantment\nAt the beginning of your upkeep, integrate the top card of target player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nWhenever a creature card is integrated onto Offerings to Sky Gods, create a 1/1 colorless Cyborg artifact creature token.",
+          "source_faces": [
+            {
+              "name": "Offerings to Sky Gods",
+              "original_text": "Mana cost: {1}{C}\nType: Enchantment\nAt the beginning of your upkeep, integrate the top card of target player's library. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nWhenever a creature card is integrated onto Offerings to Sky Gods, create a 1/1 colorless Cyborg artifact creature token."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{C}\nType: Enchantment\nAt the beginning of your upkeep, Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nWhenever Offerings to Sky Gods performs the integrated action with a creature card, create a 1/1 colorless Cyborg artifact creature token.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "cyborg",
+              "plural": "cyborgs",
+              "family": "Creature"
+            },
+            {
+              "singular": "offering",
+              "plural": "offerings",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of your upkeep, integrate the top card of target player's library.\nWhenever a creature card is integrated onto Offerings to Sky Gods, create a 1/1 colorless Cyborg artifact creature token.",
+          "original_printed_rules_text": "At the beginning of your upkeep, integrate the top card of target player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nWhenever a creature card is integrated onto Offerings to Sky Gods, create a 1/1 colorless Cyborg artifact creature token.",
+          "executable_faces": [
+            {
+              "name": "Offerings to Sky Gods",
+              "executable_text": "Mana cost: {1}{C}\nType: Enchantment\nAt the beginning of your upkeep, Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nWhenever Offerings to Sky Gods performs the integrated action with a creature card, create a 1/1 colorless Cyborg artifact creature token.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "cyborg",
+                  "plural": "cyborgs",
+                  "family": "Creature"
+                },
+                {
+                  "singular": "offering",
+                  "plural": "offerings",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your upkeep, integrate the top card of target player's library.\nWhenever a creature card is integrated onto Offerings to Sky Gods, create a 1/1 colorless Cyborg artifact creature token.",
+              "original_printed_rules_text": "At the beginning of your upkeep, integrate the top card of target player's library. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nWhenever a creature card is integrated onto Offerings to Sky Gods, create a 1/1 colorless Cyborg artifact creature token."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Stratos Sentry_CYB",
+          "source_card_key": "Stratos Sentry_CYB",
+          "name": "Stratos Sentry",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{C}\nType: Creature — Vukoroq Knight \nPower/Toughness: 2/2\nWhen Stratos Sentry enters, target opponent chooses a nontoken creature they control. You integrate that creature. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nAs long as a creature card with power 3 or less is integrated onto Stratos Sentry, it gets +1/+0 and has flying.",
+          "source_faces": [
+            {
+              "name": "Stratos Sentry",
+              "original_text": "Mana cost: {3}{C}\nType: Creature — Vukoroq Knight \nPower/Toughness: 2/2\nWhen Stratos Sentry enters, target opponent chooses a nontoken creature they control. You integrate that creature. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nAs long as a creature card with power 3 or less is integrated onto Stratos Sentry, it gets +1/+0 and has flying."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{C}\nType: Creature — Vukoroq Knight \nPower/Toughness: 2/2\nWhen Stratos Sentry enters, target opponent chooses a nontoken creature they control. Perform the integrate action on that creature as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nas long as there is a creature card with power 3 or less linked to Stratos Sentry under the integrated relationship, it gets +1/+0 and has flying.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Stratos Sentry enters, target opponent chooses a nontoken creature they control. You integrate that creature.\nAs long as a creature card with power 3 or less is integrated onto Stratos Sentry, it gets +1/+0 and has flying.",
+          "original_printed_rules_text": "When Stratos Sentry enters, target opponent chooses a nontoken creature they control. You integrate that creature. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nAs long as a creature card with power 3 or less is integrated onto Stratos Sentry, it gets +1/+0 and has flying.",
+          "executable_faces": [
+            {
+              "name": "Stratos Sentry",
+              "executable_text": "Mana cost: {3}{C}\nType: Creature — Vukoroq Knight \nPower/Toughness: 2/2\nWhen Stratos Sentry enters, target opponent chooses a nontoken creature they control. Perform the integrate action on that creature as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nas long as there is a creature card with power 3 or less linked to Stratos Sentry under the integrated relationship, it gets +1/+0 and has flying.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Stratos Sentry enters, target opponent chooses a nontoken creature they control. You integrate that creature.\nAs long as a creature card with power 3 or less is integrated onto Stratos Sentry, it gets +1/+0 and has flying.",
+              "original_printed_rules_text": "When Stratos Sentry enters, target opponent chooses a nontoken creature they control. You integrate that creature. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nAs long as a creature card with power 3 or less is integrated onto Stratos Sentry, it gets +1/+0 and has flying."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Taste for Malice_CYB",
+          "source_card_key": "Taste for Malice_CYB",
+          "name": "Taste for Malice",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {C}{C}\nType: Instant\nIntegrate target creature or creature spell with mana value 3 or less. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Taste for Malice",
+              "original_text": "Mana cost: {C}{C}\nType: Instant\nIntegrate target creature or creature spell with mana value 3 or less. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {C}{C}\nType: Instant\nPerform the integrate action on target creature or creature spell with mana value 3 or less as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Integrate target creature or creature spell with mana value 3 or less.",
+          "original_printed_rules_text": "Integrate target creature or creature spell with mana value 3 or less. (Exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Taste for Malice",
+              "executable_text": "Mana cost: {C}{C}\nType: Instant\nPerform the integrate action on target creature or creature spell with mana value 3 or less as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Integrate target creature or creature spell with mana value 3 or less.",
+              "original_printed_rules_text": "Integrate target creature or creature spell with mana value 3 or less. (Exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Unmolded One_CYB",
+          "source_card_key": "Unmolded One_CYB",
+          "name": "Unmolded One",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {C}\nType: Creature — Vukoroq Shapeshifter \nPower/Toughness: 1/1\nWhenever another creature dies, you may integrate it. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nWhenever a creature card is integrated onto Unmolded One, you may have it become a copy of that card until end of turn, except it has Unmolded One's abilities.",
+          "source_faces": [
+            {
+              "name": "Unmolded One",
+              "original_text": "Mana cost: {C}\nType: Creature — Vukoroq Shapeshifter \nPower/Toughness: 1/1\nWhenever another creature dies, you may integrate it. *(Exile it, then you may choose a nonland permanent it's integrated onto.)*\nWhenever a creature card is integrated onto Unmolded One, you may have it become a copy of that card until end of turn, except it has Unmolded One's abilities."
+            }
+          ],
+          "executable_text": "Mana cost: {C}\nType: Creature — Vukoroq Shapeshifter \nPower/Toughness: 1/1\nWhenever another creature dies, you may do the following: [Perform the integrate action on it as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]].\nWhenever Unmolded One performs the integrated action with a creature card, you may have the action performer become a copy of that card until end of turn, except it has Unmolded One's abilities.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever another creature dies, you may integrate it.\nWhenever a creature card is integrated onto Unmolded One, you may have it become a copy of that card until end of turn, except it has Unmolded One's abilities.",
+          "original_printed_rules_text": "Whenever another creature dies, you may integrate it. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nWhenever a creature card is integrated onto Unmolded One, you may have it become a copy of that card until end of turn, except it has Unmolded One's abilities.",
+          "executable_faces": [
+            {
+              "name": "Unmolded One",
+              "executable_text": "Mana cost: {C}\nType: Creature — Vukoroq Shapeshifter \nPower/Toughness: 1/1\nWhenever another creature dies, you may do the following: [Perform the integrate action on it as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]].\nWhenever Unmolded One performs the integrated action with a creature card, you may have the action performer become a copy of that card until end of turn, except it has Unmolded One's abilities.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever another creature dies, you may integrate it.\nWhenever a creature card is integrated onto Unmolded One, you may have it become a copy of that card until end of turn, except it has Unmolded One's abilities.",
+              "original_printed_rules_text": "Whenever another creature dies, you may integrate it. (Exile it, then you may choose a nonland permanent it's integrated onto.)\nWhenever a creature card is integrated onto Unmolded One, you may have it become a copy of that card until end of turn, except it has Unmolded One's abilities."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "candidate_existing_operations_unverified",
+      "executable_definitions": [
+        {
+          "keyword": "Integrate",
+          "template": "{Object}",
+          "reminder": "Exile {Object}. For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship.]].",
+          "actionProgram": true,
+          "collectiveObject": true
+        }
+      ]
+    },
+    {
+      "id": "rev-integrate-017",
+      "keyword": "Integrate",
+      "scope": "revolution",
+      "rule_reference": "701.76.",
+      "rule_text": {
+        "name": "701.76.",
+        "rule": "Integrate",
+        "subrules": [
+          {
+            "name": "701.76a",
+            "rule": "Some abilities instruct a player to integrate a card or permanent. To do so, exile it, then for each card the object was represented by exiled this way, you may choose any nonland permanent.",
+            "custom": true
+          },
+          {
+            "name": "701.76b",
+            "rule": "The term “integrated onto” describes the relationship between the card exiled by the integrate ability and the permanent chosen when the spell represented by that card resolves",
+            "custom": true
+          },
+          {
+            "name": "701.76c",
+            "rule": "The exiled card remains integrated onto the chosen permanent as long as the integrated card remains exiled and the permanent remains on the battlefield. The card remains integrated onto that object even if it changes controller, as long as it remains on the battlefield.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Augmented Ruffians",
+          "Beckoner of Ends",
+          "Capital Skyraiders",
+          "Corpsepyre Fiend",
+          "Cull Populace",
+          "Data Weaver",
+          "Dissect Intel",
+          "Dissolve into Data",
+          "Dregstreet Inquisitor",
+          "Earthly Penchants",
+          "Essence Archivist",
+          "Fleshbearer",
+          "Inessence",
+          "Leyline Leecher",
+          "Lure into Lunacy",
+          "Mirrormeld Spire",
+          "Offerings to Sky Gods",
+          "Silverbone Chromate",
+          "Stratos Sentry",
+          "Taste for Malice",
+          "Tithe to the Machine",
+          "Unmolded One",
+          "Xavvac, Corrupter Core",
+          "Xavvac's Reprocessing",
+          "Xiv, Replisparked"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Exile them, then you may choose nonland permanents they're integrated onto.",
+      "source_cards": [
+        "Cull Populace",
+        "Data Weaver",
+        "Silverbone Chromate",
+        "Xavvac's Reprocessing",
+        "Xiv, Replisparked"
+      ],
+      "executable_reminder": "Exile {Object}. For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship.]].",
+      "representative_cards": [
+        {
+          "id": "rev:Cull Populace_CYB",
+          "source_card_key": "Cull Populace_CYB",
+          "name": "Cull Populace",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{C/B}{C/B}\nType: Sorcery\nIntegrate each nontoken creature you don't control with power 2 or less. *(Exile them, then you may choose nonland permanents they're integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Cull Populace",
+              "original_text": "Mana cost: {1}{C/B}{C/B}\nType: Sorcery\nIntegrate each nontoken creature you don't control with power 2 or less. *(Exile them, then you may choose nonland permanents they're integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{C/B}{C/B}\nType: Sorcery\nPerform the integrate action on each nontoken creature you don't control with power 2 or less as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Integrate each nontoken creature you don't control with power 2 or less.",
+          "original_printed_rules_text": "Integrate each nontoken creature you don't control with power 2 or less. (Exile them, then you may choose nonland permanents they're integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Cull Populace",
+              "executable_text": "Mana cost: {1}{C/B}{C/B}\nType: Sorcery\nPerform the integrate action on each nontoken creature you don't control with power 2 or less as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Integrate each nontoken creature you don't control with power 2 or less.",
+              "original_printed_rules_text": "Integrate each nontoken creature you don't control with power 2 or less. (Exile them, then you may choose nonland permanents they're integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Data Weaver_CYB",
+          "source_card_key": "Data Weaver_CYB",
+          "name": "Data Weaver",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Azra Warlock\nPower/Toughness: 3/3\nMenace\nWhen Data Weaver enters, integrate the top card of target player's library. *(Exile them, then you may choose nonland permanents they're integrated onto.)*\nIf you would integrate one or more cards, instead integrate those cards and the top card of each opponent's library and each opponent loses 1 life.",
+          "source_faces": [
+            {
+              "name": "Data Weaver",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Azra Warlock\nPower/Toughness: 3/3\nMenace\nWhen Data Weaver enters, integrate the top card of target player's library. *(Exile them, then you may choose nonland permanents they're integrated onto.)*\nIf you would integrate one or more cards, instead integrate those cards and the top card of each opponent's library and each opponent loses 1 life."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Azra Warlock\nPower/Toughness: 3/3\nMenace\nWhen Data Weaver enters, Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nIf you would perform the integrate action with one or more cards, instead Perform the integrate action on those cards and the top card of each opponent's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]] and each opponent loses 1 life.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nWhen Data Weaver enters, integrate the top card of target player's library.\nIf you would integrate one or more cards, instead integrate those cards and the top card of each opponent's library and each opponent loses 1 life.",
+          "original_printed_rules_text": "Menace\nWhen Data Weaver enters, integrate the top card of target player's library. (Exile them, then you may choose nonland permanents they're integrated onto.)\nIf you would integrate one or more cards, instead integrate those cards and the top card of each opponent's library and each opponent loses 1 life.",
+          "executable_faces": [
+            {
+              "name": "Data Weaver",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Azra Warlock\nPower/Toughness: 3/3\nMenace\nWhen Data Weaver enters, Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nIf you would perform the integrate action with one or more cards, instead Perform the integrate action on those cards and the top card of each opponent's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]] and each opponent loses 1 life.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhen Data Weaver enters, integrate the top card of target player's library.\nIf you would integrate one or more cards, instead integrate those cards and the top card of each opponent's library and each opponent loses 1 life.",
+              "original_printed_rules_text": "Menace\nWhen Data Weaver enters, integrate the top card of target player's library. (Exile them, then you may choose nonland permanents they're integrated onto.)\nIf you would integrate one or more cards, instead integrate those cards and the top card of each opponent's library and each opponent loses 1 life."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Silverbone Chromate_CYB",
+          "source_card_key": "Silverbone Chromate_CYB",
+          "name": "Silverbone Chromate",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{C}{B}\nType: Creature — Vukoroq Skeleton \nPower/Toughness: 5/4\n{3}: Integrate the top two cards of target player's library. *(Exile them, then you may choose nonland permanents they're integrated onto.)*\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards integrated onto it. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped.",
+          "source_faces": [
+            {
+              "name": "Silverbone Chromate",
+              "original_text": "Mana cost: {3}{C}{B}\nType: Creature — Vukoroq Skeleton \nPower/Toughness: 5/4\n{3}: Integrate the top two cards of target player's library. *(Exile them, then you may choose nonland permanents they're integrated onto.)*\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards integrated onto it. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{C}{B}\nType: Creature — Vukoroq Skeleton \nPower/Toughness: 5/4\n{3}: Perform the integrate action on the top two cards of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards linked under the integrated relationship. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{3}: Integrate the top two cards of target player's library.\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards integrated onto it. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped.",
+          "original_printed_rules_text": "{3}: Integrate the top two cards of target player's library. (Exile them, then you may choose nonland permanents they're integrated onto.)\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards integrated onto it. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped.",
+          "executable_faces": [
+            {
+              "name": "Silverbone Chromate",
+              "executable_text": "Mana cost: {3}{C}{B}\nType: Creature — Vukoroq Skeleton \nPower/Toughness: 5/4\n{3}: Perform the integrate action on the top two cards of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards linked under the integrated relationship. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{3}: Integrate the top two cards of target player's library.\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards integrated onto it. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped.",
+              "original_printed_rules_text": "{3}: Integrate the top two cards of target player's library. (Exile them, then you may choose nonland permanents they're integrated onto.)\nWhen Silverbone Chromate dies, you may sacrifice a permanent you control with two or more cards integrated onto it. If you do, return Silverbone Chromate from your graveyard to the battlefield tapped."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Xavvac's Reprocessing_CYB",
+          "source_card_key": "Xavvac's Reprocessing_CYB",
+          "name": "Xavvac's Reprocessing",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{C}{C}\nType: Sorcery\nIntegrate up to two target creatures with total toughness 6 or less. *(Exile them, then you may choose nonland permanents they're integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Xavvac's Reprocessing",
+              "original_text": "Mana cost: {3}{C}{C}\nType: Sorcery\nIntegrate up to two target creatures with total toughness 6 or less. *(Exile them, then you may choose nonland permanents they're integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{C}{C}\nType: Sorcery\nPerform the integrate action on up to two target creatures with total toughness 6 or less as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Integrate up to two target creatures with total toughness 6 or less.",
+          "original_printed_rules_text": "Integrate up to two target creatures with total toughness 6 or less. (Exile them, then you may choose nonland permanents they're integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Xavvac's Reprocessing",
+              "executable_text": "Mana cost: {3}{C}{C}\nType: Sorcery\nPerform the integrate action on up to two target creatures with total toughness 6 or less as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Integrate up to two target creatures with total toughness 6 or less.",
+              "original_printed_rules_text": "Integrate up to two target creatures with total toughness 6 or less. (Exile them, then you may choose nonland permanents they're integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Xiv, Replisparked_CYB",
+          "source_card_key": "Xiv, Replisparked_CYB",
+          "name": "Xiv, Replisparked",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{C}{C}\nType: Legendary Planeswalker — Xiv\nLoyalty: 5\nXiv, Replisparked has all activated and triggered abilities of permanent cards integrated onto them.\n[+2]: Target player discards a card. Integrate up to two cards from graveyards. *(Exile them, then you may choose nonland permanents they're integrated onto.)*\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn. *(It doesn't lose loyalty while not a planeswalker.)*\n[-4]: Integrate target permanent.",
+          "source_faces": [
+            {
+              "name": "Xiv, Replisparked",
+              "original_text": "Mana cost: {3}{C}{C}\nType: Legendary Planeswalker — Xiv\nLoyalty: 5\nXiv, Replisparked has all activated and triggered abilities of permanent cards integrated onto them.\n[+2]: Target player discards a card. Integrate up to two cards from graveyards. *(Exile them, then you may choose nonland permanents they're integrated onto.)*\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn. *(It doesn't lose loyalty while not a planeswalker.)*\n[-4]: Integrate target permanent."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{C}{C}\nType: Legendary Planeswalker — Xiv\nLoyalty: 5\nXiv, Replisparked has all activated and triggered abilities of permanent cards linked to this permanent under the integrated relationship.\n[+2]: Target player discards a card. Perform the integrate action on up to two cards from graveyards as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn.\n[-4]: Perform the integrate action on target permanent as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "xiv",
+              "plural": "xivs",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Xiv, Replisparked has all activated and triggered abilities of permanent cards integrated onto them.\n[+2]: Target player discards a card. Integrate up to two cards from graveyards.\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn.\n[-4]: Integrate target permanent.",
+          "original_printed_rules_text": "Xiv, Replisparked has all activated and triggered abilities of permanent cards integrated onto them.\n[+2]: Target player discards a card. Integrate up to two cards from graveyards. (Exile them, then you may choose nonland permanents they're integrated onto.)\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn. (It doesn't lose loyalty while not a planeswalker.)\n[-4]: Integrate target permanent.",
+          "executable_faces": [
+            {
+              "name": "Xiv, Replisparked",
+              "executable_text": "Mana cost: {3}{C}{C}\nType: Legendary Planeswalker — Xiv\nLoyalty: 5\nXiv, Replisparked has all activated and triggered abilities of permanent cards linked to this permanent under the integrated relationship.\n[+2]: Target player discards a card. Perform the integrate action on up to two cards from graveyards as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn.\n[-4]: Perform the integrate action on target permanent as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "xiv",
+                  "plural": "xivs",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Xiv, Replisparked has all activated and triggered abilities of permanent cards integrated onto them.\n[+2]: Target player discards a card. Integrate up to two cards from graveyards.\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn.\n[-4]: Integrate target permanent.",
+              "original_printed_rules_text": "Xiv, Replisparked has all activated and triggered abilities of permanent cards integrated onto them.\n[+2]: Target player discards a card. Integrate up to two cards from graveyards. (Exile them, then you may choose nonland permanents they're integrated onto.)\n[+1]: Xiv becomes a 5/5 artifact creature with vigilance and indestructible until end of turn. (It doesn't lose loyalty while not a planeswalker.)\n[-4]: Integrate target permanent."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "candidate_existing_operations_unverified",
+      "executable_definitions": [
+        {
+          "keyword": "Integrate",
+          "template": "{Object}",
+          "reminder": "Exile {Object}. For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship.]].",
+          "actionProgram": true,
+          "collectiveObject": true
+        }
+      ]
+    },
+    {
+      "id": "rev-integrate-018",
+      "keyword": "Integrate",
+      "scope": "revolution",
+      "rule_reference": "701.76.",
+      "rule_text": {
+        "name": "701.76.",
+        "rule": "Integrate",
+        "subrules": [
+          {
+            "name": "701.76a",
+            "rule": "Some abilities instruct a player to integrate a card or permanent. To do so, exile it, then for each card the object was represented by exiled this way, you may choose any nonland permanent.",
+            "custom": true
+          },
+          {
+            "name": "701.76b",
+            "rule": "The term “integrated onto” describes the relationship between the card exiled by the integrate ability and the permanent chosen when the spell represented by that card resolves",
+            "custom": true
+          },
+          {
+            "name": "701.76c",
+            "rule": "The exiled card remains integrated onto the chosen permanent as long as the integrated card remains exiled and the permanent remains on the battlefield. The card remains integrated onto that object even if it changes controller, as long as it remains on the battlefield.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Augmented Ruffians",
+          "Beckoner of Ends",
+          "Capital Skyraiders",
+          "Corpsepyre Fiend",
+          "Cull Populace",
+          "Data Weaver",
+          "Dissect Intel",
+          "Dissolve into Data",
+          "Dregstreet Inquisitor",
+          "Earthly Penchants",
+          "Essence Archivist",
+          "Fleshbearer",
+          "Inessence",
+          "Leyline Leecher",
+          "Lure into Lunacy",
+          "Mirrormeld Spire",
+          "Offerings to Sky Gods",
+          "Silverbone Chromate",
+          "Stratos Sentry",
+          "Taste for Malice",
+          "Tithe to the Machine",
+          "Unmolded One",
+          "Xavvac, Corrupter Core",
+          "Xavvac's Reprocessing",
+          "Xiv, Replisparked"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.",
+      "source_cards": [
+        "Earthly Penchants",
+        "Lure into Lunacy",
+        "Tithe to the Machine",
+        "Xavvac, Corrupter Core"
+      ],
+      "executable_reminder": "Exile {Object}. For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship.]].",
+      "representative_cards": [
+        {
+          "id": "rev:Earthly Penchants_CYB",
+          "source_card_key": "Earthly Penchants_CYB",
+          "name": "Earthly Penchants",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, integrate the top card of target player's library. Then if there are three or more different card types among cards integrated onto Earthly Penchants, you draw a card and you lose 1 life. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Earthly Penchants",
+              "original_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, integrate the top card of target player's library. Then if there are three or more different card types among cards integrated onto Earthly Penchants, you draw a card and you lose 1 life. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]. Then if there are three or more different card types among cards linked to Earthly Penchants under the integrated relationship, you draw a card and you lose 1 life.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of your upkeep, integrate the top card of target player's library. Then if there are three or more different card types among cards integrated onto Earthly Penchants, you draw a card and you lose 1 life.",
+          "original_printed_rules_text": "At the beginning of your upkeep, integrate the top card of target player's library. Then if there are three or more different card types among cards integrated onto Earthly Penchants, you draw a card and you lose 1 life. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Earthly Penchants",
+              "executable_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, Perform the integrate action on the top card of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]. Then if there are three or more different card types among cards linked to Earthly Penchants under the integrated relationship, you draw a card and you lose 1 life.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your upkeep, integrate the top card of target player's library. Then if there are three or more different card types among cards integrated onto Earthly Penchants, you draw a card and you lose 1 life.",
+              "original_printed_rules_text": "At the beginning of your upkeep, integrate the top card of target player's library. Then if there are three or more different card types among cards integrated onto Earthly Penchants, you draw a card and you lose 1 life. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Lure into Lunacy_CYB",
+          "source_card_key": "Lure into Lunacy_CYB",
+          "name": "Lure into Lunacy",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nIntegrate the top two cards of target player's library. They lose 2 life, and you gain 2 life. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*\nWhenever a permanent you control with two or more cards integrated onto it dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand.",
+          "source_faces": [
+            {
+              "name": "Lure into Lunacy",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nIntegrate the top two cards of target player's library. They lose 2 life, and you gain 2 life. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*\nWhenever a permanent you control with two or more cards integrated onto it dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand."
+            }
+          ],
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nPerform the integrate action on the top two cards of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]. They lose 2 life, and you gain 2 life.\nWhenever a permanent you control with two or more cards linked under the integrated relationship dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Integrate the top two cards of target player's library. They lose 2 life, and you gain 2 life.\nWhenever a permanent you control with two or more cards integrated onto it dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand.",
+          "original_printed_rules_text": "Integrate the top two cards of target player's library. They lose 2 life, and you gain 2 life. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)\nWhenever a permanent you control with two or more cards integrated onto it dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand.",
+          "executable_faces": [
+            {
+              "name": "Lure into Lunacy",
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nPerform the integrate action on the top two cards of target player's library as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]. They lose 2 life, and you gain 2 life.\nWhenever a permanent you control with two or more cards linked under the integrated relationship dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Integrate the top two cards of target player's library. They lose 2 life, and you gain 2 life.\nWhenever a permanent you control with two or more cards integrated onto it dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand.",
+              "original_printed_rules_text": "Integrate the top two cards of target player's library. They lose 2 life, and you gain 2 life. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)\nWhenever a permanent you control with two or more cards integrated onto it dies, you may pay {B}. If you do, return Lure into Lunacy from your graveyard to your hand."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Tithe to the Machine_CYB",
+          "source_card_key": "Tithe to the Machine_CYB",
+          "name": "Tithe to the Machine",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{C}{B}\nType: Enchantment\nAt the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards integrated onto it. Otherwise, integrate that card. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*",
+          "source_faces": [
+            {
+              "name": "Tithe to the Machine",
+              "original_text": "Mana cost: {2}{C}{B}\nType: Enchantment\nAt the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards integrated onto it. Otherwise, integrate that card. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{C}{B}\nType: Enchantment\nAt the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards linked to this permanent under the integrated relationship. Otherwise, Perform the integrate action on that card as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards integrated onto it. Otherwise, integrate that card.",
+          "original_printed_rules_text": "At the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards integrated onto it. Otherwise, integrate that card. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)",
+          "executable_faces": [
+            {
+              "name": "Tithe to the Machine",
+              "executable_text": "Mana cost: {2}{C}{B}\nType: Enchantment\nAt the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards linked to this permanent under the integrated relationship. Otherwise, Perform the integrate action on that card as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]].",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards integrated onto it. Otherwise, integrate that card.",
+              "original_printed_rules_text": "At the beginning of each player's upkeep, that player discards a card or sacrifices a nontoken, nonland permanent. If Tithe to the Machine was sacrificed this way, create a 2/2 black Zombie artifact creature token for each card type among cards integrated onto it. Otherwise, integrate that card. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Xavvac, Corrupter Core_CYB",
+          "source_card_key": "Xavvac, Corrupter Core_CYB",
+          "name": "Xavvac, Corrupter Core",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{C}{B}\nType: Legendary Artifact Creature — Vukoroq\nPower/Toughness: 6/5\nAt the beginning of combat on your turn, you may integrate another nonland permanent you control. If you don't, tap Xavvac, Corrupter Core. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*\nPermanents you control with cards integrated onto them have lifelink and deathtouch.",
+          "source_faces": [
+            {
+              "name": "Xavvac, Corrupter Core",
+              "original_text": "Mana cost: {1}{C}{B}\nType: Legendary Artifact Creature — Vukoroq\nPower/Toughness: 6/5\nAt the beginning of combat on your turn, you may integrate another nonland permanent you control. If you don't, tap Xavvac, Corrupter Core. *(To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)*\nPermanents you control with cards integrated onto them have lifelink and deathtouch."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{C}{B}\nType: Legendary Artifact Creature — Vukoroq\nPower/Toughness: 6/5\nAt the beginning of combat on your turn, you may do the following: [Perform the integrate action on another nonland permanent you control as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]]. If you don't, tap Xavvac, Corrupter Core.\nPermanents you control with cards linked under the integrated relationship have lifelink and deathtouch.",
+          "custom_keyword_identities": [
+            "integrate"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of combat on your turn, you may integrate another nonland permanent you control. If you don't, tap Xavvac, Corrupter Core.\nPermanents you control with cards integrated onto them have lifelink and deathtouch.",
+          "original_printed_rules_text": "At the beginning of combat on your turn, you may integrate another nonland permanent you control. If you don't, tap Xavvac, Corrupter Core. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)\nPermanents you control with cards integrated onto them have lifelink and deathtouch.",
+          "executable_faces": [
+            {
+              "name": "Xavvac, Corrupter Core",
+              "executable_text": "Mana cost: {1}{C}{B}\nType: Legendary Artifact Creature — Vukoroq\nPower/Toughness: 6/5\nAt the beginning of combat on your turn, you may do the following: [Perform the integrate action on another nonland permanent you control as follows: [Exile the proposed objects; For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship;]]]]. If you don't, tap Xavvac, Corrupter Core.\nPermanents you control with cards linked under the integrated relationship have lifelink and deathtouch.",
+              "custom_keyword_identities": [
+                "integrate"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of combat on your turn, you may integrate another nonland permanent you control. If you don't, tap Xavvac, Corrupter Core.\nPermanents you control with cards integrated onto them have lifelink and deathtouch.",
+              "original_printed_rules_text": "At the beginning of combat on your turn, you may integrate another nonland permanent you control. If you don't, tap Xavvac, Corrupter Core. (To integrate a card, exile it, then you may choose a nonland permanent it's integrated onto.)\nPermanents you control with cards integrated onto them have lifelink and deathtouch."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "candidate_existing_operations_unverified",
+      "executable_definitions": [
+        {
+          "keyword": "Integrate",
+          "template": "{Object}",
+          "reminder": "Exile {Object}. For each card exiled this way, do the following: [You may do the following: [Choose a nonland permanent; Link the iterated card to the chosen permanent under the integrated relationship.]].",
+          "actionProgram": true,
+          "collectiveObject": true
+        }
+      ]
+    }
+  ]
+}

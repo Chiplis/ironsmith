@@ -32,6 +32,15 @@ pub(super) fn propagate_leading_shared_state(
     tokens: &[OwnedLexToken],
     branches: &mut [ObjectFilter],
 ) {
+    // A leading state can qualify a shared type list, but independently
+    // scoped object domains retain their own adjectives. For example,
+    // "untapped creatures you control or cards from your graveyard" does
+    // not ask the graveyard cards to be untapped permanents.
+    if let Some(first) = branches.first()
+        && branches.iter().skip(1).any(|branch| branch.zone != first.zone)
+    {
+        return;
+    }
     let first_word = tokens.iter().find_map(OwnedLexToken::as_word);
     match first_word {
         Some("tapped") => {

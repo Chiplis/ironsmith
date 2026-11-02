@@ -1,0 +1,765 @@
+{
+  "version": 1,
+  "scope": "msem",
+  "source_fixture": "fixtures/custom_mechanics/msem-casting-early.json",
+  "mechanics": [
+    {
+      "id": "msem-452",
+      "keyword": "Prophecy",
+      "original_reminder": "Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.",
+      "executable_reminder": "As you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card]. Whenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {Cost} rather than paying its mana cost.",
+      "source_cards": [
+        "Dylso Charmer",
+        "Foretold Strength",
+        "Glintwing Replica",
+        "Moonwing Watcher",
+        "Prophecized Plating",
+        "Reflected Moment",
+        "Reweave Reality",
+        "Stormwing Raven",
+        "Summoner's Call",
+        "Supreme Stampede",
+        "Fortunous Flames"
+      ],
+      "rule_reference": "702.204.",
+      "rule_text": [
+        {
+          "name": "702.204a",
+          "rule": "Prophecy is a keyword that represents a static ability linked to a triggered ability. “Prophecy (cost)” means “As you reveal this card from a hidden zone, you may exile it if you haven't exiled any cards with their prophecy ability this turn.” and “When you exile this card with its prophecy ability, you may cast it for (cost) rather than paying its mana cost as long as it remains exiled.”",
+          "custom": true
+        },
+        {
+          "name": "702.204b",
+          "rule": "When a card with prophecy is revealed, any relevant information about it is retained, but the card is exiled and becomes a new object.\r\nExample Cursed Scroll will know the name of a card with prophecy, but it can't be put into a Fact or Fiction pile or chosen during the resolution of Gifts Ungiven.",
+          "custom": true
+        },
+        {
+          "name": "702.204c",
+          "rule": "A card can't be cast for its prophecy cost if it was exiled by an effect other than its prophecy ability.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dylso Charmer_OPH",
+          "name": "Dylso Charmer",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Reflection Wizard\nPower/Toughness: 3/2\nWhen Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Reflection Wizard\nPower/Toughness: 3/2\nWhen Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{G} rather than paying its mana cost.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Reflection Wizard",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Dylso Charmer_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dylso Charmer",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Reflection Wizard\nPower/Toughness: 3/2\nWhen Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "candidate_executable_text": "Mana cost: {2}{G}\nType: Creature — Reflection Wizard\nPower/Toughness: 3/2\nWhen Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{G} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Dylso Charmer",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Reflection Wizard\nPower/Toughness: 3/2\nWhen Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G}",
+              "original_printed_rules_text": "When Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G}",
+          "original_printed_rules_text": "When Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Foretold Strength_OPH",
+          "name": "Foretold Strength",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nTarget creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Instant\nTarget creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+          "source_card_key": "Foretold Strength_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Foretold Strength",
+              "original_text": "Mana cost: {1}{G}\nType: Instant\nTarget creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {1}{G}\nType: Instant\nTarget creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Foretold Strength",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant\nTarget creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G}",
+              "original_printed_rules_text": "Target creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G}",
+          "original_printed_rules_text": "Target creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Glintwing Replica_OPH",
+          "name": "Glintwing Replica",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nCreate a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Instant\nCreate a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{U} rather than paying its mana cost.",
+          "source_card_key": "Glintwing Replica_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Glintwing Replica",
+              "original_text": "Mana cost: {1}{G}\nType: Instant\nCreate a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {1}{G}\nType: Instant\nCreate a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{U} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Glintwing Replica",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant\nCreate a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U}",
+              "original_printed_rules_text": "Create a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U}",
+          "original_printed_rules_text": "Create a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Moonwing Watcher_OPH",
+          "name": "Moonwing Watcher",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {U} rather than paying its mana cost.",
+          "source_card_key": "Moonwing Watcher_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Moonwing Watcher",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Bird",
+          "power": "1",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {2}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {U} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Moonwing Watcher",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U}",
+              "original_printed_rules_text": "Flying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U}",
+          "original_printed_rules_text": "Flying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Prophecized Plating_OPH",
+          "name": "Prophecized Plating",
+          "original_text": "Mana cost: {6}\nType: Artifact Creature — Construct\nPower/Toughness: 3/3\nFlying\nProphecy {2} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {6}\nType: Artifact Creature — Construct\nPower/Toughness: 3/3\nFlying\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2} rather than paying its mana cost.",
+          "source_card_key": "Prophecized Plating_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Prophecized Plating",
+              "original_text": "Mana cost: {6}\nType: Artifact Creature — Construct\nPower/Toughness: 3/3\nFlying\nProphecy {2} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{6}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {6}\nType: Artifact Creature — Construct\nPower/Toughness: 3/3\nFlying\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Prophecized Plating",
+              "executable_text": "Mana cost: {6}\nType: Artifact Creature — Construct\nPower/Toughness: 3/3\nFlying\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nProphecy {2}",
+              "original_printed_rules_text": "Flying\nProphecy {2} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nProphecy {2}",
+          "original_printed_rules_text": "Flying\nProphecy {2} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Reflected Moment_OPH",
+          "name": "Reflected Moment",
+          "original_text": "Mana cost: {4}{U}{U}\nType: Sorcery\nTake an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {4}{U}{U}\nType: Sorcery\nTake an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {6}{U}{U} rather than paying its mana cost.",
+          "source_card_key": "Reflected Moment_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reflected Moment",
+              "original_text": "Mana cost: {4}{U}{U}\nType: Sorcery\nTake an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{4}{U}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {4}{U}{U}\nType: Sorcery\nTake an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {6}{U}{U} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Reflected Moment",
+              "executable_text": "Mana cost: {4}{U}{U}\nType: Sorcery\nTake an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {6}{U}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Take an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U}",
+              "original_printed_rules_text": "Take an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Take an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U}",
+          "original_printed_rules_text": "Take an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Reweave Reality_OPH",
+          "name": "Reweave Reality",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Instant\nChoose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nChoose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{U}{U} rather than paying its mana cost.",
+          "source_card_key": "Reweave Reality_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reweave Reality",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Instant\nChoose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nChoose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{U}{U} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Reweave Reality",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nChoose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{U}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U}",
+              "original_printed_rules_text": "Choose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U}",
+          "original_printed_rules_text": "Choose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Stormwing Raven_OPH",
+          "name": "Stormwing Raven",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nProphecy {0} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {0} rather than paying its mana cost.",
+          "source_card_key": "Stormwing Raven_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Stormwing Raven",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nProphecy {0} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Bird",
+          "power": "1",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {0} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Stormwing Raven",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {0} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nProphecy {0}",
+              "original_printed_rules_text": "Flying\nProphecy {0} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nProphecy {0}",
+          "original_printed_rules_text": "Flying\nProphecy {0} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Summoner's Call_OPH",
+          "name": "Summoner's Call",
+          "original_text": "Mana cost: {3}{G}\nType: Instant\nReveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {3}{G}\nType: Instant\nReveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{G} rather than paying its mana cost.",
+          "source_card_key": "Summoner's Call_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Summoner's Call",
+              "original_text": "Mana cost: {3}{G}\nType: Instant\nReveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{3}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {3}{G}\nType: Instant\nReveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{G} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Summoner's Call",
+              "executable_text": "Mana cost: {3}{G}\nType: Instant\nReveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G}",
+              "original_printed_rules_text": "Reveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G}",
+          "original_printed_rules_text": "Reveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Supreme Stampede_OPH",
+          "name": "Supreme Stampede",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nCreatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nCreatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{G}{G} rather than paying its mana cost.",
+          "source_card_key": "Supreme Stampede_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Supreme Stampede",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nCreatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{2}{G}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nCreatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{G}{G} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Supreme Stampede",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nCreatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {2}{G}{G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Creatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G}",
+              "original_printed_rules_text": "Creatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Creatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G}",
+          "original_printed_rules_text": "Creatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Fortunous Flames_OTH",
+          "name": "Fortunous Flames",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nIf you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nIf you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {R} rather than paying its mana cost.",
+          "source_card_key": "Fortunous Flames_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fortunous Flames",
+              "original_text": "Mana cost: {1}{R}\nType: Sorcery\nIf you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "mana_cost": "{1}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "candidate_executable_text": "Mana cost: {1}{R}\nType: Sorcery\nIf you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {R} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Fortunous Flames",
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nIf you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {R} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "If you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R}",
+              "original_printed_rules_text": "If you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "If you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R}",
+          "original_printed_rules_text": "If you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Proclaimed Cure_OPH",
+          "name": "Proclaimed Cure",
+          "source_card_key": "Proclaimed Cure_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {G}\nType: Instant\nTarget creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {G}\nType: Instant\nTarget creature gains indestructible until end of turn. You gain 4 life.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Proclaimed Cure",
+              "executable_text": "Mana cost: {G}\nType: Instant\nTarget creature gains indestructible until end of turn. You gain 4 life.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G}",
+              "original_printed_rules_text": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G}",
+          "original_printed_rules_text": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Promised Seeker_OPH",
+          "name": "Promised Seeker",
+          "source_card_key": "Promised Seeker_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Elf Mystic\nPower/Toughness: 3/2\nWhenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Mystic\nPower/Toughness: 3/2\nWhenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Promised Seeker",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Mystic\nPower/Toughness: 3/2\nWhenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G}",
+              "original_printed_rules_text": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G}",
+          "original_printed_rules_text": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Reins of Influence_OPH",
+          "name": "Reins of Influence",
+          "source_card_key": "Reins of Influence_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nGain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nGain control of target noncreature permanent until end of turn. Untap it.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {U} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Reins of Influence",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nGain control of target noncreature permanent until end of turn. Untap it.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U}",
+              "original_printed_rules_text": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U}",
+          "original_printed_rules_text": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sodden Sorrow_OPH",
+          "name": "Sodden Sorrow",
+          "source_card_key": "Sodden Sorrow_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{U}\nType: Instant\nTarget player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+          "executable_text": "Mana cost: {3}{U}\nType: Instant\nTarget player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{U} rather than paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Sodden Sorrow",
+              "executable_text": "Mana cost: {3}{U}\nType: Instant\nTarget player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nAs you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card].\nWhenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {1}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "prophecy"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U}",
+              "original_printed_rules_text": "Target player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "prophecy"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U}",
+          "original_printed_rules_text": "Target player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U} (Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "unexecuted",
+      "pending_generic_plumbing": "Hidden-zone reveal replacement with once-per-player-per-turn reservation; linked exile permission and alternative payment persist until zone exit.",
+      "required_behavioral_assertions": [
+        "hidden-zone reveal replacement",
+        "shared once per turn across all prophecy cards",
+        "declining does not consume allowance",
+        "reveal to selected players",
+        "cast permission persists in linked exile",
+        "zone identity resets permission",
+        "price alternatives honor payment identity"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Prophecy",
+          "template": "{Cost}",
+          "reminder": "As you reveal this card from a hidden zone, you may perform the prophecy action once each turn ending in exile as follows: [Exile this card]. Whenever this card performs the prophecy action, if this card is in exile, for as long as it remains exiled, that player may cast that card by paying {Cost} rather than paying its mana cost."
+        }
+      ],
+      "implementation_status": "pending_parent_verification",
+      "semantic_equivalence": {
+        "status": "candidate",
+        "evidence": "Generic public reveal offer with player-shared accepted-only action quota; ordinary linked trigger grants normal-timing alternative price to exact Exile arrival. All eleven original sources preserved. Whole physical corpus inventory appended; parent materialization/strict routes remain pending."
+      }
+    }
+  ]
+}

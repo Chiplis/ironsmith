@@ -89,6 +89,15 @@ pub enum DerivedAlternativeCast<C> {
     /// library has plot. The plot cost is equal to its mana cost.", Fblthp,
     /// Lost on the Range; CR 702.170a). Appended for wire compatibility.
     PlotFromCardManaCost,
+    /// A hand-zone preparation action whose payment comes from each granted
+    /// card's printed price; the followup is independent of that payment.
+    ExilePreparationFromCardManaCost {
+        reduction: u32,
+        optional_cast: bool,
+        /// Authored preparation identity, independent of payment and event.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        label: Option<String>,
+    },
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -107,6 +116,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::MadnessFromCardManaCost => "Madness",
             Self::ForetellFromCardManaCostReducedBy { .. } => "Foretell",
             Self::PlotFromCardManaCost => "Plot",
+            Self::ExilePreparationFromCardManaCost { .. } => "Delayed casting preparation",
             Self::ZoneCastFromCardManaCost { .. } => "Cast with additional cost",
         }
     }
@@ -168,6 +178,8 @@ impl<C> DerivedAlternativeCast<C> {
                 DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
             }
             Self::PlotFromCardManaCost => DerivedAlternativeCast::PlotFromCardManaCost,
+            Self::ExilePreparationFromCardManaCost { reduction, optional_cast, label } =>
+                DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label },
             Self::ZoneCastFromCardManaCost {
                 zone,
                 additional_costs,
@@ -1516,7 +1528,7 @@ where
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     "That player may".to_string()
                 }
                 PlayerFilter::OpponentOf(_)
@@ -2580,6 +2592,13 @@ where
             return format!(
                 "Each {filter_desc} has emerge. The emerge cost is equal to its mana cost"
             );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label },
+        ) = &self.grantable {
+            let mut filter = self.filter.clone();
+            filter.zone = Some(self.zone);
+            return format!("Each {} has \"You may pay its mana cost reduced by {{{reduction}}} and exile this card from your hand as a sorcery. When you next resolve a spell, {}cast this card from exile without paying its mana cost.{}\"", filter.description(), if *optional_cast { "you may " } else { "" }, label.as_ref().map(|label| format!(" This is the {label} preparation ability.")).unwrap_or_default());
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::PlotFromCardManaCost) =
             &self.grantable

@@ -430,6 +430,7 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
                 );
 
                 if !removed.is_empty() {
+                    crate::effects::player::regroup_hand_reveal_windows(&mut staged_game,&removed);
                     let mut lookback_source_snapshots = Vec::new();
                     for snapshot in removed
                         .iter()
@@ -488,6 +489,8 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
 }
 
 impl EffectExecutor for DestroyEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.spec==*spec}
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Destroyed)
     }
@@ -506,7 +509,7 @@ impl EffectExecutor for DestroyEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         // Handle targeted effects with special single-target behavior
-        if self.spec.is_target() && self.spec.is_single() {
+        if self.spec.is_target() && self.spec.is_single() && !crate::effects::target_packets::multiple(ctx,&self.spec) {
             return execute_single_target_destroy_with_outputs(game, ctx, &self.spec, true);
         }
         execute_simultaneous_destroy_with_outputs(game, ctx, &self.spec, true)

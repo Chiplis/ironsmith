@@ -70,12 +70,23 @@ pub enum ReplacedEventAst {
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct FutureEventRegistrationAst {
+    pub event: ironsmith_core::ReplacedEventSpec,
+    pub mode: ironsmith_core::ReplacementApplyMode,
+    pub display: String,
+    pub target: Option<crate::TargetAst>,
+    pub resolving_object_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ReplacementRelationshipAst {
     pub kind: ReplacementKindAst,
     pub event: ReplacedEventAst,
     pub condition: Option<ControlConditionAst>,
     pub original_program: Option<usize>,
     pub replacement_program: usize,
+    /// A future-event registration differs from replacing a prior instruction.
+    pub registration: Option<FutureEventRegistrationAst>,
     pub affected_reference: Option<SymbolReference>,
 }
 

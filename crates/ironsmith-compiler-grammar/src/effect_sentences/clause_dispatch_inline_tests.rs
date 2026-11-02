@@ -1030,3 +1030,17 @@ fn targeted_face_down_reveal_announces_and_reveals_the_same_object() {
     let SubjectVerbActionAst::RevealLook(crate::cards::builders::RevealLookActionAst::RevealTagged { tag }) = &reveal.action else { panic!("{effects:?}") };
     assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
 }
+
+#[test]
+fn heal_reader_claims_its_verb_and_recipient_preposition_strictly() {
+    for text in ["Heal 2 damage on target creature.","Heal 2 damage from target creature.","Heal all damage on target creature."] {
+        let tokens=lex_tail(text);
+        let (parsed,claims)=crate::word_claims::scoped(|| {
+            crate::word_claims::register_tokens(&tokens);
+            parse_heal_damage_clause(&tokens)
+        });
+        assert!(matches!(parsed,Ok(Some(_))),"{text}: {parsed:?}");
+        assert!(crate::word_claims::unclaimed_words(&tokens,&claims).is_empty(),
+            "{text}: unread {:?}",crate::word_claims::unclaimed_words(&tokens,&claims));
+    }
+}

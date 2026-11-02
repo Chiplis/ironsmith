@@ -15,7 +15,7 @@ pub(super) fn validate(action: &SubjectVerbActionAst) -> Result<(), CardTextErro
         SubjectVerbActionAst::Cant { duration, .. }
         | SubjectVerbActionAst::Control(ControlActionAst::GainControl { duration, .. })
         | SubjectVerbActionAst::Characteristics(
-            CharacteristicActionAst::ChangeText { duration, .. }
+            CharacteristicActionAst::ChangeText { duration, .. } | CharacteristicActionAst::RemoveOptionalTextFragment { duration, .. }
             | CharacteristicActionAst::SetBasePowerToughness { duration, .. }
             | CharacteristicActionAst::BecomeBasePtCreature { duration, .. }
             | CharacteristicActionAst::SetBasePower { duration, .. }
@@ -84,6 +84,8 @@ pub(super) fn validate(action: &SubjectVerbActionAst) -> Result<(), CardTextErro
         // player (`Until::next_turn_owner`); other owners would not.
         // Only delayed-trigger registrations own a named player's turn end.
         Until::PlayersNextTurnEnd { .. } => false,
+        // Other lifetime owners have not acquired this relative boundary.
+        Until::OpponentsNextTurn => matches!(action, SubjectVerbActionAst::Cant { .. }),
         Until::PlayersNextTurn { .. } => matches!(action,
             SubjectVerbActionAst::Cant { .. }
                 | SubjectVerbActionAst::DamagePrevention(D::PreventAllDamageToTarget { .. })),

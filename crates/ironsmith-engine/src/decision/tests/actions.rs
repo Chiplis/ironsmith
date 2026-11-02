@@ -988,6 +988,7 @@ fn test_activated_ability_mana_cost_validation() {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Battlefield],
     };
     game.object_mut(creature_id)
@@ -1096,6 +1097,7 @@ fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() 
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     game.object_mut(ore_id)
@@ -1315,6 +1317,7 @@ fn test_activated_ability_cost_reduction_respects_minimum_one_mana() {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Battlefield],
     };
     game.object_mut(creature_id)
@@ -1443,6 +1446,7 @@ fn test_self_hand_activated_ability_cost_reduction_counts_matching_battlefield_o
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: false,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Hand],
             },
             Ability::static_ability(StaticAbility::reduce_activated_ability_costs_for_each(
@@ -1731,6 +1735,7 @@ fn test_activated_ability_sorcery_speed_timing() {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Battlefield],
     };
     game.object_mut(creature_id)
@@ -1799,6 +1804,7 @@ fn test_compute_legal_actions_includes_hand_activated_ability() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Hand],
         });
 
@@ -1842,6 +1848,7 @@ fn forecast_activation_requires_the_source_owners_upkeep_and_is_once_per_turn() 
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Hand],
         });
 
@@ -1900,6 +1907,7 @@ fn any_player_mana_activation_uses_the_activators_turn_before_end_step() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -3235,6 +3243,7 @@ fn optional_cost_can_make_cast_time_targets_legal() {
     creature_spell_filter.card_types.push(CardType::Creature);
     let program =
         crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::counter(ChooseSpec::target(ChooseSpec::Object(
                 creature_spell_filter,
             )))],

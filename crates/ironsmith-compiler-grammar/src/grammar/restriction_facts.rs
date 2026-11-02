@@ -17,6 +17,17 @@ use super::restriction_normalization::{
 pub fn parse_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedActivationRestriction> {
+    // An imperative restriction occasionally uses the lexical variant
+    // "Active only ...". It still belongs solely to this activation.
+    if tokens.first().is_some_and(|token| token.is_word("active"))
+        && tokens.get(1).is_some_and(|token| token.is_word("only"))
+    {
+        let mut canonical = tokens.to_vec();
+        canonical[0].replace_word("activate");
+        let parsed = parse_activation_restriction_tokens(&canonical)?;
+        crate::word_claims::claim_tokens(tokens);
+        return Some(parsed);
+    }
     let words = crate::lexer::parser_token_word_refs(tokens);
     if words.len() == 5 && words.ends_with(&["only", "as", "a", "sorcery"]) {
         let synthetic = crate::lexer::synthetic_word_tokens(["activate", "only", "as", "a", "sorcery"]);

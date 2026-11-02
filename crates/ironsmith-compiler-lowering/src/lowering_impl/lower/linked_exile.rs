@@ -31,7 +31,7 @@ fn scalar_consumer(value: &Value) -> bool {
 fn inspect(effect: &Effect, producers: &mut usize, compatible: &mut usize, consumes: &mut bool) {
     if let Some(exile) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
         *producers += 1;
-        if exile.duration == ironsmith_core::ExileUntilDuration::SourceLeavesBattlefield
+        if matches!(exile.duration, ironsmith_core::ExileUntilDuration::SourceLeavesBattlefield | ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield)
             && exile.leave_watcher.is_none()
         {
             *compatible += 1;
@@ -169,7 +169,7 @@ fn static_exile_producer(program: &ResolutionProgram) -> Option<StaticExileProdu
         && players.effects.len() == 1
         && let Some(exile) = crate::compile_support::effect_without_result_tags(&players.effects[0])
             .downcast_ref::<crate::effects::ExileUntilEffect>()
-        && exile.duration == ironsmith_core::ExileUntilDuration::SourceLeavesBattlefield
+        && matches!(exile.duration, ironsmith_core::ExileUntilDuration::SourceLeavesBattlefield | ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield)
         && exile.leave_watcher.is_none() && !exile.face_down && !exile.explicit_return_surface
         && exile.return_zone == crate::zone::Zone::Battlefield
         && !exile.spec.is_target() && exile.spec.count().is_single() && !exile.spec.count().is_random()
@@ -483,5 +483,94 @@ pub(super) fn bind_champion_pairs(definition: &mut CardDefinition) {
         if groups.get(&group) == Some(&(1, 1)) {
             ability.effects.linked_exile_pair = Some(ironsmith_core::LinkedExilePair { definition: definition_id, pair: group });
         }
+    }
+}
+
+
+/// A permanent spell's printed exile cost and the resulting permanent's
+/// printed source-exiled readers form one definition-local family (607.2q).
+/// Explicit pair ownership keeps separately acquired abilities independent.
+pub(super) fn bind_cost_linked_exile(definition: &mut CardDefinition) {
+    use ironsmith_core::tag::TagKeyWalk;
+    if definition.spell_effect.is_some()
+        || !definition.card.card_types.iter().any(|kind| kind.is_permanent_type()) { return; }
+    fn cost_producer(effect: &Effect) -> usize {
+        let mut count = usize::from(effect.downcast_ref::<crate::effects::ExileUntilEffect>()
+            .is_some_and(|exile| exile.duration == ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield
+                && exile.leave_watcher.is_none()));
+        effect.visit_child_effects(&mut |child| count += cost_producer(child));
+        count
+    }
+    fn inventory(cost: &ironsmith_core::TotalCost<crate::costs::Cost>) -> usize {
+        if let Some(branches) = cost.as_one_of() { return branches.iter().map(inventory).sum(); }
+        cost.costs().iter().map(|cost| match cost {
+            ironsmith_core::Cost::Effect(effect) => cost_producer(effect),
+            _ => 0,
+        }).sum()
+    }
+    // A single typed cast-origin producer avoids silently merging independent
+    // optional cost families. Multiple instances require explicit relationships.
+    if definition.optional_costs.iter().map(|cost| inventory(&cost.cost)).sum::<usize>() != 1 { return; }
+    let mut members = Vec::new();
+    let mut has_reader = false;
+    for (index, ability) in definition.abilities.iter().enumerate() {
+        let Some(program) = program(ability) else { continue; };
+        let (mut producers, mut compatible, mut consumes) = (0, 0, false);
+        for effect in program.all_effects() {
+            inspect(effect, &mut producers, &mut compatible, &mut consumes);
+            effect.for_each_tag_key(&mut |tag| consumes |= tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG);
+        }
+        has_reader |= consumes;
+        if producers > 0 || consumes { members.push(index); }
+    }
+    if !has_reader { return; }
+    let Ok(bytes) = serde_json::to_vec(&(&definition.optional_costs, &definition.abilities)) else { return; };
+    let pair = ironsmith_core::LinkedExilePair {
+        definition: ironsmith_core::LinkedExileDefinition(Sha256::digest(bytes).into()), pair: 0,
+    };
+    fn stamp(effect: &mut Effect, pair: ironsmith_core::LinkedExilePair) -> bool {
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
+            if exile.duration != ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield
+                || exile.leave_watcher.is_some() { return false; }
+            let mut exile = exile.clone(); exile.cost_linked_exile_pair = Some(pair);
+            *effect = Effect::new(exile); return true;
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            let mut sequence = sequence.clone();
+            for child in &mut sequence.effects {
+                if cost_producer(child) > 0 && !stamp(child, pair) { return false; }
+            }
+            *effect = Effect::new(sequence); return true;
+        }
+        if let Some(wrapper) = effect.as_with_id() {
+            let mut wrapper = wrapper.clone();
+            if !stamp(&mut wrapper.effect, pair) { return false; }
+            *effect = Effect::new(wrapper); return true;
+        }
+        if let Some(wrapper) = effect.as_tagged() {
+            let mut child = (*wrapper.effect).clone();
+            if !stamp(&mut child, pair) { return false; }
+            *effect = Effect::new(wrapper.clone().with_effect(child)); return true;
+        }
+        false
+    }
+    let mut optional_costs = definition.optional_costs.clone();
+    for cost in &mut optional_costs {
+        let Ok(mapped) = cost.cost.clone().try_map(|mut component| -> Result<_, ()> {
+            if let ironsmith_core::Cost::Effect(effect) = &mut component {
+                if cost_producer(effect) > 0 && !stamp(effect, pair) { return Err(()); }
+            }
+            Ok(component)
+        }) else { return; };
+        cost.cost = mapped;
+    }
+    definition.optional_costs = optional_costs;
+    for index in members {
+        let effects = match &mut definition.abilities[index].kind {
+            AbilityKind::Triggered(ability) => &mut ability.effects,
+            AbilityKind::Activated(ability) => &mut ability.effects,
+            _ => continue,
+        };
+        effects.linked_exile_pair = Some(pair);
     }
 }

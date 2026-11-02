@@ -80,6 +80,9 @@ pub mod cards {
 
         #[derive(Debug, Clone, PartialEq, ironsmith_core::tag::TagKeyWalk)]
         pub enum GrantedAbilityAst {
+            /// One indivisible grant alternative composed of several abilities.
+            /// In a choice, every member is granted by the same selected mode.
+            Bundle(Vec<GrantedAbilityAst>),
             KeywordAction(Box<KeywordAction>),
             StaticAbility(Box<StaticAbilityAst>),
             ThisAbility,
@@ -96,6 +99,17 @@ pub mod cards {
                 ability: Box<crate::model::compiler_semantic::ParsedAbility>,
                 display: String,
             },
+        }
+
+        impl GrantedAbilityAst {
+            /// Traverse every executable leaf while preserving the grouping
+            /// held by the choice owner itself.
+            pub fn leaves(&self)->Vec<&Self> {match self {
+                Self::Bundle(members)=>members.iter().flat_map(Self::leaves).collect(),leaf=>vec![leaf],
+            }}
+            pub fn leaves_mut(&mut self)->Vec<&mut Self> {match self {
+                Self::Bundle(members)=>members.iter_mut().flat_map(Self::leaves_mut).collect(),leaf=>vec![leaf],
+            }}
         }
 
         impl From<KeywordAction> for GrantedAbilityAst {

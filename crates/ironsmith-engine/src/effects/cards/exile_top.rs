@@ -213,6 +213,8 @@ impl ZoneMovementInstruction for ExileTopOfLibraryEffect {
                         moved_ids.push(id);
                     }
                 }
+                ctx.set_tagged_objects(crate::tag::PRIOR_EXILED_CARD_TAG,
+                    moved_ids.iter().filter_map(|id|ObjectSnapshot::from_object_id(game,*id)).collect());
                 // Exiled cards are public by their destination. This visibility
                 // synchronization does not add an authored reveal action.
                 if !effect.face_down {

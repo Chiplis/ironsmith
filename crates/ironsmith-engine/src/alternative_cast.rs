@@ -3,6 +3,7 @@ pub(crate) mod price_routes;
 pub mod play_permission;
 pub mod blind_play;
 pub use ironsmith_core::{AlternativeCastRequirements, TrapCondition};
+pub use ironsmith_core::alternative_cast_model::ExilePreparation;
 
 pub type AlternativeCastingMethod = ironsmith_core::AlternativeCastingMethod<
     crate::effect::Effect,
@@ -16,11 +17,13 @@ pub type AlternativeCastingMethod = ironsmith_core::AlternativeCastingMethod<
 pub(crate) fn hand_special_action(
     method: &AlternativeCastingMethod,
     card_id: crate::ids::ObjectId,
+    method_index: Option<usize>,
 ) -> Option<crate::special_actions::SpecialAction> {
     use crate::special_actions::SpecialAction;
     if method.suspend_spec().is_some() { return Some(SpecialAction::Suspend { card_id }); }
-    if method.prepares_face_down() { return Some(SpecialAction::Foretell { card_id }); }
-    if method.prepares_face_up_sorcery() { return Some(SpecialAction::Plot { card_id }); }
+    if let Some(preparation) = method.exile_preparation() {
+        return Some(SpecialAction::PrepareExile { card_id, method_index: method_index?, preparation: preparation.clone() });
+    }
     match method {
         AlternativeCastingMethod::Plot { .. } => Some(SpecialAction::Plot { card_id }),
         AlternativeCastingMethod::Foretell { .. } => Some(SpecialAction::Foretell { card_id }),
@@ -58,7 +61,7 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
     current_turn: u32,
 ) {
     let instructions = method.battlefield_instructions();
-    if !instructions.haste_on_battlefield && !instructions.draw_on_death && !instructions.sacrifice_on_entry { return; }
+    if !instructions.haste_on_battlefield && !instructions.draw_on_death && !instructions.sacrifice_on_entry && !instructions.project_own_dies_on_entry { return; }
     let name = method.name();
     let blitz = instructions.draw_on_death;
     let condition = crate::ConditionExpr::ThisSpellPaidLabel(name.into());
@@ -78,12 +81,19 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
         crate::ability::AbilityKind::Static(ability) => Some(ability.clone()),
         _ => None,
     }).chain(object.temporary_static_ability_grants.iter().filter(|grant| !grant.is_expired(current_turn)).filter_map(|grant| grant.materialize()));
+    let projection = crate::ability::Ability::static_ability(
+        crate::static_abilities::StaticAbility::from_model(crate::static_abilities::CompiledStaticAbility::trigger_event_projection(
+            ironsmith_core::static_ability_model::TriggerProjectionEvent::Enters,
+            crate::target::ObjectFilter::source(), crate::target::ObjectFilter::source(),
+            ironsmith_core::static_ability_model::TriggerProjectionEvent::Dies)));
+    let mut has_projection = false;
     let mut has_haste = false;
     let mut has_death_draw = false;
     let mut has_entry_sacrifice = false;
     for ability in abilities {
         if ability.granted_inline_condition() != Some(&condition) { continue; }
         for granted in ability.source_granted_inline_abilities() {
+            has_projection |= granted == &projection;
             has_haste |= granted == &haste;
             has_death_draw |= is_blitz_death_draw_ability(granted);
             if let crate::ability::AbilityKind::Triggered(trigger) = &granted.kind {
@@ -94,6 +104,7 @@ pub(crate) fn ensure_alternative_battlefield_abilities(
         }
     }
     let mut missing = Vec::new();
+    if instructions.project_own_dies_on_entry && !has_projection { missing.push(projection); }
     if instructions.haste_on_battlefield && !has_haste { missing.push(haste); }
     if blitz && !has_death_draw { missing.push(death_draw); }
     if instructions.sacrifice_on_entry && !has_entry_sacrifice { missing.push(entry_sacrifice); }
@@ -292,4 +303,137 @@ mod tests {
         assert!(alternative.is_alternative());
         assert_eq!(CastingMethod::default(), CastingMethod::Normal);
     }
+}
+
+/// A selected price may use one of the player's land plays without changing
+/// the spell's timing rules or moving it as though it were a land permanent.
+pub(crate) fn land_play_price_is_available(game: &crate::GameState, player: crate::PlayerId, method: &AlternativeCastingMethod) -> bool {
+    !method.uses_land_play() || (game.is_active_player(player)
+        && game.player(player).is_some_and(|player| player.can_play_land())
+        && !game.effect_store.cant_effects.cant_play_land_filters.get(&player)
+            .is_some_and(|restrictions| restrictions.iter().any(|restriction| {
+                let mut filter=restriction.filter.clone();
+                if filter.zone==Some(Zone::Battlefield) {filter.zone=None;}
+                let mut all_lands=crate::target::ObjectFilter::land();all_lands.zone=None;
+                filter==crate::target::ObjectFilter::default() || filter==all_lands
+            })))
+}
+
+/// Install selected-price characteristics as layer effects. They travel with
+/// the resolving spell under ordinary stack-to-battlefield effect retention,
+/// and are neither printed nor copiable characteristics.
+pub(crate) fn install_selected_price_characteristics(
+    game: &mut crate::game_state::GameState, spell: crate::ids::ObjectId,
+    caster: crate::ids::PlayerId,
+) -> Result<(), crate::effects::ExecutionError> {
+    use crate::effects::EffectExecutor;
+    let Some(method) = game.object(spell).and_then(|object| object.cast_alternative_method_owned())
+    else { return Ok(()); };
+    let instructions = method.battlefield_instructions();
+    let mut modifications = Vec::new();
+    if let Some(pt) = instructions.casting_power_toughness {
+        let (crate::card::PtValue::Fixed(power), crate::card::PtValue::Fixed(toughness)) = (pt.power, pt.toughness)
+        else { return Err(crate::effects::ExecutionError::UnresolvableValue("Selected price has nonfixed power/toughness".into())); };
+        modifications.push(crate::continuous::Modification::SetPowerToughness {
+            power: crate::effect::Value::Fixed(power), toughness: crate::effect::Value::Fixed(toughness),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        });
+    }
+    if !instructions.casting_added_supertypes.is_empty() {
+        modifications.push(crate::continuous::Modification::AddSupertypes(instructions.casting_added_supertypes));
+    }
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell, caster);
+    for modification in modifications {
+        crate::effects::ApplyContinuousEffect::with_spec(
+            crate::target::ChooseSpec::SpecificObject(spell), modification, crate::effect::Until::Forever,
+        ).execute(game, &mut ctx)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn has_selected_price_characteristics(method: &AlternativeCastingMethod) -> bool {
+    let instructions = method.battlefield_instructions();
+    instructions.casting_power_toughness.is_some() || !instructions.casting_added_supertypes.is_empty()
+}
+
+
+#[cfg(test)]
+mod selected_price_characteristic_tests {
+    use super::*;
+    use crate::{CardId, GameState, PlayerId, Zone};
+    use crate::cards::CardDefinitionBuilder;
+    use crate::types::{CardType, Supertype};
+    use crate::mana::{ManaCost, ManaSymbol};
+    fn definition(legendary: bool, kind: CardType) -> crate::cards::CardDefinition {
+        let price = AlternativeCastingMethod::alternative_cost("Alternative characteristic price",
+            Some(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])), vec![])
+            .with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                casting_power_toughness: Some(crate::card::PowerToughness::fixed(4, 4)),
+                casting_added_supertypes: if legendary { vec![Supertype::Legendary] } else { vec![] },
+                ..Default::default()
+            });
+        CardDefinitionBuilder::new(CardId::new(), "Selected price audit")
+            .card_types(vec![kind]).mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Green]))
+            .power_toughness(crate::card::PowerToughness::fixed(1, 3)).alternative_cast(price).build()
+    }
+    #[test]
+    fn selected_price_characteristics_preserve_printed_cost_colors_and_copiable_values() {
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let definition = definition(true, CardType::Creature);
+        let hand = game.create_object_from_definition(&definition, player, Zone::Hand);
+        let colors = game.object(hand).unwrap().colors();
+        let spell = crate::game_loop::propose_spell_cast(&mut game, hand, Zone::Hand, player, &CastingMethod::Alternative(0)).unwrap();
+        assert_eq!(game.calculated_power(spell), Some(4));
+        assert_eq!(game.calculated_toughness(spell), Some(4));
+        assert_eq!(game.current_colors(spell), Some(colors));
+        assert_eq!(game.object(spell).unwrap().mana_cost_owned().unwrap().mana_value(), 1);
+        assert!(game.current_supertypes(spell).unwrap().contains(&Supertype::Legendary));
+        let copied = crate::snapshot::CopiableValues::from_object(game.object(spell).unwrap());
+        assert_eq!((copied.power, copied.toughness), (Some(1), Some(3)));
+        assert!(!copied.supertypes.contains(&Supertype::Legendary));
+        let permanent = game.move_object_with_etb_processing(spell, Zone::Battlefield).unwrap()
+            .assert_completed_without_additions().unwrap().new_id;
+        assert_eq!(game.calculated_power(permanent), Some(4));
+        assert!(game.current_supertypes(permanent).unwrap().contains(&Supertype::Legendary));
+        let hand = game.move_object_by_effect(permanent, Zone::Hand).unwrap();
+        let returned = game.move_object_with_etb_processing(hand, Zone::Battlefield).unwrap()
+            .assert_completed_without_additions().unwrap().new_id;
+        assert_eq!(game.calculated_power(returned), Some(1));
+        assert!(!game.current_supertypes(returned).unwrap().contains(&Supertype::Legendary));
+    }
+    #[test]
+    fn selected_price_characteristics_do_not_add_creature_type_or_affect_normal_price() {
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        for (kind, method) in [(CardType::Enchantment, CastingMethod::Alternative(0)), (CardType::Creature, CastingMethod::Normal)] {
+            let definition = definition(false, kind);
+            let hand = game.create_object_from_definition(&definition, player, Zone::Hand);
+            let spell = crate::game_loop::propose_spell_cast(&mut game, hand, Zone::Hand, player, &method).unwrap();
+            assert_eq!(game.current_card_types(spell).unwrap(), vec![kind]);
+            if kind == CardType::Creature { assert_eq!(game.calculated_power(spell), Some(1)); }
+        }
+    }
+    #[test]
+    fn selected_price_characteristics_participate_in_affordability_preview() {
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.priority_player = Some(player); game.turn.phase = crate::game_state::Phase::FirstMain;
+        let mut filter = crate::target::ObjectFilter::spell().cast_by_you();
+        filter.supertypes.push(Supertype::Legendary);
+        let reducer = crate::static_abilities::StaticAbility::new(crate::static_abilities::CostReduction::new(filter, crate::effect::Value::Fixed(2)));
+        let source = CardDefinitionBuilder::new(CardId::new(), "Legendary price reducer")
+            .card_types(vec![CardType::Enchantment]).with_ability(crate::ability::Ability::static_ability(reducer)).build();
+        game.create_object_from_definition(&source, player, Zone::Battlefield);
+        let definition = definition(true, CardType::Creature);
+        let hand = game.create_object_from_definition(&definition, player, Zone::Hand);
+        assert!(crate::decision::can_cast_spell(&game, player, game.object(hand).unwrap(), &CastingMethod::Alternative(0)), "selected legendary characteristic makes its generic price affordable");
+        assert!(!crate::decision::can_cast_spell(&game, player, game.object(hand).unwrap(), &CastingMethod::Normal));
+        assert_eq!(game.object(hand).unwrap().zone, Zone::Hand, "query does not announce a real spell");
+    }
+}
+
+/// An event-linked reveal price never appears as an ordinary priority action.
+pub(crate) fn hand_event_price_is_available(_game:&crate::GameState,_card:crate::ObjectId,method:&AlternativeCastingMethod)->bool {
+    method.battlefield_instructions().hand_reveal_event.is_none()
 }

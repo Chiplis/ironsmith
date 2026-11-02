@@ -21,6 +21,9 @@ pub struct LandPlayedEvent {
     pub from_zone: Zone,
     /// Checked frame of the original completed play, before additions.
     pub snapshot: Option<ObjectSnapshot>,
+    /// Exact card facts immediately before this play moved the card. Named
+    /// zone designations qualify the card being played, not its new permanent.
+    pub origin_snapshot: Option<ObjectSnapshot>,
     /// Actual original destination, including redirected entry outcomes.
     /// Legacy actor-only notices carry no completed characteristic frame.
     pub completed_destination: Option<Zone>,
@@ -36,6 +39,7 @@ impl LandPlayedEvent {
             player,
             from_zone,
             snapshot: None,
+            origin_snapshot: None,
             completed_destination: None,
             play_permission: None,
         }
@@ -85,7 +89,12 @@ impl LandPlayedEvent {
         let chars = game.try_current_characteristics(land)
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?.ok_or_else(unavailable)?;
         let snapshot = ObjectSnapshot::try_from_object_with_known_characteristics(object, game, Some(&chars))?;
-        Ok(Self { land, player, from_zone, snapshot: Some(snapshot), completed_destination: Some(completed_destination), play_permission: None })
+        Ok(Self { land, player, from_zone, snapshot: Some(snapshot), origin_snapshot: None, completed_destination: Some(completed_destination), play_permission: None })
+    }
+
+    pub fn with_origin_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
+        self.origin_snapshot=Some(snapshot);
+        self
     }
 
     pub fn with_play_permission(

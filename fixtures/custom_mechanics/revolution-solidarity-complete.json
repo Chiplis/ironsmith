@@ -1,0 +1,1464 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "source_cards": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "scope": "revolution",
+    "inventory_count": 15
+  },
+  "mechanics": [
+    {
+      "id": "rev-solidarity-complete",
+      "keyword": "Solidarity",
+      "scope": "revolution",
+      "rule_reference": "702.217.",
+      "rule_text": {
+        "name": "702.217.",
+        "rule": "Solidarity",
+        "subrules": [
+          {
+            "name": "702.217a",
+            "rule": "Solidarity is a triggered ability. “Solidarity” means “Whenever you attack and there are six or more different creature types among attacking creatures, if this is the first solidarity ability you control that has resolved this turn, create a Solidarity token.” See rule 111.10aa.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Barded Brachion",
+          "Battlehymn Howler",
+          "Edgeland Battlefury",
+          "Edgeland Pledge",
+          "Inspired Denizen",
+          "Lend Me Strength",
+          "Londel Sharpshot",
+          "Minoan Engineer",
+          "Ozanwood Huntsman",
+          "Pyrewing Penancer",
+          "Ragecloak Shifter",
+          "Scrapmail Conscripts",
+          "Sharesh, Leader of the Lost",
+          "Vanguard Recruit",
+          "Vukoroq Defector"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.",
+      "executable_reminder": "Whenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a Solidarity token.",
+      "semantic_equivalence": {
+        "status": "pending_generic_implementation_and_fullsource_native_proof",
+        "evidence": "All fifteen operational sources extracted by exact primary corpus key, preserving both faces where present. Frontend and runtime proof pending; inventory is not support certification."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Barded Brachion_CYB",
+          "source_card_key": "rev:Barded Brachion_CYB",
+          "name": "Barded Brachion",
+          "original_text": "Type: Creature — Dinosaur Beast \nMana cost: {3}{R/G}\nPower/Toughness: 3/3\nTrample\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Dinosaur Beast \nMana cost: {3}{R/G}\nPower/Toughness: 3/3\nTrample\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Barded Brachion",
+              "executable_text": "Type: Creature — Dinosaur Beast \nMana cost: {3}{R/G}\nPower/Toughness: 3/3\nTrample\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nSolidarity",
+              "original_printed_rules_text": "Trample\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nSolidarity",
+          "original_printed_rules_text": "Trample\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)"
+        },
+        {
+          "id": "rev:Battlehymn Howler_CYB",
+          "source_card_key": "rev:Battlehymn Howler_CYB",
+          "name": "Battlehymn Howler",
+          "original_text": "Type: Creature — Wolf Warrior \nMana cost: {3}{G}\nPower/Toughness: 3/4\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Wolf Warrior \nMana cost: {3}{G}\nPower/Toughness: 3/4\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Battlehymn Howler",
+              "executable_text": "Type: Creature — Wolf Warrior \nMana cost: {3}{G}\nPower/Toughness: 3/4\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhenever Battlehymn Howler attacks, add an amount of {G} equal to its power. Until end of turn, you don't lose this mana as steps and phases end."
+        },
+        {
+          "id": "rev:Edgeland Battlefury_CYB",
+          "source_card_key": "rev:Edgeland Battlefury_CYB",
+          "name": "Edgeland Battlefury",
+          "original_text": "Type: Creature — Orc Berserker \nMana cost: {2}{R/G}\nPower/Toughness: 3/2\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able. ",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Orc Berserker \nMana cost: {2}{R/G}\nPower/Toughness: 3/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Edgeland Battlefury",
+              "executable_text": "Type: Creature — Orc Berserker \nMana cost: {2}{R/G}\nPower/Toughness: 3/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able. "
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nEdgeland Battlefury must be blocked if able, and it must be blocked by two or more creatures if able. "
+        },
+        {
+          "id": "rev:Edgeland Pledge_CYB",
+          "source_card_key": "rev:Edgeland Pledge_CYB",
+          "name": "Edgeland Pledge",
+          "original_text": "Type: Sorcery\nMana cost: {1}{R}\nCreate a Solidarity token. When you do, pay for and choose any number. *(A Solidarity token is an enchantment with “Attacking creatures you control get +1/+0.”)*\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Type: Sorcery\nMana cost: {1}{R}\nCreate a colorless artifact token named Solidarity. When you do, pay for and choose any number. (A token named Solidarity is an enchantment with “Attacking creatures you control get +1/+0.”)\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Edgeland Pledge",
+              "executable_text": "Type: Sorcery\nMana cost: {1}{R}\nCreate a colorless artifact token named Solidarity. When you do, pay for and choose any number. (A token named Solidarity is an enchantment with “Attacking creatures you control get +1/+0.”)\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a Solidarity token. When you do, pay for and choose any number.\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn.",
+              "original_printed_rules_text": "Create a Solidarity token. When you do, pay for and choose any number. (A Solidarity token is an enchantment with “Attacking creatures you control get +1/+0.”)\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a Solidarity token. When you do, pay for and choose any number.\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn.",
+          "original_printed_rules_text": "Create a Solidarity token. When you do, pay for and choose any number. (A Solidarity token is an enchantment with “Attacking creatures you control get +1/+0.”)\n+{R} — Edgeland Pledge deals 2 damage to any target.\n+{U} — Tap up to two target creatures.\n+{G} — Create a 1/1 red Soldier creature token. It gains haste until end of turn."
+        },
+        {
+          "id": "rev:Inspired Denizen_CYB",
+          "source_card_key": "rev:Inspired Denizen_CYB",
+          "name": "Inspired Denizen",
+          "original_text": "Type: Creature — Azra Citizen \nMana cost: {R}{G}\nPower/Toughness: 1/2\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Azra Citizen \nMana cost: {R}{G}\nPower/Toughness: 1/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Inspired Denizen",
+              "executable_text": "Type: Creature — Azra Citizen \nMana cost: {R}{G}\nPower/Toughness: 1/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhenever Inspired Denizen attacks, create a 1/1 green Citizen creature token that's tapped and attacking."
+        },
+        {
+          "id": "rev:Lend Me Strength_CYB",
+          "source_card_key": "rev:Lend Me Strength_CYB",
+          "name": "Lend Me Strength",
+          "original_text": "Type: Enchantment\nMana cost: {2}{R}{G}\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment\nMana cost: {2}{R}{G}\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lend Me Strength",
+              "executable_text": "Type: Enchantment\nMana cost: {2}{R}{G}\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nAt the beginning of combat on your turn, target creature you control gets +2/+2, gains indestructible, and becomes an Avatar in addition to its other types until end of turn."
+        },
+        {
+          "id": "rev:Londel Sharpshot_CYB",
+          "source_card_key": "rev:Londel Sharpshot_CYB",
+          "name": "Londel Sharpshot",
+          "original_text": "Type: Creature — Human Scout \nMana cost: {1}{G}\nPower/Toughness: 2/2\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nLondel Sharpshot can't be blocked by creatures with power 2 or less.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Scout \nMana cost: {1}{G}\nPower/Toughness: 2/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nLondel Sharpshot can't be blocked by creatures with power 2 or less.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Londel Sharpshot",
+              "executable_text": "Type: Creature — Human Scout \nMana cost: {1}{G}\nPower/Toughness: 2/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nLondel Sharpshot can't be blocked by creatures with power 2 or less.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nLondel Sharpshot can't be blocked by creatures with power 2 or less.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nLondel Sharpshot can't be blocked by creatures with power 2 or less."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nLondel Sharpshot can't be blocked by creatures with power 2 or less.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nLondel Sharpshot can't be blocked by creatures with power 2 or less."
+        },
+        {
+          "id": "rev:Minoan Engineer_CYB",
+          "source_card_key": "rev:Minoan Engineer_CYB",
+          "name": "Minoan Engineer",
+          "original_text": "Type: Creature — Minotaur Artificer \nMana cost: {2}{R}\nPower/Toughness: 2/2\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Minotaur Artificer \nMana cost: {2}{R}\nPower/Toughness: 2/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Minoan Engineer",
+              "executable_text": "Type: Creature — Minotaur Artificer \nMana cost: {2}{R}\nPower/Toughness: 2/2\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhen Minoan Engineer dies, create a 1/1 colorless Thopter artifact creature token with flying."
+        },
+        {
+          "id": "rev:Ozanwood Huntsman_CYB",
+          "source_card_key": "rev:Ozanwood Huntsman_CYB",
+          "name": "Ozanwood Huntsman",
+          "original_text": "Type: Creature — Human Ranger \nMana cost: {2}{G}\nPower/Toughness: 3/3\nTrample\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Ranger \nMana cost: {2}{G}\nPower/Toughness: 3/3\nTrample\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ozanwood Huntsman",
+              "executable_text": "Type: Creature — Human Ranger \nMana cost: {2}{G}\nPower/Toughness: 3/3\nTrample\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nSolidarity\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn.",
+              "original_printed_rules_text": "Trample\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nSolidarity\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn.",
+          "original_printed_rules_text": "Trample\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\n{G}, Sacrifice an enchantment: Ozanwood Huntsman gets +2/+2 until end of turn."
+        },
+        {
+          "id": "rev:Pyrewing Penancer_CYB",
+          "source_card_key": "rev:Pyrewing Penancer_CYB",
+          "name": "Pyrewing Penancer",
+          "original_text": "Type: Creature — Angel Warrior \nMana cost: {2}{R}\nPower/Toughness: 1/2\nFlying\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Angel Warrior \nMana cost: {2}{R}\nPower/Toughness: 1/2\nFlying\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Pyrewing Penancer",
+              "executable_text": "Type: Creature — Angel Warrior \nMana cost: {2}{R}\nPower/Toughness: 1/2\nFlying\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nSolidarity\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent.",
+              "original_printed_rules_text": "Flying\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nSolidarity\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent.",
+          "original_printed_rules_text": "Flying\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nWhenever Pyrewing Penancer attacks, it deals damage equal to its power to each opponent."
+        },
+        {
+          "id": "rev:Ragecloak Shifter_CYB",
+          "source_card_key": "rev:Ragecloak Shifter_CYB",
+          "name": "Ragecloak Shifter",
+          "original_text": "Type: Creature — Shapeshifter Shaman\nMana cost: {R}\nPower/Toughness: 1/1\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Shapeshifter Shaman\nMana cost: {R}\nPower/Toughness: 1/1\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ragecloak Shifter",
+              "executable_text": "Type: Creature — Shapeshifter Shaman\nMana cost: {R}\nPower/Toughness: 1/1\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\n{R}: Choose a creature type. Ragecloak Shifter gets +1/+0 and becomes that type in addition to its other types until end of turn."
+        },
+        {
+          "id": "rev:Scrapmail Conscripts_CYB",
+          "source_card_key": "rev:Scrapmail Conscripts_CYB",
+          "name": "Scrapmail Conscripts",
+          "original_text": "Type: Creature — Lizard Warrior \nMana cost: {4}{G}\nPower/Toughness: 4/4\nHaste\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Lizard Warrior \nMana cost: {4}{G}\nPower/Toughness: 4/4\nHaste\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scrapmail Conscripts",
+              "executable_text": "Type: Creature — Lizard Warrior \nMana cost: {4}{G}\nPower/Toughness: 4/4\nHaste\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nSolidarity",
+              "original_printed_rules_text": "Haste\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Haste\nSolidarity",
+          "original_printed_rules_text": "Haste\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)"
+        },
+        {
+          "id": "rev:Sharesh, Leader of the Lost_CYB",
+          "source_card_key": "rev:Sharesh, Leader of the Lost_CYB",
+          "name": "Sharesh, Leader of the Lost",
+          "original_text": "Type: Legendary Creature — Lizard Mercenary \nMana cost: {1}{R}{G}\nPower/Toughness: 3/3\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library.",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Lizard Mercenary \nMana cost: {1}{R}{G}\nPower/Toughness: 3/3\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sharesh, Leader of the Lost",
+              "executable_text": "Type: Legendary Creature — Lizard Mercenary \nMana cost: {1}{R}{G}\nPower/Toughness: 3/3\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Solidarity\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library.",
+              "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Solidarity\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library.",
+          "original_printed_rules_text": "Solidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nYou may look at the top card of your library any time.\nYou may cast creature spells that have a creature type no creature you control does from the top of your library."
+        },
+        {
+          "id": "rev:Vanguard Recruit_CYB",
+          "source_card_key": "rev:Vanguard Recruit_CYB",
+          "name": "Vanguard Recruit",
+          "original_text": "Type: Creature — Goblin Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nMenace\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Goblin Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nMenace\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Vanguard Recruit",
+              "executable_text": "Type: Creature — Goblin Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nMenace\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nSolidarity",
+              "original_printed_rules_text": "Menace\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nSolidarity",
+          "original_printed_rules_text": "Menace\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)"
+        },
+        {
+          "id": "rev:Vukoroq Defector_CYB",
+          "source_card_key": "rev:Vukoroq Defector_CYB",
+          "name": "Vukoroq Defector",
+          "original_text": "Type: Creature — Vukoroq \nMana cost: {1}{R/G}{R/G}\nPower/Toughness: 5/4\nTrample, haste\nSolidarity *(Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)*\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Vukoroq \nMana cost: {1}{R/G}{R/G}\nPower/Toughness: 5/4\nTrample, haste\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Solidarity",
+                "typeLine": "Enchantment",
+                "oracleText": "Attacking creatures you control get +1/+0."
+              },
+              "input": {
+                "name": "Solidarity",
+                "manaCost": "",
+                "cardTypes": [
+                  "Enchantment"
+                ],
+                "subtypes": [],
+                "supertypes": [],
+                "oracleText": "Attacking creatures you control get +1/+0."
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Vukoroq Defector",
+              "executable_text": "Type: Creature — Vukoroq \nMana cost: {1}{R/G}{R/G}\nPower/Toughness: 5/4\nTrample, haste\nWhenever you attack and there are six or more different creature types among attacking creatures, resolve the first solidarity ability you control this turn as follows: Create a colorless artifact token named Solidarity\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity.",
+              "custom_keyword_identities": [
+                "solidarity"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [
+                {
+                  "name": "Solidarity",
+                  "token": true,
+                  "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+                  "custom_subtypes": [
+                    {
+                      "singular": "vukoroq",
+                      "plural": "vukoroqs",
+                      "family": "Creature"
+                    }
+                  ],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Solidarity",
+                    "typeLine": "Enchantment",
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  },
+                  "input": {
+                    "name": "Solidarity",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Enchantment"
+                    ],
+                    "subtypes": [],
+                    "supertypes": [],
+                    "oracleText": "Attacking creatures you control get +1/+0."
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample, haste\nSolidarity\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity.",
+              "original_printed_rules_text": "Trample, haste\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity."
+            }
+          ],
+          "custom_keyword_identities": [
+            "solidarity"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vukoroq",
+              "plural": "vukoroqs",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [
+            {
+              "name": "Solidarity",
+              "token": true,
+              "executable_text": "Type: Enchantment\nAttacking creatures you control get +1/+0.",
+              "custom_subtypes": [
+                {
+                  "singular": "vukoroq",
+                  "plural": "vukoroqs",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample, haste\nSolidarity\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity.",
+          "original_printed_rules_text": "Trample, haste\nSolidarity (Whenever you attack with six or more different creature types, create a Solidarity enchantment with “Attacking creatures you control get +1/+0” if you haven't this turn.)\nAt the beginning of your end step, sacrifice Vukoroq Defector unless you sacrifice a token named Solidarity."
+        }
+      ],
+      "source_cards": [
+        "Barded Brachion",
+        "Battlehymn Howler",
+        "Edgeland Battlefury",
+        "Edgeland Pledge",
+        "Inspired Denizen",
+        "Lend Me Strength",
+        "Londel Sharpshot",
+        "Minoan Engineer",
+        "Ozanwood Huntsman",
+        "Pyrewing Penancer",
+        "Ragecloak Shifter",
+        "Scrapmail Conscripts",
+        "Sharesh, Leader of the Lost",
+        "Vanguard Recruit",
+        "Vukoroq Defector"
+      ],
+      "behavioral_assertions": [],
+      "token_rule_evidence": {
+        "rule": "111.10aa",
+        "text": "A Solidarity token is an enchantment with “Attacking creatures you control get +1/+0.”",
+        "source": "fixtures/custom_mechanics/revolution.json:rev-solidarity-212"
+      }
+    }
+  ]
+}

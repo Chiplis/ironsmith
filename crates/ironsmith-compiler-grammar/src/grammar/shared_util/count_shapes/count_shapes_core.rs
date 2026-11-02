@@ -172,6 +172,15 @@ fn parse_for_each_count_value_words_inner(words: &[&str]) -> Option<(Value, usiz
             ));
         }
     }
+    if let ["for","each","time","that","spell's"|"spells","additional",tail @ ..] = words
+        && let Some(label)=tail.strip_suffix(&["cost","was","paid"])
+        && !label.is_empty()
+    {
+        let mut reference=ironsmith_core::OptionalCostRef::from("Additional");
+        reference.custom_keyword=Some(label.join(" "));
+        crate::word_claims::claim_words(words);
+        return Some((Value::TimesPaidLabelOf {object:Box::new(crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())),reference}.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),words.len()));
+    }
     if matches!(words, ["for", "each", "time", "this", "spell's" | "spells", "additional", "cost", "was", "paid"]) {
         return Some((Value::TimesPaidLabel(ironsmith_core::OptionalCostRef::from("Additional"))
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));

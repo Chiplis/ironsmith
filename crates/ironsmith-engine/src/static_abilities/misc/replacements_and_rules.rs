@@ -4060,7 +4060,7 @@ impl WouldEnterFromZoneMatcher {
         let entering = match event.event_kind() {
             EventKind::ZoneChange => {
                 crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event)
-                    .map(|zone_change| (zone_change.from, zone_change.objects.first().copied()))
+                    .map(|zone_change| (Some(zone_change.from), zone_change.objects.first().copied()))
             }
             EventKind::EnterBattlefield => {
                 crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event)
@@ -4071,7 +4071,7 @@ impl WouldEnterFromZoneMatcher {
         let Some((from, object)) = entering else {
             return false;
         };
-        if from != Zone::Stack {
+        if from != Some(Zone::Stack) {
             return true;
         }
         // "or no mana was spent to cast it" (Primeval Spawn).
@@ -4382,6 +4382,13 @@ impl StaticAbilityKind for PregameAction {
 
     fn display(&self) -> String {
         match &self.kind {
+            crate::static_abilities::PregameActionKind::ChosenOutsideGame(spec) => {
+                let condition = match &spec.deck_condition {
+                    ironsmith_core::PregameDeckCondition::Unrestricted => String::new(),
+                    ironsmith_core::PregameDeckCondition::EveryCardPrintedTextContainsAny { exempt_types, phrases } => format!("; starting-deck cards except {:?} must contain one of {:?} in their printed rules text", exempt_types, phrases),
+                };
+                format!("You may choose this outside-game card as your {}{}. You may exchange it with a card in your opening hand", spec.designation, condition)
+            }
             crate::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => {
                 render_begin_on_battlefield_pregame(spec)
             }
@@ -4395,7 +4402,8 @@ impl StaticAbilityKind for PregameAction {
                 self.text.clone()
             }
             // No structural reading: an audit reports the typed kind.
-            crate::static_abilities::PregameActionKind::ChooseColor
+            crate::static_abilities::PregameActionKind::SourceSetup { .. }
+            | crate::static_abilities::PregameActionKind::ChooseColor
             | crate::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => {
                 ironsmith_core::semantic_audit::retained("PregameAction", &self.text, &self.kind)
             }
@@ -4837,7 +4845,24 @@ impl StaticAbilityKind for SpliceAbility {
             .clone()
             .unwrap_or_else(|| self.spec.cost.display());
         if self.spec.descriptive {
-            format!("As you cast an {} spell, you may reveal this card from your hand and pay {rendered_cost}. If you do, add this card's effects to that spell.", self.spec.quality.oracle_surface())
+            let zone = self.spec.source_zone.unwrap_or(crate::zone::Zone::Hand);
+            let movement = match self.spec.source_destination {
+                None => format!("reveal this card from your {zone}"),
+                Some(crate::zone::Zone::Exile) => format!("exile this card from your {zone}"),
+                Some(destination) => format!("put this card from your {zone} into {destination}"),
+            };
+            let mut text = format!("As you cast an {} spell, you may {movement} and pay {rendered_cost}. If you do, add this card's effects to that spell.", self.spec.quality.oracle_surface());
+            if let Some(max) = self.spec.max_per_spell {
+                if self.spec.source_destination == Some(crate::zone::Zone::Exile) && max == 1 {
+                    text.push_str(" You may exile only one card this way per spell.");
+                } else {
+                    text.push_str(&format!(" You may move only {max} cards this way per spell."));
+                }
+            }
+            if let Some(keyword)=&self.spec.custom_keyword {
+                text.push_str(&format!(" This text-adding cost is named {keyword}."));
+            }
+            text
         } else { format!("Splice onto {}{separator}{rendered_cost}", self.spec.quality.oracle_surface()) }
     }
 
@@ -4931,7 +4956,7 @@ impl StaticAbilityKind for KeywordMarker {
     }
 
     fn keyword_marker_mechanic(&self) -> Option<ironsmith_core::KeywordMarkerMechanic> {
-        self.mechanic
+        self.mechanic.clone()
     }
 
     fn display(&self) -> String {
@@ -5302,12 +5327,13 @@ impl StaticAbilityKind for PreventMatchingDamageWithFollowUp {
 }
 
 
-/// One additive life-gain replacement, participating in the ordinary CR 616
+/// One additive life-change replacement, participating in the ordinary CR 616
 /// ordering and replacement-application identity machinery.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddLifeGainReplacement {
     pub player: PlayerFilter,
     pub additional: i32,
+    pub loss: bool,
     pub condition: Option<Condition>,
     pub display: String,
 }
@@ -5326,7 +5352,7 @@ impl StaticAbilityKind for AddLifeGainReplacement {
     fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
         Some(ReplacementEffect::with_matcher(source, controller,
             ConditionalWouldChangeLifeMatcher {
-                player: self.player.clone(), loss: false,
+                player: self.player.clone(), loss: self.loss,
                 condition: self.condition.clone(), display: self.display.clone(),
             },
             ReplacementAction::Modify(EventModification::Add(self.additional)),
@@ -5407,10 +5433,14 @@ impl StaticAbilityKind for RedirectMatchingDamage {
                 source_filter: self.spec.source_filter.clone(),
                 target_player_filter: self.spec.target_player_filter.clone(),
                 target_object_filter: self.spec.target_object_filter.clone(),
-                condition, combat_only: self.spec.combat_only, noncombat_only: false,
+                condition, combat_only: self.spec.combat_only, noncombat_only: self.spec.noncombat_only,
                 amount_less_than: None, maximum_damage: None,
             },
-            ReplacementAction::Redirect { target, which: RedirectWhich::First },
+            if self.spec.excess_only {
+                ReplacementAction::RedirectExcessDamage { target, which: RedirectWhich::First }
+            } else {
+                ReplacementAction::Redirect { target, which: RedirectWhich::First }
+            },
         ))
     }
 }

@@ -52,7 +52,7 @@ impl EffectExecutor for GrantObjectAbilityEffect {
         for target_id in targets {
             game.install_authored_object_ability(
                 target_id,
-                self.ability.clone(),
+                ctx.bind_definition_scope_ability(self.ability.clone())?,
                 if self.allow_duplicates {
                     crate::game_state::AuthoredAbilityDuplicatePolicy::PreserveAll
                 } else {

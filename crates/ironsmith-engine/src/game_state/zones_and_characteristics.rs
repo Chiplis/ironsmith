@@ -8,6 +8,8 @@ pub(crate) struct PreparedEtbChoices {
     /// An entry program tapped the entering object ("You may have this land
     /// enter tapped"), so it enters tapped.
     pub(crate) as_enters_tapped: bool,
+    pub(crate) as_enters_designations: Vec<ironsmith_core::PermanentDesignation>,
+    pub(crate) as_enters_named_actions: Vec<(String,crate::player::ManaPool)>,
     pub(crate) chosen_color: Option<crate::color::Color>,
     /// "choose two colors": the chosen colors, recorded together.
     pub(crate) chosen_color_set: Option<crate::color::ColorSet>,
@@ -58,6 +60,7 @@ pub(crate) struct PreparedEntryComponent {
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedEtbEntry {
     pub(crate) result: crate::events::processing::EtbEventResult,
+    pub(crate) creation: Option<crate::events::CreateCardsEvent>,
     pub(crate) choices: PreparedEtbChoices,
     /// Frozen by an owning zone operation before replacement programs run.
     pub(crate) zone_entry_lookback: Option<Vec<crate::snapshot::ObjectSnapshot>>,
@@ -166,6 +169,15 @@ fn ability_retains_counters_moving_to(
     )
 }
 
+/// Already acquired post-transform programs and the exact actor/source facts.
+/// Later programs cannot replace these with another face or incarnation.
+pub(crate) struct CapturedTransformPrograms {
+    source: ObjectId,
+    controller: PlayerId,
+    programs: Vec<crate::resolution::ResolutionProgram>,
+    snapshot: crate::snapshot::ObjectSnapshot,
+}
+
 #[derive(Default)]
 struct AsEntersProgramExecution {
     linked_exile: Vec<EntryLinkedExileTransfer>,
@@ -175,6 +187,8 @@ struct AsEntersProgramExecution {
     entry_redirect: Option<Zone>,
     /// An entry program tapped the entering source.
     entry_tapped: bool,
+    entry_designations: Vec<ironsmith_core::PermanentDesignation>,
+    entry_named_actions: Vec<(String,crate::player::ManaPool)>,
     continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
     tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
@@ -306,7 +320,9 @@ impl GameState {
                 }
                 // Applied with the copiable values as the object entered.
                 ironsmith_core::EnterAsCopyFollowup::RetainOwnColors | ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics
-                | ironsmith_core::EnterAsCopyFollowup::CountersFromCopiedPermanent => {}
+                | ironsmith_core::EnterAsCopyFollowup::CountersFromCopiedPermanent
+                | ironsmith_core::EnterAsCopyFollowup::RemoveManaCost
+                | ironsmith_core::EnterAsCopyFollowup::ConditionalCharacteristics {..} => {}
                 ironsmith_core::EnterAsCopyFollowup::TapCopiedObjectFrozenWhileYouControlSource => {
                     // "When you do, tap the copied creature and it doesn't
                     // untap during its controller's untap step for as long as
@@ -354,9 +370,14 @@ impl GameState {
     pub(crate) fn card_cannot_enter_battlefield(&self, object_id: ObjectId) -> bool {
         self.token_cannot_change_zones(object_id, Zone::Battlefield)
             || self.object(object_id).is_some_and(|object| {
+                if object.spell_copy_entry_forbidden { return true; }
                 (object.kind == crate::object::ObjectKind::Card
-                    && object.card_types.iter().any(|card_type| {
-                        matches!(card_type, CardType::Instant | CardType::Sorcery)
+                    // A described entry can replace its card types before
+                    // eligibility is checked. Inspect the active prospective
+                    // characteristics, not the physical card's printed types.
+                    && self.current_card_types(object_id).is_some_and(|types| {
+                        types.iter().any(|card_type|
+                            matches!(card_type, CardType::Instant | CardType::Sorcery))
                     }))
                     || self.entry_prohibited_by_cant_effect(object)
             })
@@ -443,6 +464,22 @@ impl GameState {
         entry_reserved_objects: &std::collections::HashSet<ObjectId>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::effects::ExecutionError> {
+        self.execute_immediate_effect_programs_with_snapshot(source, controller, programs,
+            linked_owner, preparing_entry, entry_event, entry_reserved_objects, None, decision_maker)
+    }
+
+    fn execute_immediate_effect_programs_with_snapshot(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        programs: Vec<crate::resolution::ResolutionProgram>,
+        linked_owner: Option<crate::linked_exile::LinkedExileOwner>,
+        preparing_entry: bool,
+        entry_event: Option<&crate::events::EnterBattlefieldEvent>,
+        entry_reserved_objects: &std::collections::HashSet<ObjectId>,
+        source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<AsEntersProgramExecution, crate::effects::ExecutionError> {
         if programs.is_empty() {
             return Ok(AsEntersProgramExecution::default());
         }
@@ -457,6 +494,7 @@ impl GameState {
             preparing_entry,
             entry_event,
             entry_reserved_objects,
+            source_snapshot.as_ref(),
             decision_maker,
         );
         if result.is_err() || decision_maker.awaiting_choice() {
@@ -478,6 +516,7 @@ impl GameState {
         preparing_entry: bool,
         entry_event: Option<&crate::events::EnterBattlefieldEvent>,
         entry_reserved_objects: &std::collections::HashSet<ObjectId>,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::effects::ExecutionError> {
         let initial_effect_ids: std::collections::HashSet<_> = self
@@ -491,9 +530,8 @@ impl GameState {
             ran: true,
             ..AsEntersProgramExecution::default()
         };
-        let optional_costs_paid = self
-            .object(source)
-            .map(|object| object.optional_costs_paid.clone())
+        let optional_costs_paid = source_snapshot.map(|snapshot| snapshot.optional_costs_paid.clone())
+            .or_else(|| self.object(source).map(|object| object.optional_costs_paid.clone()))
             .unwrap_or_default();
         for program in programs {
             let linked_before = if preparing_entry {
@@ -513,6 +551,7 @@ impl GameState {
                         source, controller,
                     ))
                     .with_provenance(provenance);
+            context.source_snapshot = source_snapshot.cloned();
             if program.source_number_pair.is_some() {
                 context.source_number_owner = Some(if preparing_entry {
                     let from = self
@@ -538,7 +577,7 @@ impl GameState {
                         source,
                         program.source_number_pair,
                         None,
-                        None,
+                        source_snapshot,
                     )?
                 });
             }
@@ -569,6 +608,40 @@ impl GameState {
                         .map(|(reader, _)| reader.clone()).collect(),
                 });
             }
+            if preparing_entry {
+                // Only a designation shared by this complete producer program
+                // owns its result. Independent entry programs cannot donate
+                // their exiled cards to another ability's named relation.
+                let labels = program.segments.first().map(|first|
+                    first.ability_designations.iter().filter(|label|
+                        program.segments.iter().all(|segment|segment.ability_designations.contains(label)))
+                        .cloned().collect::<Vec<_>>()).unwrap_or_default();
+                let snapshots=completed.outputs.iter().flat_map(|output|
+                    output.outcome.action_objects(crate::effect::PriorEffectAction::Exiled,None).into_iter().cloned()
+                ).collect::<Vec<_>>();
+                for label in labels {
+                    let tag=crate::tag::TagKey::from(format!("__entry_action_exiled_by__:{label}"));
+                    // An explicitly completed empty result stays empty and may
+                    // never fall back to the aggregate entry exile collection.
+                    let retained=execution.tagged_objects.entry(tag).or_default();
+                    for snapshot in &snapshots {
+                        if !retained.iter().any(|prior|prior.object_id==snapshot.object_id) {retained.push(snapshot.clone());}
+                    }
+                }
+            }
+            if preparing_entry {
+                // Retain only successful authored exile receipts from this
+                // entry program. Auxiliary replacement actions are excluded
+                // by action_objects' instruction-result boundary.
+                let tag=crate::tag::TagKey::from("__entry_action_exiled__");
+                let snapshots=completed.outputs.iter().flat_map(|output|
+                    output.outcome.action_objects(crate::effect::PriorEffectAction::Exiled,None).into_iter().cloned()
+                ).collect::<Vec<_>>();
+                if !snapshots.is_empty(){
+                    let retained=execution.tagged_objects.entry(tag).or_default();
+                    for snapshot in snapshots {if !retained.iter().any(|prior|prior.object_id==snapshot.object_id){retained.push(snapshot);}}
+                }
+            }
             for event in completed.events {
                 self.queue_trigger_event(provenance, event);
             }
@@ -587,6 +660,8 @@ impl GameState {
                 execution.entry_redirect = Some(destination);
             }
             execution.entry_tapped |= std::mem::take(&mut context.replacement.entry_tapped);
+            execution.entry_designations.append(&mut context.replacement.entry_designations);
+            execution.entry_named_actions.append(&mut context.replacement.entry_named_actions);
             if awaiting_choice {
                 return Ok(execution);
             }
@@ -690,6 +765,8 @@ impl GameState {
         Ok(Some(PreparedEtbChoices {
             entry_redirect: execution.entry_redirect,
             as_enters_tapped: execution.entry_tapped,
+            as_enters_designations: execution.entry_designations,
+            as_enters_named_actions: execution.entry_named_actions,
             as_enters_counters: counters,
             as_enters_tagged_objects: execution.tagged_objects,
             transfer_as_enters_source_links: execution.ran,
@@ -768,6 +845,8 @@ impl GameState {
                 )?;
                 combined.ran |= execution.ran;
                 combined.entry_redirect = combined.entry_redirect.or(execution.entry_redirect);
+                combined.entry_designations.extend(execution.entry_designations.iter().cloned());
+                combined.entry_named_actions.extend(execution.entry_named_actions.iter().cloned());
                 combined
                     .continuous_effects
                     .extend(execution.continuous_effects.iter().copied());
@@ -816,6 +895,87 @@ impl GameState {
         result
     }
 
+    /// Apply characteristic rewrites before observers can see the completed
+    /// transform. Counter identity changes are not counter placement/removal.
+    pub(crate) fn apply_atomic_transform_characteristics(
+        &mut self,
+        source: ObjectId,
+        cause: Option<&crate::events::cause::EventCause>,
+        payment: Option<&crate::player::ManaPool>,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        use ironsmith_core::static_ability_model::TransformCharacteristicAdjustment as Adjustment;
+        let Some(characteristics) = self.try_current_characteristics(source)
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? else { return Ok(()) };
+        let controller = characteristics.controller;
+        let abilities = characteristics.abilities;
+        let adjustments = abilities.iter().filter_map(|ability| {
+            let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return None };
+            let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+                transforms_into: Some(_), transform_characteristics: Some(adjustment), ..
+            } = &ability.compiled_model()?.payload else { return None };
+            Some(adjustment.clone())
+        }).collect::<Vec<_>>();
+        for adjustment in adjustments {
+            match adjustment {
+                Adjustment::CounterKind(kind) => {
+                    let object = self.object_mut(source)
+                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?;
+                    let total = object.counters.values().try_fold(0u32, |total, count| total.checked_add(*count))
+                        .ok_or_else(|| crate::effects::ExecutionError::Impossible("counter count overflow".into()))?;
+                    object.counters.clear();
+                    if total != 0 { object.counters.insert(kind, total); }
+                }
+                Adjustment::ColorsFromNamedActivationPayment(label) => {
+                    let Some(cause) = cause else { continue };
+                    if cause.source != Some(source)
+                        || cause.resolving_ability != Some(ironsmith_core::CauseAbilityKind::Activated)
+                        || cause.activation_definition.is_none()
+                        || !cause.activation_label.as_ref().is_some_and(|name| name.eq_ignore_ascii_case(&label)) {
+                        continue;
+                    }
+                    let Some(payment) = payment else { continue };
+                    let colors = [crate::color::Color::White, crate::color::Color::Blue,
+                        crate::color::Color::Black, crate::color::Color::Red, crate::color::Color::Green]
+                        .into_iter().filter(|color| payment.amount(crate::mana::ManaSymbol::from_color(*color)) != 0)
+                        .collect::<crate::color::ColorSet>();
+                    // No paid colors means the quantified instruction does
+                    // nothing; it does not make an already colored face colorless.
+                    if colors.is_empty() { continue; }
+                    self.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::new(
+                        source, controller, crate::continuous::EffectTarget::Specific(source),
+                        crate::continuous::Modification::SetColors(colors),
+                    ).until(crate::effect::Until::Forever)
+                        .with_source_type(crate::continuous::EffectSourceType::Resolution { locked_targets: vec![source] }));
+                }
+            }
+        }
+        self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Ok(())
+    }
+
+    pub(crate) fn capture_transform_programs(
+        &self, source: ObjectId, controller: PlayerId,
+    ) -> Result<CapturedTransformPrograms, crate::effects::ExecutionError> {
+        let object = self.object(source).ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?;
+        let programs = object.abilities_vec().iter().filter_map(as_transforms_effect_program_from_ability).collect();
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, self);
+        Ok(CapturedTransformPrograms { source, controller, programs, snapshot })
+    }
+
+    pub(crate) fn execute_captured_transform_programs_with_outputs(
+        &mut self, captured: &CapturedTransformPrograms,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let execution = self.execute_immediate_effect_programs_with_snapshot(
+            captured.source, captured.controller, captured.programs.clone(), None, false, None,
+            &std::collections::HashSet::new(), Some(captured.snapshot.clone()), decision_maker,
+        )?;
+        if let Some(object) = self.object_mut(captured.source) {
+            merge_retained_tagged_objects(&mut object.cast_tagged_objects, &execution.tagged_objects);
+        }
+        Ok(execution.outputs)
+    }
+
     pub(crate) fn execute_as_transforms_effect_programs(
         &mut self,
         source: ObjectId,
@@ -832,6 +992,7 @@ impl GameState {
         controller: PlayerId,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        self.apply_atomic_transform_characteristics(source, None, None)?;
         let abilities = self
             .object(source)
             .map(|object| object.abilities_vec())
@@ -1013,6 +1174,7 @@ impl GameState {
             None,
             &[],
             None,
+            false,
         )
     }
 
@@ -1027,6 +1189,7 @@ impl GameState {
         entry_definition: Option<&crate::cards::CardDefinition>,
         physical_components: &[PreparedEntryComponent],
         entry_linked_face_mana_cost: Option<&crate::mana::ManaCost>,
+        entry_face_down: bool,
     ) -> Option<ObjectId> {
         let owned_lookback;
         let lookback = match lookback {
@@ -1061,6 +1224,7 @@ impl GameState {
                         None,
                         &[],
                         None,
+                        entry_face_down,
                     )
                 {
                     results.push(new_id);
@@ -1080,6 +1244,7 @@ impl GameState {
             entry_definition,
             physical_components,
             entry_linked_face_mana_cost,
+            entry_face_down,
         )
     }
 
@@ -1101,6 +1266,7 @@ impl GameState {
             None,
             &[],
             None,
+            false,
         )
     }
 
@@ -1115,7 +1281,17 @@ impl GameState {
         entry_definition: Option<&crate::cards::CardDefinition>,
         physical_components: &[PreparedEntryComponent],
         entry_linked_face_mana_cost: Option<&crate::mana::ManaCost>,
+        entry_face_down: bool,
     ) -> Option<ObjectId> {
+        // Pending originless creations remain private until their native
+        // admission commit; ordinary zone moves cannot consume that slot.
+        if self.is_originless_card_entry_pending(old_id) { return None; }
+        // Every physical member of a simultaneous/meld movement must satisfy
+        // the same frozen admission rules, not only the visible primary id.
+        if self.zone_move_is_prohibited(old_id, new_zone)
+            || physical_components.iter().any(|component|
+                self.zone_move_is_prohibited(component.snapshot.object_id, new_zone))
+        { return None; }
         // CR 311.2/312.2: planar cards remain in the command zone even if an
         // effect attempts to move them. Turning them face down is handled by
         // the Planechase procedure because it creates a new command-zone object.
@@ -1252,6 +1428,20 @@ impl GameState {
         } else {
             None
         };
+        // Direct rule moves also need event-time hand permissions. Prepared
+        // actions already retained their complete pre-proposal frame; keep it.
+        if !self.action_observations_suppressed()
+            && self.object(old_id).is_some_and(|object|object.zone==Zone::Battlefield)
+            && new_zone!=Zone::Battlefield
+            && !self.effect_store.departure_hand_reveal_frames.contains_key(&old_id)
+        {
+            let event=crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::ZoneChangeEvent::with_cause(old_id,Zone::Battlefield,new_zone,cause.clone(),pre_move_snapshot.clone()),Default::default());
+            match crate::effects::freeze_hand_reveal_frame(self,&event) {
+                Ok(frame)=>{self.effect_store.departure_hand_reveal_frames.insert(old_id,frame);}
+                Err(error)=>{self.record_token_resource_failure(&error);return None;}
+            }
+        }
         // Source cleanup retires its hold records. Capture their exact
         // participants first, but phase them in only after this physical move.
         let phase_duration_returns = if self.objects.get(&old_id).is_some_and(|object| object.zone == Zone::Battlefield)
@@ -1400,6 +1590,8 @@ impl GameState {
         // Remove from old zone index
         self.remove_from_zone_index(old_id, old_zone, owner);
         self.object_annotations_mut().turn_face_up_before_action.remove(&old_id);
+
+        self.clear_incarnation_custom_statuses(old_id);
 
         // Clear state from old zone's extension maps
         if old_zone == Zone::Battlefield {
@@ -1576,6 +1768,7 @@ impl GameState {
         }
 
         // Reset zone-specific state on the object
+        if let Some(authored)=new_object.optional_costs_before_payment_alternatives.take(){new_object.optional_costs=authored;}
         new_object.attached_to = None;
         new_object.attachments.clear();
         // Casting-contribution state should not persist across arbitrary zone changes.
@@ -1599,7 +1792,7 @@ impl GameState {
         let preserve_x_value = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         // Restore enters-as characteristics first, so the printed values saved
         // by the face-down, bestow and prototype overlays below always win.
-        if old_zone == Zone::Battlefield && new_zone != Zone::Battlefield {
+        if matches!(old_zone, Zone::Battlefield | Zone::Stack) && new_zone != Zone::Battlefield {
             new_object.end_enters_as_copy_overlay();
         }
         // CR 702.51c: "creatures that convoked it" stays linked to the
@@ -1632,6 +1825,9 @@ impl GameState {
         }
         if !preserve_cast_tags {
             new_object.cast_tagged_objects.clear();
+        }
+        if !(old_zone==Zone::Stack && new_zone==Zone::Battlefield) {
+            new_object.named_payment_outcomes.clear();
         }
         if !preserve_temporary_static_ability_grants {
             new_object.temporary_static_ability_grants.clear();
@@ -1749,8 +1945,23 @@ impl GameState {
                 .map(Into::into)
                 .or(new_object.linked_face_mana_cost);
         }
+        // Assemble the entering representation before publishing it. Never
+        // alter the origin object's face or its last-known-information packet.
+        if entry_face_down && new_zone == Zone::Battlefield {
+            new_object.apply_face_down_cast_overlay();
+            self.set_face_down(new_id);
+        }
         let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
+        // The designation belongs to an exact origin and only its immediate
+        // spell successor. A different departure consumes the continuation;
+        // copies, later recasts, and resolving permanents cannot inherit it.
+        if let Some(statuses)=self.exile_tracking_mut().cast_continuation_statuses.remove(&old_id) {
+            for name in statuses {
+                if let Some(old_statuses)=self.battlefield_flags_mut().custom_statuses.get_mut(&old_id) { old_statuses.remove(&name); }
+                if new_zone==Zone::Stack { self.set_custom_status_in_zone(new_id,&name,Zone::Stack,true); }
+            }
+        }
         // The component objects cease to exist as representations, but their
         // physical stickers belong to the combined entrant (CR 123.5a).
         self.absorb_component_stickers_batch(
@@ -1763,6 +1974,8 @@ impl GameState {
             self.register_turn_face_up_before_action(new_id);
         }
         if old_zone == Zone::Stack && new_zone == Zone::Battlefield {
+            self.transfer_cast_linked_exile_pairs(old_id, new_id);
+            self.transfer_exiled_with_source_links(old_id, new_id);
             self.effect_store
                 .continuous_effects
                 .retarget_resolved_permanent_spell(old_id, new_id);
@@ -2134,6 +2347,37 @@ impl GameState {
         )
     }
 
+    /// Reuse the native prospective-entry projection after every replacement
+    /// and as-enters choice, without committing an entry or publishing events.
+    pub(crate) fn prepared_entry_attachment_game_state(
+        &self, object: ObjectId, prepared: &PreparedEtbEntry,
+        controller: Option<PlayerId>,
+    ) -> Result<Option<GameState>, crate::effects::ExecutionError> {
+        let result = &prepared.result;
+        let mut event = crate::events::EnterBattlefieldEvent::new(object, self.object(object).ok_or(crate::effects::ExecutionError::ObjectNotFound(object))?.zone);
+        if let Some(creation) = &prepared.creation {
+            event.from = None; event.creation = Some(creation.clone());
+        }
+        event.enters_as_copy_of = result.enters_as_copy_of;
+        event.copy_followups = result.copy_followups.clone();
+        event.copy_duration = result.copy_duration.clone();
+        event.copy_name_override = result.copy_name_override.clone();
+        event.added_colors = result.added_colors;
+        event.added_card_types = result.added_card_types.clone();
+        event.removes_other_card_types = result.removes_other_card_types;
+        event.added_supertypes = result.added_supertypes.clone();
+        event.removed_supertypes = result.removed_supertypes.clone();
+        event.added_subtypes = result.added_subtypes.clone();
+        event.added_abilities = result.added_abilities.clone();
+        event.set_base_power_toughness = result.set_base_power_toughness;
+        event.controller_override = result.controller_override.or(controller);
+        event.enters_with_counters = result.enters_with_counters.clone();
+        event.enters_face_down = result.enters_face_down;
+        event.program_choices = prepared.choices.clone();
+        event.try_prospective_game_state(self)
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
+    }
+
     /// Original creation instructions belong to every replacement-added token.
     pub(crate) fn move_created_token_with_entry_instructions(
         &mut self,
@@ -2143,7 +2387,28 @@ impl GameState {
         enters_tapped: bool,
         choose_aura_attachment: bool,
         counters: Vec<(crate::object::CounterType, u32)>,
+        attachment: Option<AttachmentTarget>,
+        attachment_specified: bool,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
+        if attachment_specified {
+            // Prepare replacement/entry choices inside the same transaction as
+            // the fixed attachment; pending choices publish no partial world.
+            let mut working=self.clone();
+            let old_zone = working.object(old_id).map(|object|object.zone).unwrap_or(Zone::Command);
+            let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
+                &mut working,old_id,old_zone,decision_maker,counters.clone(),None,enters_tapped,cause.clone())?;
+            let Some(mut prepared)=working.prepare_etb_entry_with_controller_and_dm(old_id,result,None,decision_maker)? else {
+                return Ok(super::EntryCommitResult { original:crate::events::processing::EventOutcome::NotApplicable, programs:Vec::new(), pending:decision_maker.awaiting_choice(), published_outputs:Vec::new() });
+            };
+            prepared.entry_attachment=attachment;
+            prepared.entry_attachment_requires_aura=true;
+            prepared.entry_attachment_specified=true;
+            let result=working.move_object_with_etb_processing_with_dm_and_cause_internal(
+                old_id,Zone::Battlefield,cause,decision_maker,false,Vec::new(),None,enters_tapped,Some(prepared),None)?;
+            if decision_maker.awaiting_choice(){return Ok(super::EntryCommitResult::pending())}
+            *self=working;
+            return Ok(result);
+        }
         self.move_object_with_etb_processing_with_dm_and_cause_internal(
             old_id,
             Zone::Battlefield,
@@ -2298,6 +2563,8 @@ impl GameState {
         decision_maker: &mut dyn crate::decision::DecisionMaker,
         completed_programs: Option<(PreparedEtbChoices, Vec<crate::ability::Ability>)>,
     ) -> Result<Option<PreparedEtbEntry>, crate::effects::ExecutionError> {
+        let mut result = result;
+        if self.zone_move_is_prohibited(old_id, Zone::Battlefield) { result.prevented = true; }
         let checkpoint = self.clone();
         let outcome = self.prepare_etb_entry_after_programs_inner(
             old_id,
@@ -2333,6 +2600,7 @@ impl GameState {
                 entry_attachment_requires_aura: false,
                 entry_attachment_specified: false,
                 entry_attachment_filter: None,
+                creation: None,
             }));
         }
         let prospective_source = result
@@ -2386,11 +2654,11 @@ impl GameState {
             .or_else(|| prospective_source.map(|object| object.subtypes.clone()))
             .unwrap_or_default();
         if result.removes_other_card_types {
-            crate::continuous::replace_card_types_and_prune_subtypes(
+            crate::continuous::replace_card_types_and_prune_subtypes_in_game(
                 &mut prospective_card_types,
                 &mut prospective_subtypes,
                 &result.added_card_types,
-            );
+             self);
         }
         for subtype in &result.added_subtypes {
             if !prospective_subtypes.contains(subtype) {
@@ -2422,6 +2690,7 @@ impl GameState {
                     entry_attachment_requires_aura: false,
                     entry_attachment_specified: false,
                     entry_attachment_filter: None,
+                creation: None,
                 }));
             }
         }
@@ -2437,6 +2706,7 @@ impl GameState {
                 entry_attachment_requires_aura: false,
                 entry_attachment_specified: false,
                 entry_attachment_filter: None,
+                creation: None,
             }));
         }
         let mut prospective_abilities = prospective_copiable_values
@@ -2445,6 +2715,7 @@ impl GameState {
             .or_else(|| prospective_source.map(|object| object.abilities_vec()))
             .unwrap_or_default();
         prospective_abilities.extend(result.added_abilities.iter().cloned());
+        if result.enters_face_down { prospective_abilities.clear(); }
 
         let mut program_choices = if let Some((choices, abilities)) = completed_programs {
             prospective_abilities = abilities;
@@ -2463,7 +2734,11 @@ impl GameState {
                 .ok_or(crate::effects::ExecutionError::ObjectNotFound(old_id))?
                 .zone;
             let mut entry_event = crate::events::EnterBattlefieldEvent::new(old_id, from);
+            if let Some(context) = &result.replacement_context
+                && let Some(original) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(context.event.inner())
+            { entry_event.from = original.from; entry_event.creation = original.creation.clone(); }
             entry_event.enters_as_copy_of = result.enters_as_copy_of;
+            entry_event.enters_face_down = result.enters_face_down;
             entry_event.copy_duration = result.copy_duration.clone();
             entry_event.copy_name_override = result.copy_name_override.clone();
             entry_event.added_colors = result.added_colors;
@@ -2513,6 +2788,7 @@ impl GameState {
                 entry_attachment_requires_aura: false,
                 entry_attachment_specified: false,
                 entry_attachment_filter: None,
+                creation: None,
             }));
         }
 
@@ -3226,6 +3502,7 @@ impl GameState {
             entry_attachment_requires_aura: false,
             entry_attachment_specified: false,
             entry_attachment_filter: None,
+            creation: None,
         }))
     }
 
@@ -3275,6 +3552,26 @@ impl GameState {
             false,
             Some(prepared_entry),
             None,
+        )
+    }
+
+    pub(crate) fn commit_prepared_originless_card_entry(
+        &mut self, object: ObjectId, mut prepared: PreparedEtbEntry,
+        mut creation: crate::events::CreateCardsEvent,
+        cause: crate::events::cause::EventCause,
+        dm: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
+        if !self.is_originless_card_entry_pending(object) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence("originless entry lost its exact uncreated card".into()));
+        }
+        if prepared.result.new_destination == Some(Zone::Stack) {
+            return Err(crate::effects::ExecutionError::InternalError("originless card creation on the stack requires a casting operation".into()));
+        }
+        creation.amount = 1; creation.selection_finalized = true;
+        prepared.creation = Some(creation.clone());
+        self.move_object_with_etb_processing_with_dm_and_cause_body(
+            object, Zone::Battlefield, cause, dm, false, Vec::new(),
+            Some(creation.player), false, Some(prepared), true, None,
         )
     }
 
@@ -3342,7 +3639,9 @@ impl GameState {
         prepared_entry: Option<PreparedEtbEntry>,
         authored_entry_definition: Option<crate::cards::CardDefinition>,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
-        if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
+        if self.zone_move_is_prohibited(old_id, new_zone)
+            || (new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id))
+        {
             let mut published_outputs = Vec::new();
             let programs = prepared_entry
                 .map(|mut entry| {
@@ -3510,12 +3809,13 @@ impl GameState {
         {
             return Ok(None);
         }
+        let originless = prepared_entry.as_ref().and_then(|entry| entry.creation.clone());
         let old_zone = self
             .object(old_id)
             .ok_or(crate::effects::ExecutionError::ObjectNotFound(old_id))?
             .zone;
 
-        if old_zone == new_zone && !matches!(new_zone, Zone::Exile | Zone::Command) {
+        if originless.is_none() && old_zone == new_zone && !matches!(new_zone, Zone::Exile | Zone::Command) {
             return Ok(None);
         }
         *original_verdict = EventOutcome::Prevented;
@@ -3527,6 +3827,7 @@ impl GameState {
             return Ok(Some(EntersResult {
                 new_id,
                 enters_tapped: false,
+                entry_attachment: None,
             }));
         }
 
@@ -3570,6 +3871,7 @@ impl GameState {
         }
         let PreparedEtbEntry {
             result,
+            creation: _,
             choices,
             zone_entry_lookback,
             entry_definition,
@@ -3617,7 +3919,10 @@ impl GameState {
         if result.prevented {
             if let Some(dest) = result.new_destination {
                 // Move to the alternate destination
-                let Some(new_id) = self.move_prepared_zone_entry_with_lookback(
+                let new_id = if originless.is_some() {
+                    self.materialize_originless_card_entry(old_id, dest)
+                } else {
+                    self.move_prepared_zone_entry_with_lookback(
                     old_id,
                     dest,
                     cause.clone(),
@@ -3627,12 +3932,16 @@ impl GameState {
                     entry_definition.as_ref(),
                     &physical_components,
                     linked_face_mana_cost.as_ref(),
-                ) else {
-                    return Ok(None);
+                    false,
+
+                )
+
                 };
+                let Some(new_id) = new_id else { return Ok(None); };
                 return Ok(Some(EntersResult {
                     new_id,
                     enters_tapped: false,
+                    entry_attachment: None,
                 }));
             }
             return Ok(None);
@@ -3722,7 +4031,14 @@ impl GameState {
 
         // Preserve a simultaneous exchange's entry-legality result through
         // the final zone mutation, not just the outer ETB preparation layer.
-        let Some(new_id) = self.move_prepared_zone_entry_with_lookback(
+        if originless.is_some() && result.enters_face_down {
+            if let Some(object) = self.object_mut(old_id) { object.apply_face_down_cast_overlay(); }
+            self.set_face_down(old_id);
+        }
+        let new_id = if originless.is_some() {
+            self.materialize_originless_card_entry(old_id, Zone::Battlefield)
+        } else {
+            self.move_prepared_zone_entry_with_lookback(
             old_id,
             Zone::Battlefield,
             cause.clone(),
@@ -3732,9 +4048,12 @@ impl GameState {
             entry_definition.as_ref(),
             &physical_components,
             linked_face_mana_cost.as_ref(),
-        ) else {
-            return Ok(None);
+            result.enters_face_down,
+
+        )
+
         };
+        let Some(new_id) = new_id else { return Ok(None); };
         if let Some(object) = self.object_mut(new_id) {
             merge_retained_tagged_objects(
                 &mut object.cast_tagged_objects,
@@ -3896,11 +4215,11 @@ impl GameState {
                         // operation as prospective and ordinary entry worlds.
                         let mut types = std::mem::take(&mut copiable_values.card_types).into();
                         let mut subtypes = std::mem::take(&mut copiable_values.subtypes).into();
-                        crate::continuous::replace_card_types_and_prune_subtypes(
+                        crate::continuous::replace_card_types_and_prune_subtypes_in_game(
                             &mut types,
                             &mut subtypes,
                             &result.added_card_types,
-                        );
+                         self);
                         copiable_values.card_types = types.to_vec();
                         copiable_values.subtypes = subtypes.to_vec();
                     }
@@ -3932,12 +4251,14 @@ impl GameState {
                             None,
                         );
                     }
+                    if result.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RemoveManaCost) {copiable_values.mana_cost=None;}
                     if let Some((power, toughness)) = result.set_base_power_toughness {
                         copiable_values.power = Some(power);
                         copiable_values.toughness = Some(toughness);
                     }
 
-                    let modification = crate::continuous::Modification::CopyOf { retain_original_name: false,
+                    let modification = crate::continuous::Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
                         target_id: copy_source_id,
                         copiable_values: Box::new(copiable_values),
                         preserve_source_abilities: false,
@@ -4009,6 +4330,7 @@ impl GameState {
             {
                 new_obj.color_override = Some(new_obj.colors().union(result.added_colors));
             }
+            let admitted_families=self.custom_subtypes.clone();
             if (!result.added_card_types.is_empty() || result.removes_other_card_types)
                 && let Some(new_obj) = self.object_mut(new_id)
             {
@@ -4018,6 +4340,11 @@ impl GameState {
                     }
                 }
                 if result.removes_other_card_types {
+                    for subtype in new_obj.subtypes.iter_mut() {
+                        if let crate::types::Subtype::Custom(incoming)=*subtype {
+                            if let Some(crate::types::Subtype::Custom(known))=admitted_families.iter().find(|known|**known==*subtype) {*subtype=crate::types::Subtype::Custom(incoming.union_associations(*known));}
+                        }
+                    }
                     crate::continuous::replace_card_types_and_prune_subtypes(
                         &mut new_obj.card_types,
                         &mut new_obj.subtypes,
@@ -4123,6 +4450,9 @@ impl GameState {
         if let Some(life_total) = choices.noted_life_total {
             self.set_noted_life_total_for_source(new_id, life_total);
         }
+        if temporary_copy_duration.is_none()
+            && result.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RemoveManaCost)
+            && let Some(object)=self.object_mut(new_id) {object.mana_cost=None;}
         if result.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics)
             && let Some(object) = self.object_mut(new_id)
         {
@@ -4200,6 +4530,25 @@ impl GameState {
                 );
                 self.queue_trigger_event(event_provenance, event);
             }
+        }
+
+        // Apply source-zone entry programs' permanent designations to this
+        // new object before any enter-the-battlefield observer can inspect it.
+        for (label,payment) in &choices.as_enters_named_actions {
+            let controller=self.current_controller(new_id).ok_or(crate::effects::ExecutionError::InvalidTarget)?;
+            let effect=crate::effect::Effect::new(ironsmith_core::PerformNamedActionEffect {label:label.clone(),performer:Some(crate::target::ChooseSpec::SpecificObject(new_id)),objects:None,prior_objects:None});
+            let outcome=crate::effects::execute_effect(self,&effect,&mut crate::effects::EffectContext::new_default(new_id,controller).with_activation_mana_payment(payment.clone()))?;
+            for event in outcome.events {self.queue_trigger_event(event.provenance(),event);}
+        }
+        for designation in &choices.as_enters_designations {
+            let effect = crate::effect::Effect::new(ironsmith_core::SetPermanentDesignationEffect {
+                target: crate::target::ChooseSpec::SpecificObject(new_id),
+                designation: designation.clone(),
+            });
+            let controller = self.current_controller(new_id).ok_or(crate::effects::ExecutionError::InvalidTarget)?;
+            let mut context = crate::effects::EffectContext::new_default(new_id, controller);
+            let outcome = crate::effects::execute_effect(self, &effect, &mut context)?;
+            for event in outcome.events { self.queue_trigger_event(event.provenance(), event); }
         }
 
         if let Some(protector) = choices.battle_protector {
@@ -4372,11 +4721,13 @@ impl GameState {
                     return Ok(Some(EntersResult {
                         new_id: graveyard_id,
                         enters_tapped: false,
+                        entry_attachment: None,
                     }));
                 }
                 return Ok(Some(EntersResult {
                     new_id: old_id,
                     enters_tapped: false,
+                        entry_attachment: None,
                 }));
             }
         }
@@ -4453,6 +4804,9 @@ impl GameState {
             }
         }
 
+        let mut entry_attachment_verdict = entry_attachment_specified.then_some(
+            crate::effect::EntryAttachmentChoice { target: entry_attachment, performed: false },
+        );
         if entry_attachment_specified
             && (!entry_attachment_requires_aura
                 || self.calculated_subtypes(new_id).contains(&Subtype::Aura))
@@ -4464,6 +4818,25 @@ impl GameState {
                 self.object(new_id).is_some_and(|object| object.attached_to == Some(target))
                     || crate::effects::permanents::attach_battlefield_object_to_target(self, new_id, target)
             });
+            if let Some(verdict) = &mut entry_attachment_verdict {
+                verdict.performed = attached;
+            }
+            if attached && let Some(target) = entry_attachment {
+                // The entry owner performed the attachment. Its as-becomes-
+                // attached choices precede entry observations and deferred
+                // replacement programmes; the later receipt consumer does not
+                // physically attach or repeat these choices.
+                let controller = self.controller_of_id(new_id)
+                    .ok_or(crate::effects::ExecutionError::ObjectNotFound(new_id))?;
+                let mut choice_context = crate::effects::ExecutionContext::new(
+                    new_id, controller, decision_maker,
+                );
+                choice_context.cause = cause.clone();
+                crate::effects::permanents::choose_color_as_becomes_attached(
+                    self, &mut choice_context, new_id, target,
+                );
+                if choice_context.decision_maker.awaiting_choice() { return Ok(None); }
+            }
             if is_aura && !attached {
                 let checkpoint = aura_entry_checkpoint.take().ok_or_else(|| {
                     crate::effects::ExecutionError::InternalError(
@@ -4479,6 +4852,7 @@ impl GameState {
                     return Ok(Some(EntersResult {
                         new_id: graveyard_id,
                         enters_tapped: false,
+                        entry_attachment: None,
                     }));
                 }
                 *original_verdict = EventOutcome::Prevented;
@@ -4519,7 +4893,7 @@ impl GameState {
         {
             // A permanent entering as a copy of a Room (Clone) wasn't cast as
             // either half, so it enters with neither door unlocked.
-            let cast_as_spell = old_zone == Zone::Stack
+            let cast_as_spell = originless.is_none() && old_zone == Zone::Stack
                 && result.enters_as_copy_of.is_none()
                 && self
                     .object(new_id)
@@ -4546,12 +4920,14 @@ impl GameState {
         Ok(Some(EntersResult {
             new_id,
             enters_tapped: result.enters_tapped,
+            entry_attachment: entry_attachment_verdict,
         }))
     }
 
     /// Removes an object from the game completely (e.g., tokens ceasing to exist).
     /// This does NOT create a new object - the object is simply gone.
     pub fn remove_object(&mut self, id: ObjectId) {
+        self.runtime_cache.originless_card_entries.remove(&id);
         if !self.objects.contains_key(&id) {
             return;
         }
@@ -4929,6 +5305,10 @@ impl GameState {
 
         // Check that all objects with non-Stack zones are in exactly one index
         for (&id, obj) in &self.objects {
+            if self.is_originless_card_entry_pending(id) {
+                if seen_ids.contains(&id) { return Err(format!("uncreated card #{} already has a zone index", id.0)); }
+                continue;
+            }
             if obj.zone == Zone::Stack {
                 // Stack objects are managed via StackEntry, not indexed
                 continue;
@@ -5109,6 +5489,17 @@ impl GameState {
         source: Option<ObjectId>,
         source_controller: Option<PlayerId>,
     ) -> Option<crate::triggers::TriggerEvent> {
+        self.add_counters_with_cause(id, counter_type, amount, crate::events::cause::EventCause {
+            source, source_controller, ..crate::events::cause::EventCause::effect()
+        })
+    }
+
+    pub fn add_counters_with_cause(
+        &mut self, id: ObjectId, counter_type: crate::object::CounterType, amount: u32,
+        cause: crate::events::cause::EventCause,
+    ) -> Option<crate::triggers::TriggerEvent> {
+        let source = cause.source;
+        let source_controller = cause.source_controller;
         // CR 702.26b: ordinary effects cannot change phased-out permanents.
         if self.is_phased_out(id) {
             return None;
@@ -5139,7 +5530,7 @@ impl GameState {
                 source,
                 source_controller,
             )
-            .with_count_after(count_after),
+            .with_count_after(count_after).with_cause(cause),
             event_provenance,
         ))
     }
@@ -6485,6 +6876,10 @@ impl GameState {
                 {
                     Some(index)
                 }
+                crate::effect::Until::OpponentsNextTurn
+                    if !effect.is_pending()
+                        && self.turn.turn_number > effect.expires_end_of_turn
+                        && self.active_players().iter().any(|player| self.are_opponents(effect.controller, *player)) => Some(index),
                 // CR 611.2a: "until <player>'s next turn" ends once, as that
                 // turn begins; it must not apply again on later turns.
                 duration
@@ -6902,6 +7297,9 @@ impl GameState {
             Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
         | Modification::RewriteText(_)
+            // A fragment subset selects a complete precompiled rules graph.
+            // It can add or remove the abilities this fast path scans for.
+            | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetTextBox(_)
             | Modification::CopyStaticAbilityVariants { .. }
             // Restriction modifications materialize as cant-relevant static

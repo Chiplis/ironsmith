@@ -1,4 +1,5 @@
 use super::*;
+use crate::cards::builders::StaticAbilityAst;
 
 fn static_ability_uses_persistent_chosen_player(
     ability: &crate::static_abilities::StaticAbility,
@@ -478,7 +479,8 @@ fn split_source_line_static_runs(
             && single_static_line(&items[index]).is_some_and(|(_, ability)| {
             !matches!(
                 ability,
-                crate::cards::builders::StaticAbilityAst::AttachmentRestriction { .. }
+                crate::cards::builders::StaticAbilityAst::CopySourceSelectionReplacement { .. }
+                | StaticAbilityAst::AttachmentRestriction { .. }
                     | crate::cards::builders::StaticAbilityAst::KeywordAction(_)
             )
         }) {
@@ -523,6 +525,7 @@ pub fn lower_normalized_card_ast_with_facts(
         items,
         overload_branch,
         cleave_branch,
+        optional_text_variants,
         allow_unsupported,
     } = ast;
     let provenance_view = provenance.view();
@@ -552,6 +555,7 @@ pub fn lower_normalized_card_ast_with_facts(
         items: branch.items,
         overload_branch: None,
         cleave_branch: None,
+        optional_text_variants: None,
         allow_unsupported,
     });
     let cleave_ast = cleave_branch.map(|branch| NormalizedCardAst {
@@ -562,7 +566,20 @@ pub fn lower_normalized_card_ast_with_facts(
         items: branch.items,
         overload_branch: None,
         cleave_branch: None,
+        optional_text_variants: None,
         allow_unsupported,
+    });
+
+    let optional_text_asts = optional_text_variants.map(|plan| crate::model::OptionalTextVariants {
+        labels: plan.labels, casting_payment: plan.casting_payment,
+        branches: plan.branches.into_iter().map(|branch| crate::model::OptionalTextVariantBranch {
+            removed: branch.removed,
+            items: vec![NormalizedCardAst {
+                builder: builder.clone(), annotations: ParseAnnotations::default(), provenance: provenance.clone(),
+                symbols: symbols.borrow().clone(), items: branch.items, overload_branch: None,
+                cleave_branch: None, optional_text_variants: None, allow_unsupported,
+            }],
+        }).collect(),
     });
 
     let mut level_abilities = Vec::new();
@@ -663,6 +680,15 @@ pub fn lower_normalized_card_ast_with_facts(
     // Building the definition expands keywords (undying, persist, ...) that
     // mint keys of their own: still inside the document's reference scope.
     let mut definition = builder.build();
+    // CR 315.4: a conspiracy's ordinary printed abilities function in the
+    // command zone. Explicit nondefault functional zones remain authoritative.
+    if definition.card.card_types.contains(&crate::types::CardType::Conspiracy) {
+        for ability in &mut definition.abilities {
+            if ability.functional_zones == [crate::zone::Zone::Battlefield] {
+                ability.functional_zones = vec![crate::zone::Zone::Command];
+            }
+        }
+    }
     for ability in &mut definition.abilities {
         if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
             crate::lowering_support::bind_activation_value_samples(&mut activated.effects);
@@ -673,16 +699,65 @@ pub fn lower_normalized_card_ast_with_facts(
     super::linked_exile::bind_static_linked_exile(&mut definition);
     super::linked_exile::bind_private_return_linked_exile(&mut definition);
     super::linked_exile::bind_class_linked_exile(&mut definition);
+    super::linked_exile::bind_cost_linked_exile(&mut definition);
     let numeric = super::source_numbers::bind_source_number_pair(&mut definition)?;
     let mut generated: Vec<_> = numeric.iter().map(|proof| proof.definition()).collect();
+    let names = super::source_names::bind_source_name_pair(&mut definition, &generated)?;
+    generated.extend(names.iter().map(|proof| proof.definition()));
     let first_draw = super::first_draw_reveals::stamp_first_draw_pairs_with_generated(&mut definition, &generated)?;
     generated.extend(first_draw.iter().map(|proof| proof.definition()));
     super::activation_definitions::stamp_activation_definitions_with_generated(&mut definition, &generated)?;
     super::trigger_definitions::stamp_trigger_definitions_with_generated(&mut definition, &generated)?;
+    if let Some(plan) = optional_text_asts {
+        let casting_payment = if plan.casting_payment {
+            let candidates = definition.optional_costs.iter().enumerate().filter_map(|(index,cost)| cost.repeatable.then_some(index)).collect::<Vec<_>>();
+            let [index] = candidates.as_slice() else { return Err(CardTextError::ParseError("optional-text casting removal requires one uniquely declared repeatable optional additional cost".into())); };
+            Some(*index)
+        } else { None };
+        let invariant_slots = definition.abilities.iter().enumerate().filter_map(|(index,ability)| {
+            let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {return None;};
+            activated.effects.all_effects().iter().any(|effect|contains_optional_text_removal(effect)).then_some(index)
+        }).collect::<Vec<_>>();
+        let mut variants = Vec::with_capacity(plan.branches.len());
+        for branch in plan.branches {
+            let mut variant = if branch.removed == 0 { definition.clone() } else {
+                let [ast] = branch.items.as_slice() else {return Err(CardTextError::InvariantViolation("optional-text branch needs one card AST".into()));};
+                lower_normalized_card_ast_with_facts(ast.clone())?.definition
+            };
+            if variant.abilities.len() != definition.abilities.len() {
+                return Err(CardTextError::ParseError("optional-text subset changed printed ability slot cardinality".into()));
+            }
+            for (base,changed) in definition.abilities.iter().zip(&mut variant.abilities) {
+                match (&base.kind,&mut changed.kind) {
+                    (crate::ability::AbilityKind::Activated(base),crate::ability::AbilityKind::Activated(changed)) => changed.effects.activation_definition = base.effects.activation_definition.clone(),
+                    (crate::ability::AbilityKind::Triggered(base),crate::ability::AbilityKind::Triggered(changed)) => changed.effects.trigger_definition = base.effects.trigger_definition.clone(),
+                    _ => {},
+                }
+            }
+            variant.ability_labels.resize(variant.abilities.len(), String::new());
+            variants.push(ironsmith_core::OptionalTextFragmentVariant {
+                removed: branch.removed, abilities: variant.abilities, ability_labels: variant.ability_labels,
+                spell_effect: variant.spell_effect, aura_attach_filter: variant.aura_attach_filter,
+                canonical_text: variant.canonical_text,
+            });
+        }
+        definition.abilities.push(crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility {
+            id: Some(ironsmith_core::StaticAbilityId::OptionalTextFragments), label: "Structured optional rules-text fragments".into(), payload: crate::static_abilities::StaticAbilityPayload::OptionalTextFragments(Box::new(ironsmith_core::OptionalTextFragmentsSpec {
+                labels: plan.labels, variants, invariant_slots, current_removed: 0, casting_payment,
+            })),
+        }));
+    }
     drop(_document_references);
     Ok(LoweredCardDocument {
         symbols: symbols.into_inner(),
         definition,
         annotations,
     })
+}
+
+fn contains_optional_text_removal(effect: &crate::effect::Effect) -> bool {
+    if effect.downcast_ref::<ironsmith_core::RemoveOptionalTextFragmentEffect>().is_some() { return true; }
+    if let Some(wrapper) = effect.downcast_ref::<crate::effects::WithIdEffect>() { return contains_optional_text_removal(&wrapper.effect); }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() { return sequence.effects.iter().any(contains_optional_text_removal); }
+    false
 }

@@ -165,7 +165,8 @@ fn independent_acquisitions_do_not_cross_feed_the_level_reader_and_complete_acqu
     for definition in definitions() { for borrowed in [false, true] {
         let mut game = game(); let (class, attacker, first) = prepared(&mut game, &definition, true); complete_levels(&mut game, class);
         let donor = game.create_object_from_definition(&definition, A, Zone::Exile);
-        let extra = if borrowed { Modification::CopyTriggeredAbilities { filter: ObjectFilter::specific(donor), exclude_source_name: false, exclude_source_id: true } }
+        let extra = if borrowed { Modification::CopyTriggeredAbilities { excluded_ability_designations: Vec::new(),
+        filter: ObjectFilter::specific(donor), exclude_source_name: false, exclude_source_id: true } }
             else { Modification::AddAbilityGeneric(producer(&definition).clone()) };
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(class, A, EffectTarget::Specific(class), extra)); game.refresh_continuous_state().unwrap();
         top(&mut game, true); top(&mut game, true); combat(&mut game, attacker, B); assert_eq!(game.stack.len(), 2);

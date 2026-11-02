@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "msem-source.json",
+    "source_row": "msem-319",
+    "scope": "Corrected First mate consumer; exact original printed source retained"
+  },
+  "mechanics": [
+    {
+      "id": "msem-first-mate-319",
+      "keyword": "Harmonize",
+      "original_reminder": "If this card outside the game is your chosen first mate, you may swap it with a card in your opening hand.",
+      "executable_reminder": "If this card outside the game is your chosen first mate, you may swap it with a card in your opening hand.",
+      "source_cards": [
+        "Lilia of the Soul"
+      ],
+      "rule_reference": null,
+      "rule_text": [],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Lilia of the Soul_OTH",
+          "name": "Lilia of the Soul",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Legendary Creature \u2014 Human Bard\nPower/Toughness: 4/4\nFirst mate \u2014 Each nonland card in your starting deck has \u201c+1/+1 counter\u201d or \u201charmonize\u201d in its printed rules text. *(If this card outside the game is your chosen first mate, you may swap it with a card in your opening hand.)*\nOnce each turn, if one or more +1/+1 counters would be put on a permanent you control, you may put twice that many of those counters on it instead.\nOnce each turn, if you would trigger a harmony ability of a permanent you control, you may have that ability trigger twice instead.",
+          "executable_text": null,
+          "mana_cost": "{2}{G}{G}",
+          "type_line": "Legendary Creature \u2014 Human Bard",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Lilia of the Soul_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lilia of the Soul",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Legendary Creature \u2014 Human Bard\nPower/Toughness: 4/4\nFirst mate \u2014 Each nonland card in your starting deck has \u201c+1/+1 counter\u201d or \u201charmonize\u201d in its printed rules text. *(If this card outside the game is your chosen first mate, you may swap it with a card in your opening hand.)*\nOnce each turn, if one or more +1/+1 counters would be put on a permanent you control, you may put twice that many of those counters on it instead.\nOnce each turn, if you would trigger a harmony ability of a permanent you control, you may have that ability trigger twice instead."
+            }
+          ]
+        }
+      ],
+      "classification": {
+        "status": "reviewed",
+        "basis": "Original reminder and explicit First mate source declaration; extraction msem-319 incorrectly associated Harmonize rule. No Harmony/trigger-doubling source text changed.",
+        "inventory_keyword": "Harmonize",
+        "corrected_keyword": "First mate",
+        "inventory_identity_basis": "The immutable source row msem-319 labels this exact First mate reminder Harmonize. Preserve that inventory label for provenance; executable_keyword identifies the actual printed declaration."
+      },
+      "definitions": [
+        {
+          "keyword": "First mate",
+          "reminder": "If this card outside the game is your chosen first mate, you may swap it with a card in your opening hand.",
+          "sourceCard": "Lilia of the Soul"
+        }
+      ],
+      "source_inventory_id": "msem-319",
+      "executable_keyword": "First mate"
+    }
+  ]
+}

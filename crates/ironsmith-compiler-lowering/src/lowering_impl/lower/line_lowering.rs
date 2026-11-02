@@ -216,7 +216,8 @@ fn materialize_static_abilities(
         .filter(|ability| {
             !matches!(
                 ability,
-                StaticAbilityAst::AttachmentRestriction { .. }
+                StaticAbilityAst::CopySourceSelectionReplacement { .. }
+                | StaticAbilityAst::AttachmentRestriction { .. }
                     | StaticAbilityAst::KeywordAction(KeywordAction::Fuse)
             )
         })
@@ -287,7 +288,8 @@ fn materialize_static_abilities(
                 let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::EntryCountersAndFollowingAbilities { amount } } = ability.payload else { unreachable!() };
                 state.pending_backups.push(PendingBackup { ability_boundary: builder.abilities.len() + lowered_abilities.len(), amount, descriptive: true });
             }
-            StaticAbilityAst::AttachmentRestriction { .. }
+            StaticAbilityAst::CopySourceSelectionReplacement { .. }
+                | StaticAbilityAst::AttachmentRestriction { .. }
             | StaticAbilityAst::KeywordAction(KeywordAction::Fuse) if case_solved => {
                 return Err(CardTextError::ParseError(
                     "Solved static attachment/Fuse rule has no conditional owner".into(),
@@ -318,9 +320,13 @@ fn materialize_static_abilities(
             StaticAbilityAst::Static(ref ability)
                 if builder.card_builder.card_types_ref().iter().any(|t| matches!(t, crate::types::CardType::Instant | crate::types::CardType::Sorcery))
                     && matches!(ability.payload, ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { .. } }) => {
-                let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story } } = ability.payload else { unreachable!() };
+                let ironsmith_core::StaticAbilityPayload::KeywordMarkerMechanic { mechanic: ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story, tapped_only, ref named_designation, ref history_requirements } } = ability.payload else { unreachable!() };
                 let mut effects = builder.spell_effect.take().unwrap_or_default();
-                effects.push(crate::effect::Effect::new(ironsmith_core::AscendEffect::designation_if_permanent_count(minimum, historic_only, enduring_story)));
+                let mut designation = ironsmith_core::AscendEffect::designation_if_permanent_count(minimum, historic_only, enduring_story);
+                designation.tapped_only = tapped_only;
+                designation.named_designation = named_designation.clone();
+                designation.history_requirements = history_requirements.clone();
+                effects.push(crate::effect::Effect::new(designation));
                 builder.spell_effect = Some(effects);
             }
             // "Creatures without flying can't block this turn" (Falter,
@@ -473,7 +479,15 @@ fn spell_rule_restriction_parts<T, E, C, Cond, ICond: Clone>(
         .collect::<Vec<_>>();
     restrictions
         .iter()
-        .all(|restriction| !matches!(restriction, crate::effect::Restriction::BeCountered(_)))
+        .all(|restriction| !matches!(restriction,
+            crate::effect::Restriction::BeCountered(_)
+                // A source-filtered damage rule is an authored continuous
+                // property (including text-addition lineage), not an implied
+                // one-turn instruction merely because its card is a spell.
+                // Explicitly temporary prohibitions already lower from their
+                // own effect sentence with their authored duration.
+                | crate::effect::Restriction::PreventDamageFrom { .. }
+        ))
         .then_some((condition, restrictions))
 }
 
@@ -581,6 +595,13 @@ fn materialize_static_zones(
     facts: &crate::model::facts::StaticLineSemanticFacts,
 ) -> Ability {
     let mut materialized = Ability::static_ability(ability.clone());
+    // The typed outer action owns its availability zone. Nested instructions
+    // may grant casting from another zone without relocating this action.
+    if let ironsmith_core::StaticAbilityPayload::IntrinsicImmediateAction { source_zone, .. } =
+        &ability.payload
+    {
+        return materialized.in_zones(vec![*source_zone]);
+    }
     if uses_spell_only_functional_zones(&ability) {
         materialized = materialized.in_zones(spell_only_functional_zones());
     }
@@ -630,6 +651,17 @@ fn materialize_triggered(
     max_triggers_per_turn: Option<u32>,
     semantic_facts: &LineSemanticFacts,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
+    Ok(builder.with_ability(materialize_triggered_ability(trigger, prepared, max_triggers_per_turn, semantic_facts)?))
+}
+
+/// Lower one complete triggered occurrence independently of where it is held.
+/// Level ranges store this occurrence in their existing source-filtered carrier.
+pub(super) fn materialize_triggered_ability(
+    trigger: TriggerSpec,
+    prepared: PreparedTriggeredEffectsForLowering,
+    max_triggers_per_turn: Option<u32>,
+    semantic_facts: &LineSemanticFacts,
+) -> Result<Ability, CardTextError> {
     let functional_zones = derive_triggered_ability_functional_zones_from_facts(
         &trigger,
         &semantic_facts.triggered_ability.functional_zones,
@@ -663,7 +695,7 @@ fn materialize_triggered(
         semantic_facts.triggered_ability.leading_unless_surface,
     );
     apply_ability_stack_rules(&mut parsed, semantic_facts);
-    Ok(builder.with_ability(parsed))
+    Ok(parsed)
 }
 
 fn apply_ability_stack_rules(ability: &mut Ability, facts: &LineSemanticFacts) {
@@ -1151,6 +1183,7 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
     );
     let starts_new_source_line = payment_segment.starts_new_source_line;
     program.segments[1] = crate::resolution::ResolutionSegment {
+        ability_designations: Default::default(),
         default_effects: vec![grant],
         self_replacements: Vec::new(),
         starts_new_source_line,
@@ -1663,6 +1696,7 @@ fn materialize_optional_cost(
                     intervening_if: Some(crate::effect::Condition::ThisSpellPaidLabel(reference)),
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         }
@@ -1684,6 +1718,7 @@ fn materialize_optional_cost(
                     intervening_if: Some(crate::effect::Condition::ThisSpellPaidLabel(reference)),
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         }

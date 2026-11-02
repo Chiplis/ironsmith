@@ -28,6 +28,7 @@ use crate::filter::TaggedOpbjectRelation;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
+use crate::zone::Zone;
 use ironsmith_compiler_semantic::model::DamagePreventionActionAst;
 use ironsmith_compiler_semantic::model::ForEachEffectAst;
 use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction, ValueSurfaceHint};
@@ -260,6 +261,17 @@ pub fn annotate_effect_sequence_owned(
     // during lowering. Otherwise their consumers can reference an earlier ID.
     fn assign_persistent_result_tags(effects: &mut Vec<EffectAst>, ids: &mut IdGenContext) {
         for effect in effects {
+            // A choice output is a stable result slot, not the lexical `it`
+            // placeholder that later instructions may rebind. Persist its
+            // name on the AST so branch re-annotation uses the same snapshot.
+            if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                tag, count, count_value: None, ..
+            }) = effect
+                && tag.key == crate::tag::CompilerReferenceTag::It.key()
+                && count.max == Some(1) && !count.dynamic_x
+            {
+                *tag = crate::tag::TagRef::of(next_reference_tag(ids, "chosen"));
+            }
             if let EffectAst::SubjectVerb(subject) = effect
                 && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { tag, .. }) =
                     &mut subject.action
@@ -355,6 +367,15 @@ fn remember_local_discard_alias_if_unbound(frame: &mut ReferenceFrame, tag: &Tag
         return;
     }
     frame.snapshot_tag_aliases.push((alias, tag.clone()));
+}
+
+/// Preserve the latest viewed set independently of later choices/sacrifices.
+fn remember_looked_at_cards_alias(frame: &mut ReferenceFrame) {
+    let alias = crate::tag::CompilerReferenceTag::LookedAtCards;
+    frame.snapshot_tag_aliases.retain(|(key, _)| key != &alias.key());
+    if let Some(tag) = frame.last_object_tag.clone() {
+        frame.snapshot_tag_aliases.push((alias.bind().into(), tag));
+    }
 }
 
 fn remember_public_revealed_alias(frame: &mut ReferenceFrame, tag: Option<&TagKey>) {
@@ -1024,9 +1045,15 @@ fn rebind_pronoun_filter(
     noun: &[crate::types::CardType],
     env: &ReferenceEnv,
 ) {
-    let Some(replacement) = noun_excluded_antecedent_replacement(noun, env) else {
-        return;
-    };
+    // An explicit card demonstrative names the named action's affected card,
+    // while the still-current bare object antecedent names its performer.
+    // Once a later local instruction replaces that antecedent, ordinary
+    // last-object/discriminator resolution owns the reference again.
+    let named_card = env.known_last_object_tag().is_some_and(|tag|tag.as_str()=="__named_action_source")
+        && (filter.union_surface.explicit_card_noun()
+            || matches!(&filter.source_surface, Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface)) if surface.split_whitespace().last()==Some("card")))
+        && env.recent_object_target_bindings.iter().any(|binding|binding.tag.as_str()=="__named_action_objects");
+    let Some(replacement) = (if named_card {Some(TagKey::from("__named_action_objects"))}else{noun_excluded_antecedent_replacement(noun,env)}) else { return; };
     for constraint in &mut filter.tagged_constraints {
         if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
@@ -1107,6 +1134,7 @@ fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &Refe
                     source,
                     ..
                 }) => (vec![source], false),
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { target, source, .. }) => (vec![target, source], false),
                 SubjectVerbActionAst::Control(ControlActionAst::Attach { object, .. }) => {
                     (vec![object], true)
                 }
@@ -1125,12 +1153,14 @@ fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &Refe
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. }) => {
                     (vec![target], false)
                 }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection{target,member_zone,..}) => (vec![target],*member_zone==crate::zone::Zone::Battlefield),
                 SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
                 | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                     target,
                     ..
                 })
                 | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     target, ..
                 }) => (vec![target], true),
@@ -1274,6 +1304,9 @@ fn rebind_chosen_collection_trigger(
         | TriggerSpec::ConditionQualified { trigger, .. } => {
             rebind_chosen_collection_trigger(trigger, env)
         }
+        TriggerSpec::CharacteristicGained(gain) => {
+            rebind_chosen_collection_filter(&mut gain.filter, env)
+        }
         TriggerSpec::ControlChanged(control) => {
             rebind_chosen_collection_filter(&mut control.filter, env)
         }
@@ -1413,6 +1446,17 @@ fn resolve_definite_object_target_from_bindings(
         TargetAst::Object(filter, explicit_target_span, reference_span)
             if explicit_target_span.is_none() && reference_span.is_some() =>
         {
+            // A demonstrative's noun is reference metadata, deliberately not
+            // a live type restriction. Discriminator equality omits that
+            // metadata, so it cannot select its antecedent: an otherwise
+            // empty `that creature` filter would match an untyped card slot.
+            // Leave its identity to the noun-aware/pronoun reference pass.
+            if filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == crate::tag::CompilerReferenceTag::It.key()
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }) {
+                return;
+            }
             let mut matching = bindings
                 .iter()
                 .filter(|binding| object_reference_matches_binding(filter, binding));
@@ -1535,6 +1579,7 @@ fn resolve_definite_object_references_in_effect(
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach {
                 target, ..
             })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection{target,..})
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target, ..
             })
@@ -1734,6 +1779,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
+        | Value::TimesPaidLabelOf { object: spec, .. }
         | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
         | Value::CommanderCastCountOf(spec)
@@ -1934,20 +1980,31 @@ fn advance_coordinated_reference_frames(
     // union. Separate sentences go through `advance_reference_frames`, where
     // each exile replaces the alias (the most recent exile wins).
     let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+    // A distributed member may need a choice helper before its actual exile.
+    // Its explicit affected-result alias, not the helper's selected input,
+    // names that member's exact completed movement packet.
+    fn terminal_exile(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => terminal_exile(effect),
+            EffectAst::Sequence { effects } | EffectAst::SourceSentence { effects, .. }
+                | EffectAst::CommaThen { effects } => effects.last().is_some_and(terminal_exile),
+            _ => is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled),
+        }
+    }
     let mut exile_group: Vec<TagKey> = Vec::new();
     for effect in effects {
         advance_reference_frame_for_effect(effect, id_gen, frame)?;
-        if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) {
-            if let Some((_, exiled)) = frame
-                .snapshot_tag_aliases
-                .iter()
-                .rev()
-                .find(|(existing, _)| existing == &alias)
-                && !exile_group.contains(exiled)
-            {
-                exile_group.push(exiled.clone());
+        let exiled = match effect {
+            EffectAst::TagAffected { effect, tag } if terminal_exile(effect) => Some(tag.key.clone()),
+            _ if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) => frame
+                .snapshot_tag_aliases.iter().rev().find(|(existing, _)| existing == &alias).map(|(_, tag)| tag.clone()),
+            _ => None,
+        };
+        if let Some(exiled) = exiled {
+            if !exile_group.contains(&exiled) {
+                exile_group.push(exiled);
             }
-            if exile_group.len() > 1 {
+            if !exile_group.is_empty() {
                 frame
                     .snapshot_tag_aliases
                     .retain(|(existing, _)| existing != &alias);
@@ -1967,6 +2024,22 @@ fn advance_coordinated_reference_frames(
         }
     }
     Ok(())
+}
+
+// Persistent rule bodies are independently resolving triggered programs.
+// Seed their event roles, never the registration action's local producers.
+fn persistent_rule_reference_frame(trigger:&TriggerSpec)->ReferenceFrame {
+    ReferenceFrame {
+        last_object_tag: ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(trigger),
+        last_player_filter: crate::trigger_players::inferred_trigger_player_filter(trigger),
+        allow_life_event_value: trigger_supports_event_amount(trigger),
+        allow_excess_damage_event_value: ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount(trigger),
+        milling_event_filter: ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(trigger),
+        cast_event_quantity: ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(trigger),
+        dice_event_grouped: ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger),
+        life_event_binding: ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(trigger),
+        ..ReferenceFrame::default()
+    }
 }
 
 fn advance_reference_frame_for_effect(
@@ -2905,6 +2978,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { tag, .. }) => {
                     frame.last_object_tag = Some(tag.clone().into());
+                    frame.last_card_name_choice_tag = Some(tag.clone().into());
                 }
                 SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { filter, tag, .. }) => {
                     track_player_from_object_filter(filter, frame);
@@ -2938,7 +3012,8 @@ fn advance_reference_frame_for_effect(
                     // destination must survive this instruction.
                     maybe_tag_target(target, frame, id_gen, "attachment_target")?;
                 }
-                SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) => {
+                SubjectVerbActionAst::Control(ControlActionAst::Unattach { object })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. }) => {
                     track_target_player(object, frame);
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves { target })
@@ -3152,6 +3227,7 @@ fn advance_reference_frame_for_effect(
                     } else {
                         tag.clone().into()
                     });
+                    remember_looked_at_cards_alias(frame);
                 }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     target,
@@ -3290,7 +3366,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "become_color_choice")?;
                 }
-                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, .. }) => {
+                SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, .. } | CharacteristicActionAst::RemoveOptionalTextFragment { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "text_changed")?;
                 }
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { target, source, .. }) => {
@@ -3355,8 +3431,12 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = referenced_copy_source;
                     }
                 }
+                SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection{target,..})=>{
+                    maybe_tag_target(target,frame,id_gen,"targeted")?;
+                }
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { target, .. })
                 | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
                 | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget { target, .. })
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget { target, .. }) => {
                     // Lowering wraps these effects in a `granted_*` tag. Keep
@@ -3669,6 +3749,13 @@ fn advance_reference_frame_for_effect(
         EffectAst::Permissions(PermissionEffectAst::May { effects }) => {
             advance_effects_preserving_last_effect(effects, id_gen, frame)?;
         }
+        EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule { controller, trigger, effects, .. }) => {
+            let mut nested=persistent_rule_reference_frame(trigger);
+            advance_reference_frames(effects,id_gen,&mut nested)?;
+            // Only the actual registration's player is an enclosing antecedent;
+            // future child choices, aliases and numeric producers remain local.
+            track_effect_player(*controller,frame,false,false)?;
+        }
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
@@ -3690,7 +3777,7 @@ fn advance_reference_frame_for_effect(
         }) => {
             advance_delayed_effects_preserving_antecedents(effects, id_gen, frame)?;
         }
-        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects }) => {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects } | PermissionEffectAst::MayPay { player, effects, .. }) => {
             // The named decider is also the actor for references inside the
             // optional instruction. Bind it before walking the body so a
             // relative filter cannot capture an older player antecedent.
@@ -4105,6 +4192,14 @@ fn advance_reference_frame_for_effect(
                     tag.clone().into()
                 },
             );
+            remember_looked_at_cards_alias(frame);
+        }
+        EffectAst::CreateCards { player, result_tag, .. } => {
+            track_effect_player(*player, frame, true, true)?;
+            frame.last_object_tag = Some(result_tag.clone().into());
+        }
+        EffectAst::GrantLoyaltyActivationAllowance { target: Some(target), .. } => {
+            maybe_tag_target(target, frame, id_gen, "loyalty_recipient")?;
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
@@ -4116,6 +4211,9 @@ fn advance_reference_frame_for_effect(
         | EffectAst::TagSplicedCards { .. }
         | EffectAst::ExchangeBlocks { .. }
         | EffectAst::CoinFlipLifeStakes { .. }
+        | EffectAst::CreateLinkedFaceToken { .. }
+        | EffectAst::MergePermanents(_)
+        | EffectAst::LinkExiledCards { .. }
         | EffectAst::UnblockSoleBlockedAttackers(_)
         | EffectAst::GrantPayLifeManaAbilityUntilEndOfTurn(_)
         | EffectAst::RollAndStoreDieResults(_)
@@ -4126,6 +4224,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::PlayWithHandRevealed(_)
         | EffectAst::RevealSourceInHandUntilOwnersNextTurn(_)
         | EffectAst::TagLastDamageSource(_)
+        | EffectAst::NoteObjectNames(_)
+        | EffectAst::LinkObjectsToGroup(_)
         | EffectAst::ControlVotesThisTurn
         | EffectAst::GrantTapUncontrolledLandsForMana
         | EffectAst::RevealContestWinnerMayChangeTriggeringTargets { .. }
@@ -4165,6 +4265,11 @@ fn advance_reference_frame_for_effect(
         | EffectAst::Votes(VoteEffectAst::VoteExtra { .. }) => {}
     }
 
+    // The declared exported object packet is the operation's result, even
+    // when bookkeeping effects follow the producing child instruction.
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { objects: Some(TargetAst::Tagged(tag, _)), program: Some(_), .. }), .. }) = effect {
+        frame.last_object_tag = Some(tag.key.clone());
+    }
     if is_object_memory_producer_for_action(effect, PriorEffectAction::Milled)
         && let Some(tag) = frame.last_object_tag.clone()
     {
@@ -4666,6 +4771,95 @@ fn bind_source_condition_attachment_host(effect: &mut EffectAst) {
     }
 }
 
+fn effect_contains_type_choice(effect: &EffectAst) -> bool {
+    // Registration does not execute a future or reflexive trigger's program
+    // in this instruction sequence.
+    if matches!(effect, EffectAst::Delayed(_)
+        | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. }
+            | ConditionalEffectAst::ResolvedWhenResult { .. })) {
+        return false;
+    }
+    if matches!(effect, EffectAst::SubjectVerb(subject) if matches!(subject.action,
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. }
+            | ChoiceActionAst::ChooseCreatureType { .. } | ChoiceActionAst::ChooseLandType { .. }))) {
+        return true;
+    }
+    let mut found = false;
+    for_each_nested_effects(effect, true, |children| {
+        found |= children.iter().any(effect_contains_type_choice);
+    });
+    found
+}
+
+fn bind_local_type_choice_domain(
+    effect: &mut EffectAst,
+    domain: &mut Option<bool>,
+    ambiguous: &mut bool,
+) -> Result<(), CardTextError> {
+    if matches!(effect, EffectAst::Delayed(_)
+        | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. }
+            | ConditionalEffectAst::ResolvedWhenResult { .. })) {
+        return Ok(());
+    }
+    match effect {
+        EffectAst::Sequence { effects } | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::CommaThen { effects } | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ResultBranchLabel { effects, .. } => {
+            // Authored sentence boundaries and presentation wrappers do not
+            // introduce a choice scope of their own.
+            for child in effects { bind_local_type_choice_domain(child, domain, ambiguous)?; }
+            return Ok(());
+        }
+        EffectAst::SubjectVerb(subject) => match &mut subject.action {
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. }) => {
+                *domain = Some(true); *ambiguous = false; return Ok(());
+            }
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+                family: crate::types::SubtypeFamily::Creature, ..
+            }) => {
+                *domain = Some(false); *ambiguous = false; return Ok(());
+            }
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. }
+                | ChoiceActionAst::ChooseLandType { .. }) => {
+                // Other subtype domains use independent native choice memory
+                // or need a different type-change instruction. They cannot
+                // authorize reading an older creature choice.
+                *domain = None; *ambiguous = true; return Ok(());
+            }
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
+                use_source_chosen_type: true, use_source_chosen_card_type,
+                source_type_is_unspecified, ..
+            }) if *source_type_is_unspecified => {
+                if *ambiguous {
+                    return Err(CardTextError::ParseError("chosen type has an ambiguous nested choice domain".into()));
+                }
+                if let Some(is_card) = *domain {
+                    *use_source_chosen_card_type = is_card;
+                    // A later child-lowering pass cannot reinterpret this
+                    // resolved domain in a fresh local context.
+                    *source_type_is_unspecified = false;
+                }
+                return Ok(());
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    let nested_choice = effect_contains_type_choice(effect);
+    // Each possible execution path imports the known incoming domain, but
+    // a choice made in one branch cannot become a definite outgoing fact.
+    try_for_each_nested_effects_mut(effect, true, |children| {
+        let mut child_domain = *domain;
+        let mut child_ambiguous = *ambiguous;
+        for child in children {
+            bind_local_type_choice_domain(child, &mut child_domain, &mut child_ambiguous)?;
+        }
+        Ok::<(), CardTextError>(())
+    })?;
+    if nested_choice { *domain = None; *ambiguous = true; }
+    Ok(())
+}
+
 fn annotate_effect_sequence_with_env_internal(
     effects: Vec<EffectAst>,
     mut current_env: ReferenceEnv,
@@ -4674,6 +4868,10 @@ fn annotate_effect_sequence_with_env_internal(
 ) -> Result<AnnotatedEffectSequence, CardTextError> {
     let mut annotated = Vec::with_capacity(effects.len());
     let mut effects = effects.into_iter();
+    // This is a local instruction-sequence fact, never a remembered choice
+    // from an unrelated ability or an alternative branch.
+    let mut last_type_choice_is_card = None;
+    let mut ambiguous_type_choice = false;
     // Activation costs execute before this resolution sequence. Preserve
     // their exported snapshot tags independently from ordinary object memory,
     // which later instructions are free to advance.
@@ -4694,6 +4892,7 @@ fn annotate_effect_sequence_with_env_internal(
     }
 
     while let Some(mut effect) = effects.next() {
+        bind_local_type_choice_domain(&mut effect, &mut last_type_choice_is_card, &mut ambiguous_type_choice)?;
         bind_source_condition_attachment_host(&mut effect);
         bind_additional_cost_object_placeholder(&mut effect, &current_env);
         let tag_id_floor = id_gen.next_tag_id;
@@ -4846,6 +5045,9 @@ fn annotate_effect_sequence_with_env_internal(
                 resolution_env.source_object_antecedent = offer.in_env.source_object_antecedent;
             }
         }
+        if std::env::var_os("IRONSMITH_TRACE_GRANT_REFERENCES").is_some() && format!("{effect:?}").contains("GrantAbilitiesToTarget") {
+            eprintln!("GRANT_BEFORE_DEFINITE effect={effect:?} env={resolution_env:?}");
+        }
         resolve_definite_object_references_in_effect(
             &mut effect,
             &resolution_env.recent_object_target_bindings,
@@ -4877,6 +5079,9 @@ fn annotate_effect_sequence_with_env_internal(
         if let Some(values) = effect_comparison_operands(&effect, &resolution_env) {
             resolution_env.last_value_comparison = RefState::Known(values);
         }
+        if std::env::var_os("IRONSMITH_TRACE_GRANT_REFERENCES").is_some() && format!("{effect:?}").contains("GrantAbilitiesToTarget") {
+            eprintln!("GRANT_BEFORE_RESOLVE effect={effect:?} env={resolution_env:?}");
+        }
         bind_contextual_grant_duration(&mut effect, &resolution_env)?;
         let mut resolution_state = effect_reference_resolution_state(&resolution_env);
         resolution_state.last_sacrifice_cost_tag_index = resolution_state
@@ -4900,6 +5105,10 @@ fn annotate_effect_sequence_with_env_internal(
         );
         rebind_chosen_collection_noun_references(&mut effect, &resolution_env);
         bind_counted_choice_amount_to_antecedent(&mut effect, &resolution_env);
+        if std::env::var_os("IRONSMITH_TRACE_GRANT_REFERENCES").is_some() && format!("{effect:?}").contains("GrantAbilitiesToTarget") {
+            eprintln!("GRANT_AFTER_RESOLVE effect={effect:?}");
+        }
+
         // Some surface parsers initially spell "the exiled card" as the
         // ordinary `it` target and only resolve it to the source-linked exile
         // tag while resolving the action. If the trailing `it` predicate was
@@ -5268,7 +5477,9 @@ pub fn preserves_existing_it_for_power_self_damage_followup(
 // A branch's first result gate can consume the outcome from before the
 // conditional. Instructions later in a branch have their own antecedents.
 fn nested_entry_result_gate(effect: &EffectAst) -> Option<&EffectAst> {
+    if result_gate_surface(effect).is_some(){return Some(effect);}
     match effect {
+        EffectAst::BindX {effects,..} => effects.first().and_then(nested_entry_result_gate),
         EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) => {
             [if_true.first(), if_false.first()].into_iter().flatten().find_map(|entry| {
                 if result_gate_surface(entry).is_some() { Some(entry) }
@@ -5303,6 +5514,16 @@ fn maybe_assign_effect_result_id(
         return Some(id);
     }
     if let Some(id) = life_amount_bindings::rebound_producer_id(effect, remaining) {
+        id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
+        return Some(id);
+    }
+    // Reannotation of a transparent wrapper must keep the producer ID that
+    // its immediate typed receipt already names, rather than allocate an
+    // outcome no consumer reads. Only a compatible action can supply it.
+    if let Some((id, action)) = remaining.first().and_then(prior_instruction_receipt)
+        && id != EffectId::PENDING_PRIOR_ACTION
+        && effect_can_supply_object_memory_for_action(effect, action)
+    {
         id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
         return Some(id);
     }
@@ -5421,7 +5642,28 @@ fn resolved_result_gate_id(effect: &EffectAst) -> Option<EffectId> {
     }
 }
 
+fn prior_instruction_receipt(effect: &EffectAst) -> Option<(EffectId, PriorEffectAction)> {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+            if effects.len() == 1 => prior_instruction_receipt(&effects[0]),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction {
+                prior_objects: Some(receipt), ..
+            }), ..
+        }) => Some(*receipt),
+        EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+            source_collection_scope: Some(scope), ..
+        }) => Some((scope.capture_from, scope.capture_action)),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { from, zone, .. }), .. }) => {
+            let action = match zone { Zone::Exile => PriorEffectAction::Exiled, Zone::Battlefield => PriorEffectAction::PutOntoBattlefield, Zone::Hand => PriorEffectAction::PutIntoHand, Zone::Graveyard => PriorEffectAction::PutIntoGraveyard, _ => return None };
+            Some((*from, action))
+        },
+        _ => None,
+    }
+}
+
 fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
+    if let Some((_, action)) = prior_instruction_receipt(effect) { return Some(action); }
     let (predicate, _) = result_gate_surface(effect)?;
     match predicate {
         IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
@@ -5774,7 +6016,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
         EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { effects, .. })
         | EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. })
@@ -6209,6 +6451,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         ),
         PriorEffectAction::Copied => matches!(producer_action,
             SubjectVerbActionAst::Stack(crate::model::StackActionAst::CopySpell { .. })),
+        PriorEffectAction::Affected => true,
         PriorEffectAction::Investigated => matches!(producer_action,
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })),
         PriorEffectAction::Drawn => {
@@ -6547,6 +6790,7 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
             visit_filter_values(filter, visit);
             if let Some(constraint) = aggregate_constraint {
                 visit(&constraint.maximum);
+        if let Some(minimum) = &constraint.minimum { visit(minimum); }
                 if let Some(minimum) = &constraint.minimum {
                     visit(minimum);
                 }
@@ -6625,13 +6869,25 @@ fn visit_comparison_values(comparison: &crate::filter::Comparison, visit: &mut i
 }
 
 fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut impl FnMut(&Value)) {
+    if let SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. }) = action {
+        fn target_values(target: &TargetAst, visit: &mut impl FnMut(&Value)) {
+            match target {
+                TargetAst::Object(filter, _, _) => visit_filter_values(filter, visit),
+                TargetAst::WithCount(inner, _) => target_values(inner, visit),
+                TargetAst::WithCountValue(inner, _, count) => { target_values(inner, visit); visit(count); }
+                _ => {}
+            }
+        }
+        target_values(target, visit);
+        return;
+    }
     // A granted entry-counter amount ("This creature enters with X +1/+1
     // counters on it, where X is ... this way") reads an earlier result.
     if let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
         abilities, ..
     }) = action
     {
-        for ability in abilities {
+        for ability in abilities.iter().flat_map(|ability|ability.leaves()) {
             if let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) =
                 ability
                 && let crate::cards::builders::StaticAbilityAst::Static(ability) =
@@ -6924,6 +7180,38 @@ fn resolve_effect_references_in_effect(
     id_gen: &mut IdGenContext,
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { from, .. }), .. }) = effect
+        && *from == EffectId::PENDING_PRIOR_ACTION
+    {
+        *from = state.last_effect_id.ok_or_else(|| CardTextError::ParseError("remembering original arrivals requires a preceding instruction receipt".into()))?;
+    }
+    // A labelled action's collection names the previous completed operation,
+    // not an independently chosen set or the ambient object pronoun. Result
+    // branches carry their own condition ID through nested source sentences.
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction {
+            prior_objects: Some((effect_id, _)), ..
+        }), ..
+    }) = effect
+        && *effect_id == EffectId::PENDING_PRIOR_ACTION
+    {
+        *effect_id = state.last_effect_id.ok_or_else(|| {
+            if std::env::var_os("IRONSMITH_TRACE_COST_RECEIPTS").is_some() {
+                eprintln!("COST_RECEIPT_MISSING_PRODUCER\n{}", std::backtrace::Backtrace::force_capture());
+            }
+            CardTextError::ParseError("a named action's prior-object receipt requires a preceding result-producing instruction".into())
+        })?;
+    }
+
+    if let EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        source_collection_scope: Some(scope), ..
+    }) = effect
+        && scope.capture_from == EffectId::PENDING_PRIOR_ACTION {
+        // Resolve once. A transparent wrapper's later annotation must retain
+        // the exact producer ID rather than consume an ambient later result.
+        scope.capture_from = state.last_effect_id.ok_or_else(|| CardTextError::ParseError(
+            "a source collection requires a preceding result-producing instruction".into()))?;
+    }
     // "<object> becomes that color": bind the exact newest local color
     // producer (a color choice, or mana of a chosen color just added).
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -7189,6 +7477,32 @@ fn resolve_effect_references_in_effect(
             delayed_registration_effect_id: state.delayed_registration_effect_id,
         };
         resolve_effect_sequence_references_with_state_in_place(effects, id_gen, nested_state)?;
+        return Ok(());
+    }
+
+    if let EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule { trigger, effects, condition, .. })=effect {
+        let future=persistent_rule_reference_frame(trigger);
+        let nested_state=EffectReferenceResolutionState {
+            last_effect_id:None,pinned_effect_metric_id:None,last_library_search_effect_id:None,
+            counter_removal_cost:None,last_value_comparison:None,
+            last_sacrifice_cost_tag_index:None,last_exile_cost_tag_index:None,last_tap_cost_tag:None,
+            allow_life_event_value:future.allow_life_event_value,
+            allow_excess_damage_event_value:future.allow_excess_damage_event_value,
+            milling_event_filter:future.milling_event_filter.as_deref(),
+            cast_event_quantity:future.cast_event_quantity,dice_event_grouped:future.dice_event_grouped,
+            life_event_binding:future.life_event_binding.as_deref(),
+            life_amount_producers:&[],die_result_producers:&[],coin_result_producers:&[],
+            number_result_producers:&[],color_result_producers:&[],reveal_result_producers:&[],
+            bind_unbound_x_to_last_effect:false,has_announced_x:false,delayed_registration_effect_id:None,
+        };
+        if let Some(predicate)=condition {
+            let mut wrapper=EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate:predicate.clone(),if_true:Vec::new(),if_false:Vec::new(),
+            });
+            resolve_effect_result_values_in_fields(&mut wrapper,nested_state)?;
+            if let EffectAst::Conditionals(ConditionalEffectAst::Conditional{predicate:resolved,..})=wrapper {*predicate=resolved;}
+        }
+        resolve_effect_sequence_references_with_state_in_place(effects,id_gen,nested_state)?;
         return Ok(());
     }
 
@@ -7544,6 +7858,10 @@ fn advance_reference_env_for_effect(
                     && true_sequence.final_env.last_object_tag != env.last_object_tag
                     && matches!(true_sequence.final_env.last_object_tag, RefState::Known(_));
                 return Ok(ReferenceEnv {
+                    last_card_name_choice_tag: RefState::join(
+                        &true_sequence.final_env.last_card_name_choice_tag,
+                        &env.last_card_name_choice_tag,
+                    ),
                     last_value_comparison: env.last_value_comparison.clone(),
                     last_object_tag: if exports_branch_result {
                         true_sequence.final_env.last_object_tag.clone()
@@ -7623,6 +7941,10 @@ fn advance_reference_env_for_effect(
                 id_gen,
             )?;
             Ok(ReferenceEnv {
+                last_card_name_choice_tag: RefState::join(
+                    &true_sequence.final_env.last_card_name_choice_tag,
+                    &false_sequence.final_env.last_card_name_choice_tag,
+                ),
                 last_value_comparison: env.last_value_comparison.clone(),
                 last_object_tag: RefState::join(
                     &true_sequence.final_env.last_object_tag,
@@ -7722,6 +8044,8 @@ fn advance_reference_env_for_effect(
                 IfResultPredicate::Value(_) | IfResultPredicate::DieValue(_)
                     | IfResultPredicate::PriorEffectResult(_)
                     | IfResultPredicate::AffectedObjectMatchesCardType { .. }
+                    | IfResultPredicate::ResultObjectsMatch { .. }
+                    | IfResultPredicate::NamedActionCompleted { .. }
             ) {
                 // Numeric result rows, and rows classifying what the prior
                 // action produced ("If a land card is milled this way, ...
@@ -7808,6 +8132,11 @@ fn remember_off_battlefield_card_antecedent(
     if !from_off_battlefield_zone {
         return;
     }
+    // This helper is called by the exile action after its source-zone
+    // operand is known. The receipt's destination is independently typed,
+    // even though its canonical tag was not introduced by a ChooseObjects.
+    remember_object_kind_binding(frame, result,
+        &ObjectFilter::default().in_zone(crate::zone::Zone::Exile));
     let Some(previous) = frame
         .last_object_tag
         .clone()
@@ -7917,11 +8246,30 @@ fn resolve_effect_result_values_in_fields(
     {
         comparison_predicate(predicate, state)?;
     }
+    fn resolve_filter_result_values(filter: &mut ObjectFilter, state: EffectReferenceResolutionState) -> Result<(), CardTextError> {
+        if let Some(constraint) = &mut filter.target_set_aggregate_constraint {
+            resolve_effect_result_value(&mut constraint.maximum, state)?;
+            if let Some(minimum) = &mut constraint.minimum { resolve_effect_result_value(minimum, state)?; }
+        }
+        for comparison in [&mut filter.power, &mut filter.toughness, &mut filter.mana_value, &mut filter.color_count, &mut filter.card_type_count].into_iter().flatten() {
+            match comparison {
+                crate::filter::Comparison::EqualExpr(value) | crate::filter::Comparison::NotEqualExpr(value)
+                | crate::filter::Comparison::LessThanExpr(value) | crate::filter::Comparison::LessThanOrEqualExpr(value)
+                | crate::filter::Comparison::GreaterThanExpr(value) | crate::filter::Comparison::GreaterThanOrEqualExpr(value) => resolve_effect_result_value(value, state)?,
+                _ => {}
+            }
+        }
+        if let Some(child) = &mut filter.attached_to_object { resolve_filter_result_values(child, state)?; }
+        if let Some(child) = &mut filter.blocked_or_was_blocked_by_this_turn { resolve_filter_result_values(child, state)?; }
+        for child in &mut filter.any_of { resolve_filter_result_values(child, state)?; }
+        Ok(())
+    }
     fn resolve_target_count(
         target: &mut TargetAst,
         state: EffectReferenceResolutionState,
     ) -> Result<(), CardTextError> {
         match target {
+            TargetAst::Object(filter, _, _) => resolve_filter_result_values(filter, state)?,
             TargetAst::WithCount(inner, _) => resolve_target_count(inner, state)?,
             TargetAst::WithCountValue(inner, _, value) => {
                 resolve_target_count(inner, state)?;
@@ -7940,6 +8288,13 @@ fn resolve_effect_result_values_in_fields(
     }
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            // The producer is bound by resolve_effect_references_in_effect;
+            // zone and output tag contain no result-value expressions.
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { .. }) => {},
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. }) => {
+                resolve_target_count(target, state)?;
+                // Remaining operands are literal identity, ManaCost and u32.
+            }
             SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => {},
             SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => {},
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => {
@@ -8111,10 +8466,16 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -8379,6 +8740,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
                 ..
             })
@@ -8501,7 +8863,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 ..
             })
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { .. } | CharacteristicActionAst::RemoveOptionalTextFragment { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                 ..
             })
@@ -8512,7 +8874,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                 ..
             })
@@ -8548,7 +8910,7 @@ fn resolve_effect_result_values_in_fields(
                 abilities,
                 ..
             }) => {
-                for ability in abilities.iter_mut() {
+                for ability in abilities.iter_mut().flat_map(|ability|ability.leaves_mut()) {
                     let crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability) =
                         ability
                     else {
@@ -9428,6 +9790,14 @@ fn bind_unresolved_it_in_effect(effect: &mut EffectAst, seed_tag: &TagKey) -> us
 fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey) -> usize {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            // `from` identifies an instruction receipt, zone is literal, and
+            // `tag` declares the result binding. None is an input pronoun.
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { .. }) => 0,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection{target,source_tag,..})=>{
+                let mut changed=bind_unresolved_it_in_target(target,seed_tag);
+                if let Some(tag)=source_tag {if tag.key==crate::tag::CompilerReferenceTag::It.key(){tag.key=seed_tag.clone();changed+=1;}}
+                changed
+            },
             SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersThenBecomeMonstrous { amount }) => {
                 bind_unresolved_it_in_value(amount, seed_tag)
@@ -9474,10 +9844,15 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -9608,7 +9983,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { target, .. }) => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, .. }) => {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, .. } | CharacteristicActionAst::RemoveOptionalTextFragment { target, .. }) => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
@@ -10033,7 +10408,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(object, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::Control(ControlActionAst::Unattach { object }) => {
+            SubjectVerbActionAst::Control(ControlActionAst::Unattach { object })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { target: object, .. }) => {
                 bind_unresolved_it_in_target(object, seed_tag)
             }
             SubjectVerbActionAst::Control(ControlActionAst::Enchant {
@@ -10526,7 +10902,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 target,
                 source,
                 ..
-            }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, source, .. }) => {
+            }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, source, .. }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { target, source, .. }) => {
                 bind_unresolved_it_in_target(target, seed_tag)
                     + bind_unresolved_it_in_target(source, seed_tag)
             }
@@ -10534,6 +10910,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 target, ..
             })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
                 target,
                 ..
@@ -10983,6 +11360,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
+        | Value::TimesPaidLabelOf { object: spec, .. }
         | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
         | Value::CommanderCastCountOf(spec)
@@ -14158,7 +14536,7 @@ fn bind_contextual_grant_duration(effect: &mut EffectAst, env: &ReferenceEnv) ->
             SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {duration,..}
                 |GrantActionAst::GrantAbilitiesAll{duration,..}|GrantActionAst::GrantAbilitiesChoiceAll{duration,..}
                 |GrantActionAst::GrantAbilitiesChoiceToTarget{duration,..}|GrantActionAst::GrantAbilityToSource{duration,..}
-                |GrantActionAst::GrantActivatedAbilitiesFrom{duration,..}) => Some(duration),
+                |GrantActionAst::GrantActivatedAbilitiesFrom{duration,..}|GrantActionAst::GrantKeywordAbilitiesFrom{duration,..}) => Some(duration),
             _ => None,
         },
         _ => None,
@@ -14245,6 +14623,20 @@ mod source_hand_antecedent_kind_tests {
  use crate::cards::builders::SubjectVerbRoleAst;
  use crate::effect::Until;
  #[test]
+ fn definite_slot_matching_does_not_erase_a_demonstrative_noun() {
+  let mut filter=ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+  filter.set_explicit_card_type_noun(Some(crate::types::CardType::Creature));
+  let mut target=TargetAst::Object(filter,None,Some(crate::cards::TextSpan::synthetic()));
+  let bindings=vec![ObjectTargetBinding::new("untyped_card".into(),&ObjectFilter::default())];
+  resolve_definite_object_target_from_bindings(&mut target,&bindings);
+  let TargetAst::Object(filter,..)=target else {panic!("identity-bearing noun cannot be replaced by a discriminator-only match")};
+  assert_eq!(filter.explicit_card_type_noun(),Some(crate::types::CardType::Creature));
+  assert_eq!(filter.tagged_constraints[0].tag,crate::tag::CompilerReferenceTag::It.key());
+  let mut definite=TargetAst::Object(ObjectFilter::creature(),None,Some(crate::cards::TextSpan::synthetic()));
+  resolve_definite_object_target_from_bindings(&mut definite,&[ObjectTargetBinding::new("declared_creature".into(),&ObjectFilter::creature())]);
+  assert!(matches!(definite,TargetAst::Tagged(tag,_) if tag.as_str()=="declared_creature"),"ordinary definite descriptions still select a matching declared slot");
+ }
+ #[test]
  fn selected_source_card_keeps_off_battlefield_kind_for_prior_creature_recipient() {
   let mut frame=ReferenceFrame::default();let mut ids=IdGenContext::default();
   for (name,filter) in [("chosen_host",ObjectFilter::creature().you_control()),("chosen_source",ObjectFilter{source:true,zone:Some(crate::zone::Zone::Hand),..Default::default()})] {
@@ -14271,4 +14663,230 @@ mod source_hand_antecedent_kind_tests {
   remember_object_kind_binding(&mut unknown,&"source_without_zone".into(),&ObjectFilter{source:true,..Default::default()});
   assert!(unknown.recent_object_target_bindings.is_empty(),"source identity alone supplies no kind/zone proof");
  }
+}
+
+#[cfg(test)]
+mod persistent_choice_recipient_tests {
+    use super::*;
+    use crate::cards::builders::SubjectVerbRoleAst;
+    #[test]
+    fn source_exile_does_not_capture_an_earlier_singular_creature_choice() {
+        let choice=EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter:ObjectFilter::creature().you_control(),count:crate::effect::ChoiceCount::exactly(1),
+            count_value:None,player:PlayerAst::You,tag:crate::tag::CompilerReferenceTag::It.bind(),
+        });
+        let source=TargetAst::Object(ObjectFilter {source:true,zone:Some(crate::zone::Zone::Hand),owner:Some(PlayerFilter::You),..Default::default()},None,None);
+        let exile=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile{target:source,face_down:false,source_controller_may_look:false,source_top_only:false,source_bottom_only:false,target_plural_surface:false}));
+        let mut filter=ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key());
+        filter.set_explicit_card_type_noun(Some(crate::types::CardType::Creature));
+        let grant=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target:TargetAst::Object(filter,None,Some(crate::cards::TextSpan::synthetic())),abilities:vec![],duration:crate::effect::Until::EndOfTurn,
+                condition:None,set_quantifier_surface:None,only_if_absent:false,
+            }));
+        let annotated=annotate_effect_sequence(&[choice,exile,grant],&ReferenceImports::default(),
+            EffectReferenceResolutionConfig{force_auto_tag_object_targets:true,..Default::default()},IdGenContext::default()).unwrap();
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects{tag:chosen,..})=&annotated.effects[0].effect else {panic!("choice")};
+        assert_ne!(chosen.key,crate::tag::CompilerReferenceTag::It.key());
+        let grant=&annotated.effects[2];
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget{target,..}),..})=&grant.effect else {panic!("grant")};
+        let (resolved,_)=resolve_target_spec_with_choices(target,&grant.in_env).unwrap();
+        assert!(matches!(resolved.base(),ChooseSpec::Tagged(tag) if tag==&chosen.key),"recipient must use stable selected-creature slot: {resolved:?}");
+        assert!(grant.in_env.recent_object_target_bindings.iter().any(|binding|binding.tag==crate::tag::CompilerReferenceTag::SourceExiled.key() && binding.discriminator.zone()==Some(crate::zone::Zone::Exile)));
+    }
+}
+
+#[cfg(test)]
+mod activation_price_grant_operand_tests {
+    use super::*;
+    #[test]
+    fn producer_discovery_visits_nested_grant_target_values() {
+        let mut child=ObjectFilter::default();
+        child.power=Some(crate::filter::Comparison::EqualExpr(Box::new(Value::EventValue(EventValueSpec::DieBatchTotal))));
+        let mut filter=ObjectFilter::default();filter.any_of.push(child);
+        let action=SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative {
+            target:TargetAst::Object(filter,None,None),status:"marked".into(),replacement_cost:Default::default(),max_uses_per_ability_each_turn:1,nonloyalty_only:true,
+        });
+        let mut found=0;
+        visit_subject_verb_action_values(&action,&mut |value| { if matches!(value,Value::EventValue(EventValueSpec::DieBatchTotal)) {found+=1;} });
+        assert_eq!(found,1);
+    }
+}
+
+#[cfg(test)]
+mod persistent_rule_reference_scope_tests {
+    use super::*;
+    fn register(trigger:TriggerSpec,effects:Vec<EffectAst>)->EffectAst {
+        EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule {
+            name:"Independent rule".into(),controller:PlayerAst::You,trigger,effects,condition:None,event_only_condition:false,
+        })
+    }
+    #[test]
+    fn future_choice_does_not_replace_registration_antecedents(){
+        let mut frame=ReferenceFrame::default();frame.last_object_tag=Some("outer_object".into());
+        frame.snapshot_tag_aliases.push(("outer_alias".into(),"outer_object".into()));
+        let before_bindings=frame.recent_object_target_bindings.clone();
+        let body=EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter:ObjectFilter::creature(),count:crate::effect::ChoiceCount::exactly(1),count_value:None,
+            player:PlayerAst::You,tag:crate::tag::TagRef::of("future_choice"),
+        });
+        advance_reference_frame_for_effect(&register(TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),vec![body]),&mut IdGenContext::default(),&mut frame).unwrap();
+        assert_eq!(frame.last_object_tag,Some("outer_object".into()));
+        assert_eq!(frame.snapshot_tag_aliases,vec![("outer_alias".into(),"outer_object".into())]);
+        assert_eq!(frame.recent_object_target_bindings,before_bindings);
+    }
+    #[test]
+    fn future_player_reference_is_seeded_from_its_trigger_not_registration_actor(){
+        use crate::cards::builders::SubjectVerbRoleAst;
+        let draw=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::That,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw{count:Value::Fixed(1)}));
+        let mut outer=ReferenceFrame::default();outer.last_player_filter=Some(PlayerFilter::Opponent);
+        let trigger=TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any);
+        let nested=persistent_rule_reference_frame(&trigger);
+        assert_eq!(nested.last_player_filter,crate::trigger_players::inferred_trigger_player_filter(&trigger));
+        assert_ne!(nested.last_player_filter,outer.last_player_filter);
+        assert!(advance_reference_frame_for_effect(&register(trigger,vec![draw]),&mut IdGenContext::default(),&mut outer).is_ok());
+        assert_eq!(outer.last_player_filter,Some(PlayerFilter::Opponent));
+    }
+}
+
+#[cfg(test)]
+mod persistent_rule_numeric_scope_tests {
+    use super::*;
+    use crate::cards::builders::SubjectVerbRoleAst;
+    #[test]
+    fn registration_result_cannot_supply_future_that_many_but_local_child_result_can(){
+        let draw=EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer,PlayerAst::You,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw{count:Value::PendingEffectMetric{source:EffectMetricSource::Outcome,metric:EffectMetric::Count}}));
+        let register=|effects|EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule {
+            name:"Independent numeric rule".into(),controller:PlayerAst::You,trigger:TriggerSpec::DayNightChanged,
+            effects,condition:None,event_only_condition:false,
+        });
+        let producer=EffectAst::subject_verb_investigate(PlayerAst::You,Value::Fixed(1));
+        assert!(annotate_effect_sequence(&[producer.clone(),register(vec![draw.clone()])],&ReferenceImports::default(),EffectReferenceResolutionConfig::default(),IdGenContext::default()).is_err());
+        assert!(annotate_effect_sequence(&[register(vec![producer,draw])],&ReferenceImports::default(),EffectReferenceResolutionConfig::default(),IdGenContext::default()).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod remembered_arrival_input_rebinding_tests {
+    use super::*;
+    #[test]
+    fn input_pronoun_rebinding_preserves_arrival_output_binding_and_producer() {
+        let mut effect = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals {
+                from: EffectId(23), zone: Zone::Exile,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+            }),
+        );
+        let seed = crate::tag::CompilerReferenceTag::SourceExiled.key();
+        assert_eq!(bind_unresolved_it_in_effect_fields(&mut effect, &seed), 0);
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals {from,zone,tag}), ..
+        }) = effect else { panic!("arrival instruction retained"); };
+        assert_eq!(from, EffectId(23));
+        assert_eq!(zone, Zone::Exile);
+        assert_eq!(tag.key, crate::tag::CompilerReferenceTag::It.key());
+    }
+}
+
+/// Inside one entry program, a source's authored "enters with" instruction
+/// applies counters to the prepared entrant rather than granting a later entry
+/// rule. Shared by ordinary document statements and quoted static programs.
+pub fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+                ..
+            }) = &subject_verb.action
+            && matches!(target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
+            && *duration == ironsmith_core::Until::Forever
+            && let [crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability)] = abilities.as_slice()
+            && let crate::cards::builders::StaticAbilityAst::Static(ability) = static_ability.as_ref()
+            && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
+                &ability.payload
+        {
+            // This program runs during entry preparation. Its source counter
+            // additions are transferred to the entering object; granting a
+            // future entry replacement to the source-zone card is too late.
+            *effect = EffectAst::subject_verb_put_counters(
+                *counter,
+                count.clone(),
+                TargetAst::Source(None),
+                None,
+                false,
+            );
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            resolve_as_enters_source_counter_grants(nested);
+        });
+    }
+}
+
+#[cfg(test)]
+mod local_type_choice_domain_tests {
+    use super::*;
+    fn choice() -> EffectAst {
+        EffectAst::subject_verb_choose_card_type(PlayerAst::You, vec![crate::types::CardType::Artifact])
+    }
+    #[test]
+    fn a_land_choice_cannot_reuse_an_older_creature_domain() {
+        let mut domain = Some(false); let mut ambiguous = false;
+        let mut land = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Chooser, PlayerAst::You,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { exclude_basic: false, basic_only: true }));
+        bind_local_type_choice_domain(&mut land, &mut domain, &mut ambiguous).unwrap();
+        assert_eq!(domain, None); assert!(ambiguous);
+        let mut consumer = EffectAst::subject_verb_become_creature_type_choice(
+            TargetAst::Source(None), ironsmith_core::Until::EndOfTurn, Vec::new());
+        if let EffectAst::SubjectVerb(subject) = &mut consumer
+            && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
+                use_source_chosen_type, source_type_is_unspecified, ..
+            }) = &mut subject.action {
+            *use_source_chosen_type = true; *source_type_is_unspecified = true;
+        }
+        assert!(bind_local_type_choice_domain(&mut consumer, &mut domain, &mut ambiguous).is_err());
+    }
+    #[test]
+    fn sentence_boundaries_keep_a_direct_local_choice_domain() {
+        let mut producer = EffectAst::SourceSentence {
+            effects: vec![choice()], leading_then: false, starting_with_controller: false,
+        };
+        let mut consumer = EffectAst::subject_verb_become_creature_type_choice(
+            TargetAst::Source(None), ironsmith_core::Until::EndOfTurn, Vec::new());
+        if let EffectAst::SubjectVerb(subject) = &mut consumer
+            && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
+                use_source_chosen_type, source_type_is_unspecified, ..
+            }) = &mut subject.action {
+            *use_source_chosen_type = true; *source_type_is_unspecified = true;
+        }
+        let mut consumer = EffectAst::SourceSentence {
+            effects: vec![consumer], leading_then: false, starting_with_controller: false,
+        };
+        let mut domain = None; let mut ambiguous = false;
+        bind_local_type_choice_domain(&mut producer, &mut domain, &mut ambiguous).unwrap();
+        bind_local_type_choice_domain(&mut consumer, &mut domain, &mut ambiguous).unwrap();
+        let EffectAst::SourceSentence { effects, .. } = consumer else { panic!("sentence"); };
+        assert!(matches!(&effects[0], EffectAst::SubjectVerb(subject) if matches!(&subject.action,
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCreatureTypeChoice {
+                use_source_chosen_card_type: true, source_type_is_unspecified: false, ..
+            }))));
+    }
+    #[test]
+    fn immediate_alternatives_are_inspected_but_scheduled_choices_do_not_run_now() {
+        let alternative = EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
+            effects: Vec::new(), alternative: vec![choice()], player: PlayerAst::You,
+        });
+        assert!(effect_contains_type_choice(&alternative));
+        let later = EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects: vec![choice()] });
+        assert!(!effect_contains_type_choice(&later));
+        let wrapper = EffectAst::Permissions(PermissionEffectAst::May { effects: vec![later] });
+        assert!(!effect_contains_type_choice(&wrapper));
+    }
 }

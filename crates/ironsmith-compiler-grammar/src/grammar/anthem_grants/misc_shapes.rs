@@ -186,19 +186,23 @@ fn strip_leading_and(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 fn trim_grant_segment_edges(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = 0usize;
     let mut end = tokens.len();
+    let mut stripped_opening_quote = false;
     while start < end
         && matches!(
             tokens[start].kind,
             TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon | TokenKind::Quote
         )
     {
+        stripped_opening_quote |= tokens[start].kind == TokenKind::Quote;
         start += 1;
     }
+    // A trailing quote may close an operand (custom keyword "name").
+    // Strip it only when this segment also had an outer opening quote.
     while end > start
         && matches!(
             tokens[end - 1].kind,
-            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon | TokenKind::Quote
-        )
+            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+        ) || (end > start && stripped_opening_quote && tokens[end - 1].kind == TokenKind::Quote)
     {
         end -= 1;
     }

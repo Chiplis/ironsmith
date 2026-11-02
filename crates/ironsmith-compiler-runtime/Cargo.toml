@@ -247,3 +247,994 @@ path = "tests/custom_improve.rs"
 [[test]]
 name = "custom_subtypes"
 path = "tests/custom_subtypes.rs"
+
+[[test]]
+name = "custom_msem_standard_actions"
+path = "tests/custom_msem_standard_actions.rs"
+
+[[test]]
+name = "custom_abilities_tail"
+path = "tests/custom_abilities_tail.rs"
+
+[[test]]
+name = "custom_action_status_players"
+path = "tests/custom_action_status_players.rs"
+
+[[test]]
+name = "custom_arise"
+path = "tests/custom_arise.rs"
+
+[[test]]
+name = "custom_casting_early"
+path = "tests/custom_casting_early.rs"
+
+[[test]]
+name = "custom_final_abilities"
+path = "tests/custom_final_abilities.rs"
+
+[[test]]
+name = "custom_granted_parameter_identity"
+path = "tests/custom_granted_parameter_identity.rs"
+
+[[test]]
+name = "custom_growth_actions"
+path = "tests/custom_growth_actions.rs"
+
+[[test]]
+name = "custom_msem_ability_links"
+path = "tests/custom_msem_ability_links.rs"
+
+[[test]]
+name = "custom_revolution_late"
+path = "tests/custom_revolution_late.rs"
+
+[[test]]
+name = "custom_revolution_triggered_grants"
+path = "tests/custom_revolution_triggered_grants.rs"
+
+[[test]]
+name = "custom_msem_middle_keywords"
+path = "tests/custom_msem_middle_keywords.rs"
+
+[[test]]
+name = "custom_results_table"
+path = "tests/custom_results_table.rs"
+
+[[test]]
+name = "custom_unveil"
+path = "tests/custom_unveil.rs"
+
+[[test]]
+name = "custom_casting_middle"
+path = "tests/custom_casting_middle.rs"
+
+[[test]]
+name = "custom_endgame_designation"
+path = "tests/custom_endgame_designation.rs"
+
+[[test]]
+name = "custom_linked_face_down"
+path = "tests/custom_linked_face_down.rs"
+
+[[test]]
+name = "custom_reflect"
+path = "tests/custom_reflect.rs"
+
+[[test]]
+name = "custom_revolution_actions"
+path = "tests/custom_revolution_actions.rs"
+
+[[test]]
+name = "custom_traverse"
+path = "tests/custom_traverse.rs"
+
+[[test]]
+name = "custom_category_bars"
+path = "tests/custom_category_bars.rs"
+
+[[test]]
+name = "custom_named_activation_counters"
+path = "tests/custom_named_activation_counters.rs"
+
+[[test]]
+name = "custom_reprise"
+path = "tests/custom_reprise.rs"
+
+[[test]]
+name = "custom_revolution_acclimate"
+path = "tests/custom_revolution_acclimate.rs"
+
+[[test]]
+name = "custom_memento"
+path = "tests/custom_memento.rs"
+
+[[test]]
+name = "custom_mechanic_special_actions"
+path = "tests/custom_mechanic_special_actions.rs"
+
+[[test]]
+name = "custom_spellcharge"
+path = "tests/custom_spellcharge.rs"
+
+[[test]]
+name = "custom_invoke"
+path = "tests/custom_invoke.rs"
+
+[[test]]
+name = "custom_named_operation_completion"
+path = "tests/custom_named_operation_completion.rs"
+
+[[test]]
+name = "custom_named_operation_replacements"
+path = "tests/custom_named_operation_replacements.rs"
+
+[[test]]
+name = "custom_colored_resource_costs"
+path = "tests/custom_colored_resource_costs.rs"
+
+[[test]]
+name = "custom_collect_partition_replacement"
+path = "tests/custom_collect_partition_replacement.rs"
+
+[[test]]
+name = "custom_scaled_selection_preflight"
+path = "tests/custom_scaled_selection_preflight.rs"
+
+[[test]]
+name = "custom_ability_counter_bindings"
+path = "tests/custom_ability_counter_bindings.rs"
+
+[[test]]
+name = "custom_vision_named_receipts"
+path = "tests/custom_vision_named_receipts.rs"
+
+[[test]]
+name = "custom_named_action_state"
+path = "tests/custom_named_action_state.rs"
+
+[[test]]
+name = "custom_named_action_participants"
+path = "tests/custom_named_action_participants.rs"
+
+[[test]]
+name = "custom_enspirit_named"
+path = "tests/custom_enspirit_named.rs"
+
+[[test]]
+name = "custom_activation_alternatives"
+path = "tests/custom_activation_alternatives.rs"
+
+[[test]]
+name = "custom_intrinsic_paid_actions"
+path = "tests/custom_intrinsic_paid_actions.rs"
+
+[[test]]
+name = "custom_golden_age_designation"
+path = "tests/custom_golden_age_designation.rs"
+
+[[test]]
+name = "custom_coalesce_composition"
+path = "tests/custom_coalesce_composition.rs"
+
+[[test]]
+name = "custom_external_trigger_classes"
+path = "tests/custom_external_trigger_classes.rs"
+
+[[test]]
+name = "custom_trigger_class_choice"
+path = "tests/custom_trigger_class_choice.rs"
+
+[[test]]
+name = "custom_embody"
+path = "tests/custom_embody.rs"
+
+[[test]]
+name = "custom_enspirit"
+path = "tests/custom_enspirit.rs"
+
+[[test]]
+name = "custom_enspirit_linked_cost"
+path = "tests/custom_enspirit_linked_cost.rs"
+
+[[test]]
+name = "custom_submerge_source_choices"
+path = "tests/custom_submerge_source_choices.rs"
+
+[[test]]
+name = "custom_zero_named_completion"
+path = "tests/custom_zero_named_completion.rs"
+
+[[test]]
+name = "custom_named_operation_expansion_bindings"
+path = "tests/custom_named_operation_expansion_bindings.rs"
+
+[[test]]
+name = "custom_resource_binding_preview"
+path = "tests/custom_resource_binding_preview.rs"
+
+[[test]]
+name = "custom_spirited"
+path = "tests/custom_spirited.rs"
+
+[[test]]
+name = "custom_gallery"
+path = "tests/custom_gallery.rs"
+
+[[test]]
+name = "custom_module"
+path = "tests/custom_module.rs"
+
+[[test]]
+name = "custom_pledge_sources_next"
+path = "tests/custom_pledge_sources_next.rs"
+
+[[test]]
+name = "custom_subtype_family_associations"
+path = "tests/custom_subtype_family_associations.rs"
+
+[[test]]
+name = "custom_inscribe_subtype_lifetime"
+path = "tests/custom_inscribe_subtype_lifetime.rs"
+
+[[test]]
+name = "custom_first_mate_setup"
+path = "tests/custom_first_mate_setup.rs"
+
+[[test]]
+name = "custom_puzzlebox"
+path = "tests/custom_puzzlebox.rs"
+
+[[test]]
+name = "custom_legacy_departure"
+path = "tests/custom_legacy_departure.rs"
+
+[[test]]
+name = "custom_arise_action_receipts"
+path = "tests/custom_arise_action_receipts.rs"
+
+[[test]]
+name = "custom_optional_text_subset_compiler"
+path = "tests/custom_optional_text_subset_compiler.rs"
+
+[[test]]
+name = "custom_optional_text_fragments"
+path = "tests/custom_optional_text_fragments.rs"
+
+[[test]]
+name = "custom_optional_text_cast_transactions"
+path = "tests/custom_optional_text_cast_transactions.rs"
+
+[[test]]
+name = "custom_named_optional_payments"
+path = "tests/custom_named_optional_payments.rs"
+
+[[test]]
+name = "custom_bless_full_source"
+path = "tests/custom_bless_full_source.rs"
+
+[[test]]
+name = "custom_counter_copy_dependencies"
+path = "tests/custom_counter_copy_dependencies.rs"
+
+[[test]]
+name = "custom_linked_face_tokens"
+path = "tests/custom_linked_face_tokens.rs"
+
+[[test]]
+name = "custom_live_copy_donors"
+path = "tests/custom_live_copy_donors.rs"
+
+[[test]]
+name = "custom_compiled_resource_bindings"
+path = "tests/custom_compiled_resource_bindings.rs"
+
+[[test]]
+name = "custom_face_state_selections_next"
+path = "tests/custom_face_state_selections_next.rs"
+
+[[test]]
+name = "custom_named_action_subject_roles"
+path = "tests/custom_named_action_subject_roles.rs"
+
+[[test]]
+name = "custom_attain_next_wave"
+path = "tests/custom_attain_next_wave.rs"
+
+
+[[test]]
+name = "custom_breach_next_wave"
+path = "tests/custom_breach_next_wave.rs"
+
+
+[[test]]
+name = "custom_crumble_next_wave"
+path = "tests/custom_crumble_next_wave.rs"
+
+
+[[test]]
+name = "custom_deploy_next_wave"
+path = "tests/custom_deploy_next_wave.rs"
+
+
+[[test]]
+name = "custom_final_all_sources_next_wave"
+path = "tests/custom_final_all_sources_next_wave.rs"
+
+
+[[test]]
+name = "custom_foreshadow_next_wave"
+path = "tests/custom_foreshadow_next_wave.rs"
+
+
+[[test]]
+name = "custom_lionize_next_wave"
+path = "tests/custom_lionize_next_wave.rs"
+
+
+[[test]]
+name = "custom_recursive_next_wave"
+path = "tests/custom_recursive_next_wave.rs"
+
+
+[[test]]
+name = "custom_resilience_designations_next_wave"
+path = "tests/custom_resilience_designations_next_wave.rs"
+
+
+[[test]]
+name = "custom_resurface_next_wave"
+path = "tests/custom_resurface_next_wave.rs"
+
+
+[[test]]
+name = "custom_siphon_next_wave"
+path = "tests/custom_siphon_next_wave.rs"
+
+
+[[test]]
+name = "custom_activation_consumer_constraints"
+path = "tests/custom_activation_consumer_constraints.rs"
+
+
+[[test]]
+name = "custom_source_metadata_admission"
+path = "tests/custom_source_metadata_admission.rs"
+
+[[test]]
+name = "custom_fabled_sources"
+path = "tests/custom_fabled_sources.rs"
+
+[[test]]
+name = "custom_engorge_sources"
+path = "tests/custom_engorge_sources.rs"
+
+[[test]]
+name = "custom_recurring_damage_prevention"
+path = "tests/custom_recurring_damage_prevention.rs"
+
+[[test]]
+name = "custom_activation_funding_diagnostic"
+path = "tests/custom_activation_funding_diagnostic.rs"
+
+[[test]]
+name = "custom_maypay_query_bindings"
+path = "tests/custom_maypay_query_bindings.rs"
+
+[[test]]
+name = "custom_planeswalk_receipts"
+path = "tests/custom_planeswalk_receipts.rs"
+
+[[test]]
+name = "custom_linked_permission_followup"
+path = "tests/custom_linked_permission_followup.rs"
+
+[[test]]
+name = "custom_player_life_attack_restriction"
+path = "tests/custom_player_life_attack_restriction.rs"
+
+[[test]]
+name = "custom_level_static_source_admission"
+path = "tests/custom_level_static_source_admission.rs"
+
+[[test]]
+name = "custom_source_collections"
+path = "tests/custom_source_collections.rs"
+
+[[test]]
+name = "custom_source_collection_records"
+path = "tests/custom_source_collection_records.rs"
+
+[[test]]
+name = "custom_inscribe_grant_lifetime"
+path = "tests/custom_inscribe_grant_lifetime.rs"
+
+[[test]]
+name = "custom_inscribe_mass_capture"
+path = "tests/custom_inscribe_mass_capture.rs"
+
+[[test]]
+name = "custom_inscribe_exact_relation_sources"
+path = "tests/custom_inscribe_exact_relation_sources.rs"
+
+[[test]]
+name = "custom_mettalia_collection_colors"
+path = "tests/custom_mettalia_collection_colors.rs"
+
+[[test]]
+name = "custom_finite_color_scopes"
+path = "tests/custom_finite_color_scopes.rs"
+
+[[test]]
+name = "custom_delayed_exact_capture"
+path = "tests/custom_delayed_exact_capture.rs"
+
+[[test]]
+name = "custom_encourage_relation"
+path = "tests/custom_encourage_relation.rs"
+
+[[test]]
+name = "custom_gestalt_merge"
+path = "tests/custom_gestalt_merge.rs"
+
+[[test]]
+name = "custom_links_delayed_exile_sources"
+path = "tests/custom_links_delayed_exile_sources.rs"
+
+[[test]]
+name = "custom_links_encourage_sources"
+path = "tests/custom_links_encourage_sources.rs"
+
+[[test]]
+name = "custom_links_gestalt_sources"
+path = "tests/custom_links_gestalt_sources.rs"
+
+[[test]]
+name = "custom_links_slipstream_sources"
+path = "tests/custom_links_slipstream_sources.rs"
+
+[[test]]
+name = "custom_slipstream"
+path = "tests/custom_slipstream.rs"
+
+[[test]]
+name = "custom_tether"
+path = "tests/custom_tether.rs"
+
+[[test]]
+name = "custom_time_after_time_lifecycle"
+path = "tests/custom_time_after_time_lifecycle.rs"
+
+[[test]]
+name = "custom_unbounded_next_cast"
+path = "tests/custom_unbounded_next_cast.rs"
+
+[[test]]
+name = "custom_coordinated_object_groups"
+path = "tests/custom_coordinated_object_groups.rs"
+
+[[test]]
+name = "custom_recurring_spell_grants"
+path = "tests/custom_recurring_spell_grants.rs"
+
+[[test]]
+name = "custom_creed_permission_authority"
+path = "tests/custom_creed_permission_authority.rs"
+
+[[test]]
+name = "custom_token_conditional_exile_permission"
+path = "tests/custom_token_conditional_exile_permission.rs"
+
+[[test]]
+name = "custom_hand_event_casting"
+path = "tests/custom_hand_event_casting.rs"
+
+[[test]]
+name = "custom_cast_announcement_payments"
+path = "tests/custom_cast_announcement_payments.rs"
+
+[[test]]
+name = "custom_grouped_grant_choices"
+path = "tests/custom_grouped_grant_choices.rs"
+
+[[test]]
+name = "custom_hand_reveal_mixed_batch"
+path = "tests/custom_hand_reveal_mixed_batch.rs"
+
+[[test]]
+name = "custom_consume_full_source"
+path = "tests/custom_consume_full_source.rs"
+
+[[test]]
+name = "custom_syzygy_sources"
+path = "tests/custom_syzygy_sources.rs"
+
+[[test]]
+name = "custom_journey_player_rules"
+path = "tests/custom_journey_player_rules.rs"
+
+[[test]]
+name = "custom_journey_source_programs"
+path = "tests/custom_journey_source_programs.rs"
+
+[[test]]
+name = "custom_player_counter_rules"
+path = "tests/custom_player_counter_rules.rs"
+
+[[test]]
+name = "custom_chronicle_progression"
+path = "tests/custom_chronicle_progression.rs"
+
+[[test]]
+name = "custom_ada_target_projection"
+path = "tests/custom_ada_target_projection.rs"
+
+[[test]]
+name = "custom_ada_player_scalar_projection"
+path = "tests/custom_ada_player_scalar_projection.rs"
+
+[[test]]
+name = "custom_ada_specialized_packets"
+path = "tests/custom_ada_specialized_packets.rs"
+
+[[test]]
+name = "custom_ada_specialized_recipients"
+path = "tests/custom_ada_specialized_recipients.rs"
+
+[[test]]
+name = "custom_ada_vector_packets"
+path = "tests/custom_ada_vector_packets.rs"
+
+[[test]]
+name = "custom_spellcharge_full_sources"
+path = "tests/custom_spellcharge_full_sources.rs"
+
+[[test]]
+name = "custom_copy_creation_numeric_threshold"
+path = "tests/custom_copy_creation_numeric_threshold.rs"
+
+[[test]]
+name = "custom_solidarity_possess_fullsource"
+path = "tests/custom_solidarity_possess_fullsource.rs"
+
+[[test]]
+name = "custom_gorge_subject_completion"
+path = "tests/custom_gorge_subject_completion.rs"
+
+[[test]]
+name = "custom_accomplice_full_sources"
+path = "tests/custom_accomplice_full_sources.rs"
+
+[[test]]
+name = "custom_activation_color_history"
+path = "tests/custom_activation_color_history.rs"
+
+[[test]]
+name = "custom_filtered_face_down_entry"
+path = "tests/custom_filtered_face_down_entry.rs"
+
+[[test]]
+name = "custom_premonition_full_source"
+path = "tests/custom_premonition_full_source.rs"
+
+[[test]]
+name = "scoped_action_prohibitions"
+path = "tests/scoped_action_prohibitions.rs"
+
+[[test]]
+name = "custom_excess_damage_redirection"
+path = "tests/custom_excess_damage_redirection.rs"
+
+[[test]]
+name = "custom_optional_cost_acknowledgement"
+path = "tests/custom_optional_cost_acknowledgement.rs"
+
+[[test]]
+name = "permanent_could_produce_mana"
+path = "tests/permanent_could_produce_mana.rs"
+
+[[test]]
+name = "custom_crumble_composition"
+path = "tests/custom_crumble_composition.rs"
+
+[[test]]
+name = "custom_weapon_supplied_source_tokens"
+path = "tests/custom_weapon_supplied_source_tokens.rs"
+
+[[test]]
+name = "custom_next_spell_bounded_followup"
+path = "tests/custom_next_spell_bounded_followup.rs"
+
+[[test]]
+name = "custom_zone_additional_aggregate_tap"
+path = "tests/custom_zone_additional_aggregate_tap.rs"
+
+[[test]]
+name = "custom_choice_label_parity"
+path = "tests/custom_choice_label_parity.rs"
+
+[[test]]
+name = "custom_atomic_transform_characteristics"
+path = "tests/custom_atomic_transform_characteristics.rs"
+
+[[test]]
+name = "custom_stitch_source_operations_next"
+path = "tests/custom_stitch_source_operations_next.rs"
+
+[[test]]
+name = "custom_operation_token_grant_reader"
+path = "tests/custom_operation_token_grant_reader.rs"
+
+[[test]]
+name = "custom_cache_linked"
+path = "tests/custom_cache_linked.rs"
+
+[[test]]
+name = "custom_cast_status_continuation"
+path = "tests/custom_cast_status_continuation.rs"
+
+[[test]]
+name = "timed_event_program_replacement"
+path = "tests/timed_event_program_replacement.rs"
+
+[[test]]
+name = "custom_inscribe_whole_sources"
+path = "tests/custom_inscribe_whole_sources.rs"
+
+[[test]]
+name = "custom_temporary_copy_ability_loss"
+path = "tests/custom_temporary_copy_ability_loss.rs"
+
+[[test]]
+name = "custom_experience_complete"
+path = "tests/custom_experience_complete.rs"
+
+[[test]]
+name = "custom_favored_indulgence_sources"
+path = "tests/custom_favored_indulgence_sources.rs"
+
+[[test]]
+name = "custom_integrate_fullsource"
+path = "tests/custom_integrate_fullsource.rs"
+
+[[test]]
+name = "custom_player_named_action_history"
+path = "tests/custom_player_named_action_history.rs"
+
+[[test]]
+name = "custom_compose_full_sources"
+path = "tests/custom_compose_full_sources.rs"
+
+[[test]]
+name = "custom_leitmotif_complete_source"
+path = "tests/custom_leitmotif_complete_source.rs"
+
+[[test]]
+name = "custom_resolution_recipe_multiplicity"
+path = "tests/custom_resolution_recipe_multiplicity.rs"
+
+[[test]]
+name = "custom_eureka_sources"
+path = "tests/custom_eureka_sources.rs"
+
+[[test]]
+name = "custom_malign_unite_sources"
+path = "tests/custom_malign_unite_sources.rs"
+
+[[test]]
+name = "custom_mimic_numbered"
+path = "tests/custom_mimic_numbered.rs"
+
+[[test]]
+name = "custom_permanent_links"
+path = "tests/custom_permanent_links.rs"
+
+[[test]]
+name = "custom_catalyze_fullsource"
+path = "tests/custom_catalyze_fullsource.rs"
+
+[[test]]
+name = "custom_harness_sources"
+path = "tests/custom_harness_sources.rs"
+
+[[test]]
+name = "custom_reverberate_sources_complete"
+path = "tests/custom_reverberate_sources_complete.rs"
+
+[[test]]
+name = "custom_prophecy_source_complete"
+path = "tests/custom_prophecy_source_complete.rs"
+
+[[test]]
+name = "custom_reverberate_emblem"
+path = "tests/custom_reverberate_emblem.rs"
+
+[[test]]
+name = "custom_named_casting_price_reductions"
+path = "tests/custom_named_casting_price_reductions.rs"
+
+[[test]]
+name = "custom_copy_status_predicates"
+path = "tests/custom_copy_status_predicates.rs"
+
+[[test]]
+name = "custom_orchestrate_full_gameplay"
+path = "tests/custom_orchestrate_full_gameplay.rs"
+
+[[test]]
+name = "custom_mechanic_orchestrate_next"
+path = "tests/custom_mechanic_orchestrate_next.rs"
+
+[[test]]
+name = "custom_orchestrate_sources_full"
+path = "tests/custom_orchestrate_sources_full.rs"
+
+[[test]]
+name = "custom_alpha_engorge_fabled_inventory"
+path = "tests/custom_alpha_engorge_fabled_inventory.rs"
+
+[[test]]
+name = "custom_coalesce_whole_family"
+path = "tests/custom_coalesce_whole_family.rs"
+
+[[test]]
+name = "custom_from_zone_x_bounds"
+path = "tests/custom_from_zone_x_bounds.rs"
+
+[[test]]
+name = "custom_realm_category"
+path = "tests/custom_realm_category.rs"
+
+[[test]]
+name = "custom_persistent_entry_references"
+path = "tests/custom_persistent_entry_references.rs"
+
+[[test]]
+name = "custom_copy_source_definitions"
+path = "tests/custom_copy_source_definitions.rs"
+
+[[test]]
+name = "custom_surface_copy_cast"
+path = "tests/custom_surface_copy_cast.rs"
+
+[[test]]
+name = "custom_surface_full_sources"
+path = "tests/custom_surface_full_sources.rs"
+
+[[test]]
+name = "custom_card_creation_native_providers"
+path = "tests/custom_card_creation_native_providers.rs"
+
+[[test]]
+name = "custom_card_creation_graph"
+path = "tests/custom_card_creation_graph.rs"
+
+[[test]]
+name = "custom_named_action_object_names"
+path = "tests/custom_named_action_object_names.rs"
+
+[[test]]
+name = "custom_player_named_action_contextual"
+path = "tests/custom_player_named_action_contextual.rs"
+
+[[test]]
+name = "custom_mana_reduction_payment_choices"
+path = "tests/custom_mana_reduction_payment_choices.rs"
+
+[[test]]
+name = "custom_named_activation_discounts"
+path = "tests/custom_named_activation_discounts.rs"
+
+[[test]]
+name = "custom_source_noted_names"
+path = "tests/custom_source_noted_names.rs"
+
+[[test]]
+name = "custom_real_card_creation"
+path = "tests/custom_real_card_creation.rs"
+
+[[test]]
+name = "custom_conjure_graph_sources"
+path = "tests/custom_conjure_graph_sources.rs"
+
+[[test]]
+name = "custom_card_creation_actors"
+path = "tests/custom_card_creation_actors.rs"
+
+[[test]]
+name = "custom_nexus_technician_source"
+path = "tests/custom_nexus_technician_source.rs"
+
+[[test]]
+name = "custom_sightsee_full_sources"
+path = "tests/custom_sightsee_full_sources.rs"
+
+[[test]]
+name = "custom_waste_revive_whole_sources"
+path = "tests/custom_waste_revive_whole_sources.rs"
+
+[[test]]
+name = "custom_reprieve_pursuit_fullsource"
+path = "tests/custom_reprieve_pursuit_fullsource.rs"
+
+[[test]]
+name = "custom_oath_source_operations"
+path = "tests/custom_oath_source_operations.rs"
+
+[[test]]
+name = "custom_harmony_whole_source"
+path = "tests/custom_harmony_whole_source.rs"
+
+[[test]]
+name = "custom_revolution_invoke_reflect_whole_source"
+path = "tests/custom_revolution_invoke_reflect_whole_source.rs"
+
+[[test]]
+name = "custom_owned_late_whole_source"
+path = "tests/custom_owned_late_whole_source.rs"
+
+[[test]]
+name = "custom_late_whole_source_equations"
+path = "tests/custom_late_whole_source_equations.rs"
+
+[[test]]
+name = "custom_growth_whole_sources"
+path = "tests/custom_growth_whole_sources.rs"
+
+[[test]]
+name = "custom_align_glitch_respawn_whole_sources"
+path = "tests/custom_align_glitch_respawn_whole_sources.rs"
+
+[[test]]
+name = "custom_ability_links_whole_source"
+path = "tests/custom_ability_links_whole_source.rs"
+
+[[test]]
+name = "custom_actions_status_whole_sources"
+path = "tests/custom_actions_status_whole_sources.rs"
+
+[[test]]
+name = "custom_actions_linked_whole_sources"
+path = "tests/custom_actions_linked_whole_sources.rs"
+
+[[test]]
+name = "custom_tail_seven_complete_sources"
+path = "tests/custom_tail_seven_complete_sources.rs"
+harness = true
+
+[[test]]
+name = "custom_bounty_monument_whole_sources"
+path = "tests/custom_bounty_monument_whole_sources.rs"
+harness = true
+
+[[test]]
+name = "custom_middle_whole_sources"
+path = "tests/custom_middle_whole_sources.rs"
+
+[[test]]
+name = "custom_revolution_action_source_endgate"
+path = "tests/custom_revolution_action_source_endgate.rs"
+
+[[test]]
+name = "custom_msem_purge_actions"
+path = "tests/custom_msem_purge_actions.rs"
+
+[[test]]
+name = "custom_msem_rouse_actions"
+path = "tests/custom_msem_rouse_actions.rs"
+
+[[test]]
+name = "custom_msem_permutate_actions"
+path = "tests/custom_msem_permutate_actions.rs"
+
+[[test]]
+name = "custom_msem_augur_references"
+path = "tests/custom_msem_augur_references.rs"
+
+[[test]]
+name = "custom_msem_standard_actions_full_sources"
+path = "tests/custom_msem_standard_actions_full_sources.rs"
+
+[[test]]
+name = "custom_casting_middle_whole_sources"
+path = "tests/custom_casting_middle_whole_sources.rs"
+
+[[test]]
+name = "custom_token_resource_full_sources"
+path = "tests/custom_token_resource_full_sources.rs"
+
+[[test]]
+name = "custom_final_owner_whole_sources"
+path = "tests/custom_final_owner_whole_sources.rs"
+
+[[test]]
+name = "custom_revolution_six_family_sources"
+path = "tests/custom_revolution_six_family_sources.rs"
+
+[[test]]
+name = "custom_early_casting_whole_sources"
+path = "tests/custom_early_casting_whole_sources.rs"
+
+[[test]]
+name = "custom_retinue_whole_source_proof"
+path = "tests/custom_retinue_whole_source_proof.rs"
+harness = true
+
+[[test]]
+name = "custom_salvage_torment_whole_sources"
+path = "tests/custom_salvage_torment_whole_sources.rs"
+
+[[test]]
+name = "custom_complete_mechanic_source_endgate"
+path = "tests/custom_complete_mechanic_source_endgate.rs"
+
+[[test]]
+name = "custom_active_tap_payment_donors"
+path = "tests/custom_active_tap_payment_donors.rs"
+
+[[test]]
+name = "custom_formal_category_whole_sources"
+path = "tests/custom_formal_category_whole_sources.rs"
+
+[[test]]
+name = "custom_formal_category_consumers"
+path = "tests/custom_formal_category_consumers.rs"
+
+[[test]]
+name = "custom_formal_actions_fullsource"
+path = "tests/custom_formal_actions_fullsource.rs"
+
+[[test]]
+name = "custom_cast_or_designated_activation"
+path = "tests/custom_cast_or_designated_activation.rs"
+
+[[test]]
+name = "custom_upgrade_unavailable_choice"
+path = "tests/custom_upgrade_unavailable_choice.rs"
+
+[[test]]
+name = "custom_damage_recipient_union"
+path = "tests/custom_damage_recipient_union.rs"
+
+[[test]]
+name = "custom_initial_zone_restrictions_and_trigger_providers"
+path = "tests/custom_initial_zone_restrictions_and_trigger_providers.rs"
+
+[[test]]
+name = "custom_graveyard_zone_permissions"
+path = "tests/custom_graveyard_zone_permissions.rs"
+
+[[test]]
+name = "custom_audition_original_modes"
+path = "tests/custom_audition_original_modes.rs"
+
+[[test]]
+name = "custom_judge_optional_recipients"
+path = "tests/custom_judge_optional_recipients.rs"
+
+[[test]]
+name = "custom_enspirit_source_followups"
+path = "tests/custom_enspirit_source_followups.rs"
+
+[[test]]
+name = "custom_conditional_copy_characteristics"
+path = "tests/custom_conditional_copy_characteristics.rs"
+
+[[test]]
+name = "custom_judge_actor_receipts"
+path = "tests/custom_judge_actor_receipts.rs"
+
+[[test]]
+name = "custom_granted_entry_program_results"
+path = "tests/custom_granted_entry_program_results.rs"
+
+[[test]]
+name = "custom_retained_keyword_abilities"
+path = "tests/custom_retained_keyword_abilities.rs"
+
+[[test]]
+name = "custom_top_library_source_color"
+path = "tests/custom_top_library_source_color.rs"
+
+[[test]]
+name = "custom_activation_color_requirement_waiver"
+path = "tests/custom_activation_color_requirement_waiver.rs"

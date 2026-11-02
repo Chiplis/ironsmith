@@ -14,6 +14,9 @@ pub struct TransformedEvent {
     pub permanent: ObjectId,
     /// Completed post-change characteristics of this exact incarnation.
     pub snapshot: Option<ObjectSnapshot>,
+    /// A complete producer packet freezes all event-time trigger sources.
+    pub complete_source_lookback: bool,
+    pub cause: Option<crate::events::cause::EventCause>,
 }
 
 impl TransformedEvent {
@@ -22,7 +25,14 @@ impl TransformedEvent {
         Self {
             permanent,
             snapshot: None,
+            complete_source_lookback: false,
+            cause: None,
         }
+    }
+    pub fn with_cause(mut self, cause: crate::events::cause::EventCause) -> Self {self.cause=Some(cause);self}
+    pub fn with_complete_source_lookback(mut self) -> Self {
+        self.complete_source_lookback = true;
+        self
     }
     pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
         self.snapshot = snapshot;

@@ -12,6 +12,8 @@ use super::super::primitives;
 pub struct StaticDamageRedirectionShape<'a> {
     pub untapped_source: Option<&'a [OwnedLexToken]>,
     pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub excess_only: bool,
     pub recipient: &'a [OwnedLexToken],
     pub source: Option<&'a [OwnedLexToken]>,
     pub destination: &'a [OwnedLexToken],
@@ -40,10 +42,30 @@ fn parse_lexed<'a>(input: &mut LexStream<'a>) -> WResult<StaticDamageRedirection
         Some(index) => (&recipients_and_source[..index], Some(&recipients_and_source[index + 1..])),
         None => (recipients_and_source, None),
     };
-    Ok(StaticDamageRedirectionShape { untapped_source, combat_only, recipient, source, destination })
+    Ok(StaticDamageRedirectionShape { untapped_source, combat_only, noncombat_only: false, excess_only: false, recipient, source, destination })
 }
 pub fn parse_static_damage_redirection(tokens: &[OwnedLexToken]) -> Option<StaticDamageRedirectionShape<'_>> {
     // Prevent duration/trailing instructions from being mistaken for filters.
     if tokens.iter().any(|token| token.is_word("turn") || token.is_word("until") || token.is_word("may")) { return None; }
-    primitives::probe_all(tokens, parse_lexed, "persistent damage redirection")
+    primitives::probe_all(tokens, parse_excess_lexed, "persistent excess damage redirection")
+        .or_else(|| primitives::probe_all(tokens, parse_lexed, "persistent damage redirection"))
+}
+
+// Source-before-recipient form keeps both filters distinct and requires a full clause.
+fn parse_excess_lexed<'a>(input: &mut LexStream<'a>) -> WResult<StaticDamageRedirectionShape<'a>> {
+    primitives::kw("excess").parse_next(input)?;
+    let noncombat_only = opt(primitives::kw("noncombat")).parse_next(input)?.is_some();
+    let combat_only = if noncombat_only { false } else { opt(primitives::kw("combat")).parse_next(input)?.is_some() };
+    primitives::phrase(&["damage", "that", "would", "be", "dealt", "by"]).parse_next(input)?;
+    let source = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("to")))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    primitives::kw("to").parse_next(input)?;
+    let recipient = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::phrase(&["is", "dealt", "to"])))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    primitives::phrase(&["is", "dealt", "to"]).parse_next(input)?;
+    let destination = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("instead")))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(StaticDamageRedirectionShape { untapped_source: None, combat_only, noncombat_only, excess_only: true, recipient, source: Some(source), destination })
 }

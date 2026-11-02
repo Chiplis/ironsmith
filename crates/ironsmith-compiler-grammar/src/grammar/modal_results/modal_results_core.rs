@@ -218,6 +218,12 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         // "<object> is dealt damage this way": the passive damage result.
         crate::word_claims::claim_tokens(&tokens[copula_idx..]);
         PriorEffectAction::DealtDamage
+    } else if after == ["tapped", "this", "way"] {
+        // Passive tapping is an actual action result, never a test of the
+        // object's current tapped state or the attempted selection set.
+        parse_prior_result_object_filter(&tokens[..copula_idx])?;
+        crate::word_claims::claim_tokens(&tokens[copula_idx..]);
+        PriorEffectAction::Tapped
     } else if after == ["moved", "this", "way"] {
         let subject = crate::grammar::primitives::strip_lexed_prefix_phrase(
             &tokens[..copula_idx], &["one", "or", "more"])?;
@@ -287,4 +293,17 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         crate::word_primitives::parse_sequence_prefix(&after, &["put", "into", "exile"])
             && tokens[copula_idx].is_any_word(&["is", "are"]);
     Some(surface)
+}
+
+#[cfg(test)]
+mod passive_tap_result_reader_regression {
+    use super::*;
+    #[test]
+    fn passive_source_tap_keeps_identity_and_typed_action() {
+        let tokens = crate::lexer::lex_line("this creature was tapped this way", 0).unwrap();
+        let surface = parse_direct_prior_effect_result_surface(&tokens).unwrap();
+        assert_eq!(surface.action, PriorEffectAction::Tapped);
+        assert!(surface.filter.source);
+        assert_eq!(surface.actor, PriorEffectResultActor::Passive);
+    }
 }

@@ -1,4 +1,4 @@
-import { prepareSetCard, setMechanics } from '@/lib/set-workspace';
+import { prepareSetCard, setMechanics, setSubtypes } from '@/lib/set-workspace';
 import { saveCommunityItem } from '@/lib/community-library';
 import CardLayoutIcon from './CardLayoutIcon';
 import CommunityFormatEditor from './CommunityFormatEditor';
@@ -597,7 +597,7 @@ export default function CreateCardForgeSheet({
   const { game, state, refresh, runWasmInteraction, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
   const [open, setOpen] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState("card");
-  const [setMechanicsOpen, setSetMechanicsOpen] = useState(false);
+  const [setAreaOpen, setSetAreaOpen] = useState(false);
   const [setViewRequest, setSetViewRequest] = useState({ id: 0, view: 'cards', keyword: null });
   const [setCardEditing, setSetCardEditing] = useState(false);
   const [setCardIndex, setSetCardIndex] = useState(null);
@@ -667,6 +667,7 @@ export default function CreateCardForgeSheet({
     return () => globalThis.removeEventListener?.(CUSTOM_SUBTYPES_CHANGED, changed);
   }, []);
   const previewInput = JSON.stringify(normalizeDraftForApi(draft));
+  const setSubtypeDefinitions = JSON.stringify(setCardEditing ? setSubtypes(customSetDraft) : []);
   const setDefinitions = JSON.stringify(setCardEditing ? setMechanics(customSetDraft) : []);
   useEffect(() => {
     if (!open || !game) return undefined;
@@ -677,7 +678,7 @@ export default function CreateCardForgeSheet({
       try {
         const compile = input => game.previewCustomCard(input);
         const { preview: nextPreview } = setCardEditing
-          ? await prepareSetCard(JSON.parse(previewInput), JSON.parse(setDefinitions), compile)
+          ? await prepareSetCard(JSON.parse(previewInput), JSON.parse(setDefinitions), compile, JSON.parse(setSubtypeDefinitions))
           : await previewCustomDraft(JSON.parse(previewInput), compile);
         if (!active) return;
         setPreview(nextPreview);
@@ -692,7 +693,7 @@ export default function CreateCardForgeSheet({
     }, 180);
 
     return () => { active = false; window.clearTimeout(timeoutId); };
-  }, [previewInput, game, open, setCardEditing, setDefinitions, subtypeRevision]);
+  }, [previewInput, game, open, setCardEditing, setDefinitions, setSubtypeDefinitions, subtypeRevision]);
 
   const loadSeed = useCallback(async ({ reroll = false } = {}) => {
     setSeedLoading(true);
@@ -871,7 +872,7 @@ export default function CreateCardForgeSheet({
     cancelSelection();
     personalDraft.current = { draft, seedDraft, catalogCard, printingName };
     setSetCardIndex(index);
-    setSetMechanicsOpen(false);
+    setSetAreaOpen(false);
     setSetCardEditing(true);
     const next = index === null ? blankDraft() : cloneDraft(customSetDraft.customCards[index].draft);
     setDraft(next); setSeedDraft(null); setCatalogCard(null); setPrintingName(null);
@@ -879,7 +880,7 @@ export default function CreateCardForgeSheet({
   };
   const closeSetCard = () => {
     cancelSelection();
-    setSetMechanicsOpen(false);
+    setSetAreaOpen(false);
     setSetViewRequest(current => ({ id: current.id + 1, view: 'cards', keyword: null }));
     const previous = personalDraft.current;
     if (previous) {
@@ -889,11 +890,13 @@ export default function CreateCardForgeSheet({
     setSetCardEditing(false); setActiveFace('face-0'); setPreview(null); setPreviewError(''); setSaveMessage('');
   };
 
-  const openSetMechanics = (keyword = null) => {
-    setSetViewRequest(current => ({ id: current.id + 1, view: 'mechanics', keyword }));
-    setSetMechanicsOpen(setCardEditing);
+  const openSetArea = (view, keyword = null) => {
+    setSetViewRequest(current => ({ id: current.id + 1, view, keyword }));
+    setSetAreaOpen(setCardEditing);
     setWorkspaceTab('sets');
   };
+
+  const openSetMechanics = (keyword = null) => openSetArea('mechanics', keyword);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -909,14 +912,14 @@ export default function CreateCardForgeSheet({
       // Printing choices are saved with the card but never sent to the engine.
       savedDraft.presentation = draft.presentation;
       if (setCardEditing) {
-        const prepared = await prepareSetCard(savedDraft, setMechanics(customSetDraft), input => game.previewCustomCard(input));
+        const prepared = await prepareSetCard(savedDraft, setMechanics(customSetDraft), input => game.previewCustomCard(input), setSubtypes(customSetDraft));
         const card = { id: setCardIndex === null ? `set:${crypto.randomUUID()}` : customSetDraft.customCards[setCardIndex].id, draft: prepared.draft };
         const cards = [...customSetDraft.customCards];
         const index = setCardIndex === null ? cards.length : setCardIndex;
         cards[index] = card;
         const next = { ...customSetDraft, customCards: cards };
         normalizeCommunityFormat(next);
-        await saveCommunityItem('set', { name: next.name.trim(), cards, customMechanics: setMechanics(next) });
+        await saveCommunityItem('set', { name: next.name.trim(), cards, customMechanics: setMechanics(next), customSubtypes: setSubtypes(next) });
         setCustomSetDraft(next); setSetCardIndex(index);
         setSaveMessage(`Saved ${savedDraft.faces[0].name} to ${next.name}.`);
         return;
@@ -956,7 +959,7 @@ export default function CreateCardForgeSheet({
           return;
         }
         const prepared = setCardEditing
-          ? await prepareSetCard(normalizeDraftForApi(draft), setMechanics(customSetDraft), input => game.previewCustomCard(input))
+          ? await prepareSetCard(normalizeDraftForApi(draft), setMechanics(customSetDraft), input => game.previewCustomCard(input), setSubtypes(customSetDraft))
           : await prepareCustomDraftForCreation(normalizeDraftForApi(draft), input => game.previewCustomCard(input));
         const objectId = await game.createCustomCard({
           draft: prepared.input,
@@ -1176,7 +1179,7 @@ export default function CreateCardForgeSheet({
             <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Create cards and mechanics, collect cards into sets, and design custom formats for your games.")}</SheetDescription>
           </SheetHeader>
 
-          <Tabs value={workspaceTab} onValueChange={tab => { if (saving) return; if (tab === 'mechanics' && (setCardEditing || workspaceTab === 'sets')) { openSetMechanics(); return; } if (setCardEditing && tab !== 'sets') closeSetCard(); setWorkspaceTab(tab); }} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Tabs value={workspaceTab} onValueChange={tab => { if (saving) return; if ((setCardEditing || workspaceTab === 'sets') && ['card', 'mechanics', 'subtypes'].includes(tab)) { if (tab === 'card' && setCardEditing) { setSetAreaOpen(false); setWorkspaceTab('sets'); } else { openSetArea(tab === 'card' ? 'cards' : tab); } return; } if (setCardEditing && tab !== 'sets') closeSetCard(); setWorkspaceTab(tab); }} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <TabsList variant="line" className="w-full shrink-0 flex-wrap justify-start overflow-visible px-4 pb-2 group-data-[orientation=horizontal]/tabs:h-auto [&>[role=tab]]:h-auto [&>[role=tab]]:flex-none">
               <TabsTrigger value="card" disabled={sandboxBusy}>{ui("Card")}</TabsTrigger>
               <TabsTrigger value="mechanics" disabled={sandboxBusy}>{ui("Mechanics")}</TabsTrigger>
@@ -1185,8 +1188,8 @@ export default function CreateCardForgeSheet({
               <TabsTrigger value="formats" disabled={sandboxBusy}>{ui("Formats")}</TabsTrigger>
               <TabsTrigger value="sandbox" disabled={submitting}>{ui("Sandbox")}</TabsTrigger>
             </TabsList>
-            {(!setCardEditing || setMechanicsOpen) && <TabsContent forceMount value="sets" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
-              <CommunityFormatEditor key={setViewRequest.id} initialView={setViewRequest.view} initialMechanic={setViewRequest.keyword} onBackToCard={setMechanicsOpen ? () => setSetMechanicsOpen(false) : undefined} kind="set" active={open && workspaceTab === 'sets'} value={customSetDraft} onChange={setCustomSetDraft} onEditCard={setMechanicsOpen ? undefined : openSetCard} />
+            {(!setCardEditing || setAreaOpen) && <TabsContent forceMount value="sets" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+              <CommunityFormatEditor key={setViewRequest.id} initialView={setViewRequest.view} initialMechanic={setViewRequest.keyword} onBackToCard={setAreaOpen ? () => setSetAreaOpen(false) : undefined} kind="set" active={open && workspaceTab === 'sets'} value={customSetDraft} onChange={setCustomSetDraft} onEditCard={setAreaOpen ? undefined : openSetCard} />
             </TabsContent>}
             <TabsContent forceMount value="formats" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <CommunityFormatEditor active={open && workspaceTab === 'formats'} value={customFormatDraft} onChange={setCustomFormatDraft} />
@@ -1198,12 +1201,12 @@ export default function CreateCardForgeSheet({
             <TabsContent forceMount value="sandbox" className="min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
               <SandboxPanel currentDraft={draft} onBusyChange={setSandboxBusy} onStarted={() => setOpen(false)} />
             </TabsContent>
-            <TabsContent value={setCardEditing ? (setMechanicsOpen ? "set-card-editor" : "sets") : "card"} className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
+            <TabsContent value={setCardEditing ? (setAreaOpen ? "set-card-editor" : "sets") : "card"} className="min-h-0 flex-1 overflow-hidden data-[state=active]:flex data-[state=active]:flex-col">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {setCardEditing && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/20 bg-amber-200/5 px-5 py-3">
             <div><p className="text-xs uppercase tracking-widest text-amber-200">{ui('Set workspace')} / {customSetDraft.name}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{ui('Cards save directly to this set. Its mechanics are available in your rules text.')}</p></div>
-            <Button variant="secondary" size="sm" disabled={saving} onClick={closeSetCard}>{ui('Back to set')}</Button>
+              <p className="mt-1 text-sm text-muted-foreground">{ui('Cards save directly to this set. Its mechanics and subtypes are available in this editor.')}</p></div>
+            <div className="flex flex-wrap gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => openSetArea('mechanics')}>{ui('Set mechanics')}</Button><Button variant="secondary" size="sm" disabled={saving} onClick={() => openSetArea('subtypes')}>{ui('Set subtypes')}</Button><Button variant="secondary" size="sm" disabled={saving} onClick={closeSetCard}>{ui('Back to set')}</Button></div>
           </div>}
           <BuildCardSearch
             actions={<div className="build-card-toolbar-actions">

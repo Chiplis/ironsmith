@@ -245,3 +245,17 @@ test('historical named payment subjects retain identity while payable cost slots
     assert.equal(bindReminderCost(`Pay its ${keyword} cost. You may cast this for its ${keyword} cost.`, keyword, '{2}{U}'), 'Pay {2}{U}. You may cast this for {2}{U}.');
   }
 });
+
+
+test('explicit Number slots bind written integers without accepting a reference or control-flow operand', async () => {
+  const {parseParameterDeclaration} = await import('../src/lib/reminder-costs.js');
+  const reminder = 'Draw {Number} cards.';
+  const template = 'with {Number} objects';
+  for (const [written, expected] of [['zero', '0'], ['one', '1'], ['two', '2'], ['three', '3'], ['TWENTY', '20'], ['17', '17'], ['X', 'X']]) {
+    assert.deepEqual(parseParameterDeclaration(reminder, 'Gather', `Gather with ${written} objects`, template), {number: expected});
+  }
+  for (const operand of ['two or more', 'two then draw', 'twenty one', 'banana', '2 life']) {
+    assert.equal(parseParameterDeclaration(reminder, 'Gather', `Gather with ${operand} objects`, template), null);
+  }
+  assert.equal(parseParameterDeclaration(reminder, 'Gather', 'Whenever this creature gathers two objects, draw a card.', template), null);
+});

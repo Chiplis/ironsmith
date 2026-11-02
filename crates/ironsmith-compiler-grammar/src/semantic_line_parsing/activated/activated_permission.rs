@@ -163,8 +163,40 @@ pub(super) fn parse_activated_line_impl(
 ) -> Result<ParsedActivatedLine, CardTextError> {
     let mut body_without_cost_modifier = Vec::new();
     let mut reduce_by_source_mana_cost_on_entry_turn = false;
+    let mut activation_label = None;
+    let mut activation_designations: Vec<String> = activated_presentation_display(line).into_iter().map(|label| label.to_ascii_lowercase()).collect();
+    let mut activation_sorcery_exceptions = Vec::new();
     for sentence in split_lexed_sentences(original_effect_parse_tokens) {
         let prose = crate::lexer::render_token_slice(sentence).to_ascii_lowercase();
+        let words = token_word_refs(sentence);
+        if let ["activate", "only", "as", "a", "sorcery", "or", "during", action, "actions"] = words.as_slice() {
+            activation_sorcery_exceptions.push((*action).to_string());
+            body_without_cost_modifier.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
+            crate::word_claims::claim_tokens(sentence); continue;
+        }
+        if words.starts_with(&["activate", "only", "as", "a", "sorcery", "unless", "you're"])
+            && words.len() > 7 {
+            activation_sorcery_exceptions.push(words[7..].join("-"));
+            body_without_cost_modifier.extend(crate::lexer::lex_line("Activate only as a sorcery.", 0)?);
+            crate::word_claims::claim_tokens(sentence); continue;
+        }
+        if let ["this", "activated", "ability", "has", "designation", designation @ ..] = words.as_slice()
+            && !designation.is_empty() {
+            let designation = designation.join(" ");
+            if !activation_designations.contains(&designation) { activation_designations.push(designation); }
+            crate::word_claims::claim_tokens(sentence); continue;
+        }
+        if let ["this", "ability's" | "abilitys", "sorcery", "timing", "restriction", "does", "not", "apply", "during", action, "actions"] = words.as_slice() {
+            activation_sorcery_exceptions.push((*action).to_string());
+            crate::word_claims::claim_tokens(sentence); continue;
+        }
+        if let ["this", "is", "the", label, "activated", "ability"] = words.as_slice() {
+            if activation_label.replace((*label).to_string()).is_some() {
+                return Err(CardTextError::ParseError("duplicate activation label".into()));
+            }
+            crate::word_claims::claim_tokens(sentence);
+            continue;
+        }
         if prose.trim_end_matches('.').trim() == "if this permanent entered this turn, this ability's cost is reduced by this permanent's mana cost" {
             reduce_by_source_mana_cost_on_entry_turn = true;
         } else {
@@ -172,7 +204,7 @@ pub(super) fn parse_activated_line_impl(
             body_without_cost_modifier.extend(crate::lexer::lex_line(".", 0)?);
         }
     }
-    let original_effect_parse_tokens = if reduce_by_source_mana_cost_on_entry_turn {
+    let original_effect_parse_tokens = if reduce_by_source_mana_cost_on_entry_turn || activation_label.is_some() || !activation_designations.is_empty() || !activation_sorcery_exceptions.is_empty() {
         body_without_cost_modifier.as_slice()
     } else { original_effect_parse_tokens };
     let linked_copy_effects = crate::effect_sentences::parse_linked_card_copy_with_announced_x(original_effect_parse_tokens)?;
@@ -189,6 +221,7 @@ pub(super) fn parse_activated_line_impl(
         ability_cant_be_copied,
         x_spending_rules,
         creature_tap_payment,
+        artifact_tap_payment,
     } = split_rewrite_activated_effect_text(original_effect_parse_tokens);
     if effect_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -204,6 +237,8 @@ pub(super) fn parse_activated_line_impl(
     let normalized_cost = crate::consumer_mana::constrain_activation_cost(normalized_cost, &x_spending_rules);
     let normalized_cost = if creature_tap_payment {
         crate::consumer_mana::allow_creature_tap_payment(normalized_cost)
+    } else if artifact_tap_payment {
+        crate::consumer_mana::allow_artifact_tap_payment(normalized_cost)
     } else {
         normalized_cost
     };
@@ -332,6 +367,7 @@ pub(super) fn parse_activated_line_impl(
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             }
             .into(),
@@ -352,9 +388,10 @@ pub(super) fn parse_activated_line_impl(
         let mut parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
-                    keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
+                    keyword: activated_presentation_display(line).as_deref().and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
+                        .or_else(|| line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword)),
                     mana_cost: normalized_cost.clone(),
-                    effects: ironsmith_core::ResolutionProgram::default(),
+                    effects: { let mut program = ironsmith_core::ResolutionProgram::default(); program.activation_label = activation_label.clone(); program.activation_designations = activation_designations.clone(); program.activation_sorcery_exceptions = activation_sorcery_exceptions.clone(); program },
                     choices: vec![],
                     timing: activation_timing,
                     is_loyalty_ability: line.is_loyalty_ability,
@@ -364,6 +401,7 @@ pub(super) fn parse_activated_line_impl(
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
                 }),
+                designations: Default::default(),
                 functional_zones: if functional_zones.is_empty() {
                     vec![Zone::Battlefield]
                 } else {
@@ -401,9 +439,10 @@ pub(super) fn parse_activated_line_impl(
             let mut parsed = ParsedAbility {
                 ability: Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
-                        keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
+                        keyword: activated_presentation_display(line).as_deref().and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
+                        .or_else(|| line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword)),
                         mana_cost: normalized_cost.clone(),
-                        effects: ironsmith_core::ResolutionProgram::default(),
+                        effects: { let mut program = ironsmith_core::ResolutionProgram::default(); program.activation_label = activation_label.clone(); program.activation_designations = activation_designations.clone(); program.activation_sorcery_exceptions = activation_sorcery_exceptions.clone(); program },
                         choices: vec![],
                         timing: activation_timing,
                         is_loyalty_ability: line.is_loyalty_ability,
@@ -413,6 +452,7 @@ pub(super) fn parse_activated_line_impl(
                         activation_condition: None,
                         mana_usage_restrictions: vec![],
                     }),
+                    designations: Default::default(),
                     functional_zones: if functional_zones.is_empty() {
                         vec![Zone::Battlefield]
                     } else {
@@ -451,9 +491,10 @@ pub(super) fn parse_activated_line_impl(
     let mut parsed = ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
-                keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
+                keyword: activated_presentation_display(line).as_deref().and_then(ironsmith_core::ActivatedAbilityKeyword::from_group_label)
+                        .or_else(|| line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword)),
                 mana_cost: normalized_cost,
-                effects: ironsmith_core::ResolutionProgram::default(),
+                effects: { let mut program = ironsmith_core::ResolutionProgram::default(); program.activation_label = activation_label.clone(); program.activation_designations = activation_designations.clone(); program.activation_sorcery_exceptions = activation_sorcery_exceptions.clone(); program },
                 choices: vec![],
                 timing: activation_timing,
                 is_loyalty_ability: line.is_loyalty_ability,
@@ -463,6 +504,7 @@ pub(super) fn parse_activated_line_impl(
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: if functional_zones.is_empty() {
                 vec![Zone::Battlefield]
             } else {

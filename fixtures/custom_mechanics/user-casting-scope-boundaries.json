@@ -1,0 +1,1461 @@
+{
+  "schema_version": 1,
+  "user_decision": {
+    "authority": "explicit_user_scope_decision",
+    "evidence_origin": "Parent /root relayed user confirmation and instructed this documentation update",
+    "instruction_summary": "Exclude Function, Lucid, and Chant new casting rules and dependent full-card bodies; retain ordinary Compose, Reprise, and other existing-operation mechanics in scope.",
+    "interpretation_limit": "This is a named-mechanism scope decision, not a blanket exclusion of casting hooks, text-changing effects, sacrifice, exile, graveyard moves, splice-like composition, or all rules mentioned in601.2b."
+  },
+  "excluded_mechanisms": [
+    {
+      "decision_id": "user-casting-scope-function",
+      "mechanism": "Function",
+      "scope": "msem",
+      "classification": "unsupported_requires_new_rules",
+      "scope_status": "excluded_by_explicit_user_decision",
+      "user_decision": {
+        "authority": "explicit_user_scope_decision",
+        "evidence_origin": "Parent /root relayed user confirmation and instructed this documentation update",
+        "instruction_summary": "Exclude Function, Lucid, and Chant new casting rules and dependent full-card bodies; retain ordinary Compose, Reprise, and other existing-operation mechanics in scope.",
+        "interpretation_limit": "This is a named-mechanism scope decision, not a blanket exclusion of casting hooks, text-changing effects, sacrifice, exile, graveyard moves, splice-like composition, or all rules mentioned in601.2b."
+      },
+      "source_file": "reports/cards/lackey-audit-2026-11-01/msem-rules.json",
+      "rule_references": [
+        "111.10am",
+        "303.8",
+        "601.2b"
+      ],
+      "formal_source_nodes": [
+        {
+          "name": "111.10am",
+          "rule": "A Function token with (effect) is a colorless Function enchantment token with “You may sacrifice this Function as you cast an instant or sorcery spell. If you do, that spell gains (effect).”",
+          "custom": true
+        },
+        {
+          "name": "303.8.",
+          "rule": "Some enchantments have the subtype \"Function.\"",
+          "subrules": [
+            {
+              "name": "303.8a",
+              "rule": "Each Function has an ability that can add effects to an instant or sorcery spell. The Function itself does not have these abilities, but rather an ability that grants them.\r\nExample: Bastion Chaplain says \"When Bastion Chaplain enters, create two Function tokens with 'Lifelink.'\" The Function tokens do not have lifelink themselves.",
+              "custom": true
+            },
+            {
+              "name": "303.8b",
+              "rule": "As a player is casting an instant or sorcery spell, they may sacrifice any Functions they control to add their effects to that spell. If a player controls any Functions which could give the spell flash or let the spell be cast as though it had flash, they may begin to cast that spell as though it had flash (see rule 601.3b).",
+              "custom": true
+            },
+            {
+              "name": "303.8c",
+              "rule": "The spell has the characteristics of the main spell, plus the rules text granted by each of the Functions. This is a text-changing effect (see rule 612, “Text-Changing Effects”). The spell doesn’t gain any other characteristics (name, mana cost, color, supertypes, card types, subtypes, wu xing number, etc.) of the Function cards. Text gained by the spell that refers to a card by name refers to the spell on the stack, not the card from which the text was copied.",
+              "custom": true
+            },
+            {
+              "name": "303.8d",
+              "rule": "A Function's effects are added to a spell after alternate and additional costs have been selected for a spell. Any alternate or additional costs provided by the Function will be present on the spell but unable to be used.\r\nExample: If a Function gives a spell kicker {1}, that spell will have kicker, but this kicker cost could not be paid.",
+              "custom": true
+            },
+            {
+              "name": "303.8e",
+              "rule": "Some cards create a Function \"with the effects\" of an instant or sorcery spell, activated ability, or triggered ability. The Function will remember choices made during the process in rule 601.2b, and costs paid for the original spell or ability, and apply them to the effects granted by the Function. In particular, it will retain which modes were selected, the value for X of the original spell, and Functions that were added to that spell, and it will not retain targets and divisions or distributions. Unselected modes will still be added to the spell, and may be selected if an effect allows the spell's modes to be reselected. These only apply to the text added by the Function, and not the rest of the spell.\r\nExample: Beckon the Shadows says \"Bloodprice {2}{B}{B}\" and its effect checks if it was cast for its bloodprice. These effects added by a Function will only be considered as cast for its bloodprice if the original spell was, and it does not impact abilities of other Functions or the new spell being cast checking if they were cast for its bloodprice. The new spell cannot be cast for bloodprice {2}{B}{B} this way. If any bloodprice is paid, casting the spell is still considered \"casting a spell for its bloodprice.\"\r\nExample: Swords Dance says \"Harness\" and its spell effect applies to \"the creature that harnessed it\". If a new spell is cast, it will not be able to tap additional creatures to reduce its cost. If the harness cost of the original spell was paid, that same reduction will be applied to the new spell, and \"the creature that harnessed it\" will still be remembered, if that object is still on the battlefield.\r\nExample: A Function with the effects of a spell with glitch will remember which words were removed from the text, and the spell will be a \"glitched spell\" if any were removed. If the new spell being cast has glitch, words from the Function cannot be removed with that ability.",
+              "custom": true
+            },
+            {
+              "name": "303.8f",
+              "rule": "Functions do not change what kind of card the spell they are attached to are. Rules that describe how the textboxes of alternate card kinds work only apply to the individual Function effect added to the spell.\r\nExample: A Function with the effects of a Wu Xing card will grant effects for its effects equal to the wu xing number of the original spell. The effects are not determined by the wu xing number of the spell, if it has one, and the Function's wu xing number does not become the spell's wu xing number.\r\nExample: Second Death is a sorcery with an Adventure, First Death. If a Function with the effects of a spell that was cast as an Adventure is added onto it, Second Death will be cast as an Adventure, but will remain Second Death, not First Death. Second Death will be exiled after it resolves, and can be cast from exile as long as it isn't cast as an Adventure, including both casting First Death, or adding another Function that was cast as an Adventure onto it.\r\nExample: A Function with the effects of a spell with fabled will only be able to be transformed and put onto the battlefield attached to a permanent the back face of that card can enchant. If a spell has multiple instances of fabled, its controller chooses which will apply as it resolves.\r\nExample: A Function with the effects of a spell with coalesce that was paid will put the card onto the battlefield as a Horror creature. If that card does not have a power and toughness, it will be 0/0, rather than the power and toughness of the original spell with coalesce.",
+              "custom": true
+            },
+            {
+              "name": "303.8g",
+              "rule": "Effects may identify individual Functions applied to a spell, which includes all effects added by that Function and all choices it retained.",
+              "custom": true
+            }
+          ],
+          "custom": true
+        },
+        {
+          "name": "601.2b",
+          "rule": "If the spell is modal, the player announces the mode choice (see rule 700.2). If the player making the mode choice needs to be targeted, the player casting the spell announces their choice of an appropriate player for each target required to make that choice, and only those targets, at this time instead of the normal time during 601.2c. If the number of choices has a currently undefined value, such as “Choose X,” or a value that may change during the process of casting the spell, such as “If this spell was kicked, choose any number instead”, the player chooses any number of modes. When the spell's legality is checked (rule 601.2e), if the value is still undefined or the value does not match the choices originally made, the spell is illegal. If the player wishes to splice any cards onto the spell (see rule 702.46), they reveal those cards in their hand. If that player wishes to reprise any cards onto that spell (see rule 702.205), they exile those cards from their graveyard. If the player wishes to apply any Functions to that spell (see rule 111.10aj), they sacrifice those Functions. If the player wishes to apply any any modes from exiled cards with lucid (see rule 702.304), they put those cards into their owner's graveyard. They choose an order to apply those text-change effects to that spell. If the spell has alternative or additional costs that will be paid as it's being cast such as buyback or kicker costs (see rules 118.8 and 118.9), the player announces their intentions to pay any or all of those costs (see rule 601.2f). A player can't apply two alternative methods of casting or two alternative costs to a single spell. If the spell has a variable cost that will be paid as it's being cast (such as an {X} in its mana cost; see rule 107.3), the player announces the value of that variable. If the value of that variable is defined in the text of the spell by a choice that player would make later in the announcement or resolution of the spell, that player makes that choice at this time instead of that later time. If a cost that will be paid as the spell is being cast includes hybrid mana symbols, the player announces the nonhybrid equivalent cost they intend to pay. If a cost that will be paid as the spell is being cast includes Phyrexian mana symbols, the player announces whether they intend to pay 2 life or a corresponding colored mana cost for each of those symbols. Previously made choices (such as choosing to cast a spell with flashback from a graveyard or choosing to cast a creature with morph face down) may restrict the player's options when making these choices.",
+          "custom": true
+        }
+      ],
+      "reason": "User excludes Function-specific casting rules: MSEM601.2b sacrifices selected Function donors during announcement before targets601.2c;303.8d applies donated text only after alternative/additional price choices, with newly granted prices unavailable.111.10am embeds that procedure in Function tokens. Sacrifice/text capture alone cannot certify the excluded complete mechanism.",
+      "excluded_full_card_dependencies": true,
+      "ordinary_components_remain_available": true
+    },
+    {
+      "decision_id": "user-casting-scope-lucid",
+      "mechanism": "Lucid",
+      "scope": "msem",
+      "classification": "unsupported_requires_new_rules",
+      "scope_status": "excluded_by_explicit_user_decision",
+      "user_decision": {
+        "authority": "explicit_user_scope_decision",
+        "evidence_origin": "Parent /root relayed user confirmation and instructed this documentation update",
+        "instruction_summary": "Exclude Function, Lucid, and Chant new casting rules and dependent full-card bodies; retain ordinary Compose, Reprise, and other existing-operation mechanics in scope.",
+        "interpretation_limit": "This is a named-mechanism scope decision, not a blanket exclusion of casting hooks, text-changing effects, sacrifice, exile, graveyard moves, splice-like composition, or all rules mentioned in601.2b."
+      },
+      "source_file": "reports/cards/lackey-audit-2026-11-01/msem-rules.json",
+      "rule_references": [
+        "702.304",
+        "601.2b",
+        "700.2a"
+      ],
+      "formal_source_nodes": [
+        {
+          "name": "702.304.",
+          "rule": "Lucid",
+          "subrules": [
+            {
+              "name": "702.304a",
+              "rule": "Lucid appears on some modal instant and sorceries. It represents a static ability that functions while the spell is on the stack. \"Lucid\" means \"If you cast this spell from your hand or from exile, exile it instead of putting it anywhere else as it resolves. As you cast a modal instant or sorcery spell while this card is exiled, you may choose one of this card's modes. If you do, change the text of that spell by adding the chosen mode into one of its bulleted lists and put this card into its owner's graveyard.\"",
+              "custom": true
+            },
+            {
+              "name": "702.304b",
+              "rule": "If you're applying more than one card with lucid onto a spell, you will put them all into their owner's graveyard and choose the order in which the effects will happen. The new modes will always be added to the end of the list.",
+              "custom": true
+            },
+            {
+              "name": "702.304c",
+              "rule": "The spell has the characteristics of the main spell, plus the rules text found in the chosen mode of the lucid card. This is a text-changing effect (see rule 612, “Text-Changing Effects”). The spell doesn’t gain any other characteristics (name, mana cost, color, supertypes, card types, subtypes, etc.) of the lucid cards. Text gained by the spell that refers to a card by name refers to the spell on the stack, not the card from which the text was copied.",
+              "custom": true
+            },
+            {
+              "name": "702.304d",
+              "rule": "If a mode with an associated cost, such as those found on cards with spree, is added to another spell, this cost will still need to be paid regardless if the new spell has spree.",
+              "custom": true
+            },
+            {
+              "name": "702.304e",
+              "rule": "If a mode without an associated cost is added to a card with spree, the player will be unable to pay its associated cost and unable to choose the mode.",
+              "custom": true
+            },
+            {
+              "name": "702.304f",
+              "rule": "If a mode with star or pawprint symbols is added to a modal spell which does not use them to select modes, the mode may be chosen regardless of those symbols.",
+              "custom": true
+            },
+            {
+              "name": "702.304g",
+              "rule": "If a mode without stars or pawprints is added to a modal spell that does use them to select modes, the mode is not a legal choice.",
+              "custom": true
+            }
+          ],
+          "custom": true
+        },
+        {
+          "name": "601.2b",
+          "rule": "If the spell is modal, the player announces the mode choice (see rule 700.2). If the player making the mode choice needs to be targeted, the player casting the spell announces their choice of an appropriate player for each target required to make that choice, and only those targets, at this time instead of the normal time during 601.2c. If the number of choices has a currently undefined value, such as “Choose X,” or a value that may change during the process of casting the spell, such as “If this spell was kicked, choose any number instead”, the player chooses any number of modes. When the spell's legality is checked (rule 601.2e), if the value is still undefined or the value does not match the choices originally made, the spell is illegal. If the player wishes to splice any cards onto the spell (see rule 702.46), they reveal those cards in their hand. If that player wishes to reprise any cards onto that spell (see rule 702.205), they exile those cards from their graveyard. If the player wishes to apply any Functions to that spell (see rule 111.10aj), they sacrifice those Functions. If the player wishes to apply any any modes from exiled cards with lucid (see rule 702.304), they put those cards into their owner's graveyard. They choose an order to apply those text-change effects to that spell. If the spell has alternative or additional costs that will be paid as it's being cast such as buyback or kicker costs (see rules 118.8 and 118.9), the player announces their intentions to pay any or all of those costs (see rule 601.2f). A player can't apply two alternative methods of casting or two alternative costs to a single spell. If the spell has a variable cost that will be paid as it's being cast (such as an {X} in its mana cost; see rule 107.3), the player announces the value of that variable. If the value of that variable is defined in the text of the spell by a choice that player would make later in the announcement or resolution of the spell, that player makes that choice at this time instead of that later time. If a cost that will be paid as the spell is being cast includes hybrid mana symbols, the player announces the nonhybrid equivalent cost they intend to pay. If a cost that will be paid as the spell is being cast includes Phyrexian mana symbols, the player announces whether they intend to pay 2 life or a corresponding colored mana cost for each of those symbols. Previously made choices (such as choosing to cast a spell with flashback from a graveyard or choosing to cast a creature with morph face down) may restrict the player's options when making these choices.",
+          "custom": true
+        },
+        {
+          "name": "700.2a",
+          "rule": "Some modals printed with two options will allow a player to choose \"both\". If the spell has gained additional modes, such as from a card with lucid (see rule 702.304), only two modes can be chosen.",
+          "custom": true
+        }
+      ],
+      "reason": "User excludes Lucid-specific modal casting rules: MSEM601.2b moves exiled Lucid donors to graveyard during announcement before targets601.2c;702.304a–g adds a selected donor mode, preserving per-mode costs and star/pawprint eligibility.700.2a explicitly governs gained Lucid modes. Ordinary resolution exile remains an available generic component, but does not fulfill the excluded full keyword.",
+      "excluded_full_card_dependencies": true,
+      "ordinary_components_remain_available": true
+    },
+    {
+      "decision_id": "user-casting-scope-chant",
+      "mechanism": "Chant",
+      "scope": "rev",
+      "classification": "unsupported_requires_new_rules",
+      "scope_status": "excluded_by_explicit_user_decision",
+      "user_decision": {
+        "authority": "explicit_user_scope_decision",
+        "evidence_origin": "Parent /root relayed user confirmation and instructed this documentation update",
+        "instruction_summary": "Exclude Function, Lucid, and Chant new casting rules and dependent full-card bodies; retain ordinary Compose, Reprise, and other existing-operation mechanics in scope.",
+        "interpretation_limit": "This is a named-mechanism scope decision, not a blanket exclusion of casting hooks, text-changing effects, sacrifice, exile, graveyard moves, splice-like composition, or all rules mentioned in601.2b."
+      },
+      "source_file": "reports/cards/lackey-audit-2026-11-01/rev-rules.json",
+      "rule_references": [
+        "702.223",
+        "601.2b"
+      ],
+      "formal_source_nodes": [
+        {
+          "name": "702.223.",
+          "rule": "Chant",
+          "subrules": [
+            {
+              "name": "702.223a",
+              "rule": "Chant is a static ability that functions while a card is in your hand. “Chant [cost]” means “You may exile this card from your hand as you cast an instant or sorcery spell. If you do, that spell gains the text found within square brackets in this card’s rules text and you pay [cost] as an additional cost to cast that spell. You may cast this card as long as this card remains exiled.” Paying a card’s chant cost follows the rules for paying additional costs in rules 601.2b and 601.2f–h.",
+              "custom": true
+            },
+            {
+              "name": "702.223b",
+              "rule": "Some effect may allow a player to \"add the chants\" of cards to spells they cast. To do so, they choose the cards with chant that will add their chants. The spell gains the text found within the square brackets in those card's rules text, and that player pays [cost] as an additional cost to cast that spell. The chanting creatures will not be exiled.",
+              "custom": true
+            },
+            {
+              "name": "702.223c",
+              "rule": "You can’t choose to use a chant ability if you can’t make the required choices (targets, etc.) for that card’s rules text. If you’re chanting more than one card onto a spell, exile them all at once and choose the order in which their effects will happen. The effects of the main spell must happen first.",
+              "custom": true
+            },
+            {
+              "name": "702.223d",
+              "rule": "The spell has the characteristics of the main spell, plus the rules text found in the square brackets of each of the chanting cards. This is a text-changing effect (see rule 612, “Text-Changing Effects”). The spell doesn’t gain any other characteristics (name, mana cost, color, supertypes, card types, subtypes, etc.) of the chanting cards. Text gained by the spell that refers to a card by name refers to the spell on the stack, not the card from which the text was copied.",
+              "custom": true
+            },
+            {
+              "name": "702.223e",
+              "rule": "Choose targets for the added text normally (see rule 601.2c). Note that a spell with one or more targets won’t resolve if all of its targets are illegal on resolution.",
+              "custom": true
+            },
+            {
+              "name": "702.223f",
+              "rule": "The spell loses any chant changes once it leaves the stack for any reason.",
+              "custom": true
+            }
+          ],
+          "custom": true
+        },
+        {
+          "name": "601.2b",
+          "rule": "If the spell is modal, the player announces the mode choice (see rule 700.2). If the player making the mode choice needs to be targeted, the player casting the spell announces their choice of an appropriate player for each target required to make that choice, and only those targets, at this time instead of the normal time during 601.2c. If the number of choices has a currently undefined value, such as “Choose X,” or a value that may change during the process of casting the spell, such as “If this spell was kicked, choose any number instead”, the player chooses any number of modes. When the spell's legality is checked (rule 601.2e), if the value is still undefined or the value does not match the choices originally made, the spell is illegal. If the player wishes to splice any cards onto the spell (see rule 702.46), they reveal those cards in their hand. If that player wishes to chant any cards onto that spell (see rule 702.223), they exile those cards from their hand. They choose an order to apply those text-change effects to that spell. If the spell has alternative or additional costs that will be paid as it's being cast such as buyback or kicker costs (see rules 118.8 and 118.9), the player announces their intentions to pay any or all of those costs (see rule 601.2f). A player can't apply two alternative methods of casting or two alternative costs to a single spell. If the spell has a variable cost that will be paid as it's being cast (such as an {X} in its mana cost; see rule 107.3), the player announces the value of that variable. If the value of that variable is defined in the text of the spell by a choice that player would make later in the announcement or resolution of the spell, that player makes that choice at this time instead of that later time. If a cost that will be paid as the spell is being cast includes hybrid mana symbols, the player announces the nonhybrid equivalent cost they intend to pay. If a cost that will be paid as the spell is being cast includes Phyrexian mana symbols, the player announces whether they intend to pay 2 life or the corresponding colored mana cost for each of those symbols. Previously made choices (such as choosing to cast a spell with flashback from a graveyard or choosing to cast a creature with morph face down) may restrict the player's options when making these choices.",
+          "custom": true
+        }
+      ],
+      "reason": "User excludes Chant-specific casting rules: REV601.2b exiles selected Chant donors from hand during announcement before targets601.2c;702.223 adds their bracketed text, chooses added targets normally, and pays the additional[cost] later. The donor exile is separate from that additional price; treating both as a late cost is not equivalent.",
+      "excluded_full_card_dependencies": true,
+      "ordinary_components_remain_available": true
+    }
+  ],
+  "full_card_dependencies": [
+    {
+      "scope": "msem",
+      "source_card_key": "All Part of the Show_ACT",
+      "full_name": "All Part of the Show",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Apprehend the Nemesis_ACT",
+      "full_name": "Apprehend the Nemesis",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Call the Backup Actors_ACT",
+      "full_name": "Call the Backup Actors",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Create a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Collect the Actors_ACT",
+      "full_name": "Collect the Actors",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Create a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Defeat of the Greatest Evil_ACT",
+      "full_name": "Defeat of the Greatest Evil",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Destroy target creature or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Dig for Evidence_ACT",
+      "full_name": "Dig for Evidence",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Return target instant or sorcery card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Dream Monologue_ACT",
+      "full_name": "Dream Monologue",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Take an extra turn after this one.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "From Curtains to Chills_ACT",
+      "full_name": "From Curtains to Chills",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Tap up to one target nonland permanent and put a stun counter on it.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Glory of the Star_ACT",
+      "full_name": "Glory of the Star",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Exile target creature you control, then return it to the battlefield under its owner's control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Go Out Guns Blazing_ACT",
+      "full_name": "Go Out Guns Blazing",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Go Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Holding Out for a Hero_ACT",
+      "full_name": "Holding Out for a Hero",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "If you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Imposing Threat_ACT",
+      "full_name": "Imposing Threat",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Create a 2/2 black Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "In the Nick of Time_ACT",
+      "full_name": "In the Nick of Time",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target creature you control gets +2/+2 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Inciting Incident_ACT",
+      "full_name": "Inciting Incident",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Each opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Inspect the Plot_ACT",
+      "full_name": "Inspect the Plot",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Draw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Looming Threat_ACT",
+      "full_name": "Looming Threat",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Lovely Duet_ACT",
+      "full_name": "Lovely Duet",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Up to two target creatures can't block this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Make a Plan_ACT",
+      "full_name": "Make a Plan",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Create a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Mourning Lady Faye_ACT",
+      "full_name": "Mourning Lady Faye",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Paul, Making Greatness_ACT",
+      "full_name": "Paul, Making Greatness",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Prowess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Powerful Distraction_ACT",
+      "full_name": "Powerful Distraction",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Tap up to three target creatures.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Rendezvous Behind the Curtain_ACT",
+      "full_name": "Rendezvous Behind the Curtain",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. *(It loses any Roles you don't control.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Repurpose Debris_ACT",
+      "full_name": "Repurpose Debris",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Return target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types. *(This effect lasts indefinitely.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Scaled Outburst_ACT",
+      "full_name": "Scaled Outburst",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Put a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Shattered Reflection_ACT",
+      "full_name": "Shattered Reflection",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Discard a card, then draw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Silent Sleep_ACT",
+      "full_name": "Silent Sleep",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Return target creature card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Steal the Show_ACT",
+      "full_name": "Steal the Show",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Create a 3/3 black Demon Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Study the Maps_ACT",
+      "full_name": "Study the Maps",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Reveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "The Highest Stakes_ACT",
+      "full_name": "The Highest Stakes",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Time Stands Still, Heroes Emerge_ACT",
+      "full_name": "Time Stands Still, Heroes Emerge",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target creature you control gets +4/+4 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Timeless Rehearsal_ACT",
+      "full_name": "Timeless Rehearsal",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Uncover Malevolence_ACT",
+      "full_name": "Uncover Malevolence",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target creature can't be blocked this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Anran's Realm_BTB",
+      "full_name": "Anran's Realm",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Anran's Realm enters tapped. \n{T}: Add {R} or {G}.\n{R}{G}, {T}: Create a Function token with “This spell can't be countered.” Activate only if you control a creature with power 4 or greater. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Automated Overwatch_MSL",
+      "full_name": "Automated Overwatch",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Reach\nWhen Automated Overwatch enters, create a Function token with “If this spell would create one or more tokens, it creates twice that many of those tokens instead.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Bastion Chaplain_BTB",
+      "full_name": "Bastion Chaplain",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Lifelink\nWhen Bastion Chaplain enters, create two Function tokens with “Lifelink.” *(They're enchantments. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Bastion Valkyrie_BTB",
+      "full_name": "Bastion Valkyrie",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Flying, first strike, vigilance, lifelink\nWhen Bastion Valkyrie dies, create three Function tokens with “Choose a creature targeted by this spell. It gains flying, first strike, vigilance, and lifelink until end of turn.” *(They're enchantments. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Brawlhost Escapee_BTB",
+      "full_name": "Brawlhost Escapee",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Brawlhost Escapee dies, create a Function token with “Target creature you control fights target creature you don't control.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "CySec Blacksuit_BTB",
+      "full_name": "CySec Blacksuit",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Menace\nWhenever CySec Blacksuit deals combat damage to a player or planeswalker, create a Function token with “Choose a nonland card exiled by this spell. For as long as that card is exiled, you may cast it and you mana of any type can be spent to cast that spell.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "CySec Infiltrator_BTB",
+      "full_name": "CySec Infiltrator",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "CySec Infiltrator can't be blocked except by enchantment creatures.\nWhenever CySec Infiltrator attacks, create a Function token with “Target player loses 2 life and you gain 2 life.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "CySec Nexus_BTB",
+      "full_name": "CySec Nexus",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "CySec Nexus enters tapped. \n{T}: Add {W} or {U}.\n{W}{U}, {T}: Create a Function token with “Flash.” Activate only as a sorcery. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Divine Shell_BTB",
+      "full_name": "Divine Shell",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Divine Shell enters, create three Function tokens with “Tap target creature.” *(They're enchantments. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Duskwatcher_BTB",
+      "full_name": "Duskwatcher",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Whenever Duskwatcher attacks, create a Function token with “Tap target creature.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Evermind's Watch_BTB",
+      "full_name": "Evermind's Watch",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Evermind's Watch enters, conjure a card named Data-Point into your hand. *(It's a sorcery that costs {2} with “Draw a card.”)*\nOnce each turn, when you activate a loyalty ability, you may create a Function token with its effects. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "GenTech Architect_BTB",
+      "full_name": "GenTech Architect",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When GenTech Architect enters, create a Function token with “Put two +1/+1 counters on a creature you control.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "GenTech Labs_BTB",
+      "full_name": "GenTech Labs",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "GenTech Labs enters tapped.\n{T}: Add {G} or {U}.\n{G}{U}, {T}: Create a Function token with “This spell costs {1} less to cast if its mana value is 5 or greater.” Activate only if you have four or more cards in hand. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Genome Mapper_BTB",
+      "full_name": "Genome Mapper",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Genome Mapper enters, create a Function token with “Create an X/X green Mutant creature token, where X is this spell's mana value.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Hardlight Visionary_BTB",
+      "full_name": "Hardlight Visionary",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Hardlight Visionary enters, create a Function token with “Until end of turn, target creature becomes a 5/5 Dragon and gains flying.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Iterative Transcendence_BTB",
+      "full_name": "Iterative Transcendence",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Once during each of your turns, when you cast an instant or sorcery spell, you may create a Function token with that spell's effects. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell. A spell's effects includes added functions.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "MiliCore Barracks_BTB",
+      "full_name": "MiliCore Barracks",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "MiliCore Barracks enters tapped.\n{T}: Add {B} or {R}.\n{B}{R}, {T}: Create a Function token with “Deathtouch.” Activate only if an opponent lost life this turn. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Neon Claw Knight_BTB",
+      "full_name": "Neon Claw Knight",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Whenever Neon Claw Knight attacks, choose one. Create a Function token with that effect. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\n• This spell can't be countered.\n• This spell costs {R} less to cast.\n• If this spell would deal damage to a permanent or player, it deals that much damage plus 1 instead.",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Netsight Trickster_BTB",
+      "full_name": "Netsight Trickster",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Whenever Netsight Trickster deals combat damage to an opponent, create a Function token with “Draw a card. Then discard a card unless you pay {2}.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Noxan Altar_BTB",
+      "full_name": "Noxan Altar",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Noxan Altar enters tapped. \n{T}: Add {W} or {B}.\n{W}{B}, {T}, Tap an untapped creature you control: Create a Function token with “Lifelink.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "One of Purpose_BTB",
+      "full_name": "One of Purpose",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Prowess\nWhen One of Purpose enters, if you cast it, create a Function token with “If you cast this spell from your hand, exile it. You may cast it from exile until the end of your next turn.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "P05 Suppressor_BTB",
+      "full_name": "P05 Suppressor",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Flash\nFlying\nWhen P05 Suppressor enters, create a Function token with “Tap target creature. Put a stun counter on it.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Rapid Recursion_BTB",
+      "full_name": "Rapid Recursion",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Choose a Function added to Rapid Recursion. Create a Function token with those effects. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nDraw a card.",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Recursion Runner_BTB",
+      "full_name": "Recursion Runner",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Recursion Runner enters, create a Function token with “If this spell isn't a copy, copy it. You may choose new targets for the copy.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Resonance Ripple_BTB",
+      "full_name": "Resonance Ripple",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Choose target instant spell, sorcery spell, activated ability, or triggered ability. Create a Function token with its effects. Then you may pay {1}{U}. If you do, counter that spell or ability. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell. A spell's effects includes added functions.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Shell Phantom_BTB",
+      "full_name": "Shell Phantom",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Vigilance\nWhenever one or more creatures you control deals combat damage to a player, you may discard a card. If you do, create a Function token with “Draw two cards.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Sweeper Drone_BTB",
+      "full_name": "Sweeper Drone",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Flying\nWhen Sweeper Drone enters, create a Function token with “Put a +1/+1 counter on each creature named Sweeper Drone you control.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Training Sim_BTB",
+      "full_name": "Training Sim",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Each creature you control enters with an additional +1/+1 counter on it.\nWhen Training Sim enters, create a Function token with “Target creature you control fights target creature you don't control.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Virtual Access Point_BTB",
+      "full_name": "Virtual Access Point",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Defender\nWhen Virtual Access Point enters, create a Function token with “Target player mills four cards.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Deepweb Consultation_MC25",
+      "full_name": "Deepweb Consultation",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card.\nCreate a Function token with “Draw a card if a player discarded a card this turn.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Digital Encores_MC25",
+      "full_name": "Digital Encores",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Sigil Hoarder_HQZ",
+      "full_name": "Sigil Hoarder",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Actual frozen rules text explicitly creates or refers to Function tokens/effects."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When this creature dies, choose one. Create a Function token with that effect. *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\n• Put a +1/+1 counter on a creature you control.\n• Exile the top card of your library. Until end of turn, you may play that card.\n• Return a creature card named Sigil Hoarder from your graveyard to your hand.",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Shredded Memory_MSY",
+      "full_name": "Shredded Memory",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Lucid"
+      ],
+      "evidence": [
+        "Exact formal Lucid matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "As an additional cost to cast this spell, discard a card.\nChoose two. You may choose the same mode more than once.\n• Draw a card.\n• Shredded Memory deals 2 damage to any target.\nLucid *(Then exile this spell if you cast it from your hand or from exile. As you cast another modal spell, you may put this card into your graveyard to add one of its modes to its list of choices.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "msem",
+      "source_card_key": "Stand Everlasting_MSY",
+      "full_name": "Stand Everlasting",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Function"
+      ],
+      "evidence": [
+        "Formal Compose source creates a Function; Compose operation remains in scope, created Function full functionality is excluded."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Choose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Angler of the Crushing Sea_TWI",
+      "full_name": "Angler of the Crushing Sea",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "This spell costs {1} less to cast for each instant and sorcery card in your graveyard.\nWhen Angler of the Crushing Sea enters, [target player mills three cards.]\nChant {U} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Drowntide Exhumer_TWI",
+      "full_name": "Drowntide Exhumer",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Drowntide Exhumer enters, [return target non-Merfolk creature card from your graveyard to your hand.]\nChant {B} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Fiend of the Crimson Pact_TWI",
+      "full_name": "Fiend of the Crimson Pact",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Flying\nWhenever Fiend of the Crimson Pact deals combat damage to a noncreature, [search your library for a card not named Fiend of the Crimson Pact, reveal it, put it into your hand, then shuffle.]\nChant—{1}{B}{B}, Pay 3 life. *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Raven of Onyx Wing_TWI",
+      "full_name": "Raven of Onyx Wing",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Flying\nWhen Raven of Onyx Wing enters, [return target nonland permanent you don't control to its owner's hand.]\nChant {1}{U} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Recital of the First Echo_TWI",
+      "full_name": "Recital of the First Echo",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Recital of the First Echo enters, if you cast it, [return target instant or sorcery card from your graveyard to your hand.]\nChant {2}{U} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Sealed-Sigil Adept_TWI",
+      "full_name": "Sealed-Sigil Adept",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Sealed-Sigil Adept enters, [you draw a card and you lose 1 life.]\nChant {U/B}  *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Seer of Shackled Breath_TWI",
+      "full_name": "Seer of Shackled Breath",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Vigilance\nWhen Seer of Shackled Breath enters, [tap target creature you don't control and put a stun counter on it.]\nChant {U} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Skytide Piercer_TWI",
+      "full_name": "Skytide Piercer",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Flying\n{U}, Sacrifice Skytide Piercer: [Counter target noncreature spell unless its controller pays {2}.]\nChant {U} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Speaker of Currents_TWI",
+      "full_name": "Speaker of Currents",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Prowess\nAs you cast an instant or sorcery spell, you may add the chants of any number of creatures you control to that spell. *(You still pay the chant costs.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Stag of the Broken Crown_TWI",
+      "full_name": "Stag of the Broken Crown",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "[Flash]\n[This spell can't be countered.]\nWard {3}\nStag of the Broken Crown enters tapped if it was cast from exile.\nChant {U}{B} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Tendervow Witch_TWI",
+      "full_name": "Tendervow Witch",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Whenever you cast a noncreature spell, [you gain 2 life.]\nChant {B} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "The Ever-Gnashing Dark_TWI",
+      "full_name": "The Ever-Gnashing Dark",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "Trample\nWhenever The Ever-Gnashing Dark deals combat damage to a player, [if it's not an extra turn, take an extra turn after this one.]\nChant {1}{U}{U}{B}{B} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Unmaker of Thought_TWI",
+      "full_name": "Unmaker of Thought",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Unmaker of Thought enters, [each opponent with two or more cards in hand discards a card.]\nChant {B} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Unravel Thoughts_TWI",
+      "full_name": "Unravel Thoughts",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "As you cast this spell, you may add the chants of any number of creature cards in your graveyard to it. *(You still pay the chant costs.)*\nChoose one —\n• Counter target spell.\n• Exile up to two target creatures, then return those cards to the battlefield under their owner's control.",
+      "source_back": ""
+    },
+    {
+      "scope": "rev",
+      "source_card_key": "Weaver of Brooding Threads_TWI",
+      "full_name": "Weaver of Brooding Threads",
+      "source_shape": "normal",
+      "mechanism_dependencies": [
+        "Chant"
+      ],
+      "evidence": [
+        "Exact formal Chant matched source card."
+      ],
+      "full_card_body_status": "excluded_dependent_functionality",
+      "source_front": "When Weaver of Brooding Threads enters, if it entered from your graveyard or you cast it from your graveyard, exile it. If you do, [create a 4/4 black Horror creature token.]\nChant {3}{B} *(As you cast an instant or sorcery, you may exile this from hand and pay its chant cost to add this card's bracketed effects to that spell. You may cast this later from exile.)*",
+      "source_back": ""
+    }
+  ],
+  "retained_in_scope": [
+    {
+      "scope": "msem",
+      "mechanism": "Compose",
+      "rule_reference": "702.277.",
+      "authority_entry_classification_unchanged": "existing_operations_candidate",
+      "note": "Ordinary effect capture and token creation remain in scope; do not claim full Function functionality on created tokens."
+    },
+    {
+      "scope": "msem",
+      "mechanism": "Reprise",
+      "rule_reference": "702.205.",
+      "note": "Explicitly retained by user; sharing601.2b or casting infrastructure does not imply exclusion."
+    }
+  ],
+  "frozen_seed_policy": "All971 seed rows, IDs, keywords, original_reminders, original source_faces and originals remain unchanged; only evidence/classification overlays updated."
+}

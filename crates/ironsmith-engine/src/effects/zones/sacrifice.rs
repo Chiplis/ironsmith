@@ -1382,6 +1382,10 @@ fn sacrifice_reference_names_whole_set(spec: &ChooseSpec) -> bool {
 }
 
 impl EffectExecutor for SacrificeTargetEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool {
+        self.player.is_none() && self.target == *spec
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
     }
@@ -1420,7 +1424,10 @@ impl EffectExecutor for SacrificeTargetEffect {
                 // of that set, so each one still under the sacrificing
                 // player's control is sacrificed (CR 701.21a), not just the
                 // first. A singular reference names a one-object set.
-                if sacrifice_reference_names_whole_set(&self.target) {
+                if sacrifice_reference_names_whole_set(&self.target)
+                    || (self.player.is_none() && ctx.target_assignments.iter().any(|assignment| {
+                        assignment.spec.base() == self.target.base() && assignment.range.len() > 1
+                    })) {
                     let objects = match resolve_objects_for_effect(game, ctx, &self.target) {
                         Ok(objects) => objects,
                         Err(ExecutionError::InvalidTarget) => Vec::new(),
@@ -1639,6 +1646,8 @@ mod tests {
                 let creature = create_creature_on_battlefield(&mut game, "Bear", alice);
                 game.update_cant_effects();
                 let cause = EventCause {
+                    activation_definition: None,
+                    activation_label: None,
                     resolving_spell: None,
                     targeted_objects: Vec::new(),
                     resolving_ability: None,
@@ -1646,6 +1655,7 @@ mod tests {
                     source: Some(protector),
                     source_controller: Some(cause_controller),
                     duration_return_source: None,
+                    ..EventCause::effect()
                 };
                 let mut ctx = ExecutionContext::new_default(protector, alice).with_cause(cause);
                 if explicit {

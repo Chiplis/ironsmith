@@ -57,6 +57,10 @@ pub(crate) fn apply_outcome_tags(
     mut runtime: TaggedRuntimeState,
 ) {
     let outcome = outcome.instruction_result();
+    if let Some(action)=effect.action {
+        ctx.set_tagged_objects(effect.tag.clone(),outcome.action_objects(action,None).into_iter().cloned().collect());
+        return;
+    }
     runtime.outcome_only = effect.outcome_only;
     let drawn_snapshots = crate::effects::outcome_recording::action_objects(
         outcome,

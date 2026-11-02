@@ -766,6 +766,7 @@ pub fn annihilator_granted_ability(amount: u32) -> Ability {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -1029,6 +1030,7 @@ pub(crate) fn parse_nonstatic_keyword_action_as_object_ability(
                             is_loyalty_ability: false,
                         },
                     ),
+                    designations: Default::default(),
                     functional_zones: vec![Zone::Battlefield],
                 }
                 .into(),
@@ -1157,13 +1159,15 @@ fn parse_attached_quoted_static_grant(
     }
     let mut with_period = tokens.clone();
     with_period.push(OwnedLexToken::period(crate::TextSpan::synthetic()));
-    let abilities = match parse_static_ability_ast_line_lexed(&tokens) {
+    let abilities = if let Some(restriction)=parse_complete_quoted_static_restriction(&tokens) {
+        vec![StaticAbilityAst::Static(restriction)]
+    } else {match parse_static_ability_ast_line_lexed(&tokens) {
         Ok(Some(abilities)) if !abilities.is_empty() => abilities,
         _ => match parse_static_ability_ast_line_lexed(&with_period) {
             Ok(Some(abilities)) if !abilities.is_empty() => abilities,
             _ => return None,
         },
-    };
+    }};
     let [ability]: [StaticAbilityAst; 1] = abilities.try_into().ok()?;
     Some(StaticAbilityAst::AttachedStaticAbilityGrant {
         ability: Box::new(ability),

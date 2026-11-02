@@ -9,6 +9,30 @@ pub(super) fn matches_subject(
     allow_calculated_pt: bool,
     view: Option<&crate::derived_view::DerivedGameView<'_>>,
 ) -> bool {
+    // Entry reference authority is source-owned, never an anonymous tag table
+    // inherited while another static ability changes the source binding.
+    let entry_context = if filter.tagged_constraints.iter().any(|constraint|
+        constraint.tag.as_str().starts_with("__entry_reference_exiled")) {
+        let mut bound=ctx.clone();
+        for constraint in &filter.tagged_constraints {
+            let reference=constraint.tag.as_str();
+            let receipt=if reference=="__entry_reference_exiled__" {Some("__entry_action_exiled__".to_string())}
+                else {reference.strip_prefix("__entry_reference_exiled_by__:")
+                    .map(|label|format!("__entry_action_exiled_by__:{label}"))};
+            if let Some(receipt)=receipt {
+                let snapshots=ctx.source.map(|source|super::entry_exiled_reference_snapshots(
+                    game,source,ctx.source_snapshot.as_ref(),&receipt)).unwrap_or_default();
+                bound.tagged_objects.insert(constraint.tag.clone(),snapshots);
+            }
+        }
+        Some(bound)
+    } else {None};
+    let ctx=entry_context.as_ref().unwrap_or(ctx);
+    if filter.named_tap_payment.as_deref().is_some_and(|name| !super::admits_named_tap_payment(game, subject.object_id(), name)) { return false; }
+    if !object_group_filter_matches(filter,subject.object_id(),ctx,game){return false}
+    if let Some(relation)=&filter.linked_from_source {
+        if ctx.source.and_then(|source|game.linked_permanent_for_grant(source,relation)) != Some(subject.object_id()) { return false; }
+    }
     if !filter.excluded_rules.is_empty()
         && (game.object(subject.object_id()).is_none()
             || filter.excluded_rules.iter().any(|rule|
@@ -24,6 +48,16 @@ pub(super) fn matches_subject(
         ObjectSubject::Live(object) => game.has_custom_status(object.id, name),
         ObjectSubject::Snapshot(snapshot) => snapshot.custom_statuses.contains(name),
     }) { return false; }
+    if filter.text_added_from_source || filter.text_added_from_stable.is_some() {
+        let origin=filter.text_added_from_stable.or_else(||ctx.source_snapshot.as_ref().map(|source|source.stable_id))
+            .or_else(||ctx.source.and_then(|id|game.object(id).map(|source|source.stable_id)));
+        let Some(origin)=origin else{return false;};
+        let matches=match subject {
+            ObjectSubject::Live(object)=>object.splice_cast_state.as_ref().is_some_and(|state|state.text_sources.contains(&origin)),
+            ObjectSubject::Snapshot(snapshot)=>snapshot.text_addition_sources.contains(&origin),
+        };
+        if !matches{return false;}
+    }
     if filter.renowned && !game.is_renowned(subject.object_id()) {
         return false;
     }
@@ -244,8 +278,10 @@ pub(super) fn matches_subject(
         }
     }
 
-    if subject.is_live()
-        && filter.entered_graveyard_from_battlefield_this_turn
+    // A past-tense predicate may intentionally bind a retained graveyard
+    // snapshot after the card was returned. Its exact old incarnation still
+    // needs origin/turn evidence; being a snapshot cannot satisfy it by itself.
+    if filter.entered_graveyard_from_battlefield_this_turn
         && (subject.zone() != Zone::Graveyard
             || !game
                 .turn_store
@@ -313,8 +349,7 @@ pub(super) fn matches_subject(
         }
     }
 
-    if subject.is_live()
-        && filter.entered_graveyard_this_turn
+    if filter.entered_graveyard_this_turn
         && (subject.zone() != Zone::Graveyard
             || !game
                 .turn_store
@@ -823,7 +858,7 @@ pub(super) fn matches_subject(
     if filter.has_nonbasic_land_type
         && !object_subtypes
             .iter()
-            .any(|subtype| subtype.is_land_subtype() && !subtype.is_basic_land_type())
+            .any(|subtype| game.admitted_subtype(*subtype).is_land_subtype() && !subtype.is_basic_land_type())
     {
         return false;
     }
@@ -893,7 +928,7 @@ pub(super) fn matches_subject(
             .iter()
             .enumerate()
             .filter(|(index, subtype)| {
-                subtype.is_creature_type() && !object_subtypes[..*index].contains(subtype)
+                game.admitted_subtype(**subtype).is_creature_type() && !object_subtypes[..*index].contains(subtype)
             })
             .count() as i32;
         if !comparison.satisfies_with_context(count, game, ctx, stack_entry) {
@@ -1051,6 +1086,13 @@ pub(super) fn matches_subject(
     }
     if filter.nontoken && subject.is_token() {
         return false;
+    }
+    if filter.spell_copy {
+        let is_copy=match subject {
+            ObjectSubject::Live(object) => object.kind == ObjectKind::SpellCopy,
+            ObjectSubject::Snapshot(snapshot) => snapshot.kind == ObjectKind::SpellCopy,
+        };
+        if !is_copy{return false;}
     }
     if filter.physical_card && !subject.is_physical_card() {
         return false;
@@ -1855,4 +1897,40 @@ fn is_permanent_card_type_set(card_types: &[crate::types::CardType]) -> bool {
         ]
         .iter()
         .all(|card_type| card_types.contains(card_type))
+}
+
+
+#[cfg(test)]
+mod graveyard_snapshot_history_tests {
+    use super::*;
+    use crate::filter::ObjectFilterExt as _;
+    #[test]
+    fn retained_graveyard_origin_qualifier_requires_exact_incarnation_evidence() {
+        for origin in [Zone::Battlefield, Zone::Library, Zone::Hand] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let owner = crate::PlayerId::from_index(0);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "History recipient")
+                .card_types(vec![crate::CardType::Creature]).build();
+            let before = game.create_object_from_card(&card, owner, origin);
+            let initial = crate::snapshot::ObjectSnapshot::from_object(game.object(before).unwrap(), &game);
+            let grave = game.move_object_by_effect(before, Zone::Graveyard).unwrap();
+            let event = crate::triggers::TriggerEvent::new(crate::events::ZoneChangeEvent::with_results(
+                before, vec![grave], origin, Zone::Graveyard, crate::events::EventCause::effect(), Some(initial.clone())), Default::default());
+            game.turn_store.turn_history.record_event(&event, Some(initial), None);
+            let retained = crate::snapshot::ObjectSnapshot::from_object(game.object(grave).unwrap(), &game);
+            game.move_object_by_effect(grave, Zone::Battlefield).unwrap();
+            let filter = ObjectFilter { entered_graveyard_this_turn: true,
+                entered_graveyard_from_battlefield_this_turn: true, ..ObjectFilter::default() };
+            let ctx = game.filter_context_for(owner, None);
+            assert_eq!(filter.matches_snapshot(&retained, &ctx, &game), origin == Zone::Battlefield,
+                "a retained card needs its actual graveyard origin, not merely a matching physical card");
+            let mut unrelated = retained.clone();
+            unrelated.object_id = game.new_object_id();
+            assert!(!filter.matches_snapshot(&unrelated, &game.filter_context_for(owner, None), &game),
+                "a different incarnation of the same physical card cannot borrow its receipt");
+            game.turn_store.turn_history = Default::default();
+            assert!(!filter.matches_snapshot(&retained, &game.filter_context_for(owner, None), &game),
+                "a prior-turn receipt cannot satisfy this-turn history");
+        }
+    }
 }

@@ -1159,6 +1159,7 @@ mod tests {
             false,
         ));
         let producer = Effect::new(crate::effects::MayEffect {
+            payment_receipt:None,
             pay_as_cost: false,
             decider: Some(crate::target::PlayerFilter::You),
             effects: vec![Effect::new(crate::effects::ForEachTaggedEffect {

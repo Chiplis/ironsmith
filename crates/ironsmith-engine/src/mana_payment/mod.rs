@@ -33,6 +33,7 @@ pub use planner::{
     plan_prompt_mana_payment, unfunded_mana_payment_plan,
 };
 pub(crate) use planner::{
+     counter_payment_source_can_pay,
      execute_mana_payment_plan_in_context_with_outputs,
 };
 

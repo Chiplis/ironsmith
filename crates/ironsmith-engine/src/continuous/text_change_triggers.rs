@@ -93,6 +93,14 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
     // are explicitly bound to `_`: they are identities, references, flags,
     // fixed quantities, or presentation, rather than literal word predicates.
     match &mut rewritten.kind {
+        K::NamedActionParticipant { label: _, player: _, participant_filter, performer_filter, one_or_more: _ } => {
+            *participant_filter = rewrite_filter_words(participant_filter, change)?;
+            if let Some(filter) = performer_filter { *filter = rewrite_filter_words(filter, change)?; }
+        }
+        K::NamedAction { label: _, player: _, source_filter, object_filter, minimum_amount: _ } => {
+            *source_filter = rewrite_filter_words(source_filter, change)?;
+            if let Some(filter) = object_filter { *filter = rewrite_filter_words(filter, change)?; }
+        }
         K::StackObjectAdded => {}
         K::StateBasedObjects { filter, .. } => { *filter = rewrite_filter_words(filter, change)?; }
         K::StateBased { display: _ } | K::Custom { id: _, label: _ } => {
@@ -135,7 +143,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::PermanentSacrificed { filter } | K::PermanentDestroyed { filter }
         | K::Dies { filter } | K::PutIntoGraveyard { filter }
         | K::CardsLeaveYourGraveyard { filter, one_or_more: _, during_your_turn: _ }
-        | K::PermanentTransforms { filter } | K::FinalChapterAbilityResolved { filter }
+        | K::PermanentTransforms { filter } | K::PermanentTransformsFromNamedActivation {filter, label:_} | K::FinalChapterAbilityResolved { filter }
         | K::FinalChapterAbilityTriggers { filter }
         | K::NthCounterPutOn { filter, counter_type: _, counter_number: _ }
         | K::PhasingChanged { filter, phased_in: _, one_or_more: _ }
@@ -315,6 +323,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *caster = rewrite_player_filter_words(caster, change)?;
             *owner = rewrite_player_filter_words(owner, change)?;
         }
+        K::SpellResolves {controller} => {*controller=rewrite_player_filter_words(controller,change)?;}
         K::SpellCopied { filter, copier } => {
             rewrite_optional_filter(filter, change)?;
             *copier = rewrite_player_filter_words(copier, change)?;
@@ -341,7 +350,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *player = rewrite_player_filter_words(player, change)?;
         }
         K::CounterPutOn(model::CounterPutOnTrigger {
-            filter, counter_type: _, source_controller, count: _, include_players: _, one_or_more_objects: _,
+            filter, counter_type: _, source_controller, count: _, include_players: _, one_or_more_objects: _, activation_label: _, activation_definition: _, cause_designation: _,
         }) => {
             *filter = rewrite_filter_words(filter, change)?;
             rewrite_optional_player(source_controller, change)?;
@@ -357,6 +366,14 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *filter = rewrite_filter_words(filter, change)?;
             rewrite_optional_player(during_untap_step, change)?;
         }
+        K::PermanentTransformsFromOwnNamedActivation {filter,label:_,activator} => {
+            *filter=rewrite_filter_words(filter,change)?;
+            rewrite_optional_player(activator,change)?;
+        }
+        K::AttachmentChangedToPlayer { attachment, recipient, attached: _ } => {
+            *attachment = rewrite_filter_words(attachment, change)?;
+            *recipient = rewrite_player_filter_words(recipient, change)?;
+        }
         K::AttachmentChanged { attachment, recipient, attached: _ } => {
             *attachment = rewrite_filter_words(attachment, change)?;
             *recipient = rewrite_filter_words(recipient, change)?;
@@ -368,6 +385,12 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         K::PlayerGainsLife { player, during_turn } => {
             *player = rewrite_player_filter_words(player, change)?;
             rewrite_optional_player(during_turn, change)?;
+        }
+        K::CharacteristicGained(model::CharacteristicGainTrigger { filter, characteristic }) => {
+            *filter = rewrite_filter_words(filter, change)?;
+            if let model::GainedCharacteristic::Subtype(subtype) = characteristic {
+                change.replace_subtype_word(subtype);
+            }
         }
         K::ControlChanged(model::ControlChangeTrigger { filter, change: direction }) => {
             *filter = rewrite_filter_words(filter, change)?;
@@ -560,6 +583,20 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
         };
         return exact_native_kind(native, kind);
     }
+    if let Some(native) = trigger.downcast_ref::<native::TransformsTrigger>() {
+        let kind = match (&native.permanent_filter, &native.activation_label, &native.destination_filter) {
+            (Some(filter),Some(label),None) if native.destination_name.is_none() && native.activation_source_must_match => K::PermanentTransformsFromOwnNamedActivation {filter:filter.clone(),label:label.clone(),activator:native.activation_player.clone()},
+            (Some(filter),Some(label),None) if native.destination_name.is_none() && native.activation_player.is_none() => K::PermanentTransformsFromNamedActivation {filter:filter.clone(),label:label.clone()},
+            (Some(filter),None,None) if native.destination_name.is_none() => K::PermanentTransforms {filter:filter.clone()},
+            (Some(filter),None,Some(destination)) if native.destination_name.is_none() => K::PermanentTransformsInto {filter:filter.clone(),destination:destination.clone()},
+            (None,None,None) => match &native.this_object_surface {
+                Some(surface) => K::ThisTransformsWithSurface {surface:surface.clone(),destination_name:native.destination_name.clone()},
+                None => K::ThisTransforms {destination_name:native.destination_name.clone()},
+            },
+            _ => return Err(Error::TriggeredAbility),
+        };
+        return exact_native_kind(native,kind);
+    }
     if let Some(native) = trigger.downcast_ref::<native::CounterPutOnTrigger>() {
         let kind = if let Some(counter_number) = native.counter_number {
             K::NthCounterPutOn {
@@ -571,6 +608,8 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
                 filter: native.filter.clone(), counter_type: native.counter_type,
                 source_controller: native.source_controller.clone(), count: native_count(&native.count_mode),
                 include_players: native.include_players, one_or_more_objects: native.one_or_more_objects,
+                activation_label: native.activation_label.clone(), activation_definition: native.activation_definition,
+                cause_designation: native.cause_designation.clone(),
             })
         };
         return exact_native_kind(native, kind);
@@ -586,6 +625,9 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
             last: native.last, one_or_more: native.one_or_more, caused_by_source: native.caused_by_source,
             source_controller: native.source_controller.clone(),
         }));
+    }
+    if let Some(native) = trigger.downcast_ref::<native::other::CharacteristicGainedTrigger>() {
+        return exact_native_kind(native, K::CharacteristicGained(native.clone()));
     }
     if let Some(native) = trigger.downcast_ref::<native::ControlChangedTrigger>() {
         return exact_native_kind(native, K::ControlChanged(native.clone()));
@@ -623,6 +665,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     } else { K::PlayerAttacksOneOrMore { attacker: n.attacker.clone(), target: n.target.clone() } });
     exact!(ThisAttacksTrigger, n, K::ThisAttacks);
     exact!(ThisBlocksTrigger, n, K::ThisBlocks);
+    exact!(SpellResolvesTrigger, n, K::SpellResolves {controller:n.controller.clone()});
     exact!(SpellCopiedTrigger, n, K::SpellCopied { filter: n.filter.clone(), copier: n.copier.clone() });
     exact!(SpellCounteredTrigger, n, K::SpellCountered { filter: n.filter.clone(), controller: n.controller.clone() });
     exact!(DealsCombatDamageToPlayerTrigger, n, K::DealsCombatDamageToPlayer {
@@ -702,6 +745,9 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     });
     exact!(CardsMilledTrigger, n, K::CardsMilled {
         player: n.player.clone(), filter: n.filter.clone(), one_or_more: n.one_or_more, per_player: n.per_player,
+    });
+    exact!(AttachmentChangedToPlayerTrigger, n, K::AttachmentChangedToPlayer {
+        attachment: n.attachment.clone(), recipient: n.recipient.clone(), attached: n.attached,
     });
     exact!(AttachmentChangedTrigger, n, K::AttachmentChanged {
         attachment: n.attachment.clone(), recipient: n.recipient.clone(), attached: n.attached,
@@ -1077,4 +1123,29 @@ mod tests {
             vec![false, false, true]);
     }
 
+}
+
+#[cfg(test)]
+mod characteristic_gain_text_word_tests {
+    use super::*;
+    use ironsmith_core::trigger_model::{CharacteristicGainTrigger, GainedCharacteristic as C, TriggerKind};
+    #[test]
+    fn subtype_gain_predicate_is_authored_text_but_not_a_named_action_identity() {
+        let original = Trigger::characteristic_gained(CharacteristicGainTrigger {
+            filter: ObjectFilter::creature(), characteristic: C::Subtype(ironsmith_core::Subtype::Rebel),
+        });
+        let changed = rewrite_trigger_words(&original,
+            TextChange::creature_type(ironsmith_core::Subtype::Rebel, ironsmith_core::Subtype::Elf).unwrap()).unwrap();
+        let model = complete_model(&changed).unwrap();
+        let TriggerKind::CharacteristicGained(gain) = model.kind else { panic!("typed gain retained") };
+        assert_eq!(gain.characteristic, C::Subtype(ironsmith_core::Subtype::Elf));
+        let original = complete_model(&original).unwrap();
+        let TriggerKind::CharacteristicGained(gain) = original.kind else { panic!("original typed gain") };
+        assert_eq!(gain.characteristic, C::Subtype(ironsmith_core::Subtype::Rebel));
+        let action = Trigger::from_model(ironsmith_core::trigger_model::Trigger::named_action("Rebel".into(), PlayerFilter::Any, ObjectFilter::default(), None)).unwrap();
+        let action = complete_model(&rewrite_trigger_words(&action,
+            TextChange::creature_type(ironsmith_core::Subtype::Rebel, ironsmith_core::Subtype::Elf).unwrap()).unwrap()).unwrap();
+        let TriggerKind::NamedAction { label, .. } = action.kind else { panic!("action identity retained") };
+        assert_eq!(label, "Rebel");
+    }
 }

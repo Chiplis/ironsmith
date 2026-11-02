@@ -2,7 +2,7 @@
 
 use crate::ability::{Ability, AbilityKind};
 use crate::effect::EffectOutcome;
-use crate::effects::stack::copy_spell::create_stack_copy_from_object;
+use crate::effects::stack::copy_spell::create_stack_copy_from_object_with_context;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::object::Object;
@@ -36,7 +36,7 @@ impl EffectExecutor for EpicSpellCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(copy_id) = create_stack_copy_from_object(
+        let Some(copy_id) = create_stack_copy_from_object_with_context(
             game,
             &self.spell,
             self.entry.object_id,
@@ -45,7 +45,8 @@ impl EffectExecutor for EpicSpellCopyEffect {
             &[],
             remove_epic_ability,
             None,
-        )? else { return Ok(EffectOutcome::protected()); };
+            ctx,
+        )? else { return Ok(if ctx.decision_maker.awaiting_choice(){EffectOutcome::count(0)}else{EffectOutcome::protected()}); };
 
         super::copy_spell::queue_stack_copy_completion(game,ctx,copy_id);
 

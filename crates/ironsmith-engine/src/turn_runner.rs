@@ -334,6 +334,17 @@ struct PendingDrawRevealChoice {
     candidates: Vec<crate::effects::cards::AutomaticDrawRevealCandidate>,
     next_candidate_index: usize,
     reveal_events: Vec<crate::triggers::TriggerEvent>,
+    offers: Option<PendingDrawRevealOffers>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingDrawRevealOffers {
+    event: crate::triggers::TriggerEvent,
+    candidates: Vec<crate::effects::cards::RevealedCardActionOffer>,
+    next: usize,
+    answers: Vec<AttackCostAnswer>,
+    prompt: Option<DecisionContext>,
+    response: Option<AttackCostAnswer>,
 }
 
 #[derive(Debug, Clone)]
@@ -959,11 +970,12 @@ impl TurnRunner {
     ) -> Result<TurnAction, GameLoopError> {
         let retrying_untap_choice = self.has_pending_untap_continuation();
         let retrying_face_up_choice = self.pending_face_up_choices.is_some();
+        let retrying_reveal_offer = self.pending_draw_reveal.as_ref().is_some_and(|pending|pending.offers.is_some());
         let runner_checkpoint = self.clone();
         let game_checkpoint = game.clone();
         let queue_checkpoint = tq.clone();
         let result = self.advance_inner(game, tq);
-        if ((retrying_untap_choice || retrying_face_up_choice) && result.is_err())
+        if ((retrying_untap_choice || retrying_face_up_choice || retrying_reveal_offer) && result.is_err())
             || matches!(&result, Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution())
         {
             // Retain the accepted prefix and submitted response together with
@@ -2507,7 +2519,8 @@ impl TurnRunner {
 
     /// True while a turn-based operation is waiting on a nested player choice.
     pub fn has_pending_replay_choice(&self) -> bool {
-        self.pending_sba_choices.is_some()
+        self.pending_draw_reveal.as_ref().is_some_and(|pending|pending.offers.as_ref().is_some_and(|offers|offers.prompt.is_some()))
+            || self.pending_sba_choices.is_some()
             || self.pending_untap_choices.is_some()
             || self.pending_attraction_choices.is_some()
             || self.pending_restart_entry_choices.is_some()
@@ -2527,6 +2540,9 @@ impl TurnRunner {
     fn replay_response_slot(&mut self) -> Option<&mut Option<AttackCostAnswer>> {
         if self.has_pending_combat_cost_choice() {
             return self.combat_cost_response_slot();
+        }
+        if let Some(offers)=self.pending_draw_reveal.as_mut().and_then(|pending|pending.offers.as_mut()){
+            return Some(&mut offers.response);
         }
         if let Some(pending) = self.pending_face_up_choices.as_mut() {
             return Some(&mut pending.response);
@@ -3256,6 +3272,10 @@ impl TurnRunner {
         active_player: PlayerId,
     ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         game.sync_draw_step_tracking();
+        if let Some(pending)=self.pending_draw_reveal.take(){
+            if pending.active_player!=active_player{return Err(GameLoopError::ResolutionFailed("reveal continuation belongs to another player".into()))}
+            return self.finish_pending_draw_reveal_choices(game,pending);
+        }
         if let Some(pending) = self.pending_turn_draw.take() {
             if pending.player != active_player {
                 return Err(GameLoopError::ResolutionFailed(
@@ -3363,6 +3383,7 @@ impl TurnRunner {
                     candidates,
                     next_candidate_index: 0,
                     reveal_events: Vec::new(),
+                    offers: None,
                 },
             );
         }
@@ -3529,6 +3550,13 @@ impl TurnRunner {
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(pending.active_player);
 
+        if pending.offers.is_some(){
+            if let Some(prompt)=self.complete_pending_draw_reveal_offers(game,&mut pending)? {
+                self.pending_draw_reveal=Some(pending);
+                return Ok(RunnerProgress::NeedsDecision(prompt));
+            }
+            pending.next_candidate_index+=1;
+        }
         while let Some(candidate) = pending
             .candidates
             .get(pending.next_candidate_index)
@@ -3559,15 +3587,19 @@ impl TurnRunner {
             };
 
             if should_reveal {
+                // Revealing the card publishes identity only. Gameplay offers
+                // use the runner's real, replayable player decisions below.
                 let mut dm = AutoPassDecisionMaker;
-                pending.reveal_events.push(
-                    crate::effects::cards::emit_automatic_draw_reveal_event(
-                        game,
-                        &mut dm,
-                        &candidate,
-                        pending.draw_event_provenance,
-                    ),
-                );
+                let event=crate::effects::cards::emit_automatic_draw_reveal_event_without_offers(
+                    game,&mut dm,&candidate,pending.draw_event_provenance);
+                let offers=crate::effects::cards::reveal_action_offers_for_event(game,&event)
+                    .map_err(GameLoopError::ExecutionFailed)?;
+                pending.offers=Some(PendingDrawRevealOffers {event,candidates:offers,next:0,answers:Vec::new(),prompt:None,response:None});
+                // Finish the offers before advancing this exact reveal occurrence.
+                if let Some(prompt)=self.complete_pending_draw_reveal_offers(game,&mut pending)? {
+                    self.pending_draw_reveal=Some(pending);
+                    return Ok(RunnerProgress::NeedsDecision(prompt));
+                }
             }
             pending.next_candidate_index += 1;
         }
@@ -3599,6 +3631,35 @@ impl TurnRunner {
 
         game.reset_priority_for_new_window();
         Ok(RunnerProgress::Complete(draw_events))
+    }
+
+    /// Resume one offer on a private game copy. The outer accept/decline and
+    /// every nested ordinary effect choice share one replay answer prefix.
+    fn complete_pending_draw_reveal_offers(
+        &mut self,game:&mut GameState,pending:&mut PendingDrawRevealChoice,
+    )->Result<Option<DecisionContext>,GameLoopError>{
+        let Some(offers)=pending.offers.as_mut()else{return Ok(None)};
+        while let Some(offer)=offers.candidates.get(offers.next).cloned(){
+            if !crate::effects::cards::reveal_action_offer_is_available(game,&offer){
+                offers.next+=1;offers.answers.clear();offers.prompt=None;offers.response=None;continue;
+            }
+            if let Some(answer)=offers.response.take(){offers.answers.push(answer);}
+            else if let Some(prompt)=offers.prompt.clone(){return Ok(Some(prompt))}
+            let mut hypothetical=game.clone();
+            let mut dm=QueuedAttackCostDecisionMaker::new(offers.answers.clone());
+            let prompt=crate::effects::cards::reveal_action_offer_boolean_context(&offer);
+            let accepted=dm.decide_boolean(&hypothetical,&prompt);
+            if dm.pending_prompt.is_none(){
+                crate::effects::cards::complete_reveal_action_offer(&mut hypothetical,&offer,accepted,&mut dm)
+                    .map_err(GameLoopError::ExecutionFailed)?;
+            }
+            if let Some(prompt)=dm.pending_prompt.take(){offers.prompt=Some(prompt.clone());return Ok(Some(prompt))}
+            *game=hypothetical;
+            offers.next+=1;offers.answers.clear();offers.prompt=None;
+        }
+        crate::effects::cards::finish_public_reveal_offer_boundary(game,&offers.event);
+        pending.reveal_events.push(offers.event.clone());pending.offers=None;
+        Ok(None)
     }
 
     /// Each defender's declaration has its own completed event world. Only
@@ -4484,6 +4545,7 @@ mod tests {
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: false,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         id
@@ -7430,3 +7492,7 @@ mod sol_78_face_up_runner_tests {
         assert_eq!(runner.combat.attackers.len(), 1);
     }
 }
+
+#[cfg(test)]
+#[path = "turn_runner/reveal_offer_tests.rs"]
+mod reveal_offer_tests;

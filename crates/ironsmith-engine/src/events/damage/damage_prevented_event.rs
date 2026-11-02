@@ -32,6 +32,8 @@ pub struct DamagePreventedEvent {
     pub applications: Vec<PreventedDamage>,
     /// Stable identity for a resolution-created shield, when applicable.
     pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
+    /// Stable source-ability occurrence, retained across derived-state refreshes.
+    pub prevention_effect: Option<crate::replacement::ReplacementEffectKey>,
 }
 
 impl DamagePreventedEvent {
@@ -60,6 +62,7 @@ impl DamagePreventedEvent {
             target_snapshot: None,
             applications: vec![application],
             prevention_shield: None,
+            prevention_effect: None,
         }
     }
 

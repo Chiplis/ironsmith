@@ -39,7 +39,7 @@ pub(crate) fn parse_return_with_event_timing(
             one_shot: true,
             duration: Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None,
         },
     )]))
 }
@@ -106,6 +106,7 @@ pub enum DelayedReturnTimingAst {
     EndOfCombat,
     NextDeclareAttackersStep(PlayerFilter),
     UpcomingDeclareAttackersStep(PlayerFilter),
+    NextMainPhase(PlayerFilter),
 }
 
 pub fn parse_delayed_return_timing_words(words: &[&str]) -> Option<DelayedReturnTimingAst> {
@@ -115,6 +116,9 @@ pub fn parse_delayed_return_timing_words(words: &[&str]) -> Option<DelayedReturn
         }
         crate::grammar::effects::ReturnTimingShape::NextUpkeep(player) => {
             DelayedReturnTimingAst::NextUpkeep(player)
+        }
+        crate::grammar::effects::ReturnTimingShape::NextMainPhase(player) => {
+            DelayedReturnTimingAst::NextMainPhase(player)
         }
         crate::grammar::effects::ReturnTimingShape::EndOfCombat => {
             DelayedReturnTimingAst::EndOfCombat
@@ -147,6 +151,9 @@ pub fn wrap_return_with_delayed_timing(
                 player,
                 effects: vec![effect],
             })
+        }
+        DelayedReturnTimingAst::NextMainPhase(player) => {
+            EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { player, effects: vec![effect] })
         }
         DelayedReturnTimingAst::EndOfCombat => {
             EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat {

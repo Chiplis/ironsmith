@@ -1,0 +1,940 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "scope": "Recipient-first scalar animation source variants; originals unchanged."
+  },
+  "mechanics": [
+    {
+      "id": "rev-dare-007",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes a legendary Rebel with base power and toughness 5/5 in addition to its other types until end of turn.",
+      "executable_reminder": "It becomes a legendary Rebel creature with base power and toughness 5/5 in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Zolo's Ring_PLANE",
+          "name": "Zolo's Ring",
+          "original_text": "Type: Plane — Vereaux\nWhen you planeswalk to Zolo's Ring and at the beginning of your upkeep, create a 3/3 red and green Ox creature token with haste. It attacks this combat if able.\nWhenever chaos ensues, any number of target creatures you control each dare 5 until end of turn. *(It becomes a legendary Rebel with base power and toughness 5/5 in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Plane — Vereaux\nWhen you planeswalk to Zolo's Ring and at the beginning of your upkeep, create a 3/3 red and green Ox creature token with haste. It attacks this combat if able.\nWhenever chaos ensues, any number of target creatures you control each become a legendary Rebel creature with base power and toughness 5/5 in addition to its other types until end of turn.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Zolo's Ring",
+              "executable_text": "Type: Plane — Vereaux\nWhen you planeswalk to Zolo's Ring and at the beginning of your upkeep, create a 3/3 red and green Ox creature token with haste. It attacks this combat if able.\nWhenever chaos ensues, any number of target creatures you control each become a legendary Rebel creature with base power and toughness 5/5 in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When you planeswalk to Zolo's Ring and at the beginning of your upkeep, create a 3/3 red and green Ox creature token with haste. It attacks this combat if able.\nWhenever chaos ensues, any number of target creatures you control each dare 5 until end of turn."
+            }
+          ],
+          "original_display_text": "When you planeswalk to Zolo's Ring and at the beginning of your upkeep, create a 3/3 red and green Ox creature token with haste. It attacks this combat if able.\nWhenever chaos ensues, any number of target creatures you control each dare 5 until end of turn."
+        },
+        {
+          "id": "rev:Supporting Crowd_DOV",
+          "name": "Supporting Crowd",
+          "original_text": "Type: Creature — Human Warrior \nMana cost: {3}{G}\nPower/Toughness: 4/3\nFlash\nWhen Supporting Crowd enters, you may have another target creature you control dare 5. *(It becomes a legendary Rebel with base power and toughness 5/5 in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Warrior \nMana cost: {3}{G}\nPower/Toughness: 4/3\nFlash\nWhen Supporting Crowd enters, you may have another target creature you control become a legendary Rebel creature with base power and toughness 5/5 in addition to its other types until end of turn.",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Supporting Crowd",
+              "executable_text": "Type: Creature — Human Warrior \nMana cost: {3}{G}\nPower/Toughness: 4/3\nFlash\nWhen Supporting Crowd enters, you may have another target creature you control become a legendary Rebel creature with base power and toughness 5/5 in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flash\nWhen Supporting Crowd enters, you may have another target creature you control dare 5."
+            }
+          ],
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flash\nWhen Supporting Crowd enters, you may have another target creature you control dare 5.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Zolo's Ring",
+        "Supporting Crowd"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-008",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes a legendary Rebel with base power and toughness 2/2 in addition to its other types until end of turn.",
+      "executable_reminder": "It becomes a legendary Rebel creature with base power and toughness 2/2 in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Bravewing Hero_DOV",
+          "name": "Bravewing Hero",
+          "original_text": "Type: Creature — Human Warrior \nMana cost: {W}\nPower/Toughness: 1/1\nFlying\nWhenever another creature you control enters, you may have Bravewing Hero dare 2. *(It becomes a legendary Rebel with base power and toughness 2/2 in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Warrior \nMana cost: {W}\nPower/Toughness: 1/1\nFlying\nWhenever another creature you control enters, you may have Bravewing Hero become a legendary Rebel creature with base power and toughness 2/2 in addition to its other types until end of turn.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Bravewing Hero",
+              "executable_text": "Type: Creature — Human Warrior \nMana cost: {W}\nPower/Toughness: 1/1\nFlying\nWhenever another creature you control enters, you may have Bravewing Hero become a legendary Rebel creature with base power and toughness 2/2 in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhenever another creature you control enters, you may have Bravewing Hero dare 2."
+            }
+          ],
+          "original_display_text": "Flying\nWhenever another creature you control enters, you may have Bravewing Hero dare 2."
+        }
+      ],
+      "source_cards": [
+        "Bravewing Hero"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-009",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes a legendary Rebel with base power and toughness X/X in addition to its other types until end of turn.",
+      "executable_reminder": "It becomes a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Carlacio, Riot Instigator_DOV",
+          "name": "Carlacio, Riot Instigator",
+          "original_text": "Type: Legendary Creature — Minotaur Rogue \nMana cost: {2}{R}{G}\nPower/Toughness: 4/4\nTrample\nWhenever Carlacio, Riot Instigator attacks, you may have another target attacking creature you control dare X, where X is Carlacio's power. *(It becomes a legendary Rebel with base power and toughness X/X in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Legendary Creature — Minotaur Rogue \nMana cost: {2}{R}{G}\nPower/Toughness: 4/4\nTrample\nWhenever Carlacio, Riot Instigator attacks, you may have another target attacking creature you control become a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn, where X is Carlacio's power.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Carlacio, Riot Instigator",
+              "executable_text": "Type: Legendary Creature — Minotaur Rogue \nMana cost: {2}{R}{G}\nPower/Toughness: 4/4\nTrample\nWhenever Carlacio, Riot Instigator attacks, you may have another target attacking creature you control become a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn, where X is Carlacio's power.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Trample\nWhenever Carlacio, Riot Instigator attacks, you may have another target attacking creature you control dare X, where X is Carlacio's power."
+            }
+          ],
+          "original_display_text": "Trample\nWhenever Carlacio, Riot Instigator attacks, you may have another target attacking creature you control dare X, where X is Carlacio's power."
+        },
+        {
+          "id": "rev:Inspired Youth_DOV",
+          "name": "Inspired Youth",
+          "original_text": "Type: Creature — Human Peasant \nMana cost: {1}{G}\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may have Inspired Youth dare X, where X is that creature's power. *(It becomes a legendary Rebel with base power and toughness X/X in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Peasant \nMana cost: {1}{G}\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may have Inspired Youth become a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn, where X is that creature's power.",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Inspired Youth",
+              "executable_text": "Type: Creature — Human Peasant \nMana cost: {1}{G}\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may have Inspired Youth become a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn, where X is that creature's power.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever another creature you control enters, you may have Inspired Youth dare X, where X is that creature's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever another creature you control enters, you may have Inspired Youth dare X, where X is that creature's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Unburnt Maiden_DOV",
+          "name": "Unburnt Maiden",
+          "original_text": "Type: Creature — Human Peasant Soldier \nMana cost: {2}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nWhenever Unburnt Maiden enters or attacks, you may have it dare X, where X is the number of creatures you control. If you don't, create a 1/1 white Warrior creature token. *(It becomes a legendary Rebel with base power and toughness X/X in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Peasant Soldier \nMana cost: {2}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nWhenever Unburnt Maiden enters or attacks, you may have it become a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn, where X is the number of creatures you control. If you don't, create a 1/1 white Warrior creature token.",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Unburnt Maiden",
+              "executable_text": "Type: Creature — Human Peasant Soldier \nMana cost: {2}{W}\nPower/Toughness: 2/2\nFirst strike, vigilance\nWhenever Unburnt Maiden enters or attacks, you may have it become a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn, where X is the number of creatures you control. If you don't, create a 1/1 white Warrior creature token.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "First strike, vigilance\nWhenever Unburnt Maiden enters or attacks, you may have it dare X, where X is the number of creatures you control. If you don't, create a 1/1 white Warrior creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "First strike, vigilance\nWhenever Unburnt Maiden enters or attacks, you may have it dare X, where X is the number of creatures you control. If you don't, create a 1/1 white Warrior creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Carlacio, Riot Instigator",
+        "Inspired Youth",
+        "Unburnt Maiden"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-010",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "That creature becomes a legendary Rebel with base power and toughness X/X in addition to its other types until end of turn.",
+      "executable_reminder": "That creature becomes a legendary Rebel creature with base power and toughness X/X in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Passionate Firebrand_DOV",
+          "name": "Passionate Firebrand",
+          "original_text": "Type: Creature — Human Rogue Shaman \nMana cost: {1}{R}\nPower/Toughness: 2/3\nWhenever you cast an instant or sorcery spell, you may have target creature you control dare X and gain flying until end of turn, where X is that spell's mana value. *(That creature becomes a legendary Rebel with base power and toughness X/X in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Rogue Shaman \nMana cost: {1}{R}\nPower/Toughness: 2/3\nWhenever you cast an instant or sorcery spell, you may have target creature you control become a legendary Rebel creature with base power and toughness X/X in addition to its other types and gain flying until end of turn, where X is that spell's mana value.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Passionate Firebrand",
+              "executable_text": "Type: Creature — Human Rogue Shaman \nMana cost: {1}{R}\nPower/Toughness: 2/3\nWhenever you cast an instant or sorcery spell, you may have target creature you control become a legendary Rebel creature with base power and toughness X/X in addition to its other types and gain flying until end of turn, where X is that spell's mana value.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever you cast an instant or sorcery spell, you may have target creature you control dare X and gain flying until end of turn, where X is that spell's mana value."
+            }
+          ],
+          "original_display_text": "Whenever you cast an instant or sorcery spell, you may have target creature you control dare X and gain flying until end of turn, where X is that spell's mana value."
+        }
+      ],
+      "source_cards": [
+        "Passionate Firebrand"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-011",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes a legendary Rebel with base power and toughness 4/4 in addition to its other types until end of turn.",
+      "executable_reminder": "It becomes a legendary Rebel creature with base power and toughness 4/4 in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Strongarm Revolutionary_DOV",
+          "name": "Strongarm Revolutionary",
+          "original_text": "Type: Creature — Human Peasant \nMana cost: {2}{G}\nPower/Toughness: 2/3\nWhenever Strongarm Revolutionary attacks, you may have it dare 4. *(It becomes a legendary Rebel with base power and toughness 4/4 in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Peasant \nMana cost: {2}{G}\nPower/Toughness: 2/3\nWhenever Strongarm Revolutionary attacks, you may have it become a legendary Rebel creature with base power and toughness 4/4 in addition to its other types until end of turn.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Strongarm Revolutionary",
+              "executable_text": "Type: Creature — Human Peasant \nMana cost: {2}{G}\nPower/Toughness: 2/3\nWhenever Strongarm Revolutionary attacks, you may have it become a legendary Rebel creature with base power and toughness 4/4 in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever Strongarm Revolutionary attacks, you may have it dare 4."
+            }
+          ],
+          "original_display_text": "Whenever Strongarm Revolutionary attacks, you may have it dare 4."
+        },
+        {
+          "id": "rev:Treasury Pilferer_DOV",
+          "name": "Treasury Pilferer",
+          "original_text": "Type: Creature — Cat Rogue\nMana cost: {1}{G}\nPower/Toughness: 2/3\nWhenever Treasury Pilferer becomes the target of a spell you control, you may have it dare 4. *(It becomes a legendary Rebel with base power and toughness 4/4 in addition to its other types until end of turn.)*\nWhenever one or more Rebels you control deal combat damage to a player, you draw a card and create a Treasure token.",
+          "executable_text": "Type: Creature — Cat Rogue\nMana cost: {1}{G}\nPower/Toughness: 2/3\nWhenever Treasury Pilferer becomes the target of a spell you control, you may have it become a legendary Rebel creature with base power and toughness 4/4 in addition to its other types until end of turn.\nWhenever one or more Rebels you control deal combat damage to a player, you draw a card and create a Treasure token.",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Treasury Pilferer",
+              "executable_text": "Type: Creature — Cat Rogue\nMana cost: {1}{G}\nPower/Toughness: 2/3\nWhenever Treasury Pilferer becomes the target of a spell you control, you may have it become a legendary Rebel creature with base power and toughness 4/4 in addition to its other types until end of turn.\nWhenever one or more Rebels you control deal combat damage to a player, you draw a card and create a Treasure token.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever Treasury Pilferer becomes the target of a spell you control, you may have it dare 4.\nWhenever one or more Rebels you control deal combat damage to a player, you draw a card and create a Treasure token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Treasury Pilferer becomes the target of a spell you control, you may have it dare 4.\nWhenever one or more Rebels you control deal combat damage to a player, you draw a card and create a Treasure token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Strongarm Revolutionary",
+        "Treasury Pilferer"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-012",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes a legendary Rebel with base power and toughness 7/7 in addition to its other types until end of turn.",
+      "executable_reminder": "It becomes a legendary Rebel creature with base power and toughness 7/7 in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Thronebreaker Blade_DOV",
+          "name": "Thronebreaker Blade",
+          "original_text": "Type: Artifact — Equipment \nMana cost: {2}\nWhenever equipped creature attacks, you may have it dare 7 until end of turn. *(It becomes a legendary Rebel with base power and toughness 7/7 in addition to its other types until end of turn.)*\nEquip {3}",
+          "executable_text": "Type: Artifact — Equipment \nMana cost: {2}\nWhenever equipped creature attacks, you may have it become a legendary Rebel creature with base power and toughness 7/7 in addition to its other types until end of turn.\nEquip {3}",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Thronebreaker Blade",
+              "executable_text": "Type: Artifact — Equipment \nMana cost: {2}\nWhenever equipped creature attacks, you may have it become a legendary Rebel creature with base power and toughness 7/7 in addition to its other types until end of turn.\nEquip {3}",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever equipped creature attacks, you may have it dare 7 until end of turn.\nEquip {3}"
+            }
+          ],
+          "original_display_text": "Whenever equipped creature attacks, you may have it dare 7 until end of turn.\nEquip {3}"
+        }
+      ],
+      "source_cards": [
+        "Thronebreaker Blade"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-013",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes a legendary Rebel with base power and toughness 3/3 in addition to its other types until end of turn.",
+      "executable_reminder": "It becomes a legendary Rebel creature with base power and toughness 3/3 in addition to its other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Underhanded Revolutionary_DOV",
+          "name": "Underhanded Revolutionary",
+          "original_text": "Type: Creature — Human Warrior \nMana cost: {B}\nPower/Toughness: 1/1\nDeathtouch\nWhenever another creature you control dies, you may have Underhanded Revolutionary dare 3. *(It becomes a legendary Rebel with base power and toughness 3/3 in addition to its other types until end of turn.)*",
+          "executable_text": "Type: Creature — Human Warrior \nMana cost: {B}\nPower/Toughness: 1/1\nDeathtouch\nWhenever another creature you control dies, you may have Underhanded Revolutionary become a legendary Rebel creature with base power and toughness 3/3 in addition to its other types until end of turn.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Underhanded Revolutionary",
+              "executable_text": "Type: Creature — Human Warrior \nMana cost: {B}\nPower/Toughness: 1/1\nDeathtouch\nWhenever another creature you control dies, you may have Underhanded Revolutionary become a legendary Rebel creature with base power and toughness 3/3 in addition to its other types until end of turn.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deathtouch\nWhenever another creature you control dies, you may have Underhanded Revolutionary dare 3."
+            }
+          ],
+          "original_display_text": "Deathtouch\nWhenever another creature you control dies, you may have Underhanded Revolutionary dare 3."
+        }
+      ],
+      "source_cards": [
+        "Underhanded Revolutionary"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-dare-014",
+      "keyword": "Dare",
+      "scope": "revolution",
+      "rule_reference": "701.74.",
+      "rule_text": {
+        "name": "701.74.",
+        "rule": "Dare",
+        "subrules": [
+          {
+            "name": "701.74a",
+            "rule": "Certain abilities instruct a permanent to “dare N.” Until end of turn, that permanent becomes legendary, a Rebel creature in addition to its other types, and has base power and toughness N/N.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Zolo's Ring",
+          "Bravewing Hero",
+          "Carlacio, Riot Instigator",
+          "Cathette, Righteous Princess",
+          "Court of Miracles",
+          "Downtrodden Butcher",
+          "Gato Vigilante",
+          "Indomitable Stand",
+          "Inspired Youth",
+          "Meowsician",
+          "Mob Hangman",
+          "Mob Instigator",
+          "Passionate Firebrand",
+          "Stand for the Innocent",
+          "Strongarm Revolutionary",
+          "Supporting Crowd",
+          "Symbol of the Revolution",
+          "Telhedo Hoofbruisers",
+          "Thieving Catspaw",
+          "Thronebreaker Blade",
+          "Treasury Pilferer",
+          "Unburnt Maiden",
+          "Underhanded Revolutionary",
+          "United in Arms",
+          "Unruly Villagers",
+          "Zolo, the Freehorn",
+          "Zolo's Right Horn"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "They become legendary Rebels with base power and toughness X/X in addition to their other types until end of turn.",
+      "executable_reminder": "They become legendary Rebel creatures with base power and toughness X/X in addition to their other types until end of turn.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.74a applies one animation through end of turn. Recipient-first scalar action reader retains the declared recipient, optionality, size, types and duration. Compound gain/variable references require native proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:United in Arms_DOV",
+          "name": "United in Arms",
+          "original_text": "Type: Instant\nMana cost: {X}{G}\nUntap up to two target creatures you control. You may have those creatures dare X until end of turn. *(They become legendary Rebels with base power and toughness X/X in addition to their other types until end of turn.)*",
+          "executable_text": "Type: Instant\nMana cost: {X}{G}\nUntap up to two target creatures you control. you may have those creatures become legendary Rebel creatures with base power and toughness X/X in addition to their other types until end of turn.",
+          "custom_keyword_identities": [
+            "dare"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "United in Arms",
+              "executable_text": "Type: Instant\nMana cost: {X}{G}\nUntap up to two target creatures you control. you may have those creatures become legendary Rebel creatures with base power and toughness X/X in addition to their other types until end of turn.",
+              "custom_keyword_identities": [
+                "dare"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Untap up to two target creatures you control. You may have those creatures dare X until end of turn."
+            }
+          ],
+          "original_display_text": "Untap up to two target creatures you control. You may have those creatures dare X until end of turn."
+        }
+      ],
+      "source_cards": [
+        "United in Arms"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "recipient-scalar-animation",
+          "status": "pending",
+          "test_reference": "custom_revolution_actions::recipient_action_animation_preserves_optional_source_and_duration"
+        }
+      ]
+    },
+    {
+      "id": "rev-acclimate-049",
+      "keyword": "Acclimate",
+      "scope": "revolution",
+      "rule_reference": "701.79.",
+      "rule_text": {
+        "name": "701.79.",
+        "rule": "Acclimate",
+        "subrules": [
+          {
+            "name": "701.79a",
+            "rule": "Acclimate is a keyword action.",
+            "custom": true
+          },
+          {
+            "name": "701.79b",
+            "rule": "As a permanent acclimates, its controller may reveal a Weather card they own from outside the game or in their graveyard and put it into their hand. If they don't, they put a +1/+1 counter on that permanent.",
+            "custom": true
+          },
+          {
+            "name": "701.79c",
+            "rule": "If an effect instructs a player to acclimate, they may reveal a Weather card they own from outside the game or in their graveyard and put it into their hand. If they don't, they put a +1/+1 counter on a creature they control.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Burning Celestial",
+          "Calming Celestial",
+          "Capricious Cat",
+          "Cloud Nine",
+          "Gloomy Meteorologist",
+          "Herald of Drizzles",
+          "Lady of the Mists",
+          "Sandstorm Dancer",
+          "Sandstorm Devil",
+          "Stratus Fledgling",
+          "Temperamental Growth",
+          "Tenki, Storm Chaser",
+          "Weather Elemental"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may put a Weather card from your graveyard or outside the game into your hand, or put a +1/+1 counter on a creature you control.",
+      "executable_reminder": "You may choose a Weather card you own from your graveyard or from outside the game. If you do, reveal it and put it into your hand. Otherwise, put a +1/+1 counter on a creature you control.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 701.79c requires an optional owned Weather choice across graveyard and outside game, reveal and hand movement; declining puts a counter on a chosen own creature, without targeting. Native union-zone selection remains unverified."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Cloud Nine_CCR",
+          "name": "Cloud Nine",
+          "original_text": "Type: Sorcery\nMana cost: {W}\nChoose one —\n• Exile target enchantment.\n• You gain 4 life.\n• Acclimate. *(You may put a Weather card from your graveyard or outside the game into your hand, or put a +1/+1 counter on a creature you control.)*",
+          "executable_text": "Type: Sorcery\nMana cost: {W}\nChoose one —\n• Exile target enchantment.\n• You gain 4 life.\n• You may choose a Weather card you own from your graveyard or from outside the game. If you do, reveal it and put it into your hand. Otherwise, put a +1/+1 counter on a creature you control.",
+          "executable_faces": [
+            {
+              "name": "Cloud Nine",
+              "executable_text": "Type: Sorcery\nMana cost: {W}\nChoose one —\n• Exile target enchantment.\n• You gain 4 life.\n• You may choose a Weather card you own from your graveyard or from outside the game. If you do, reveal it and put it into your hand. Otherwise, put a +1/+1 counter on a creature you control.",
+              "custom_keyword_identities": [
+                "acclimate"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Choose one —\n• Exile target enchantment.\n• You gain 4 life.\n• Acclimate."
+            }
+          ],
+          "custom_keyword_identities": [
+            "acclimate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Choose one —\n• Exile target enchantment.\n• You gain 4 life.\n• Acclimate.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Temperamental Growth_CCR",
+          "name": "Temperamental Growth",
+          "original_text": "Type: Sorcery\nMana cost: {2}{G}\nSearch your library for a basic land card, put it onto the battlefield, then shuffle.\nAcclimate. *(You may put a Weather card from your graveyard or outside the game into your hand, or put a +1/+1 counter on a creature you control.)*",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Temperamental Growth",
+              "executable_text": "Type: Sorcery\nMana cost: {2}{G}\nSearch your library for a basic land card, put it onto the battlefield, then shuffle.\nYou may choose a Weather card you own from your graveyard or from outside the game. If you do, reveal it and put it into your hand. Otherwise, put a +1/+1 counter on a creature you control.",
+              "custom_keyword_identities": [
+                "acclimate"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Search your library for a basic land card, put it onto the battlefield, then shuffle.\nAcclimate."
+            }
+          ],
+          "executable_text": "Type: Sorcery\nMana cost: {2}{G}\nSearch your library for a basic land card, put it onto the battlefield, then shuffle.\nYou may choose a Weather card you own from your graveyard or from outside the game. If you do, reveal it and put it into your hand. Otherwise, put a +1/+1 counter on a creature you control.",
+          "custom_keyword_identities": [
+            "acclimate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Search your library for a basic land card, put it onto the battlefield, then shuffle.\nAcclimate.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Cloud Nine",
+        "Temperamental Growth"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "optional-union-zone-choice",
+          "status": "pending",
+          "test_reference": "custom_revolution_acclimate::player_acclimate_uses_owned_union_choice_or_nontargeted_counter"
+        }
+      ]
+    }
+  ]
+}

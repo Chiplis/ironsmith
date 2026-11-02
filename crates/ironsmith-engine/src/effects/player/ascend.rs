@@ -22,14 +22,15 @@ impl EffectExecutor for AscendEffect {
             .filter(|&object_id| {
                 !game.is_phased_out(object_id)
                     && game.controller_of_id(object_id) == Some(controller)
+                    && (!self.tapped_only || game.is_tapped(object_id))
                     && (!self.historic_only || game.current_card_types(object_id).is_some_and(|t| t.contains(&crate::types::CardType::Artifact))
                         || game.current_has_supertype(object_id, crate::types::Supertype::Legendary)
                         || game.current_subtypes(object_id).is_some_and(|t| t.contains(&crate::types::Subtype::Saga)))
             })
             .count();
 
-        if permanent_count >= self.minimum as usize {
-            if self.enduring_story { game.grant_enduring_story(controller); } else { game.grant_citys_blessing(controller); }
+        if permanent_count >= self.minimum as usize && game.designation_history_requirements_met(controller, &self.history_requirements) {
+            if let Some(name) = &self.named_designation { game.grant_player_designation(controller, name); } else if self.enduring_story { game.grant_enduring_story(controller); } else { game.grant_citys_blessing(controller); }
         }
         Ok(EffectOutcome::resolved())
     }
@@ -87,5 +88,36 @@ mod tests {
             game.stack.is_empty(),
             "permanent ascend does not use the stack"
         );
+    }
+}
+
+#[cfg(test)]
+mod designation_history_tests {
+    use super::*;
+    use crate::{CardDefinitionBuilder, CardId, PlayerId, Zone};
+    use crate::types::CardType;
+    use crate::events::spells::{SpellCastEvent, AbilityActivatedEvent};
+    use crate::triggers::TriggerEvent;
+    #[test]
+    fn completed_turn_history_is_not_reconstructed_from_live_objects_or_carried_into_next_turn() {
+        let a=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=CardDefinitionBuilder::new(CardId::new(),"History source").card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(1,1)).build();
+        let actor=game.create_object_from_definition(&card,a,Zone::Battlefield);
+        let spell=CardDefinitionBuilder::new(CardId::new(),"Instant receipt").card_types(vec![CardType::Instant]).build();
+        let id=game.create_object_from_definition(&spell,a,Zone::Stack);
+        let event=SpellCastEvent::from_completed_cast(id,a,Zone::Hand,&game);
+        game.queue_trigger_event(Default::default(),TriggerEvent::new(event,Default::default()));
+        game.queue_trigger_event(Default::default(),TriggerEvent::new(AbilityActivatedEvent::new(actor,a,false),Default::default()));
+        game.mark_creature_attacked_this_turn(actor);
+        game.remove_object(actor);game.remove_object(id);
+        let requirements=vec![ironsmith_core::DesignationHistoryRequirement::CastSpellMatchingTypes(vec![CardType::Instant,CardType::Sorcery]),ironsmith_core::DesignationHistoryRequirement::ActivatedAbility{nonmana_only:true},ironsmith_core::DesignationHistoryRequirement::Attacked];
+        assert!(game.designation_history_requirements_met(a,&requirements));
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(!game.designation_history_requirements_met(a,&requirements));
+        let mut designation=AscendEffect::designation_if_permanent_count(0,false,false);
+        designation.named_designation=Some("renaissance".into());designation.history_requirements=requirements;
+        let mut ctx=ExecutionContext::new_default(game.new_object_id(),a);
+        designation.execute(&mut game,&mut ctx).unwrap();
+        assert!(!game.has_player_designation(a,"renaissance"));
     }
 }

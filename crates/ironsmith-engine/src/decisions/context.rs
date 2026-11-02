@@ -1590,6 +1590,8 @@ pub struct TargetRequirementContext {
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
     pub max_targets: Option<usize>,
+    /// Shared optional extra-target budget; original maximum is max minus this allowance.
+    pub additional_target_budget: usize,
     /// Requirements in the same group must select different targets.
     /// The field retains its original player-only API name.
     pub distinct_player_group: Option<usize>,
@@ -1610,6 +1612,7 @@ impl TargetRequirementContext {
             aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }

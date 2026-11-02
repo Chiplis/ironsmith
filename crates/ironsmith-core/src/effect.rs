@@ -13,9 +13,14 @@ use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::value_model::{PriorEffectAction, Restriction, Value};
+use crate::zone::Zone;
 use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 
 mod ascend;
+mod first_resolution;
+pub use first_resolution::*;
+mod trigger_class_choice;
+pub use trigger_class_choice::*;
 mod chosen_counter_kind;
 mod mana_damage_and_control;
 mod player_option_choice;
@@ -42,6 +47,7 @@ pub use retained_spell::*;
 /// Effects are labeled with `Effect::WithId` and referenced by `Effect::If`.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+#[tag_walk(execution_node)]
 pub struct EffectId(pub u32);
 
 impl EffectId {
@@ -62,6 +68,14 @@ impl EffectId {
     /// The unique retained random-result producer of one activation's cost
     /// ("{6}, Roll a d8: Monstrosity X, where X is the result").
     pub const ACTIVATION_RESULT_COST: Self = Self(u32::MAX - 4);
+
+    /// Compiler-only placeholder for a labelled operation's prior action
+    /// receipt. Reference resolution must replace it before materialization.
+    pub const PENDING_PRIOR_ACTION: Self = Self(u32::MAX - 5);
+
+    /// Immediate tap-payment receipt. Each producer consumes it before any
+    /// subsequent component can overwrite it; it is not a resolving-body input.
+    pub const NAMED_TAP_PAYMENT: Self = Self(u32::MAX - 6);
 }
 
 impl From<u32> for EffectId {
@@ -117,6 +131,8 @@ pub enum ChoiceAggregateMetric {
     ManaValue,
     /// Number of distinct card types represented by the entire selection.
     DistinctCardTypes,
+    /// Maximum matching assigning one different color to each selected object.
+    DistinctColorRepresentatives,
     /// Total number of mana symbols of one color among the chosen objects'
     /// mana costs ("with fifteen or more black mana symbols among their mana
     /// costs", Baron Helmut Zemo). A hybrid or Phyrexian symbol of that color
@@ -326,6 +342,10 @@ pub enum Until {
     AnyPlayerCastsCreatureSpell {
         creature_spells_observed: u32,
     },
+    /// Ends as the first future turn with any opponent of the effect controller
+    /// as an active player begins. Extra turns and shared team turns are actual
+    /// turn boundaries, not a predicted turn-order position. Appended.
+    OpponentsNextTurn,
 }
 
 impl Until {
@@ -418,6 +438,15 @@ pub enum EffectPredicate {
         player: PlayerFilter,
         action: PriorEffectAction,
     },
+    /// Match only the explicit original instruction's produced-object packet.
+    /// Missing evidence is unknown, including for the negative form. Appended.
+    ResultObjectsMatch { filter: ObjectFilter, negated: bool },
+    /// An original mandatory choice completed with no eligible option.
+    /// Prevention of the subsequent action and an unavailable result are distinct.
+    ChoiceUnavailable,
+    /// A completed named receipt inside the exact preceding program result.
+    /// This never queries global/turn history or a different producer.
+    NamedActionCompleted { label:String },
 }
 
 /// Authored grammatical subject for a prior-result predicate.
@@ -535,6 +564,8 @@ pub enum GrantPlayTaggedDuration {
     UntilPlayerNextTurnStart,
     DuringPlayerNextTurn,
     UntilEndOfCombatOnPlayerNextTurn,
+    /// Persistent exact-exile permission, usable after the current turn ends.
+    AfterCurrentTurnForAsLongAsExiled,
 }
 
 /// Oracle-facing noun phrase for a temporary permission over a tagged card
@@ -911,6 +942,8 @@ pub enum DelayedTriggerSpec {
     /// grants made by the preceding instruction, observing both land plays
     /// and spell casts made through them.
     PlayedOrCastThroughPreviousPermission,
+    /// Append-only: typed characteristic gain for a delayed registration.
+    CharacteristicGained(crate::trigger_model::CharacteristicGainTrigger),
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -955,11 +988,28 @@ impl<E> DelayedTriggerPrepayment<E> {
     }
 }
 
+/// A source-owned collection shared by repeated registrations of one watcher.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub struct SourceCollectionScope {
+    pub name: String,
+    pub tag: crate::tag::TagKey,
+    pub zone: crate::zone::Zone,
+    pub capture_from: EffectId,
+    pub capture_action: crate::PriorEffectAction,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ScheduleDelayedTriggerEffect<E> {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_collection_scope: Option<SourceCollectionScope>,
     pub trigger: DelayedTriggerSpec,
     pub effects: Vec<E>,
+    /// Explicit free cast-object references imported by this delayed body. Local
+    /// producers never appear here, even inside optional branches.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub object_reference_imports: Vec<crate::tag::TagKey>,
     pub one_shot: bool,
     pub start_next_turn: bool,
     pub duration: DelayedTriggerDuration,
@@ -1004,6 +1054,13 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     /// its stated duration (CR 603.7c) yet is printed with "When".
     #[cfg_attr(feature = "serde", serde(default))]
     pub intro_surface: Option<crate::trigger_model::TriggerIntroSurface>,
+    /// Register one persistent, source-free rule for this resolved player.
+    /// The name is data identity: it never selects behavior.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub persistent_player_rule: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub intervening_if: Option<crate::Condition>,
+
 }
 
 /// Tagged-player key under which a delayed trigger exposes its resolved
@@ -1021,6 +1078,7 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
         Self {
             trigger,
             effects: effects.into(),
+            object_reference_imports: Vec::new(),
             one_shot,
             start_next_turn: false,
             duration: DelayedTriggerDuration::Forever,
@@ -1031,6 +1089,7 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             watch_all_object_targets: false,
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
+            source_collection_scope: None,
             target_choices,
             target_tag: None,
             target_filter: None,
@@ -1039,6 +1098,8 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             event_value_from_prior_prevention: false,
             duration_player: None,
             intro_surface: None,
+            persistent_player_rule: None,
+            intervening_if: None,
         }
     }
 
@@ -1785,9 +1846,13 @@ pub struct TapEffect {
     /// (or cost payer); it is independent from the recipient's controller.
     #[cfg_attr(feature = "serde", serde(default))]
     pub actor: Option<PlayerFilter>,
+    /// Rechecked at the actual tap boundary, independently of prior selection.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub named_payment: Option<String>,
 }
 
 impl TapEffect {
+    pub fn with_named_payment(mut self, name: Option<String>) -> Self { self.named_payment = name; self }
     pub fn with_actor(mut self, actor: Option<PlayerFilter>) -> Self {
         self.actor = actor;
         self
@@ -1797,6 +1862,7 @@ impl TapEffect {
         Self {
             target,
             actor: None,
+            named_payment: None,
         }
     }
 
@@ -1804,6 +1870,7 @@ impl TapEffect {
         Self {
             target: ChooseSpec::target(target),
             actor: None,
+            named_payment: None,
         }
     }
 
@@ -1811,6 +1878,7 @@ impl TapEffect {
         Self {
             target: ChooseSpec::target(target).with_count(count),
             actor: None,
+            named_payment: None,
         }
     }
 
@@ -1818,6 +1886,7 @@ impl TapEffect {
         Self {
             target: ChooseSpec::all(filter),
             actor: None,
+            named_payment: None,
         }
     }
 
@@ -1825,6 +1894,7 @@ impl TapEffect {
         Self {
             target: ChooseSpec::Source,
             actor: None,
+            named_payment: None,
         }
     }
 }
@@ -1872,6 +1942,22 @@ impl UntapEffect {
             actor: None,
         }
     }
+}
+
+/// Place current objects into one persistent association. Group creation and
+/// combat coordination are explicit data, independent of keyword identities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug,Clone,PartialEq,TagKeyWalk)]
+pub struct ObjectGroupAssignment {
+    pub subjects: ChooseSpec,
+    pub owner: Option<ChooseSpec>,
+    pub combat_together: bool,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug,Clone,PartialEq,TagKeyWalk)]
+pub struct LinkObjectsToGroupEffect {
+    /// All assignments in this instruction occur simultaneously.
+    pub groups: Vec<ObjectGroupAssignment>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2251,6 +2337,10 @@ pub struct TaggedEffect<E> {
     /// Record only the action's affected set, including an empty result.
     #[cfg_attr(feature = "serde", serde(default))]
     pub outcome_only: bool,
+    /// Restrict the retained packet to one completed original action. Selected
+    /// targets and auxiliary replacement programs never satisfy this receipt.
+    #[cfg_attr(feature="serde",serde(default,skip_serializing_if="Option::is_none"))]
+    pub action: Option<PriorEffectAction>,
 }
 
 impl<E> TaggedEffect<E> {
@@ -2259,6 +2349,7 @@ impl<E> TaggedEffect<E> {
             tag: self.tag.clone(),
             effect: Box::new(effect),
             outcome_only: self.outcome_only,
+            action:self.action,
         }
     }
 
@@ -2267,6 +2358,7 @@ impl<E> TaggedEffect<E> {
             tag: tag.into(),
             effect: Box::new(effect),
             outcome_only: false,
+            action:None,
         }
     }
 }
@@ -2500,6 +2592,21 @@ impl<E> ChooseModeEffect<E> {
     pub fn with_mode_point_costs(mut self, costs: Vec<u32>) -> Self {
         self.mode_point_costs = costs;
         self
+    }
+
+    /// A modal instruction whose selected modes have resolving payment costs,
+    /// rather than additional costs of casting the enclosing spell.
+    pub fn with_resolution_mana_costs(mut self, costs: Vec<ManaCost>) -> Self {
+        self.spree = false;
+        self.tiered = false;
+        self.descriptive_mode_costs = true;
+        self.mode_additional_mana_costs = costs;
+        self
+    }
+
+    pub fn has_resolution_mana_costs(&self) -> bool {
+        self.descriptive_mode_costs && !self.spree && !self.tiered
+            && !self.mode_additional_mana_costs.is_empty()
     }
 
     pub fn with_spree_mana_costs(mut self, costs: Vec<ManaCost>) -> Self {
@@ -2883,18 +2990,24 @@ pub enum RevealSourceFromHandDuration {
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct RevealSourceFromHandEffect {
     pub duration: RevealSourceFromHandDuration,
+    /// Captured activation-local permission; None means the actual hand.
+    /// This is attached only to the announced cost, never to resolution effects.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_source_zone: Option<Zone>,
 }
 
 impl RevealSourceFromHandEffect {
     pub fn new() -> Self {
         Self {
             duration: RevealSourceFromHandDuration::Momentary,
+            activation_source_zone: None,
         }
     }
 
     pub fn until_upkeep_ends_or_leaves_hand() -> Self {
         Self {
             duration: RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand,
+            activation_source_zone: None,
         }
     }
 }
@@ -3622,6 +3735,9 @@ pub struct BattlefieldEntryTypeChanges {
     /// Color clauses from the same descriptive entry instruction, in order.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub color_changes: Vec<BattlefieldEntryColorChange>,
+    /// Descriptive replacement types owned by this arrival (CR 611.2e).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub set_card_types: Option<Vec<crate::types::CardType>>,
     pub added_card_types: Vec<crate::types::CardType>,
     pub removed_subtype_families: Vec<crate::types::SubtypeFamily>,
     pub added_subtypes: Vec<crate::types::Subtype>,
@@ -3631,6 +3747,9 @@ pub struct BattlefieldEntryTypeChanges {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 #[cfg_attr(feature = "serde", serde(bound(serialize = "M: serde::Serialize", deserialize = "M: serde::Deserialize<'de>")))]
 pub struct MoveToZoneEffect<M = ()> {
+    /// Remember exactly one actual arrival as the source's persistent choice.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub remember_as_chosen_object: bool,
     /// Continuous modifications owned by this battlefield arrival (CR 611.2e).
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub entry_modifications: Vec<M>,
@@ -3730,6 +3849,7 @@ impl<M> MoveToZoneEffect<M> {
     pub fn try_map_entry_modifications<N, E>(self, mut map: impl FnMut(M) -> Result<N, E>) -> Result<MoveToZoneEffect<N>, E> {
         Ok(MoveToZoneEffect {
             entry_modifications: self.entry_modifications.into_iter().map(&mut map).collect::<Result<Vec<_>, _>>()?,
+            remember_as_chosen_object: self.remember_as_chosen_object,
             retained_reference_tags: self.retained_reference_tags,
             target: self.target,
             zone: self.zone,
@@ -3764,6 +3884,7 @@ impl<M> MoveToZoneEffect<M> {
         Self {
             entry_modifications: Vec::new(),
             entry_type_changes: None,
+            remember_as_chosen_object: false,
             retained_reference_tags: Vec::new(),
             target,
             zone,
@@ -4159,7 +4280,7 @@ impl ReorderLibraryTopEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ExertCostEffect {
     pub display_text: String,
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub descriptive: bool,
 }
 
@@ -4566,6 +4687,10 @@ impl BecomeBasicLandTypeChoiceEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BecomeCreatureTypeChoiceEffect {
+    /// Reuse the registering source's already chosen creature type. The
+    /// executed modification snapshots that subtype rather than prompting.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub use_source_chosen_type: bool,
     pub target: ChooseSpec,
     pub duration: Until,
     pub chooser: PlayerFilter,
@@ -4575,6 +4700,9 @@ pub struct BecomeCreatureTypeChoiceEffect {
     /// object's other creature types (CR 205.1b).
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub in_addition_to_other_types: bool,
+    /// Snapshot a prior card-type choice, rather than a creature subtype.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub use_source_chosen_card_type: bool,
 }
 
 impl BecomeCreatureTypeChoiceEffect {
@@ -4584,6 +4712,8 @@ impl BecomeCreatureTypeChoiceEffect {
         excluded_subtypes: Vec<crate::types::Subtype>,
     ) -> Self {
         Self {
+            use_source_chosen_type: false,
+            use_source_chosen_card_type: false,
             target,
             duration,
             chooser: PlayerFilter::You,
@@ -4811,6 +4941,10 @@ pub struct GrantNextSpellCostReductionEffect {
     /// that life payment instead of nothing.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub pay_life_equal_to_mana_value: bool,
+    /// Keep this rule pending until the affected player's next actual turn.
+    /// At that boundary its ordinary end-of-turn duration begins.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub starts_during_next_turn: bool,
 }
 
 impl GrantNextSpellCostReductionEffect {
@@ -4857,6 +4991,7 @@ impl GrantNextSpellCostReductionEffect {
             without_paying_mana_cost: false,
             increases_cost: false,
             pay_life_equal_to_mana_value: false,
+            starts_during_next_turn: false,
         }
     }
 
@@ -4875,6 +5010,7 @@ impl GrantNextSpellCostReductionEffect {
             without_paying_mana_cost: false,
             increases_cost: false,
             pay_life_equal_to_mana_value: false,
+            starts_during_next_turn: false,
         }
     }
 
@@ -4893,6 +5029,7 @@ impl GrantNextSpellCostReductionEffect {
             without_paying_mana_cost: false,
             increases_cost: false,
             pay_life_equal_to_mana_value: false,
+            starts_during_next_turn: false,
         }
     }
 
@@ -4912,8 +5049,19 @@ impl GrantNextSpellCostReductionEffect {
             without_paying_mana_cost: false,
             increases_cost: false,
             pay_life_equal_to_mana_value: false,
+            starts_during_next_turn: false,
         }
     }
+}
+
+/// Copy complete static keyword payloads from an explicit object reference.
+/// Historical reads consume retained evidence, never the object's new incarnation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct KeywordAbilitySource {
+    pub source: ChooseSpec,
+    pub keywords: Vec<crate::StaticAbilityId>,
+    pub last_known: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -4931,6 +5079,9 @@ pub struct GrantAbilitiesTargetEffect<A> {
     /// only in those. Appended; absent in older artifacts.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub activated_from_symbol_as_any_color: Option<ManaSymbol>,
+    /// Selected static keyword families, preserving every full payload.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub keyword_from: Option<KeywordAbilitySource>,
 }
 
 impl<A> GrantAbilitiesTargetEffect<A> {
@@ -4945,6 +5096,7 @@ impl<A> GrantAbilitiesTargetEffect<A> {
             duration,
             activated_from: None,
             activated_from_symbol_as_any_color: None,
+            keyword_from: None,
         }
     }
 }
@@ -5018,7 +5170,7 @@ impl FightEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ExploreEffect {
     pub target: ChooseSpec,
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub descriptive: bool,
 }
 
@@ -5074,8 +5226,16 @@ pub struct ManifestTopCardOfLibraryEffect {
     pub descriptive: bool,
 }
 
-/// Put an arbitrary collection of cards onto the battlefield face down as
-/// manifested or cloaked creatures.
+/// An ordinary, optional exile-and-cast action for a described face-down card.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct DescribedFaceDownCastPermission {
+    pub filter: ObjectFilter,
+    pub require_printed_mana_cost: bool,
+}
+
+/// Put an arbitrary collection of cards onto the battlefield face down.
+/// Entry provenance separately records manifest, cloak or a described operation.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ManifestObjectsEffect {
@@ -5086,12 +5246,23 @@ pub struct ManifestObjectsEffect {
     pub shuffle: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub descriptive: bool,
+    /// Resolve control separately for every entering card.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub under_owner_control: bool,
+    /// Described face-down entry without a printed-mana-cost special action.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub no_turn_up_permission: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exile_cast_permission: Option<DescribedFaceDownCastPermission>,
 }
 
 impl ManifestObjectsEffect {
     pub fn new(target: ChooseSpec, controller: PlayerFilter) -> Self {
         Self {
             descriptive: false,
+            under_owner_control: false,
+            no_turn_up_permission: false,
+            exile_cast_permission: None,
             target,
             controller,
             cloak: false,
@@ -6020,6 +6191,10 @@ pub struct CreateTokenEffect<D> {
     /// token so its own abilities can find them (CR 607.2a).
     #[cfg_attr(feature = "serde", serde(default))]
     pub link_source_exiled_this_resolution: bool,
+    /// A singular authored exile binds only its final exact result, including
+    /// within a sequential foreach. Never fall back to an earlier surviving card.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub link_only_last_source_exiled: bool,
     /// Counters each created token enters the battlefield with ("a 0/0
     /// token with two +1/+1 counters on it", "The token enters with X
     /// +1/+1 counters on it"). They are part of the entry event (CR 122.6),
@@ -6083,7 +6258,8 @@ impl<D: std::fmt::Debug> std::fmt::Debug for CreateTokenEffect<D> {
             .field(
                 "link_source_exiled_this_resolution",
                 &self.link_source_exiled_this_resolution,
-            );
+            )
+            .field("link_only_last_source_exiled", &self.link_only_last_source_exiled);
         // Absent entry counters keep the historical Debug bytes.
         if !self.entry_counters.is_empty() {
             debug.field("entry_counters", &self.entry_counters);
@@ -6129,6 +6305,7 @@ impl<D> CreateTokenEffect<D> {
             exile_at_next_end_step: false,
             next_end_step_player: PlayerFilter::Any,
             link_source_exiled_this_resolution: false,
+            link_only_last_source_exiled: false,
             entry_counters: Vec::new(),
             must_attack_player_this_turn: None,
         }
@@ -6355,6 +6532,14 @@ pub struct CreateTokenCopyEffect<A> {
     /// "except it has haste and loses soulbond" (Mirage Phalanx): the copy is
     /// created without the soulbond pairing ability.
     pub loses_soulbond: bool,
+    /// Remove only authored ability groups with these designations from the
+    /// token's copiable values, including their independent identity markers.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub removed_ability_designations: Vec<String>,
+    /// Ordinary layer-six loss starts before entry; it does not erase copied
+    /// rules text and expires according to its authored duration.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub ability_loss_until: Option<Until>,
     pub sacrifice_at_next_end_step: bool,
     pub sacrifice_at_next_end_step_reference_surface: Option<TokenCopyReferenceSurface>,
     /// Original quoted copiable ability text when the cleanup instruction was
@@ -6393,6 +6578,9 @@ pub struct CreateTokenCopyEffect<A> {
     pub added_colors: ColorSet,
     pub set_card_types: Option<Vec<CardType>>,
     pub set_subtypes: Option<Vec<Subtype>>,
+    /// A replacement creature-type list preserves unrelated subtype families.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub preserve_noncreature_subtypes: bool,
     pub granted_static_abilities: Vec<A>,
     /// Counters each created token enters the battlefield with ("The token
     /// enters with half that many +1/+1 counters on it, rounded down"). They
@@ -6440,6 +6628,8 @@ impl<A> CreateTokenCopyEffect<A> {
             exile_at_end_of_combat: false,
             exile_at_end_of_combat_reference_surface: None,
             loses_soulbond: false,
+            removed_ability_designations: Vec::new(),
+            ability_loss_until: None,
             sacrifice_at_next_end_step: false,
             sacrifice_at_next_end_step_reference_surface: None,
             sacrifice_at_next_end_step_ability_text: None,
@@ -6460,6 +6650,7 @@ impl<A> CreateTokenCopyEffect<A> {
             added_colors: ColorSet::new(),
             set_card_types: None,
             set_subtypes: None,
+            preserve_noncreature_subtypes: false,
             granted_static_abilities: Vec::new(),
             entry_counters: Vec::new(),
             enters_blocking: None,
@@ -6657,8 +6848,15 @@ impl<A> CreateTokenCopyEffect<A> {
         self
     }
 
+    pub fn set_creature_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
+        self.set_subtypes = Some(subtypes);
+        self.preserve_noncreature_subtypes = true;
+        self
+    }
+
     pub fn set_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
         self.set_subtypes = Some(subtypes);
+        self.preserve_noncreature_subtypes = false;
         self
     }
 
@@ -6684,11 +6882,18 @@ pub enum NextSpellGrantMode {
     PlayTiming,
     /// Noncopiable static rider attached to the chosen spell incarnation.
     IncarnationAbility,
+    /// An external delayed ETB followup bound to the exact next cast spell.
+    /// The carried triggered ability is a program envelope, not an ability
+    /// granted to the recipient and not part of its copiable values.
+    EntryFollowup,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct GrantNextSpellAbilityEffect<A> {
+    /// Apply independently to every matching cast before the turn expires.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub repeat_for_turn: bool,
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub ability: A,
@@ -6703,8 +6908,11 @@ impl<A> GrantNextSpellAbilityEffect<A> {
             filter,
             ability,
             mode: NextSpellGrantMode::Ability,
+            repeat_for_turn: false,
         }
     }
+
+    pub fn with_repeat_for_turn(mut self, repeat: bool) -> Self { self.repeat_for_turn=repeat; self }
 
     pub fn with_mode(mut self, mode: NextSpellGrantMode) -> Self {
         self.mode = mode;
@@ -7104,11 +7312,18 @@ pub enum ExileUntilDuration {
     OpponentBecomesMonarch,
     NextEndStep,
     EndOfCombat,
+    /// The source may start on the stack. Normal resolution preserves exile;
+    /// any other stack exit, or its resulting permanent's exit, ends it.
+    SourceLeavesStackOrBattlefield,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ExileUntilEffect {
+    /// Definition-local ownership of a printed permanent spell's exile cost
+    /// (CR 607.2q). Ordinary ability admission supplies its own acquisition.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cost_linked_exile_pair: Option<crate::LinkedExilePair>,
     pub spec: ChooseSpec,
     pub duration: ExileUntilDuration,
     /// A separately targeted permanent whose departure ends the duration.
@@ -7124,6 +7339,7 @@ pub struct ExileUntilEffect {
 impl ExileUntilEffect {
     pub fn new(spec: ChooseSpec, duration: ExileUntilDuration) -> Self {
         Self {
+            cost_linked_exile_pair: None,
             spec,
             duration,
             leave_watcher: None,
@@ -7872,13 +8088,33 @@ pub struct RippleEffect {
     pub amount: u32,
 }
 
+/// An object-state transition that ends one application of a named status.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TagKeyWalk)]
+pub enum CustomStatusExpiryEvent { TurnsFaceUp, PhasesIn }
+
 /// A noncopiable permanent designation, independent of a keyword action.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum PermanentDesignation {
     Harnessed,
+    /// Named state on one explicitly named zone incarnation. Moving the card
+    /// creates a new incarnation and ends this state, just like battlefield statuses.
+    CustomStatusInZone { name: String, zone: crate::zone::Zone, present: bool,
+        /// This exact zone incarnation lends its designation to the spell it
+        /// becomes, independently of the permission used to cast it.
+        #[cfg_attr(feature = "serde", serde(default))]
+        carry_to_stack: bool },
     /// Named, noncopiable state on this battlefield incarnation.
     CustomStatus { name: String, until_end_of_turn: bool },
+    CustomStatusUntilEvent { name: String, event: CustomStatusExpiryEvent },
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct GrantExileControllerInspectionEffect {
+    pub target: ChooseSpec,
+    pub sources: ChooseSpec,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -7886,4 +8122,69 @@ pub enum PermanentDesignation {
 pub struct SetPermanentDesignationEffect {
     pub target: ChooseSpec,
     pub designation: PermanentDesignation,
+}
+
+/// A status-gated alternative to the complete printed activation cost. Each
+/// ability owns its own per-turn use allowance, independent of normal payments.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct GrantActivationCostAlternativeEffect {
+    pub target: ChooseSpec,
+    pub status: String,
+    pub replacement_cost: ManaCost,
+    pub max_uses_per_ability_each_turn: u32,
+    pub nonloyalty_only: bool,
+}
+
+/// Merge two selected battlefield permanents into the host's existing object.
+/// Physical components retain their individual owners; no zone change occurs.
+#[cfg_attr(feature="serde",derive(serde::Serialize,serde::Deserialize))]
+#[derive(Debug,Clone,PartialEq,TagKeyWalk)]
+pub struct MergePermanentsEffect {
+    pub incoming:ObjectFilter,
+    pub host:ObjectFilter,
+    pub choose_top:bool,
+    pub transfer_counters:bool,
+    pub transfer_attachments:bool,
+}
+
+
+/// Create tokens from the source physical card's retained back-face definition.
+/// No copiable front-face ability can manufacture a missing linked back face.
+#[cfg_attr(feature="serde",derive(serde::Serialize,serde::Deserialize))]
+#[derive(Debug,Clone,PartialEq,TagKeyWalk)]
+pub struct CreateLinkedFaceTokenEffect {
+    pub required_subtype: Subtype,
+    pub attached_to: ChooseSpec,
+}
+
+/// Record exact object membership owned by one exact source incarnation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RecordSourceCollectionEffect {
+    pub target: ChooseSpec,
+    pub source_tag: Option<crate::tag::TagKey>,
+    pub name: String,
+    pub source_zone: Option<crate::zone::Zone>,
+    pub member_zone: crate::zone::Zone,
+}
+
+/// Pure binding of one instruction's original movement arrivals. Added
+/// replacement programs and later reincarnations cannot enter this packet.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RememberOriginalMovementArrivalsEffect {
+    pub from: EffectId,
+    pub zone: crate::zone::Zone,
+    pub tag: crate::tag::TagKey,
+}
+
+/// Associate actual exiled physical cards with an exact battlefield host.
+/// Exiling, choosing, and optionality are separate ordinary instructions.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct LinkExiledCardsEffect {
+    pub cards: ChooseSpec,
+    pub host: ChooseSpec,
+    pub relationship: String,
 }

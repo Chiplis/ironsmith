@@ -102,6 +102,7 @@ pub enum CounterActionAst {
     /// "Choose a kind of counter at random [that <target> doesn't have on
     /// it] from among <kinds>. Put a counter of that kind on <target>."
     PutCounterOfRandomKind {
+        player_choice: bool,
         kinds: Vec<CounterType>,
         target: TargetAst,
         only_absent_kinds: bool,

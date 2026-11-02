@@ -30,6 +30,10 @@ use crate::zone::Zone;
 pub type MillEffect = ironsmith_core::MillEffect;
 
 impl EffectExecutor for MillEffect {
+    fn scalar_target_resolution_specs(&self)->Vec<crate::target::ChooseSpec>{
+        crate::effects::helpers::scalar_player_target_spec(&self.player).into_iter().collect()
+    }
+
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         self.player.mentions_player_filter(needle)
     }

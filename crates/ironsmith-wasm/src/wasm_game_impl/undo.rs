@@ -142,6 +142,7 @@ impl WasmGame {
         nested_answers: &[ReplayDecisionAnswer],
     ) -> bool {
         match root {
+            ReplayRoot::PrivateHandSpecialAction(_) => true,
             ReplayRoot::Response(response) => {
                 Self::response_starts_cancelable_action_chain(response)
             }
@@ -158,9 +159,12 @@ impl WasmGame {
         if self.payment_disclosure_generation != replay.checkpoint.payment_disclosure_generation {
             return false;
         }
-        let ReplayRoot::Response(response) = &replay.root else {
-            return false;
-        };
+        if matches!(&replay.root, ReplayRoot::PrivateHandSpecialAction(_)) {
+            return !self.has_irreversible_hand_disclosure_since(&replay.checkpoint)
+                && !self.has_irreversible_library_change_since(&replay.checkpoint)
+                && !self.has_irreversible_random_change_since(&replay.checkpoint);
+        }
+        let ReplayRoot::Response(response) = &replay.root else { return false; };
 
         if matches!(
             response,
@@ -272,6 +276,7 @@ impl WasmGame {
                     matches!(
                         pending.stage,
                         CastStage::ChoosingOptionalCosts
+                            | CastStage::ChoosingTextFragments
                             | CastStage::ChoosingAssistPlayer
                             | CastStage::ChoosingAssistContribution
                             | CastStage::ChoosingNextCost
@@ -417,7 +422,7 @@ impl WasmGame {
             ReplayRoot::Response(PriorityResponse::PriorityAction(LegalAction::PassPriority)) => {
                 false
             }
-            ReplayRoot::Response(_) => true,
+            ReplayRoot::PrivateHandSpecialAction(_) | ReplayRoot::Response(_) => true,
             ReplayRoot::Advance | ReplayRoot::AddCardToZone { .. } | ReplayRoot::ForceTurnFaceUp { .. } => false,
         }
     }
@@ -952,7 +957,7 @@ impl WasmGame {
             let _ = self.game.apply_deck_construction_color_note(object_id, name);
         }
 
-        self.game.shuffle_player_library(player_id);
+        if !self.pending_setup_shuffles.contains(&player_id) { self.pending_setup_shuffles.push(player_id); }
         Ok(())
     }
 
@@ -1271,15 +1276,20 @@ impl WasmGame {
             draft.enforce_filter_claims,
             draft.enforce_line_claims,
             || ironsmith_dynamic_compile::with_custom_subtypes(&draft.custom_subtypes, || {
+                for source in &draft.supplied_card_definitions {
+                    ironsmith_compiled_artifact::validate_standalone_supplied_definition_metadata(&source.text,&source.metadata).map_err(|error|JsValue::from_str(&error))?;
+                }
+                ironsmith_dynamic_compile::with_supplied_card_definitions(Vec::new(),||{
                 let mut faces = self.compile_custom_card_faces_inner(draft)?;
                 let mut used = Vec::new();
                 for face in &faces {
                     for subtype in &face.card.custom_subtypes {
-                        if !used.contains(subtype) { used.push(*subtype); }
+                        ironsmith_core::custom_subtypes::merge_subtype_associations(&mut used, *subtype);
                     }
                 }
                 for face in &mut faces { face.card.custom_subtypes = used.clone(); }
                 Ok(faces)
+                })
             })
                 .map_err(|error| JsValue::from_str(&error))?,
         )
@@ -1345,11 +1355,21 @@ impl WasmGame {
         // Each token sees the tokens defined before it, so one token can create
         // another. Card faces then see every token the draft carries.
         let mut tokens = Vec::with_capacity(draft.custom_token_faces.len());
+        let mut token_counter_programs = std::collections::BTreeMap::new();
+        let mut token_counter_subtypes = Vec::new();
         for token in &draft.custom_token_faces {
             let compiled = ironsmith_dynamic_compile::with_custom_tokens(tokens.clone(), || {
                 Self::compile_custom_token_face(token)
             })
             .map_err(|err| JsValue::from_str(&format!("token {} parse failed: {err}", token.name.trim())))?;
+            for subtype in &compiled.2 {
+                ironsmith_core::custom_subtypes::merge_subtype_associations(&mut token_counter_subtypes, *subtype);
+            }
+            for (name, program) in compiled.1.ability_counter_definitions {
+                if let Some(previous) = token_counter_programs.insert(name, program.clone()) {
+                    if !ironsmith::ability_program_identity::ability_programs_equivalent(&previous, &program) { return Err(JsValue::from_str("conflicting auxiliary token ability-counter definitions")); }
+                }
+            }
             tokens.push(compiled.0);
         }
         let mut definitions = Vec::with_capacity(expected_faces);
@@ -1364,7 +1384,7 @@ impl WasmGame {
 
             let compiled = ironsmith_dynamic_compile::with_custom_tokens(tokens.clone(), || {
                 if draft.token {
-                    return Self::compile_custom_token_face(face).map(|(_, runtime)| runtime);
+                    return Self::compile_custom_token_face(face).map(|(_, runtime, _)| runtime);
                 }
                 let mut builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(
                     CardId::new(),
@@ -1380,17 +1400,37 @@ impl WasmGame {
                 }
                 let parse_block = Self::build_custom_face_parse_block(face)
                     .map_err(|err| err.as_string().unwrap_or_default())?;
-                ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
-                    builder,
-                    parse_block,
-                    false,
-                )
-                .map_err(|err| err.to_string())
+                if draft.supplied_card_definitions.is_empty() {
+                    ironsmith_dynamic_compile::compile_builder_to_runtime_definition(builder, parse_block, false)
+                        .map_err(|error| error.to_string())
+                } else {
+                    let sources = draft.supplied_card_definitions.iter().map(|source| ironsmith_dynamic_compile::SuppliedCardDefinitionSource {
+                        name: source.name.clone(), text: source.text.clone(),
+                        identities: source.custom_keyword_identities.clone(), payments: source.custom_keyword_payments.clone(),
+                        subtypes: source.custom_subtypes.clone(),
+                    }).collect::<Vec<_>>();
+                    ironsmith_dynamic_compile::compile_builder_with_supplied_graph(builder, &parse_block, &sources, true)
+                }
             });
             let mut definition = compiled
                 .map_err(|err| JsValue::from_str(&format!("face {} parse failed: {err}", index + 1)))?;
             for keyword in &face.custom_keyword_payments {
                 definition.attribute_custom_keyword_payment(keyword);
+            }
+            for counter in &face.custom_keyword_counter_definitions {
+                if counter.name.trim().is_empty() { return Err(JsValue::from_str("ability-counter name is empty")); }
+                let kind = ironsmith_core::counter::normalize_named_counter_name(&counter.name).map_err(|error| JsValue::from_str(&error))?;
+                let program = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
+                    ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), "Ability counter program").with_custom_keyword(kind.clone()),
+                    format!("Type: Creature\nPower/Toughness: 1/1\n{}", counter.reminder), false,
+                ).map_err(|error| JsValue::from_str(&format!("ability counter {}: {error}",counter.name)))?;
+                if program.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())) || program.spell_effect.is_some() { return Err(JsValue::from_str("ability counter must define permanent abilities")); }
+                for subtype in &program.card.custom_subtypes {
+                    ironsmith_core::custom_subtypes::merge_subtype_associations(&mut definition.card.custom_subtypes, *subtype);
+                }
+                if let Some(previous) = definition.ability_counter_definitions.insert(kind, program.abilities.clone()) {
+                    if !ironsmith::ability_program_identity::ability_programs_equivalent(&previous, &program.abilities) { return Err(JsValue::from_str("conflicting ability-counter definitions")); }
+                }
             }
             if let Some(display) = face.display_oracle_text.as_deref() {
                 // Compilation above remains strict. Only the authored surface is
@@ -1406,6 +1446,14 @@ impl WasmGame {
             }
             definition.card.linked_face_layout = draft.layout.linked_face_layout();
             definition.card.transforming_dfc = draft.layout == CustomCardLayoutInput::Transform;
+            for subtype in &token_counter_subtypes {
+                ironsmith_core::custom_subtypes::merge_subtype_associations(&mut definition.card.custom_subtypes, *subtype);
+            }
+            for (name, program) in &token_counter_programs {
+                if let Some(previous) = definition.ability_counter_definitions.insert(name.clone(), program.clone()) {
+                    if !ironsmith::ability_program_identity::ability_programs_equivalent(&previous, program) { return Err(JsValue::from_str("conflicting card/token ability-counter definitions")); }
+                }
+            }
             definitions.push(definition);
         }
 
@@ -1445,7 +1493,7 @@ impl WasmGame {
     fn compile_custom_token_face(
         face: &CustomCardFaceInput,
     ) -> Result<
-        (ironsmith_dynamic_compile::CompilerCardDefinition, CardDefinition),
+        (ironsmith_dynamic_compile::CompilerCardDefinition, CardDefinition, Vec<ironsmith::types::Subtype>),
         String,
     > {
         let name = face.name.trim();
@@ -1468,7 +1516,30 @@ impl WasmGame {
         }
         let parse_block = Self::build_custom_face_parse_block(face)
             .map_err(|err| err.as_string().unwrap_or_default())?;
-        ironsmith_dynamic_compile::compile_builder_to_token_definitions(builder, parse_block)
+        let (mut compiler, mut runtime) = ironsmith_dynamic_compile::compile_builder_to_token_definitions(builder, parse_block)?;
+        let mut counter_subtypes = Vec::new();
+        for counter in &face.custom_keyword_counter_definitions {
+            let name = ironsmith_core::counter::normalize_named_counter_name(&counter.name)?;
+            let builder = ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), "Ability counter program").with_custom_keyword(name.clone());
+            let (program_compiler, program) = ironsmith_dynamic_compile::compile_builder_to_token_definitions(
+                builder, format!("Type: Creature\nPower/Toughness: 1/1\n{}", counter.reminder),
+            )?;
+            if program.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())) || program.spell_effect.is_some() {
+                return Err("ability counter must define permanent executable abilities".into());
+            }
+            for subtype in &program.card.custom_subtypes {
+                ironsmith_core::custom_subtypes::merge_subtype_associations(&mut counter_subtypes, *subtype);
+                ironsmith_core::custom_subtypes::merge_subtype_associations(&mut runtime.card.custom_subtypes, *subtype);
+            }
+            for subtype in &program_compiler.card.custom_subtypes {
+                ironsmith_core::custom_subtypes::merge_subtype_associations(&mut compiler.card.custom_subtypes, *subtype);
+            }
+            if let Some(previous) = runtime.ability_counter_definitions.insert(name.clone(), program.abilities.clone()) {
+                if !ironsmith::ability_program_identity::ability_programs_equivalent(&previous, &program.abilities) { return Err("conflicting token ability-counter definitions".into()); }
+            }
+            compiler.ability_counter_definitions.insert(name, program_compiler.abilities);
+        }
+        Ok((compiler, runtime, counter_subtypes))
     }
 
     #[cfg(not(feature = "dynamic-compile"))]
@@ -1495,7 +1566,13 @@ impl WasmGame {
                 .filter(|name| definition.abilities.iter().any(|ability| matches!(&ability.kind,
                     ironsmith::ability::AbilityKind::Static(ability) if ability.custom_keyword_name() == Some(name.as_str()))))
                 .collect(),
+            custom_keyword_counter_definitions: definition.ability_counter_definitions.iter().map(|(name, abilities)| {
+                let executable = abilities.iter().filter(|ability| !matches!(&ability.kind, ironsmith::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())).cloned().collect();
+                let program = CardDefinition::with_abilities(definition.card.clone(), executable);
+                CustomKeywordCounterDefinitionInput { name: name.clone(), reminder: Self::definition_display_oracle_text(&program) }
+            }).collect(),
             display_oracle_text: None,
+            original_printed_rules_text: None,
             name: definition.card.name.clone(),
             mana_cost: definition.card.mana_cost.as_ref().map(ManaCost::to_oracle),
             color_indicator: Self::color_indicator_codes(definition.card.color_indicator),
@@ -1869,6 +1946,7 @@ impl WasmGame {
         zone: Zone,
         token: bool,
     ) -> Result<ObjectId, JsValue> {
+        self.game.register_ability_counter_definitions(definition).map_err(|error| JsValue::from_str(&error))?;
         self.game
             .register_linked_face_family_from_catalog(definition, &self.registry);
         // Create in Command zone first, then move to target zone so that
@@ -2646,4 +2724,28 @@ mod custom_adventure_tests {
         }
         assert!(faces[1].card.subtypes.contains(&ironsmith::types::Subtype::Adventure));
     }
+    #[test]
+    fn supplied_counter_program_survives_definition_source_export_and_token_recompile() {
+        let mut host = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
+            ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), "Counter token"),
+            "Type: Creature\nPower/Toughness: 1/1", false,
+        ).unwrap();
+        let program = ironsmith_dynamic_compile::compile_builder_to_runtime_definition(
+            ironsmith_dynamic_compile::CompilerCardDefinitionBuilder::new(CardId::new(), "Counter program"),
+            "Type: Creature\nPower/Toughness: 1/1\nFlying", false,
+        ).unwrap();
+        host.ability_counter_definitions.insert("flight lesson".into(), program.abilities);
+        let source = WasmGame::definition_to_custom_face_input(&host);
+        assert_eq!(source.custom_keyword_counter_definitions.len(), 1);
+        assert_eq!(source.custom_keyword_counter_definitions[0].name, "flight lesson");
+        let (compiler, runtime, _) = WasmGame::compile_custom_token_face(&source).unwrap();
+        assert!(compiler.ability_counter_definitions.contains_key("flight lesson"));
+        assert!(runtime.ability_counter_definitions.contains_key("flight lesson"));
+        let mut game = ironsmith::GameState::new(vec!["A".into(), "B".into()], 20);
+        let token = game.create_token_object_from_definition(&runtime, PlayerId(0), Zone::Battlefield);
+        game.add_counters(token, ironsmith::object::CounterType::Named("flight lesson".into()), 1).unwrap();
+        assert!(game.calculated_characteristics_arc(token).unwrap().static_abilities.iter().any(|ability|
+            ability.id() == ironsmith::static_abilities::StaticAbilityId::Flying));
+    }
+
 }

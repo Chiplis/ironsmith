@@ -566,6 +566,7 @@ pub fn parse_transmute(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility>
                     is_loyalty_ability: false,
                 },
             ),
+            designations: Default::default(),
             functional_zones: vec![Zone::Hand],
         }
         .into(),

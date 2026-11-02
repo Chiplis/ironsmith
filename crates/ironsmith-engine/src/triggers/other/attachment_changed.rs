@@ -96,3 +96,44 @@ impl TriggerMatcher for AttachmentChangedTrigger {
         )
     }
 }
+
+/// Player attachments carry a player identity, independently from the attached
+/// permanent's frozen snapshot. No target object is invented for a player.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttachmentChangedToPlayerTrigger {
+    pub attachment: ObjectFilter,
+    pub recipient: crate::PlayerFilter,
+    pub attached: bool,
+}
+impl AttachmentChangedToPlayerTrigger {
+    pub(crate) fn participants<'a>(&self, event: &'a TriggerEvent) -> Option<(&'a ObjectSnapshot, crate::PlayerId)> {
+        let (snapshot, recipient) = if self.attached {
+            let event = event.downcast::<ObjectBecameAttachedEvent>()?;
+            (event.snapshot.as_ref()?, &event.target)
+        } else {
+            let event = event.downcast::<ObjectBecameUnattachedEvent>()?;
+            (event.snapshot.as_ref()?, &event.previous_target)
+        };
+        let crate::object::AttachmentTarget::Player(player) = recipient else { return None; };
+        Some((snapshot, *player))
+    }
+}
+impl TriggerMatcher for AttachmentChangedToPlayerTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        use crate::filter::PlayerFilterExt as _;
+        self.participants(event).is_some_and(|(attachment, recipient)|
+            self.attachment.matches_snapshot(attachment, &ctx.filter_ctx, ctx.game)
+                && self.recipient.matches_player(recipient, &ctx.filter_ctx))
+    }
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![if self.attached { EventKind::ObjectBecameAttached } else { EventKind::ObjectBecameUnattached }])
+    }
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        !self.attached && event.kind() == EventKind::ObjectBecameUnattached
+    }
+    fn display(&self) -> String {
+        format!("Whenever {} becomes {} {}", self.attachment.description(),
+            if self.attached { "attached to" } else { "unattached from" },
+            crate::triggers::describe_player_filter_subject(&self.recipient))
+    }
+}

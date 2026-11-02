@@ -83,6 +83,8 @@ pub enum SimultaneousTriggerKey {
     PlayerDieRollBatch(PlayerId),
     BecomesBlockedBatch,
     KeywordActionBatch(crate::events::KeywordActionKind),
+    /// One or more affected objects participate in one labelled action.
+    NamedActionBatch,
 }
 
 /// Context provided to trigger matchers for determining if they match an event.

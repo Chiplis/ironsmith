@@ -111,7 +111,7 @@ fn authenticate_face_up_targets(
             .copied()
             .filter(|id| {
                 game.object(*id)
-                    .is_some_and(|object| object.owner == owner && (object.zone == Zone::Exile || game.object_requires_turn_face_up_before_action(*id)))
+                    .is_some_and(|object| object.owner == owner && (matches!(object.zone, Zone::Exile | Zone::Command) || game.object_requires_turn_face_up_before_action(*id)))
                     && game.is_face_down(*id)
             })
             .collect();
@@ -235,9 +235,10 @@ impl crate::effects::SimultaneousEffectProposal for PreparedFaceUpInstruction {
                     ));
                 }
             };
-            let ((turned, completed, children), observations) =
+            let ((turned, turned_objects, completed, children), observations) =
                 crate::effects::with_action_observations(game, |game| {
                     let mut turned = 0;
+                    let mut turned_objects = Vec::new();
                     let mut completed = Vec::new();
                     let mut children = Vec::new();
                     for object_id in targets {
@@ -254,9 +255,10 @@ impl crate::effects::SimultaneousEffectProposal for PreparedFaceUpInstruction {
                             continue;
                         };
                         turned += 1;
+                        turned_objects.push(object_id);
                         children.extend(transition.outputs);
                         if ctx.decision_maker.awaiting_choice() {
-                            return Ok((turned, completed, children));
+                            return Ok((turned, turned_objects, completed, children));
                         }
                         if transition.was_on_battlefield {
                             let event_provenance = game.alloc_child_event_provenance(
@@ -274,7 +276,7 @@ impl crate::effects::SimultaneousEffectProposal for PreparedFaceUpInstruction {
                         }
                     }
 
-                    Ok((turned, completed, children))
+                    Ok((turned, turned_objects, completed, children))
                 })?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
@@ -282,7 +284,7 @@ impl crate::effects::SimultaneousEffectProposal for PreparedFaceUpInstruction {
                 ));
             }
             let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(turned),
+                EffectOutcome::with_objects(turned_objects),
             );
             outputs.retain_published_children(children);
             Ok(crate::effects::SimultaneousEffectCommit {

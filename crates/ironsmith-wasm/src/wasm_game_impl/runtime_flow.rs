@@ -878,7 +878,13 @@ impl WasmGame {
             Err(_) => "apply_priority_response_error".to_string(),
         };
         let (pending_context, viewed_cards, audit_viewed_cards, pending_game) = live_dm.finish();
-        self.pending_decision_game = pending_game;
+        // Untrusted isolated payment staging is never an audit world. Once
+        // the retained root has its authenticated source face, native commit
+        // has validated the complete occurrence/cost before any body prompt;
+        // its ordinary exact pending world must render new body candidates.
+        let untrusted_private_stage=matches!(root,ReplayRoot::PrivateHandSpecialAction(reservation)
+            if !checkpoint.game.is_publicly_revealed_hidden_card(reservation.source()));
+        self.pending_decision_game = if untrusted_private_stage { None } else { pending_game };
         self.active_viewed_cards =
             merge_carried_active_viewed_cards(carry_viewed_cards, viewed_cards);
         self.active_audit_viewed_cards = audit_viewed_cards;
@@ -1285,6 +1291,11 @@ impl WasmGame {
 
         let root_execution_started_at = PerfTimer::start();
         let result = match root {
+            ReplayRoot::PrivateHandSpecialAction(reservation) => {
+                let result=self.execute_private_cost_replay(reservation,&mut replay_dm);
+                if result.is_err(){replay_dm.pending_context=None;replay_dm.pending_game=None;replay_dm.viewed_cards=None;replay_dm.audit_viewed_cards.clear();}
+                result
+            },
             ReplayRoot::Response(response) => apply_priority_response_with_dm(
                 &mut self.game,
                 &mut self.trigger_queue,
@@ -4554,6 +4565,7 @@ mod live_action_rollback_tests {
         assert_eq!(resolve_stack_and_count_ogres(&mut wasm), 1);
     }
 
+    include!("private_cost_transport_tests.rs");
     include!("payment_disclosure_undo_tests.rs");
     include!("snc_payment_disclosure_undo_tests.rs");
     include!("payment_disclosure_transaction_tests.rs");

@@ -29,7 +29,7 @@ pub fn assemble_activation_cost(
         });
     }
 
-    let costs = cst.segments.iter().map(assemble_segment).collect();
+    let costs = cst.segments.iter().map(assemble_segment).collect::<Result<Vec<_>, _>>()?;
     Ok(CompilerTotalCost {
         branches: vec![costs],
         relationship: CostRelationship::Ordinary,
@@ -39,8 +39,33 @@ pub fn assemble_activation_cost(
     })
 }
 
-fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
-    match segment {
+fn assemble_segment(segment: &ActivationCostSegmentCst) -> Result<CompilerCost, CardTextError> {
+    Ok(match segment {
+        ActivationCostSegmentCst::ConvertObjects { count, filter, descriptor, completion } => {
+            let tag = crate::tag::CompilerReferenceTag::It.bind();
+            let choose = crate::cards::builders::EffectAst::ObjectChoices(
+                crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                    filter: filter.clone(), count: *count, count_value: None,
+                    player: crate::PlayerAst::You, tag,
+                },
+            );
+            let subject = vec![crate::lexer::OwnedLexToken::synthetic_word("it")];
+            let conversion = crate::effect_sentences::parse_become_clause(&subject, descriptor)?;
+            let mut effects = vec![choose, conversion];
+            if let Some(label) = completion {
+                effects.push(crate::cards::builders::EffectAst::subject_verb(
+                    crate::model::ast::SubjectVerbRoleAst::Actor, crate::PlayerAst::You,
+                    crate::model::ast::SubjectVerbActionAst::KeywordActions(
+                        crate::cards::builders::KeywordActionAst::PerformNamedAction { program_completion: ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,
+                            label: label.clone(), performer: None, objects: None,
+                            prior_objects: Some((crate::effect::EffectId::PENDING_PRIOR_ACTION, ironsmith_core::PriorEffectAction::Affected)),
+                         program: None,},
+                    ),
+                ));
+            }
+            CompilerCost::ValidatedEffect(Box::new(crate::cards::builders::EffectAst::Sequence { effects }))
+        },
+        ActivationCostSegmentCst::EffectProgram(effects) => CompilerCost::ValidatedEffect(Box::new(crate::cards::builders::EffectAst::Sequence { effects: effects.clone() })),
         ActivationCostSegmentCst::Mana(cost) => CompilerCost::Mana(cost.clone()),
         ActivationCostSegmentCst::DynamicMana(cost) => CompilerCost::DynamicMana(cost.clone()),
         ActivationCostSegmentCst::Tap => CompilerCost::Tap,
@@ -312,7 +337,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             subtype: *subtype,
             count: *count,
         },
-    }
+    })
 }
 
 #[cfg(test)]

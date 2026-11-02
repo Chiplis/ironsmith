@@ -498,6 +498,10 @@ fn countered_ability_outcome(
 }
 
 impl EffectExecutor for CounterEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool {
+        &self.target == spec && self.exile_permission_target_is_supported()
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Countered)
     }
@@ -536,7 +540,7 @@ impl EffectExecutor for CounterEffect {
                     ));
                 }
                 let kind = counter_target_stack_kind(&self.target);
-                if self.exile_permission.is_some() && (target_ids.len() != 1
+                if self.exile_permission.is_some() && ((target_ids.len() != 1 && !crate::effects::target_packets::retained(ctx, &self.target))
                     || matches!(kind, Some(crate::filter::StackObjectKind::Ability
                         | crate::filter::StackObjectKind::ActivatedAbility
                         | crate::filter::StackObjectKind::TriggeredAbility)))

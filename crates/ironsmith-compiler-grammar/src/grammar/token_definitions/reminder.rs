@@ -209,7 +209,7 @@ pub fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenRemin
     };
 
     TokenReminderFacts {
-        dynamic_power_toughness: parse_dynamic_power_toughness(&words),
+        dynamic_power_toughness: parse_token_dynamic_power_toughness_tokens(tokens),
         has_haste: common::phrase_exact(&words, &["haste"]),
         exile_at_end_of_combat,
         sacrifice_at_end_of_combat,

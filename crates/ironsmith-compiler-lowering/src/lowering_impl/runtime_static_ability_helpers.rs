@@ -360,6 +360,7 @@ pub fn lower_granted_ability_ast(
     ability: &GrantedAbilityAst,
 ) -> Result<RuntimeStaticAbility, CardTextError> {
     match ability {
+        GrantedAbilityAst::Bundle(_)=>Err(CardTextError::InvariantViolation("a composite granted ability must lower through the complete list owner".into())),
         GrantedAbilityAst::KeywordAction(action) => lower_keyword_action_or_err((**action).clone()),
         GrantedAbilityAst::StaticAbility(ability) => {
             crate::lowering_support::lower_static_ability_ast((**ability).clone())
@@ -392,7 +393,12 @@ pub fn lower_granted_ability_ast(
 pub fn lower_granted_abilities_ast(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<RuntimeStaticAbility>, CardTextError> {
-    abilities.iter().map(lower_granted_ability_ast).collect()
+    let mut result=Vec::new();
+    for ability in abilities {match ability {
+        GrantedAbilityAst::Bundle(members)=>result.extend(lower_granted_abilities_ast(members)?),
+        ability=>result.push(lower_granted_ability_ast(ability)?),
+    }}
+    Ok(result)
 }
 
 pub fn decayed_triggered_ability() -> Ability {
@@ -452,6 +458,7 @@ pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                 }),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Exile],
         },
         Ability {
@@ -475,6 +482,7 @@ pub fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                 )),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Exile],
         },
     ]
@@ -526,6 +534,7 @@ fn graveyard_return_counter_ability(
             ))),
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
     }
 }
@@ -552,6 +561,7 @@ pub fn lower_granted_ability_ast_to_object_ability(
     ability: &GrantedAbilityAst,
 ) -> Result<Ability, CardTextError> {
     match ability {
+        GrantedAbilityAst::Bundle(_)=>Err(CardTextError::InvariantViolation("a composite granted ability must lower through the complete list owner".into())),
         GrantedAbilityAst::KeywordAction(action) => {
             if let KeywordAction::CumulativeUpkeep { total_cost, .. } = action.as_ref() {
                 return crate::lowering_support::lower_compiler_ability_core(
@@ -594,7 +604,16 @@ pub fn lower_granted_ability_ast_to_object_ability(
             Ok(Ability::static_ability(static_ability))
         }
         GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
-            let lowered = lower_parsed_ability((**ability).clone())?;
+            let reference_env=crate::model::reference_state::ReferenceEnv::from_imports(&ability.reference_imports,false,false,false,None);
+            let imports=ability.effects_ast.as_ref().map(|effects|
+                ironsmith_compiler_resolve::tag_support::granted_cast_object_reference_imports(effects)).unwrap_or_default()
+                .into_iter().map(|tag|crate::reference_helpers::resolve_it_tag_key(&tag,&reference_env)).collect::<Result<Vec<_>,_>>()?;
+            let mut lowered = lower_parsed_ability((**ability).clone())?;
+            match &mut lowered.kind {
+                AbilityKind::Triggered(triggered)=>triggered.effects.object_reference_imports=imports,
+                AbilityKind::Activated(activated)=>activated.effects.object_reference_imports=imports,
+                _=>{},
+            }
             Ok(lowered)
         }
     }
@@ -610,6 +629,7 @@ pub fn compiler_granted_ability_ast_to_object_ability(
 
     let static_ability = |ability| Ok(CompilerAbilityCore::static_ability(ability));
     match ability {
+        GrantedAbilityAst::Bundle(_)=>Err(CardTextError::InvariantViolation("a composite granted ability must lower through the complete list owner".into())),
         GrantedAbilityAst::KeywordAction(action) => static_ability(
             static_ability_for_keyword_action((**action).clone()).ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -668,10 +688,12 @@ pub fn compiler_granted_ability_ast_to_object_ability(
 pub fn compiler_granted_abilities_ast_to_object_abilities(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<crate::model::compiler_semantic::CompilerAbilityCore>, CardTextError> {
-    abilities
-        .iter()
-        .map(compiler_granted_ability_ast_to_object_ability)
-        .collect()
+    let mut result=Vec::new();
+    for ability in abilities {match ability {
+        GrantedAbilityAst::Bundle(members)=>result.extend(compiler_granted_abilities_ast_to_object_abilities(members)?),
+        ability=>result.push(compiler_granted_ability_ast_to_object_ability(ability)?),
+    }}
+    Ok(result)
 }
 
 pub fn lower_granted_abilities_ast_to_object_abilities(
@@ -679,6 +701,9 @@ pub fn lower_granted_abilities_ast_to_object_abilities(
 ) -> Result<Vec<Ability>, CardTextError> {
     let mut lowered = Vec::new();
     for ability in abilities {
+        if let GrantedAbilityAst::Bundle(members)=ability {
+            lowered.extend(lower_granted_abilities_ast_to_object_abilities(members)?);continue;
+        }
         if let GrantedAbilityAst::KeywordAction(action) = ability
             && let Some(executable) =
                 executable_object_abilities_for_keyword_action(action.as_ref())

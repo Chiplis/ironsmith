@@ -156,26 +156,33 @@ fn unsupported_neighbors_still_fail_closed() {
 
 #[test]
 fn prepared_condition_reads_the_live_designation() {
-    let [definition, _] = definitions("Paradox Shaper // Omit Variables");
+    let source:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/paradox_prepared_predicate_linked.json.fixture")).unwrap();
+    let faces=linked_source_support::linked_definitions(&source).unwrap();assert_eq!(faces.len(),2);
+    for route in 0..2 {
+    let definition=&faces[0][route];let spell=&faces[1][route];
+    assert_eq!(definition.card.other_face,Some(spell.card.id));
     let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
-    let id = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+    game.register_linked_face_definition(definition);game.register_linked_face_definition(spell);
+    let id = game.create_object_from_definition(definition, A, Zone::Battlefield);
     let ctx = ExternalEvaluationContext {
-        controller: A,
-        source: id,
-        defending_player: None,
-        attacking_player: None,
-        filter_source: None,
-        iterated_player: None,
-        triggering_event: None,
-        trigger_identity: None,
-        ability_index: None,
-        options: Default::default(),
+        controller: A, source: id, defending_player: None, attacking_player: None,
+        filter_source: None, iterated_player: None, triggering_event: None,
+        trigger_identity: None, ability_index: None, options: Default::default(),
     };
     let prepared = Condition::SourceIsPrepared;
     let not_prepared = Condition::Not(Box::new(Condition::SourceIsPrepared));
     assert!(!evaluate_condition_external(&game, &prepared, &ctx));
     assert!(evaluate_condition_external(&game, &not_prepared, &ctx));
-    game.set_prepared(id);
+    assert!(game.set_prepared(id),"the real linked preparation must be acknowledged");
     assert!(evaluate_condition_external(&game, &prepared, &ctx));
     assert!(!evaluate_condition_external(&game, &not_prepared, &ctx));
+    let copies:Vec<_>=game.exile.iter().copied().filter(|copy|game.prepared_spell_source(*copy)==Some(id)).collect();
+    assert_eq!(copies.len(),1,"the designation owns one actual prepare-spell copy");
+    assert_eq!(game.object(copies[0]).unwrap().name,"Omit Variables");
+    assert!(game.clear_prepared(id));assert!(!evaluate_condition_external(&game,&prepared,&ctx));assert!(evaluate_condition_external(&game,&not_prepared,&ctx));assert!(game.object(copies[0]).is_none());
+    let unlinked=ironsmith_compiler_runtime::compile_to_runtime_definition("Unlinked preparation witness","Type: Creature\nPower/Toughness: 1/1",false).unwrap();
+    let unlinked=game.create_object_from_definition(&unlinked,A,Zone::Battlefield);assert!(!game.set_prepared(unlinked),"an ordinary creature cannot acquire a fake prepared designation");
+    let unlinked_ctx=ExternalEvaluationContext{source:unlinked,..ctx};assert!(!evaluate_condition_external(&game,&prepared,&unlinked_ctx));
+    }
 }
+#[path="custom_final_next_wave_support.rs"] mod linked_source_support;

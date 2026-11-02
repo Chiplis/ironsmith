@@ -1227,16 +1227,24 @@ fn capped_damage_does_not_invent_toughness_for_a_known_creature_with_missing_evi
         ));
     let mut context = ironsmith::effects::EffectContext::new_default(ObjectId::from_raw(999), A);
     context.store_outcome(EffectId(1), outcome);
+    let resolved = ironsmith::effects::helpers::resolve_value(
+        &game,
+        &Value::EffectMetric {
+            effect_id: EffectId(1),
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::DamageDealtCappedByRecipient,
+        },
+        &context,
+    );
+    let checked_frame = match game.continuous_query_snapshot() {
+        Ok(snapshot) => format!("{:#?}", snapshot.try_current_characteristics(object)),
+        Err(error) => format!("continuous query error: {error:#?}"),
+    };
     assert!(matches!(
-        ironsmith::effects::helpers::resolve_value(
-            &game,
-            &Value::EffectMetric {
-                effect_id: EffectId(1),
-                source: EffectMetricSource::Outcome,
-                metric: EffectMetric::DamageDealtCappedByRecipient,
-            },
-            &context
-        ),
+        &resolved,
         Err(ironsmith::effects::ExecutionError::UnresolvableValue(_))
-    ));
+    ), "missing-evidence contract unchanged: result={resolved:?}; raw base power={:?}; raw base toughness={:?}; checked frame={checked_frame}; exact outcome={:#?}",
+        game.object(object).and_then(|object|object.base_power.as_ref()),
+        game.object(object).and_then(|object|object.base_toughness.as_ref()),
+        context.get_outcome(EffectId(1)));
 }

@@ -101,6 +101,7 @@ pub fn parse_semantic_document(
         items,
         overload_items,
         cleave_items,
+        optional_text_variants,
         allow_unsupported,
     } = doc;
     // Conversion below still mints keys (keyword lines, saga chapters); they
@@ -115,6 +116,12 @@ pub fn parse_semantic_document(
         .transpose()?
         .map(|items| ParsedCleaveBranch { items });
 
+    let optional_text_variants = optional_text_variants.map(|plan| {
+        let branches = plan.branches.into_iter().map(|branch| Ok(crate::model::OptionalTextVariantBranch {
+            removed: branch.removed, items: parse_rewrite_items(branch.items, &symbols)?,
+        })).collect::<Result<Vec<_>, CardTextError>>()?;
+        Ok::<_, CardTextError>(crate::model::OptionalTextVariants { labels: plan.labels, branches, casting_payment: plan.casting_payment })
+    }).transpose()?;
     let items = splice_attraction_prize_programs(parse_rewrite_items(items, &symbols)?);
     let symbols = symbols.into_inner();
     let mut reference_resolution =
@@ -136,6 +143,10 @@ pub fn parse_semantic_document(
         );
     }
 
+    if let Some(plan) = &optional_text_variants {
+        for branch in &plan.branches { reference_resolution.append(crate::model::canonical_references::resolve_parsed_items_references(&branch.items, &symbols)); }
+    }
+
     Ok(ParsedCardAst {
         card,
         annotations,
@@ -145,6 +156,7 @@ pub fn parse_semantic_document(
         items,
         overload_branch,
         cleave_branch,
+        optional_text_variants,
         allow_unsupported,
     })
 }

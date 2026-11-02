@@ -1,0 +1,26 @@
+[
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_late/counter-removal-ordinal-current/counter-removal-ordinal-current.patch",
+    "sha256": "4ff921f26f04a3e83588e74f191c0b62999700bb7022d85bf7bd14bc99e8071c"
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/phase-out-end-of-turn/phase-out-end-of-turn.patch",
+    "sha256": "cb32eeb6268fa81950604696667901a78ee3bba4e891b39d332d3d201b1fcc73"
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/casting_suite09_collection_legality/suite09-collection-and-block-legality.patch",
+    "sha256": "43c85db548b36e381a0e3e581aba6e7c984ae33677e70bed69003b9aa3bc6490"
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/casting_early/variable-resource-route-diagnostics/variable-resource-route-diagnostics.patch",
+    "sha256": "18eb39fda23d0c855c83bfc4800e49941a78adff3665a10223a41062fd972bcd"
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/inscribe-compound-duration-diagnostic/inscribe-compound-duration-diagnostic.patch",
+    "sha256": "f0d0698618c1d31bee02d93bce0a63cf765ca42548d0efc788b80a7a379bb835"
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_middle/next-turn-spell-cost-window/next-turn-spell-cost-window.patch",
+    "sha256": "ef39132ea3d9c09cad958082b5817bd6dd42baed9788d581eee62cdd2bbe6634"
+  }
+]

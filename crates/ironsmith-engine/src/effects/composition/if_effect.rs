@@ -217,6 +217,17 @@ pub(super) fn predicate_matches_with_context(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> bool {
+    if let EffectPredicate::ResultObjectsMatch {filter,negated}=predicate {
+        let (Some(ids),Some(memory))=(outcome.result_objects(),outcome.result_object_memory()) else {return false;};
+        // Both halves must describe the same exact original destination set.
+        // An absent or partial packet must not turn into negative evidence.
+        let ids=ids.iter().copied().collect::<std::collections::HashSet<_>>();
+        let retained=memory.iter().map(|object|object.object_id).collect::<std::collections::HashSet<_>>();
+        if ids!=retained {return false;}
+        let context=ctx.filter_context(game);
+        let matched=memory.iter().any(|object|filter.matches_snapshot(object,&context,game));
+        return matched!=*negated;
+    }
     if let EffectPredicate::AffectedObjectsShare { required_count, characteristic } = predicate {
         let Some(memory) = outcome.affected_object_memory() else { return false; };
         let mut seen = std::collections::HashSet::new();
@@ -291,6 +302,33 @@ pub(super) fn predicate_matches_with_context(
                 surface.required_count.unwrap_or(2) as usize,
                 characteristic,
             )
+        });
+    }
+    if surface.action == crate::effect::PriorEffectAction::Tapped {
+        let actor = match surface.actor {
+            crate::effect::PriorEffectResultActor::You => Some(ctx.controller),
+            crate::effect::PriorEffectResultActor::ThatPlayer => {
+                let Some(player) = ctx.iteration.iterated_player else { return false; };
+                Some(player)
+            }
+            crate::effect::PriorEffectResultActor::Passive => None,
+            crate::effect::PriorEffectResultActor::It => return false,
+        };
+        let filter_ctx = ctx.filter_context(game);
+        let mut seen = std::collections::HashSet::new();
+        let matching = outcome.instruction_result()
+            .events_of_type::<crate::events::other::PermanentTappedEvent>()
+            .filter(|event| actor.is_none_or(|actor| event.actor == Some(actor)))
+            .filter_map(|event| if actor.is_some() {
+                event.before_snapshot.as_ref().or(event.snapshot.as_ref())
+            } else { event.snapshot.as_ref() })
+            .filter(|snapshot| seen.insert(snapshot.object_id))
+            .filter(|snapshot| surface.filter.matches_snapshot(snapshot, &filter_ctx, game))
+            .collect::<Vec<_>>();
+        if matching.len() < surface.required_count.unwrap_or(1) as usize { return false; }
+        return surface.shared_characteristic.is_none_or(|characteristic| {
+            result_memories_share_characteristic(&matching,
+                surface.required_count.unwrap_or(2) as usize, characteristic)
         });
     }
     if surface.action == crate::effect::PriorEffectAction::PutIntoHand {
@@ -1445,4 +1483,63 @@ mod replacement_original_if_adapter_contract_tests {
         }
     }
 
+}
+
+#[cfg(test)]
+mod tap_result_receipt_regression {
+    use super::*;
+    #[test]
+    fn attempted_selection_does_not_count_as_completed_tap() {
+        let game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let player = crate::ids::PlayerId::from_index(0);
+        let source = crate::ids::ObjectId::from_raw(987);
+        let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+            source, crate::ids::StableId::from(source), player, player, crate::zone::Zone::Battlefield);
+        snapshot.card_types = vec![crate::types::CardType::Creature];
+        let ctx = ExecutionContext::new_default(source, player);
+        let predicate = EffectPredicate::PriorEffectResult(crate::effect::PriorEffectResultSurface::new(
+            crate::effect::PriorEffectAction::Tapped, crate::target::ObjectFilter::source(),
+            crate::effect::PriorEffectResultActor::Passive, crate::effect::PriorEffectResultQuantifier::One));
+        let attempted = EffectOutcome::count(0).with_action_objects(
+            crate::effect::PriorEffectAction::Tapped, Some(player), vec![snapshot.clone()]);
+        assert!(!predicate_matches_with_context(&predicate, &attempted, &game, &ctx));
+        let mut event = crate::events::other::PermanentTappedEvent::new(source);
+        event.snapshot = Some(snapshot.clone()); event.before_snapshot = Some(snapshot); event.actor = Some(player);
+        let completed = attempted.with_event(crate::triggers::TriggerEvent::new_with_provenance(event, Default::default()));
+        assert!(predicate_matches_with_context(&predicate, &completed, &game, &ctx));
+    }
+}
+
+#[cfg(test)]
+mod original_result_object_predicates {
+    use super::*;
+    #[test]
+    fn accepted_payment_and_added_tokens_cannot_replace_original_creation_evidence() {
+        let game=crate::tests::test_helpers::setup_two_player_game();
+        let ctx=ExecutionContext::new_default(crate::ids::ObjectId::from_raw(800),crate::ids::PlayerId(0));
+        let mut filter=crate::target::ObjectFilter::default();filter.token=true;
+        let positive=EffectPredicate::ResultObjectsMatch{filter:filter.clone(),negated:false};
+        let negative=EffectPredicate::ResultObjectsMatch{filter,negated:true};
+        let id=crate::ids::ObjectId::from_raw(801);
+        let mut token=crate::snapshot::ObjectSnapshot::public_placeholder(id,id.into(),crate::ids::PlayerId(0),crate::ids::PlayerId(0),crate::Zone::Battlefield);
+        token.kind=crate::object::ObjectKind::Token;token.is_token=true;
+        let packet=|objects:Vec<crate::snapshot::ObjectSnapshot>| {
+            EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted)
+                .with_result_objects(objects.iter().map(|object|object.object_id).collect())
+                .with_execution_fact(ExecutionFact::ResultObjectMemory(objects))
+        };
+        let absent=EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted);
+        assert!(!predicate_matches_with_context(&positive,&absent,&game,&ctx));
+        assert!(!predicate_matches_with_context(&negative,&absent,&game,&ctx));
+        let empty=packet(Vec::new());let created=packet(vec![token]);
+        for (original,added,expected) in [(empty.clone(),created.clone(),false),(created.clone(),empty.clone(),true)] {
+            let outcome=EffectOutcome::aggregate_replacement_outcomes(original,[added]);
+            assert_eq!(predicate_matches_with_context(&positive,&outcome,&game,&ctx),expected);
+            assert_eq!(predicate_matches_with_context(&negative,&outcome,&game,&ctx),!expected);
+        }
+        let incomplete=EffectOutcome::count(1).with_result_objects(vec![id]);
+        assert!(!predicate_matches_with_context(&negative,&incomplete,&game,&ctx));
+        assert!(predicate_matches_with_context(&negative,&empty,&game,&ctx));
+        assert!(predicate_matches_with_context(&positive,&created,&game,&ctx));
+    }
 }

@@ -836,3 +836,37 @@ fn supplied_same_id_and_price_cast_views_do_not_share_root_payment_memo() {
     assert_eq!(result, [true, false, true]);
     assert_eq!(game.object(card).unwrap().card_types.as_slice(), &[CardType::Creature]);
 }
+
+#[test]
+fn actual_any_color_policy_cannot_pay_three_colors_by_selecting_a_noop_reduction() {
+    use crate::ability::Ability;
+    let mut game=crate::tests::test_helpers::setup_two_player_game();let alice=PlayerId(0);
+    let provider=CardBuilder::new(CardId::new(),"Independent present-color reduction").card_types(vec![CardType::Enchantment]).build();
+    let provider=game.create_object_from_card(&provider,alice,Zone::Battlefield);
+    let mut reduction=crate::static_abilities::CostReductionManaCost::new(ObjectFilter::default(),ManaCost::from_pips(vec![vec![ManaSymbol::White,ManaSymbol::Blue,ManaSymbol::Black,ManaSymbol::Red,ManaSymbol::Green]]));
+    reduction.one_mana_of_any_color=true;
+    game.object_mut(provider).unwrap().abilities_mut().push(Ability::static_ability(crate::static_abilities::StaticAbility::new(reduction)));
+    let cost=ManaCost::from_symbols(vec![ManaSymbol::White,ManaSymbol::Blue,ManaSymbol::Black])
+        .with_spending_restriction(ironsmith_core::mana::ManaSpendingRestriction::AtLeastColors(3));
+    let spell=CardBuilder::new(CardId::new(),"Independent three-color payment constraint").card_types(vec![CardType::Instant]).mana_cost(cost.clone()).build();
+    let id=game.create_object_from_card(&spell,alice,Zone::Hand);
+    for color in [ManaSymbol::White,ManaSymbol::Blue,ManaSymbol::Black] {game.player_mut(alice).unwrap().mana_pool.add(color,1);}
+    let spell=game.object(id).unwrap();
+    let options=calculate_effective_mana_cost_options_for_payment_from_zone(&game,alice,spell,&cost,&[],&CastingMethod::Normal,Zone::Hand);
+    assert_eq!(options.len(),3);
+    assert!(options.iter().all(|cost|cost.mana_value()==2));
+    assert!(options.iter().all(|cost|!spell_total_mana_option_is_payable(&game,alice,spell,&CastingMethod::Normal,cost)));
+}
+
+#[test]
+fn independent_reduction_order_is_a_payer_choice_not_source_enumeration_order() {
+    let totals=SpellCostModifierTotals {
+        mana_reductions:vec![
+            ManaReductionStep::Symbols{cost:ManaCost::from_symbols(vec![ManaSymbol::White]),spill:true},
+            ManaReductionStep::OneManaOfAnyColor{generic_fallback:true},
+        ],..Default::default()
+    };
+    let mut options=totals.apply_options(&ManaCost::from_symbols(vec![ManaSymbol::White,ManaSymbol::Blue,ManaSymbol::Black]))
+        .iter().map(ManaCost::to_oracle).collect::<Vec<_>>();options.sort();
+    assert_eq!(options,vec!["{B}","{U}","{U}{B}"]);
+}

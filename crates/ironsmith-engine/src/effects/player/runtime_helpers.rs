@@ -41,7 +41,7 @@ pub(super) fn register_effect_driven_spell_cast_with_outputs(
     let (outputs, mut captured) = crate::game_loop::capture_completed_spell_cast_with_outputs(
         game, new_id, caster, from_zone, provenance,
     )?;
-    game.defer_trigger_entries(captured.take_all());
+    captured.defer_into_game(game);
     Ok(outputs)
 }
 
@@ -119,7 +119,7 @@ pub(super) fn complete_effect_driven_cast_with_outputs(
 }
 
 /// Publish a native cast completion without flattening its action output.
-pub(super) fn complete_native_cast_with_outputs(
+pub(crate) fn complete_native_cast_with_outputs(
     outcome: EffectOutcome,
     game: &mut GameState,
     cast: crate::game_loop::EffectDrivenCastOutputs,

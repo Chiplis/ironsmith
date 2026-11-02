@@ -46,6 +46,8 @@ impl GoadEffect {
 }
 
 impl EffectExecutor for GoadEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { &self.target == spec }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Goaded)
     }
@@ -214,8 +216,11 @@ mod tests {
         ctx.set_tagged_objects(
             "__chosen_name__",
             vec![ObjectSnapshot {
-                custom_statuses: Vec::new(),
+                custom_statuses: Vec::new(), named_action_history:None,
+        text_addition_sources: Vec::new(),
+        entry_action_objects: Default::default(),
                 ability_origins: None,
+        source_definition_metadata: None,
                 stack_kind: None,
                 chosen_subtype: None,
                 chosen_card_type: None,
@@ -260,7 +265,9 @@ mod tests {
                 mana_spent_on_x: None,
                 snow_mana_spent_to_cast: crate::player::ManaPool::default(),
                 mana_sources_spent_to_cast: Vec::new(),
+        paid_optional_cost_objects: Default::default(),
                 optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
+        named_payment_outcomes:Vec::new(),
                 counters: std::collections::BTreeMap::new(),
                 is_token: false,
                 tapped: false,
@@ -277,6 +284,7 @@ mod tests {
                 attached_to: None,
                 attachments: Vec::new(),
                 attachment_snapshots: Vec::new(),
+                    related_exiled_cards: Default::default(),
                 was_enchanted: false,
                 is_monstrous: false,
                 case_solved: false,

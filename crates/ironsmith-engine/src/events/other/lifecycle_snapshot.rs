@@ -35,7 +35,7 @@ pub(crate) fn freeze_completed_lifecycle_events(
         if let Some(inner) = event.downcast::<crate::events::EnterBattlefieldEvent>() {
             let mut entry = inner.clone();
             entry.completed_snapshot = snapshot;
-            if entry.from == crate::zone::Zone::Stack {
+            if entry.from == Some(crate::zone::Zone::Stack) {
                 entry.emerge_sacrifice = observed
                     .object(entry.object)
                     .filter(|object| object.optional_costs_paid.was_paid_label("Emerge"))

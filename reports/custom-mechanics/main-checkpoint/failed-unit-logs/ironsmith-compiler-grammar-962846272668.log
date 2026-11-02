@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effect_sentences::chain_carry::nested_bounded_player_instruction::target_player_program_is_one_clause_under_an_ordinary_conditional' panicked at crates/ironsmith-compiler-grammar/src/effect_sentences/chain_carry.rs:4790:83:
+called `Result::unwrap()` on an `Err` value: ParseError("unsupported predicate (predicate: 'you have three or more experience counters, For each target player') [rule-path=bounded-instruction-program > document-reading]")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effect_sentences::chain_carry::nested_bounded_player_instruction::target_player_program_is_one_clause_under_an_ordinary_conditional ... FAILED
+
+failures:
+
+failures:
+    effect_sentences::chain_carry::nested_bounded_player_instruction::target_player_program_is_one_clause_under_an_ordinary_conditional
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.08s
+

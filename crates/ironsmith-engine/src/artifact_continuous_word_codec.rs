@@ -130,6 +130,7 @@ pub(super) fn encode_modification(modification: Modification) -> Result<wire::Wi
             // equivalent. Public CopiableValues serialization drops programs.
             return Err(unsupported("frozen continuous CopyOf requires a full RetainedCopiableValues envelope in the compiled schema"));
         }
+        Modification::RemoveOptionalTextFragments(_) => { return Err(unsupported("resolved optional text fragment selection is runtime layer state")); }
         Modification::SetTextBox(_) => {
             return Err(unsupported("captured text-box overlay and its executable abilities are absent from the compiled schema"));
         }
@@ -356,7 +357,8 @@ mod tests {
 
     #[test]
     fn native_frozen_copy_and_explicit_acquisition_state_are_reported_as_holds() {
-        let frozen = ApplyContinuousEffect::new(EffectTarget::Source, Modification::CopyOf { retain_original_name: false,
+        let frozen = ApplyContinuousEffect::new(EffectTarget::Source, Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
             target_id: crate::ids::ObjectId::from_raw(55),
             copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: true, name_override: None, name_override_surface: None,

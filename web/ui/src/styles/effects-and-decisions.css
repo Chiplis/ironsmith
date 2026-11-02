@@ -177,6 +177,7 @@
 }
 
 /* ---- Zone Move Effects ---- */
+.zone-move-shader-layer,
 .zone-move-effects-layer {
   position: fixed;
   inset: 0;

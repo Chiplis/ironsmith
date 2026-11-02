@@ -278,6 +278,7 @@ pub fn compiler_granted_ability_ast_to_object_ability(
         GrantedAbilityAst::ThisAbility => Err(CardTextError::InvariantViolation(
             "this ability cannot be stored as an independent object ability".to_string(),
         )),
+        GrantedAbilityAst::Bundle(_)=>Err(CardTextError::InvariantViolation("a composite granted ability requires its complete list owner".into())),
         GrantedAbilityAst::StaticAbilityFamily(_) => Err(CardTextError::InvariantViolation(
             "an ability family can only be lost, not stored as an object ability".to_string(),
         )),
@@ -289,6 +290,9 @@ pub fn compiler_granted_abilities_ast_to_object_abilities(
 ) -> Result<Vec<crate::model::compiler_semantic::CompilerAbilityCore>, CardTextError> {
     let mut expanded = Vec::new();
     for ability in abilities {
+        if let GrantedAbilityAst::Bundle(members)=ability {
+            expanded.extend(compiler_granted_abilities_ast_to_object_abilities(members)?);continue;
+        }
         if let GrantedAbilityAst::KeywordAction(action) = ability
             && let KeywordAction::Vanishing(amount) = action.as_ref()
         {

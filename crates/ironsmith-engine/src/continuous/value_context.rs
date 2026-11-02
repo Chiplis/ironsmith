@@ -282,6 +282,10 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         }
     }
 
+    pub fn named_action_count(&self,spec:&ChooseSpec,label:&str,this_turn:bool)->Result<i64,crate::effects::ExecutionError> {
+        Ok(object_for_value_spec(spec,self.calculation,self.source).map(|object|
+            i64::from(self.calculation.game.named_action_count(object.id,label,this_turn))).unwrap_or(0))
+    }
     pub fn counters_on_source(&self, _value: &Value, counter_type: &CounterType) -> i64 {
         let ctx = self.calculation;
         let source = self.source;

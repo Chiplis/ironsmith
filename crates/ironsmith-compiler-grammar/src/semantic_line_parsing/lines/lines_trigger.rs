@@ -294,7 +294,7 @@ pub(super) fn parse_triggered_line_impl(
                         one_shot: false,
                         duration: Until::EndOfCombat,
                         either_of_watched_objects: false,
-                        while_any_tagged_object_in_zone: None,
+                        while_any_tagged_object_in_zone: None, source_collection_scope: None,
                     },
                 )],
                 player: PlayerAst::You,

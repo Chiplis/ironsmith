@@ -432,10 +432,13 @@ pub struct PendingDelayedTriggerPayment {
 /// A delayed trigger that waits for a specific event to occur.
 #[derive(Debug, Clone)]
 pub struct DelayedTrigger {
+    pub source_collection_scope: Option<ironsmith_core::effect::SourceCollectionScope>,
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The trigger condition to wait for.
     pub trigger: Trigger,
+    pub persistent_player_rule: Option<String>,
+    pub intervening_if: Option<crate::effect::Condition>,
     /// Effects to execute when the trigger fires.
     pub effects: ResolutionProgram,
     /// Whether this is a one-shot trigger (fires once then is removed).
@@ -518,6 +521,8 @@ impl DelayedTrigger {
 pub struct TriggerQueue {
     /// Pending triggered abilities.
     pub entries: Vec<TriggeredAbilityEntry>,
+    /// Event-time frozen alternatives are not triggered occurrences until chosen.
+    pub(crate) class_event_choices: Vec<super::class_event_choice::PendingTriggerClassChoice>,
     /// Ability-triggered events generated when entries first become pending.
     ability_triggered_events: Vec<(TriggerEvent, Vec<crate::ConditionExpr>)>,
 }
@@ -532,6 +537,11 @@ impl TriggerQueue {
 
     /// Add a triggered ability to the queue.
     pub fn add(&mut self, entry: TriggeredAbilityEntry) {
+        // A retained instruction-boundary occurrence already notified its
+        // observers. Crossing a nested queue must not trigger it again.
+        if entry.triggering_event.trigger_entry_announced() {
+            self.entries.push(entry);return;
+        }
         let source_snapshot = entry.source_snapshot.clone();
         let zone_change_cause = entry
             .triggering_event
@@ -548,14 +558,14 @@ impl TriggerQueue {
                 entry.controller,
                 entry.trigger_identity,
             )
-            .with_source_snapshot(source_snapshot.clone())
-            .with_cause(
-                entry.triggering_event.kind(),
-                entry.triggering_event.object_id(),
-                zone_change_cause,
-            ),
+            .with_source_snapshot(source_snapshot.clone()),
             entry.triggering_event.provenance(),
         );
+        if !entry.triggering_event.is_direct_trigger_invocation() {
+            let triggered=event.downcast::<crate::events::AbilityTriggeredEvent>().unwrap().clone()
+                .with_cause(entry.triggering_event.kind(),entry.triggering_event.object_id(),zone_change_cause);
+            event=event.with_inner_event(triggered);
+        }
         if let Some(source_snapshot) = source_snapshot {
             event = event.with_source_snapshot(source_snapshot);
         }
@@ -578,8 +588,15 @@ impl TriggerQueue {
     /// AbilityTriggered notifications for the same captured occurrences.
     pub(crate) fn append_captured(&mut self, mut captured: Self) {
         self.entries.append(&mut captured.entries);
+        self.class_event_choices.append(&mut captured.class_event_choices);
         self.ability_triggered_events
             .append(&mut captured.ability_triggered_events);
+    }
+
+    /// Transfer a complete captured queue across a nested action boundary.
+    pub(crate) fn defer_into_game(&mut self, game: &mut GameState) {
+        game.effect_store.pending_trigger_class_choices.append(&mut self.class_event_choices);
+        game.defer_trigger_entries(self.take_all());
     }
 
     /// Restore an already-announced trigger after an interactive choice paused stacking.
@@ -597,19 +614,20 @@ impl TriggerQueue {
 
     /// Returns true if the queue is empty.
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.entries.is_empty() && self.class_event_choices.is_empty()
     }
 
     /// No queued ability programs or still-undelivered AbilityTriggered
     /// notifications. Recovery boundaries must not use the entries-only
     /// `is_empty` check after entries have been drained for ordering.
     pub fn is_fully_empty(&self) -> bool {
-        self.entries.is_empty() && self.ability_triggered_events.is_empty()
+        self.entries.is_empty() && self.class_event_choices.is_empty() && self.ability_triggered_events.is_empty()
     }
 
     /// Clear all entries from the queue.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.class_event_choices.clear();
         self.ability_triggered_events.clear();
     }
 
@@ -705,6 +723,8 @@ pub fn compute_delayed_trigger_identity(delayed: &DelayedTrigger) -> TriggerIden
     delayed.expires_at_turn.hash(&mut hasher);
     delayed.expires_at_end_of_combat.hash(&mut hasher);
     delayed.controller.hash(&mut hasher);
+    delayed.persistent_player_rule.hash(&mut hasher);
+    format!("{:?}", delayed.intervening_if).hash(&mut hasher);
     for effect in delayed.effects.all_effects() {
         let _ = crate::trigger_identity::hash_debug(&mut hasher, effect);
     }
@@ -829,6 +849,11 @@ fn trigger_source_matches_duplication_filter(
     filter.matches_snapshot(&snapshot, &ctx, game)
 }
 
+pub(crate) fn retain_unsuppressed_trigger_occurrences(game:&GameState,entries:&mut Vec<TriggeredAbilityEntry>) {
+    let view=crate::derived_view::DerivedGameView::new(game);
+    remove_suppressed_triggers(game,&view,entries);
+}
+
 fn trigger_event_matches_duplication_matcher(
     game: &GameState,
     entry: &TriggeredAbilityEntry,
@@ -836,6 +861,7 @@ fn trigger_event_matches_duplication_matcher(
     static_source: ObjectId,
     matcher: &Trigger,
 ) -> bool {
+    if entry.triggering_event.is_direct_trigger_invocation() {return false;}
     let ctx = TriggerContext::for_source(static_source, controller, game);
     matcher.matches(&entry.triggering_event, &ctx)
 }
@@ -1586,6 +1612,7 @@ pub fn check_triggers(
         && !game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
         && !lki_may_subscribe
         && !direct_snapshot_may_subscribe
+        && !named_participant_may_subscribe(trigger_event)
     {
         return Vec::new();
     }
@@ -1645,7 +1672,7 @@ pub(crate) fn check_triggers_batch(
                             )
                         });
 
-            current_state_may_subscribe || lki_may_subscribe || direct_snapshot_may_subscribe
+            current_state_may_subscribe || lki_may_subscribe || direct_snapshot_may_subscribe || named_participant_may_subscribe(trigger_event)
         })
         .collect::<Vec<_>>();
 
@@ -1757,6 +1784,9 @@ fn trigger_event_can_have_synthetic_triggers(trigger_event: &TriggerEvent) -> bo
         .downcast::<crate::events::CardsDrawnEvent>()
         .and_then(|draw| draw.miracle.as_ref())
         .is_some_and(|decision| !decision.revealed_instances().is_empty())
+        || trigger_event.downcast::<crate::events::EnterBattlefieldEvent>()
+            .and_then(|entry| entry.completed_snapshot.as_ref())
+            .is_some_and(source_has_entry_dies_projection)
         || trigger_event
         .downcast::<crate::events::KeywordActionEvent>()
         .is_some_and(|action| action.action == crate::events::KeywordActionKind::TakeInitiative)
@@ -2153,12 +2183,42 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
+    // A participant observer binds only the exact affected snapshots admitted
+    // by its typed predicate; the immutable operation receipt remains complete.
+    if let Some(ironsmith_core::trigger_model::TriggerKind::NamedActionParticipant { participant_filter, .. }) = trigger.compiled_model().map(|model| &model.kind)
+        && let Some(action) = trigger_event.downcast::<crate::events::NamedActionEvent>()
+    {
+        let participants = action.objects.iter().filter(|object| {
+            (!participant_filter.source || object.object_id == ctx.source_id)
+                && participant_filter.matches_snapshot(object, &ctx.filter_ctx, game)
+        }).cloned().collect::<Vec<_>>();
+        tagged.insert("__it__".into(), participants.clone());
+        tagged.insert("__named_action_objects".into(), participants);
+    }
+    // Freeze entry-program action receipts with the triggered ability so its
+    // source or the exiled card may leave before the ability resolves.
+    for (tag,snapshots) in &ctx.filter_ctx.tagged_objects {
+        if tag.as_str().starts_with("__entry_action_"){tagged.insert(tag.clone(),snapshots.clone());}
+    }
+    let own_entry = trigger_event.downcast::<crate::events::EnterBattlefieldEvent>()
+        .is_some_and(|entry|entry.object==ctx.source_id&&entry.from==Some(crate::zone::Zone::Stack))
+        || trigger_event.downcast::<crate::events::ZoneChangeEvent>()
+            .is_some_and(|entry|entry.from==crate::zone::Zone::Stack&&entry.to==crate::zone::Zone::Battlefield&&entry.destination_objects().contains(&ctx.source_id));
+    if own_entry {
+        if let Some(snapshot)=ctx.filter_ctx.source_snapshot.as_ref() {
+            for (tag,objects) in &snapshot.paid_optional_cost_objects {tagged.insert(tag.clone(),objects.clone());}
+        } else if let Some(source)=game.object(ctx.source_id) {
+            for (tag,objects) in &source.cast_tagged_objects {
+                if tag.as_str().starts_with("__additional_cost_tap:"){tagged.insert(tag.clone(),objects.clone());}
+            }
+        }
+    }
     // Only this entrant's own ETB ability imports its cast payment receipt.
     // The completed event froze the pre-cost LKI, so departure or a new
     // incarnation before stacking/resolution cannot change the amount.
     if let Some(entry) = trigger_event.downcast::<crate::events::EnterBattlefieldEvent>()
         && entry.object == ctx.source_id
-        && entry.from == crate::zone::Zone::Stack
+        && entry.from == Some(crate::zone::Zone::Stack)
         && let Some(sacrificed) = &entry.emerge_sacrifice
     {
         tagged.insert(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into(), sacrificed.clone());
@@ -2226,6 +2286,11 @@ fn tagged_objects_for_matched_trigger_with_view(
             crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_RECIPIENT_TAG),
             vec![recipient.clone()],
         );
+    }
+    if let Some(attachment_trigger) = trigger.downcast_ref::<crate::triggers::AttachmentChangedToPlayerTrigger>()
+        && let Some((attachment, _)) = attachment_trigger.participants(trigger_event)
+    {
+        tagged.insert(crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG), vec![attachment.clone()]);
     }
     if let Some(attacks) = trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
         && attacks.one_or_more
@@ -2454,6 +2519,12 @@ fn tagged_objects_for_trigger_event_impl(
         if !other_attackers.is_empty() {
             tagged.insert(crate::tag::TagKey::from("other_attacker"), other_attackers);
         }
+    }
+    if let Some(action) = trigger_event.downcast::<crate::events::NamedActionEvent>() {
+        // Immutable producer snapshots bind references even after later moves.
+        tagged.insert("__named_action_objects".into(), action.objects.clone());
+        tagged.insert("__named_action_source".into(), if action.player_only_performer { Vec::new() } else { vec![action.snapshot.clone()] });
+        tagged.insert("__it__".into(),if action.objects.is_empty() && !action.player_only_performer {vec![action.snapshot.clone()]}else{action.objects.clone()});
     }
     if let Some(action_event) = trigger_event.downcast::<crate::events::KeywordActionEvent>() {
         for (tag, snapshots) in &action_event.object_tags {
@@ -2710,12 +2781,31 @@ fn check_battlefield_trigger_subscriber(
 /// dies", "when this dies") sees a zone change that moved several objects at
 /// once as one event per object, so each instance refers to its own object
 /// ("return it", "its power"). A "one or more" trigger keeps the whole event.
+fn is_named_participant_trigger(trigger: &Trigger) -> bool {
+    matches!(trigger.compiled_model().map(|model| &model.kind), Some(ironsmith_core::trigger_model::TriggerKind::NamedActionParticipant { .. }))
+}
+fn named_participant_may_subscribe(event: &TriggerEvent) -> bool {
+    event.downcast::<crate::events::NamedActionEvent>().is_some_and(|action| {
+        action.participant_source_lookback.as_deref().unwrap_or(&[]).iter().chain(action.objects.iter()).any(|snapshot| {
+            snapshot.abilities.iter().any(|ability| matches!(&ability.kind, AbilityKind::Triggered(triggered) if is_named_participant_trigger(&triggered.trigger) && ability.functions_in(&snapshot.zone)))
+        })
+    })
+}
+
 fn trigger_instance_events(
     game: &GameState,
     trigger: &Trigger,
     trigger_event: &TriggerEvent,
     ctx: &TriggerContext<'_>,
 ) -> Vec<TriggerEvent> {
+    if is_named_participant_trigger(trigger) && trigger.simultaneous_trigger_key(trigger_event).is_none()
+        && let Some(action) = trigger_event.downcast::<crate::events::NamedActionEvent>() {
+        return action.objects.iter().filter_map(|participant| {
+            let mut single = action.clone(); single.objects = vec![participant.clone()]; single.amount = 1;
+            let event = trigger_event.with_inner_event(single);
+            trigger.matches(&event, ctx).then_some(event)
+        }).collect();
+    }
     let per_object = trigger_event
         .downcast::<crate::events::zones::ZoneChangeEvent>()
         .filter(|_| trigger.simultaneous_trigger_key(trigger_event).is_none())
@@ -2898,6 +2988,22 @@ fn skip_post_event_source_discovery(
         // (from LKI) and the newly face-up plane (from the current state).
         return false;
     }
+    if is_named_participant_trigger(&trigger_ability.trigger)
+        && trigger_event.downcast::<crate::events::NamedActionEvent>().is_some_and(|action| {
+            action.participant_source_lookback.is_some()
+                || action.objects.iter().any(|object| object.stable_id == source_stable_id)
+        }) { return true; }
+    // The completed operation retained all event-time observers. Later
+    // additions, losses or zone changes must not rewrite that trigger set.
+    if trigger_event.downcast::<crate::events::NamedActionEvent>()
+        .is_some_and(|action| action.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event) {
+        return true;
+    }
+    if (trigger_event.downcast::<crate::events::TransformedEvent>().is_some_and(|event| event.complete_source_lookback)
+        || trigger_event.downcast::<crate::events::ConvertedEvent>().is_some_and(|event| event.complete_source_lookback))
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    { return true; }
     // During a simultaneous in/out exchange, an observer that only phased
     // in did not exist before the phase-out event (CR 603.10). A complete
     // producer snapshot already enumerated every eligible old source.
@@ -2947,11 +3053,29 @@ fn collect_lookback_source_triggers(
     trigger_event: &TriggerEvent,
     triggered: &mut Vec<TriggeredAbilityEntry>,
 ) {
-    for source_snapshot in trigger_event.lookback_source_snapshots() {
+    let action = trigger_event.downcast::<crate::events::NamedActionEvent>();
+    let mut sources = trigger_event.lookback_source_snapshots().iter().map(|snapshot| (snapshot, false)).collect::<Vec<_>>();
+    if let Some(action) = action {
+        let mut seen = HashSet::new();
+        for snapshot in action.participant_source_lookback.as_deref().unwrap_or(&[]).iter().chain(action.objects.iter()) {
+            if seen.insert(snapshot.object_id) { sources.push((snapshot, true)); }
+        }
+    }
+    if std::env::var_os("IRONSMITH_TRACE_NAMED_PARTICIPANTS").is_some() && let Some(action)=action {
+        eprintln!("named-participant discovery label={} sources={:?}",action.label,sources.iter().take(12).map(|(s,p)|(s.object_id,s.zone,s.abilities.len(),*p)).collect::<Vec<_>>());
+    }
+    for (source_snapshot, participant_only) in sources {
         for (ability_index, ability) in source_snapshot.abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
+            let participant = is_named_participant_trigger(&trigger_ability.trigger);
+            if participant_only && !participant { continue; }
+            if !participant_only && participant && action.is_some_and(|action| action.participant_source_lookback.is_some()
+                || action.objects.iter().any(|object| object.object_id == source_snapshot.object_id)) { continue; }
+            if participant && std::env::var_os("IRONSMITH_TRACE_NAMED_PARTICIPANTS").is_some() {
+                eprintln!("named-participant candidate source={:?} zone={:?} slot={} functions={} lookback={}", source_snapshot.object_id,source_snapshot.zone,ability_index,ability.functions_in(&source_snapshot.zone),trigger_ability.trigger.looks_back_for_source(trigger_event));
+            }
             if !ability.functions_in(&source_snapshot.zone) {
                 continue;
             }
@@ -3011,7 +3135,8 @@ fn collect_lookback_source_triggers(
                         trigger_event,
                         source_snapshot.object_id,
                         Some(trigger_identity),
-                        None,
+                        crate::condition_eval::projected_trigger_source_snapshot(trigger_event, source_snapshot.object_id)
+                            .map(|snapshot| &snapshot.optional_costs_paid),
                     )
                 {
                     continue;
@@ -3569,11 +3694,70 @@ fn check_triggers_with_view_and_registry(
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
     add_speed_increase_triggers(game, trigger_event, &mut triggered);
 
+    append_projected_trigger_occurrences(game,trigger_event,view,&mut triggered);
     remove_suppressed_triggers(game, view, &mut triggered);
     cap_granted_casualty_triggers(game, &mut triggered);
     append_additional_trigger_copies(game, view, &mut triggered);
 
     triggered
+}
+
+/// Match projected occurrences in the original batch. No projected event is
+/// queued as a game action, and no object becomes an attacker.
+fn append_projected_trigger_occurrences(game:&GameState,event:&TriggerEvent,view:&crate::derived_view::DerivedGameView<'_>,entries:&mut Vec<TriggeredAbilityEntry>) {
+    use crate::filter::ObjectFilterExt as _;
+    use ironsmith_core::static_ability_model::TriggerProjectionEvent;
+    append_entry_dies_projection(game, event, entries);
+    let Some(attack)=event.downcast::<crate::events::combat::CreatureAttackedEvent>() else {return};
+    for source_id in game.battlefield.iter().copied() {
+        let Some(source)=game.object(source_id) else {continue};
+        let Some(abilities)=view.static_abilities_rc(source_id) else {continue};
+        let context=crate::target::FilterContext::new(game.controller_of(source)).with_source(source_id).with_active_player(game.turn.active_player);
+        for ability in abilities.iter() {
+            let Some(ironsmith_core::StaticAbilityPayload::TriggerEventProjection{observed:TriggerProjectionEvent::Attacks,sources,subjects,projected:TriggerProjectionEvent::Attacks})=ability.compiled_model().map(|model|&model.payload) else {continue};
+            if !game.object(attack.attacker).is_some_and(|object|sources.matches(object,&context,game)){continue}
+            for object in game.objects_in_deterministic_order() {
+                if !subjects.matches(object,&context,game){continue}
+                let mut projected_attack=attack.clone();
+                projected_attack.attacker=object.id;
+                // Preserve real combat timing/defender and attacker quantity;
+                // never publish a fabricated declaration or attack-history row.
+                projected_attack.declared_attackers=None;
+                let projected=TriggerEvent::new_with_provenance(projected_attack,event.provenance());
+                collect_object_trigger_occurrences(game,object.id,&projected,view,entries,true);
+            }
+        }
+    }
+}
+
+/// Entry projection is source-local and uses the committed entry snapshot,
+/// including its calculated grants and exact selected-price receipt. It never
+/// publishes a death event or contributes to death/zone history.
+fn source_has_entry_dies_projection(snapshot: &crate::snapshot::ObjectSnapshot) -> bool {
+    use ironsmith_core::static_ability_model::TriggerProjectionEvent as P;
+    snapshot.abilities.iter().any(|ability| {
+        let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return false; };
+        matches!(ability.compiled_model().map(|model| &model.payload),
+            Some(ironsmith_core::StaticAbilityPayload::TriggerEventProjection {
+                observed: P::Enters, sources, subjects, projected: P::Dies
+            }) if sources == &crate::target::ObjectFilter::source() && subjects == &crate::target::ObjectFilter::source())
+    })
+}
+
+fn append_entry_dies_projection(game: &GameState, event: &TriggerEvent, entries: &mut Vec<TriggeredAbilityEntry>) {
+    let Some(entry) = event.downcast::<crate::events::EnterBattlefieldEvent>() else { return; };
+    let Some(snapshot) = entry.completed_snapshot.as_ref() else { eprintln!("ENTRY_PROJECTION_TRACE no completed snapshot object={:?}",entry.object); return; };
+    eprintln!("ENTRY_PROJECTION_TRACE object={:?} abilities={:#?}",entry.object,snapshot.abilities);
+    let has_projection = source_has_entry_dies_projection(snapshot);
+    eprintln!("ENTRY_PROJECTION_TRACE object={:?} projection={has_projection}",entry.object);
+    if !has_projection { return; }
+    let mut projected = crate::events::ZoneChangeEvent::with_cause(
+        snapshot.object_id, crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard,
+        crate::events::EventCause::effect(), Some(snapshot.clone()));
+    projected.object_tags.insert(crate::condition_eval::PROJECTED_SOURCE_FACTS_TAG.into(), vec![snapshot.clone()]);
+    let projected = TriggerEvent::new_with_provenance(projected, event.provenance())
+        .with_lookback_source_snapshots(vec![snapshot.clone()]);
+    collect_lookback_source_triggers(game, &projected, entries);
 }
 
 /// CR 702.153b: each instance of casualty is paid separately and triggers
@@ -3946,6 +4130,10 @@ pub(crate) fn take_delayed_untap_step_actions(
             to_remove.push(idx);
             continue;
         }
+        if let Some(scope) = &delayed.source_collection_scope
+            && delayed.ability_source.is_none_or(|source|game.source_collection_objects(source,&scope.name).is_empty()) {
+            to_remove.push(idx); continue;
+        }
         if let Some((tag, zone)) = &delayed.while_any_tagged_object_in_zone
             && !crate::effects::delayed::trigger_queue::tagged_collection_has_object_in_zone(
                 game,
@@ -4089,6 +4277,10 @@ pub fn check_delayed_triggers_for_simultaneous_events(
             to_remove.push(idx);
             continue;
         }
+        if let Some(scope) = &delayed.source_collection_scope
+            && delayed.ability_source.is_none_or(|source|game.source_collection_objects(source,&scope.name).is_empty()) {
+            to_remove.push(idx); continue;
+        }
         if let Some((tag, zone)) = &delayed.while_any_tagged_object_in_zone
             && !crate::effects::delayed::trigger_queue::tagged_collection_has_object_in_zone(
                 game,
@@ -4138,9 +4330,12 @@ pub fn check_delayed_triggers_for_simultaneous_events(
         let mut attack_groups = std::collections::HashSet::new();
         for trigger_event in events.iter().copied() {
             for &source in candidate_sources {
+                let controller = if delayed.source_collection_scope.is_some() {
+                    trigger_event.source_snapshot().filter(|snapshot|snapshot.object_id==source).map(|snapshot|snapshot.controller).or_else(||trigger_event.lookback_source_snapshots().iter().find(|snapshot| snapshot.object_id == source).map(|snapshot| snapshot.controller)).or_else(||game.controller_of_id(source)).or_else(|| game.source_last_known_snapshot(source).map(|snapshot| snapshot.controller)).unwrap_or(delayed.controller)
+                } else { delayed.controller };
                 let mut ctx = TriggerContext::for_delayed_source(
                     source,
-                    delayed.controller,
+                    controller,
                     game,
                     &delayed.tagged_objects,
                 )
@@ -4182,12 +4377,19 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                 if !trigger_event_is_in_range(
                     game,
                     trigger_event,
-                    delayed.controller,
+                    controller,
                     range_source,
                     None,
                 ) || !delayed.trigger.matches(trigger_event, &ctx)
                 {
                     continue;
+                }
+
+                if let Some(condition) = &delayed.intervening_if {
+                    let evaluation = crate::condition_eval::ExternalEvaluationContext {
+                        controller: delayed.controller, source, triggering_event: Some(trigger_event), ..Default::default()
+                    };
+                    if !crate::condition_eval::evaluate_condition_external(game, condition, &evaluation) { continue; }
                 }
 
                 // Each object of a multi-object zone change is its own event for
@@ -4239,7 +4441,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                 None
                             }
                         })
-                        .unwrap_or_else(|| "Delayed Trigger".to_string());
+                        .unwrap_or_else(|| delayed.persistent_player_rule.clone().unwrap_or_else(|| "Delayed Trigger".to_string()));
 
                     // A shield-linked prevention event carries its own
                     // prevented amount; other delayed events read the total.
@@ -4260,14 +4462,14 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         linked_exile_owner: delayed.linked_exile_owner.clone(),
                         source_number_owner: delayed.source_number_owner.clone(),
                         source: ability_source,
-                        controller: delayed.controller,
+                        controller,
                         x_value: delayed.x_value,
                         event_value_amount,
                         ability: TriggeredAbility {
                             trigger: delayed.trigger.clone(),
                             effects: delayed.effects.clone(),
                             choices: delayed.choices.clone(),
-                            intervening_if: None,
+                            intervening_if: delayed.intervening_if.clone(),
                             presentation_label: None,
                         },
                         triggering_event: {
@@ -4306,7 +4508,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                             }
                             tagged
                         },
-                        source_kind: TriggeredAbilitySourceKind::Object,
+                        source_kind: if delayed.persistent_player_rule.is_some() { TriggeredAbilitySourceKind::GameRule } else { TriggeredAbilitySourceKind::Object },
                         trigger_identity,
                     };
                     if let Some(group @ crate::triggers::matcher_trait::SimultaneousTriggerKey::CounterRecipient { .. }) =
@@ -4397,10 +4599,16 @@ fn check_triggers_in_zone(
     view: &crate::derived_view::DerivedGameView<'_>,
     triggered: &mut Vec<TriggeredAbilityEntry>,
 ) {
-    let Some(obj) = game.object(obj_id) else {
-        return;
-    };
+    collect_object_trigger_occurrences(game,obj_id,trigger_event,view,triggered,false);
+}
 
+/// An explicit projection may read an object's retained program outside its
+/// normal functional zone. Everything else uses ordinary matching and entry capture.
+fn collect_object_trigger_occurrences(
+    game:&GameState,obj_id:ObjectId,trigger_event:&TriggerEvent,
+    view:&crate::derived_view::DerivedGameView<'_>,triggered:&mut Vec<TriggeredAbilityEntry>,ignore_functional_zone:bool,
+) {
+    let Some(obj) = game.object(obj_id) else { return; };
     let calculated_abilities = view
         .abilities_rc(obj_id)
         .unwrap_or_else(|| std::sync::Arc::new(obj.abilities_vec()));
@@ -4409,7 +4617,7 @@ fn check_triggers_in_zone(
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
         };
-        if !ability.functions_in(&obj.zone) {
+        if !ignore_functional_zone && !ability.functions_in(&obj.zone) {
             continue;
         }
 
@@ -4481,7 +4689,7 @@ fn check_triggers_in_zone(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.to_string(),
-                    source_snapshot: None,
+                    source_snapshot: ignore_functional_zone.then(|| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)),
                     tagged_objects: tagged_objects_for_matched_trigger(
                         game,
                         trigger_event,
@@ -4581,7 +4789,7 @@ pub fn player_filter_matches_with_context(
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             let mut filter_ctx = game.filter_context_for(controller, None);
             filter_ctx.defending_player = defending_player;
             player_filter_matches_game(spec, player, game, &filter_ctx)
@@ -4920,7 +5128,7 @@ fn verify_intervening_if_impl(
     triggering_object_current: bool,
 ) -> bool {
     match verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
-        trigger_identity, optional_costs_paid, triggering_object_current) {
+        trigger_identity, optional_costs_paid, triggering_object_current, None) {
         Ok(value) => value,
         Err(error) => { game.record_token_resource_failure(&error); false }
     }
@@ -4932,7 +5140,7 @@ pub fn verify_intervening_if_checked(
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> Result<bool, crate::effects::ExecutionError> {
     verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
-        trigger_identity, optional_costs_paid, false)
+        trigger_identity, optional_costs_paid, false, None)
 }
 
 pub fn verify_intervening_if_at_resolution_checked(
@@ -4941,7 +5149,15 @@ pub fn verify_intervening_if_at_resolution_checked(
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> Result<bool, crate::effects::ExecutionError> {
     verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
-        trigger_identity, optional_costs_paid, true)
+        trigger_identity, optional_costs_paid, true, None)
+}
+
+pub(crate) fn verify_intervening_if_at_resolution_with_memory_owner_checked(
+    game:&GameState,condition:&crate::ConditionExpr,controller:PlayerId,event:&TriggerEvent,
+    source:ObjectId,identity:Option<TriggerIdentity>,paid:Option<&crate::cost::OptionalCostsPaid>,
+    owner:Option<&crate::linked_exile::LinkedExileOwner>,
+)->Result<bool,crate::effects::ExecutionError>{
+    verify_intervening_if_checked_impl(game,condition,controller,event,source,identity,paid,true,owner)
 }
 
 fn verify_intervening_if_checked_impl(
@@ -4953,6 +5169,7 @@ fn verify_intervening_if_checked_impl(
     trigger_identity: Option<TriggerIdentity>,
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
     triggering_object_current: bool,
+    memory_owner:Option<&crate::linked_exile::LinkedExileOwner>,
 ) -> Result<bool, crate::effects::ExecutionError> {
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
         event
@@ -5026,7 +5243,7 @@ fn verify_intervening_if_checked_impl(
             ..Default::default()
         },
     };
-    crate::condition_eval::evaluate_condition_external_checked(game, condition, &eval_ctx, optional_costs_paid)
+    crate::condition_eval::evaluate_condition_external_with_memory_owner_checked(game, condition, &eval_ctx, optional_costs_paid,memory_owner)
 }
 
 #[cfg(test)]
@@ -5181,6 +5398,7 @@ mod tests {
                     intervening_if: None,
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
     }
@@ -5199,6 +5417,7 @@ mod tests {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         game.effect_store.continuous_effects.add_effect(
@@ -5797,6 +6016,7 @@ mod tests {
                     intervening_if: None,
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         }
@@ -5843,6 +6063,7 @@ mod tests {
                     intervening_if: None,
                     presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
 
@@ -7254,6 +7475,134 @@ mod native_conspire_payment_identity_contract_tests {
                     ))
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod projected_entry_condition_tests {
+    use super::*;
+    #[test]
+    fn projected_dies_uses_entry_source_facts_then_rechecks_current_intervening_if() {
+        use ironsmith_core::static_ability_model::TriggerProjectionEvent as P;
+        let owner = PlayerId::from_index(0);
+        for (condition, expected) in [
+            (crate::ConditionExpr::SourcePowerAtLeast(3), true),
+            (crate::ConditionExpr::SourceHasNoCounter(crate::CounterType::Charge), true),
+            (crate::ConditionExpr::SourceHasCountersAtLeast(1), false),
+        ] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Entry projection witness")
+                .card_types(vec![crate::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(3, 3)).build();
+            let source = game.create_object_from_card(&card, owner, crate::Zone::Battlefield);
+            let projection = crate::static_abilities::StaticAbility::from_model(
+                crate::static_abilities::CompiledStaticAbility::trigger_event_projection(P::Enters,
+                    crate::target::ObjectFilter::source(), crate::target::ObjectFilter::source(), P::Dies));
+            let mut death = crate::Ability::triggered(crate::triggers::Trigger::this_dies(), vec![crate::effect::Effect::gain_life(1)]);
+            let crate::ability::AbilityKind::Triggered(trigger) = &mut death.kind else { unreachable!() };
+            trigger.intervening_if = Some(condition.clone());
+            game.object_mut(source).unwrap().abilities_mut().extend([crate::Ability::static_ability(projection), death]);
+            let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+            let mut entered = crate::events::EnterBattlefieldEvent::new(source, crate::Zone::Stack);
+            entered.completed_snapshot = Some(snapshot.clone());
+            let entered = TriggerEvent::new_with_provenance(entered, Default::default());
+            let counter = if matches!(condition, crate::ConditionExpr::SourcePowerAtLeast(_)) {
+                crate::CounterType::MinusOneMinusOne
+            } else { crate::CounterType::Charge };
+            game.object_mut(source).unwrap().counters.insert(counter, 1);
+            // An otherwise identical unmarked look-back event retains the
+            // established ordinary condition behavior; projection policy must
+            // never become a global intervening-if rewrite.
+            let ordinary = TriggerEvent::new_with_provenance(crate::events::ZoneChangeEvent::with_cause(
+                source, crate::Zone::Battlefield, crate::Zone::Graveyard,
+                crate::events::EventCause::effect(), Some(snapshot.clone())), Default::default())
+                .with_lookback_source_snapshots(vec![snapshot]);
+            assert_eq!(verify_intervening_if(&game, &condition, owner, &ordinary, source, None, None), !expected);
+            let mut entries = Vec::new();
+            append_entry_dies_projection(&game, &entered, &mut entries);
+            assert_eq!(entries.len(), usize::from(expected));
+            if let Some(entry) = entries.first() {
+                assert!(entry.source_snapshot.is_some());
+                assert!(!verify_intervening_if_at_resolution(&game, &condition, owner,
+                    &entry.triggering_event, source, Some(entry.trigger_identity), None));
+            }
+            assert!(game.battlefield.contains(&source), "projection cannot move the object");
+            assert!(!game.turn_store.turn_history.projected_records().any(|record|
+                record.event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|change|
+                    change.from == crate::Zone::Battlefield && change.to == crate::Zone::Graveyard)),
+                "projection cannot publish death history");
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod projected_numeric_source_condition_tests {
+    use super::*;
+    #[test]
+    fn projected_source_numbers_compose_and_recheck_without_changing_ordinary_predicates() {
+        use crate::effect::{Value, ValueComparisonOperator as Op};
+        use ironsmith_core::static_ability_model::TriggerProjectionEvent as P;
+        let owner = PlayerId::from_index(0);
+        let conditions = [
+            crate::ConditionExpr::ValueComparison { left: Value::SourcePower, operator: Op::GreaterThanOrEqual, right: Value::Fixed(5) },
+            crate::ConditionExpr::ValueComparison { left: Value::SourceToughness, operator: Op::GreaterThanOrEqual, right: Value::Fixed(7) },
+            crate::ConditionExpr::ValueComparison {
+                left: Value::Add(Box::new(Value::Scaled(Box::new(Value::SourceToughness), 2)), Box::new(Value::Fixed(1))),
+                operator: Op::GreaterThanOrEqual, right: Value::Fixed(15),
+            },
+            crate::ConditionExpr::ValueComparison {
+                left: Value::Add(Box::new(Value::SourcePower), Box::new(Value::LifeTotal(crate::target::PlayerFilter::You))),
+                operator: Op::GreaterThanOrEqual, right: Value::Fixed(30),
+            },
+            crate::ConditionExpr::ValueComparison {left:Value::CountersOnSource(crate::CounterType::Charge),operator:Op::GreaterThanOrEqual,right:Value::Fixed(3)},
+            crate::ConditionExpr::ValueComparison {left:Value::CountersOn(Box::new(crate::target::ChooseSpec::Source),Some(crate::CounterType::Charge)),operator:Op::GreaterThanOrEqual,right:Value::Fixed(3)},
+            crate::ConditionExpr::ValueComparison {left:Value::CountersOn(Box::new(crate::target::ChooseSpec::Source),None),operator:Op::GreaterThanOrEqual,right:Value::Fixed(3)},
+            crate::ConditionExpr::ValueIsPrime(Value::CountersOnSource(crate::CounterType::Charge)),
+            crate::ConditionExpr::ValueIsPrime(Value::SourcePower),
+            crate::ConditionExpr::ValueIsPrime(Value::Add(Box::new(Value::SourcePower), Box::new(Value::Fixed(2)))),
+        ];
+        for condition in conditions {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Numeric entry projection")
+                .card_types(vec![crate::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(5, 7)).build();
+            let source = game.create_object_from_card(&card, owner, crate::Zone::Battlefield);
+            let projection = crate::static_abilities::StaticAbility::from_model(
+                crate::static_abilities::CompiledStaticAbility::trigger_event_projection(P::Enters,
+                    crate::target::ObjectFilter::source(), crate::target::ObjectFilter::source(), P::Dies));
+            let mut death = crate::Ability::triggered(crate::triggers::Trigger::this_dies(), vec![crate::effect::Effect::gain_life(1)]);
+            let crate::ability::AbilityKind::Triggered(trigger) = &mut death.kind else { unreachable!() };
+            trigger.intervening_if = Some(condition.clone());
+            game.object_mut(source).unwrap().abilities_mut().extend([crate::Ability::static_ability(projection), death]);
+            game.object_mut(source).unwrap().counters.insert(crate::CounterType::Charge,3);
+            let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(source).unwrap(), &game);
+            let mut entered = crate::events::EnterBattlefieldEvent::new(source, crate::Zone::Stack);
+            entered.completed_snapshot = Some(snapshot.clone());
+            let entered = TriggerEvent::new_with_provenance(entered, Default::default());
+            game.object_mut(source).unwrap().counters.insert(crate::CounterType::MinusOneMinusOne, 1);
+            game.object_mut(source).unwrap().counters.insert(crate::CounterType::Charge,1);
+            // Only source facts are frozen: this non-source world fact stays live.
+            game.player_mut(owner).unwrap().life = 25;
+            let ordinary = TriggerEvent::new_with_provenance(crate::events::ZoneChangeEvent::with_cause(
+                source, crate::Zone::Battlefield, crate::Zone::Graveyard,
+                crate::events::EventCause::effect(), Some(snapshot)), Default::default());
+            assert!(!verify_intervening_if(&game, &condition, owner, &ordinary, source, None, None),
+                "an unmarked event still reads the current source");
+            let mut entries = Vec::new();
+            append_entry_dies_projection(&game, &entered, &mut entries);
+            assert_eq!(entries.len(), 1, "capture reads immutable entry power/toughness through arithmetic and prime tests");
+            let entry = &entries[0];
+            assert!(!verify_intervening_if_at_resolution(&game, &condition, owner,
+                &entry.triggering_event, source, Some(entry.trigger_identity), None),
+                "resolution reads current 4/6, not frozen entry 5/7");
+            assert!(game.battlefield.contains(&source));
+            assert!(game.stack.is_empty());
+            game.move_object_by_effect(source, crate::Zone::Exile).unwrap();
+            assert!(!verify_intervening_if_at_resolution(&game, &condition, owner,
+                &entry.triggering_event, source, Some(entry.trigger_identity), None),
+                "a departed exact source rechecks its latest 4/6 LKI, not entry facts");
         }
     }
 }

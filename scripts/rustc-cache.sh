@@ -2,6 +2,13 @@
 # Cargo invokes this with the real rustc path followed by its arguments.
 set -eu
 
+# sccache rejects CARGO_INCREMENTAL=1, even for dependencies that Cargo
+# compiles non-incrementally. Let an explicitly requested local edit/test
+# loop use rustc's incremental cache; ordinary builds keep using sccache.
+if [ "${CARGO_INCREMENTAL:-0}" = "1" ]; then
+    exec "$@"
+fi
+
 if ! command -v sccache >/dev/null 2>&1; then
     exec "$@"
 fi

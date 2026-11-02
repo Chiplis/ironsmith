@@ -66,10 +66,82 @@ pub fn parse_effect_sentence_lexed(
     )
 }
 
+/// A choice-list constraint independent of its objects, zones, or later action.
+fn parse_distinct_color_representatives(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let tail = ["each", "representing", "a", "different", "color", "it", "has"];
+    let Some(start) = tokens.len().checked_sub(tail.len()) else { return Ok(None); };
+    if !tokens.first().is_some_and(|token| token.is_word("choose"))
+        || !tokens[start..].iter().zip(tail).all(|(token, word)| token.is_word(word)) { return Ok(None); }
+    let prefix = crate::lexer::trim_lexed_commas(&tokens[..start]);
+    let effects = parse_effect_sentence_lexed(prefix)?;
+    let [effect] = effects.as_slice() else { return Ok(None); };
+    let (filter, count, player, tag) = match effect {
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects { filter, count, count_value: None, player, tag }) => (filter, count, player, tag),
+        EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsAcrossZones { filter, count, count_value: None, player, tag, zones, .. })
+            if filter.zone.is_none() && !filter.any_of.is_empty()
+                && filter.any_of.iter().all(|branch| branch.zone.is_some_and(|zone| zones.contains(&zone)))
+                && zones.iter().all(|zone| filter.any_of.iter().any(|branch| branch.zone == Some(*zone))) => (filter, count, player, tag),
+        _ => return Ok(None),
+    };
+    if count.up_to_x || count.random { return Ok(None); }
+    let required = i32::try_from(count.min).map_err(|_| CardTextError::ParseError("choice count exceeds supported range".into()))?;
+    // A constrained selection exports a collection, not the ambient pronoun.
+    // Material consumers (tap, exile, ...) may advance `it` independently.
+    let tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+        crate::util::helper_tag_for_tokens(tokens, "chosen_representatives")
+    } else { tag.clone() };
+
+    crate::word_claims::claim_tokens(&tokens[start..]);
+    Ok(Some(vec![EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+        filter: filter.clone(), count: *count, player: *player, tag,
+        constraint: crate::effect::ChoiceAggregateConstraint {
+            metric: crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives,
+            minimum: Some(if count.dynamic_x { crate::effect::Value::X } else { crate::effect::Value::Fixed(required) }),
+            maximum: if count.dynamic_x { crate::effect::Value::X } else { crate::effect::Value::Fixed(count.max.unwrap_or(crate::color::Color::ALL.len()).min(crate::color::Color::ALL.len()) as i32) },
+        },
+    })]))
+}
+
 #[inline(never)]
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(program) = crate::effect_sentences::dispatch_entry::parse_persistent_player_rule_instruction(tokens)? {
+        return Ok(program);
+    }
+    if let Some(effect)=crate::keyword_static::parse_resolving_spell_replacement_program(tokens)? {return Ok(vec![effect]);}
+    if let Some(effect)=crate::keyword_static::parse_timed_event_replacement_program(tokens)? {return Ok(vec![effect]);}
+    if crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(tokens)
+        .is_some_and(|shape| !shape.participant_is_actor && shape.inner_tokens.first().is_some_and(|token| token.is_word("you")))
+        && let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_player_clause(tokens)?
+    { return Ok(vec![effect]); }
+    if let Some(effects)=crate::effect_sentences::face_state_actions::parse(tokens)?{return Ok(effects);}
+    if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{return Ok(effects);}
+    if let Some(program) = crate::effect_sentences::bounded_source_programs::parse(tokens)? { return Ok(program); }
+    let mut trimmed_payment = tokens;
+    while trimmed_payment.last().is_some_and(|token| matches!(token.kind, crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon)) { trimmed_payment = &trimmed_payment[..trimmed_payment.len()-1]; }
+    let payment_actor = [
+        (&["you"][..], crate::cards::builders::PlayerAst::You),
+        (&["they"][..], crate::cards::builders::PlayerAst::That),
+        (&["that", "player"][..], crate::cards::builders::PlayerAst::That),
+        (&["its", "controller"][..], crate::cards::builders::PlayerAst::ItsController),
+        (&["its", "owner"][..], crate::cards::builders::PlayerAst::ItsOwner),
+    ].into_iter().find_map(|(words, player)| {
+        (trimmed_payment.len() > words.len() && trimmed_payment[..words.len()].iter().zip(words).all(|(token, word)| token.is_word(word))
+            && trimmed_payment[words.len()].is_word("may")).then_some((words.len() + 1, player))
+    });
+    if let Some((prefix, player)) = payment_actor
+        && let Some(result) = crate::grammar::activation_costs::parse_quoted_cost_program_tokens(&trimmed_payment[prefix..])
+    {
+        let effects = result?;
+        crate::word_claims::claim_tokens(&trimmed_payment[..prefix]);
+        return Ok(vec![EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayPay { player, effects, payment_receipt: None })]);
+    }
+    if let Some(effects) = parse_distinct_color_representatives(tokens)? { return Ok(effects); }
+    if let Some(effects) = crate::effect_sentences::parse_described_effect_bundle(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effect) =
         crate::effect_sentences::clause_dispatch::parse_referenced_tokens_goaded_sentence(tokens)
     {
@@ -275,27 +347,28 @@ fn parse_for_each_color_target_expansion(
     if primitives::find_prefix(after, || primitives::phrase(&["of", "that", "color"])).is_some() {
         return Ok(None);
     }
-    let target_positions = body
-        .iter()
-        .enumerate()
-        .filter(|(_, token)| token.is_word("target"))
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
-    let [target_idx] = target_positions.as_slice() else {
-        return Ok(None);
+    // A finite color population binds this lexical selector, rather than
+    // a permanent's independent chosen-color value. Keep the established
+    // targeted surface, and allow an immediately qualified ordinary object
+    // noun ("a card of that color") inside one bounded program.
+    let target_positions = body.iter().enumerate().filter(|(_, token)| token.is_word("target"))
+        .map(|(index, _)| index).collect::<Vec<_>>();
+    let insert_color = match target_positions.as_slice() {
+        [target] if *target < that_idx => *target + 1,
+        [] if that_idx > 0 && body[that_idx - 1].is_any_word(&["card", "cards", "creature", "creatures", "permanent", "permanents", "artifact", "artifacts", "enchantment", "enchantments", "land", "lands", "spell", "spells"]) => {
+            if body[..that_idx].iter().filter(|token| token.kind == crate::lexer::TokenKind::Quote).count() % 2 != 0 { return Ok(None); }
+            that_idx - 1
+        }
+        _ => return Ok(None),
     };
-    let target_idx = *target_idx;
-    if target_idx >= that_idx {
-        return Ok(None);
-    }
     let mut effects = Vec::new();
     for color in ["white", "blue", "black", "red", "green"] {
         let mut rewritten = Vec::with_capacity(body.len());
-        rewritten.extend_from_slice(&body[..=target_idx]);
+        rewritten.extend_from_slice(&body[..insert_color]);
         rewritten.push(OwnedLexToken::synthetic_word(color));
-        rewritten.extend_from_slice(&body[target_idx + 1..that_idx]);
+        rewritten.extend_from_slice(&body[insert_color..that_idx]);
         rewritten.extend_from_slice(after);
-        effects.extend(parse_effect_sentence_lexed(&rewritten)?);
+        effects.extend(crate::clause_support::parse_effect_sentences_lexed(&rewritten)?);
     }
     Ok(Some(effects))
 }
@@ -776,6 +849,9 @@ mod readings;
 pub(super) fn parse_effect_sentence_lexed_inner_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects)=crate::effect_sentences::object_group_instructions::parse(tokens)?{return Ok(effects);}
+    if let Some(menu)=crate::instruction_menu::parse(tokens)?{return Ok(menu);}
+    if let Some(menu)=crate::effect_sentences::parse_bounded_inline_modal_tokens(tokens)?{return Ok(menu);}
     // Shared-subject continuous instructions own their entire coordinated
     // clause, including characteristic verbs following the first action.
     let words = crate::lexer::parser_token_word_refs(tokens);
@@ -1092,6 +1168,9 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
                 CharacteristicActionAst::BecomeCreatureTypeChoice { target, .. },
             )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                target,
+                ..
+            } | CharacteristicActionAst::RemoveOptionalTextFragment {
                 target,
                 ..
             }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {

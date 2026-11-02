@@ -9288,6 +9288,7 @@ mod tests {
         use crate::static_abilities::{CompiledStaticAbility, StaticAbility};
         let flying = ironsmith_core::Ability {
             kind: ironsmith_core::AbilityKind::Static(CompiledStaticAbility::flying()),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         let definition = crate::cards::builders::CardDefinitionBuilder::new(
@@ -9332,6 +9333,7 @@ mod tests {
                     "Custom Label",
                 )),
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         let definition = crate::cards::builders::CardDefinitionBuilder::new(

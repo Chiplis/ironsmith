@@ -20,6 +20,18 @@ mod r#campaign_boundary_14_9_27;
 #[path = "../counter_exile_permission_artifacts.rs"]
 mod r#counter_exile_permission_artifacts;
 
+#[path = "../custom_audition_choices.rs"]
+mod r#custom_audition_choices;
+
+#[path = "../custom_older_lexical_source_collectors.rs"]
+mod r#custom_older_lexical_source_collectors;
+
+#[path = "../custom_policy_condition_actions.rs"]
+mod r#custom_policy_condition_actions;
+
+#[path = "../custom_submerge_linked_sources.rs"]
+mod r#custom_submerge_linked_sources;
+
 #[path = "../dice_receipt_triggers.rs"]
 mod r#dice_receipt_triggers;
 

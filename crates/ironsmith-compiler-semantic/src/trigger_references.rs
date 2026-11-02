@@ -112,9 +112,16 @@ pub fn this_blocks_or_becomes_blocked_other_filter(trigger: &TriggerSpec) -> Opt
 }
 
 pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> {
+    // An object-subject labelled action has distinct actor and affected roles.
+    // Bare "it" starts with the grammatical actor; a player-subject action
+    // retains its affected-object antecedent.
+    if let TriggerSpec::NamedAction { source_filter, .. } = trigger
+        && source_filter != &ObjectFilter::default() {
+        return Some(TagKey::from("__named_action_source"));
+    }
     if matches!(trigger, TriggerSpec::PlayerPaysLife(_)) { return None; }
     if matches!(trigger,TriggerSpec::PlayerBecomesMonarch(_)){return None;}
-    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
+    if let TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
     }
     if let Some(tag) = phase_step_trigger_object_reference_tag(trigger) {

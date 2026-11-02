@@ -130,10 +130,11 @@ fn strip_once_per_turn_condition_redundancy(
 fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
 
-    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
+    Some(EffectAst::subject_verb_reduce_next_spell_cost_window(
         PlayerAst::You,
         parsed.spell_filter,
         parsed.reduction,
+        parsed.starts_during_next_turn,
     ))
 }
 

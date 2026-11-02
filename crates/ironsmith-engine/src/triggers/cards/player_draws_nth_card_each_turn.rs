@@ -310,7 +310,7 @@ mod tests {
         // A replacement original can publish its receipt while an enclosing
         // earlier draw still waits in the staged observation journal.
         crate::effects::capture_triggers_before_added_program(
-            &mut game, &ctx, None, second.events.iter_mut(),
+            &mut game, &mut ctx, None, second.events.iter_mut(),
         ).unwrap();
         assert_eq!(game.effect_store.pending_trigger_entries.len(), 1);
         let first_draw = first.events.iter().find(|event| event.kind() == EventKind::CardsDrawn).unwrap();
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert!(records[0].event.ptr_eq(&enriched));
         assert_eq!(records[0].event.player_tags().get(&crate::tag::TagKey::from("completed drawer")), Some(&vec![alice]));
-        let ctx = TriggerContext::for_source(source, alice, &game);
+        let mut ctx = TriggerContext::for_source(source, alice, &game);
         assert_eq!(draw_number_window(&PlayerFilter::You, &enriched, &ctx).unwrap(), Some((0, 1)));
         assert_eq!(draw_number_window(&PlayerFilter::You, &second, &ctx).unwrap(), Some((1, 2)));
     }
@@ -480,10 +480,10 @@ mod tests {
         game.select_grand_melee_turn_marker(other).unwrap();
         game.turn_store.turn_history.draw_occurrences = None;
         game.restore_execution_checkpoint(checkpoint.clone(), false);
-        let ctx = TriggerContext::for_source(ObjectId::from_raw(99), root_player, &game);
+        let mut ctx = TriggerContext::for_source(ObjectId::from_raw(99), root_player, &game);
         assert_eq!(draw_number_window(&PlayerFilter::You, &root_event, &ctx).unwrap(), Some((0, 2)));
         game.select_grand_melee_turn_marker(other).unwrap();
-        let ctx = TriggerContext::for_source(ObjectId::from_raw(99), other_player, &game);
+        let mut ctx = TriggerContext::for_source(ObjectId::from_raw(99), other_player, &game);
         assert_eq!(draw_number_window(&PlayerFilter::You, &other_event, &ctx).unwrap(), Some((0, 3)));
         let mut sibling = checkpoint;
         sibling.select_grand_melee_turn_marker(other).unwrap();
@@ -505,7 +505,7 @@ mod tests {
         let fresh = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
             ObjectId::from_raw(12), true), Default::default());
         game.stage_turn_history_event(&fresh);
-        let ctx = TriggerContext::for_source(source, alice, &game);
+        let mut ctx = TriggerContext::for_source(source, alice, &game);
         assert_eq!(draw_number_window(&PlayerFilter::You, &fresh, &ctx).unwrap(), Some((0, 1)));
         assert!(matches!(draw_number_window(&PlayerFilter::You, &old, &ctx),
             Err(ExecutionError::IncompleteEvidence(_))));
@@ -569,7 +569,7 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         game.stage_turn_history_event(&event);
-        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let mut ctx = TriggerContext::for_source(source_id, alice, &game);
         let trigger = PlayerDrawsNumberedCardsEachTurnTrigger::new(PlayerFilter::You, [1, 2]);
 
         assert!(trigger.matches(&event, &ctx));
@@ -592,7 +592,7 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         game.stage_turn_history_event(&event);
-        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let mut ctx = TriggerContext::for_source(source_id, alice, &game);
 
         let trigger = PlayerDrawsNthCardEachTurnTrigger::new(PlayerFilter::You, 2);
         assert!(trigger.matches(&event, &ctx));
@@ -613,7 +613,7 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         game.stage_turn_history_event(&event);
-        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let mut ctx = TriggerContext::for_source(source_id, alice, &game);
 
         let trigger = PlayerDrawsNthCardEachTurnTrigger::new(PlayerFilter::You, 2);
         assert!(trigger.matches(&event, &ctx));
@@ -639,7 +639,7 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         game.stage_turn_history_event(&event);
-        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let mut ctx = TriggerContext::for_source(source_id, alice, &game);
 
         let trigger = PlayerDrawsNthCardEachTurnTrigger::new(PlayerFilter::You, 2);
         assert!(!trigger.matches(&event, &ctx));

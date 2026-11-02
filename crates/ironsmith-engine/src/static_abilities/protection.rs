@@ -198,7 +198,7 @@ impl StaticAbilityKind for Protection {
         if let ProtectionFrom::ColorsAmongAtResolution(filter) = &self.from {
             let context = ctx.filter_context(game);
             let mut colors = crate::color::ColorSet::new();
-            for &id in &game.battlefield {
+            for id in crate::object_query::candidate_ids_for_filter(game, filter) {
                 if game.is_phased_out(id) { continue; }
                 let Some(chars) = game.try_current_characteristics(id)
                     .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? else { continue; };

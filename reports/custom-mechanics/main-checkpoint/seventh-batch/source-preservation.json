@@ -1,0 +1,15 @@
+{
+  "protected_fields": [
+    "original_printed_rules_text",
+    "original_reminder",
+    "original_rules_text",
+    "original_source",
+    "original_source_record",
+    "original_text",
+    "raw_source_record",
+    "source_faces",
+    "source_raw_record"
+  ],
+  "issues": [],
+  "execution": "static structured source preservation; no support certification"
+}

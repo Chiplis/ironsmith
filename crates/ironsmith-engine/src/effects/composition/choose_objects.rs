@@ -449,15 +449,8 @@ pub(crate) fn check_relation_cost_with_context(
             }
         }
     }
-    let required = if effect.count.dynamic_x {
-        ctx.x_value.unwrap_or(0) as usize
-    } else if let Some(value) = &effect.count_value {
-        crate::effects::helpers::resolve_value(game, value, ctx)
-            .map_err(|_| CostValidationError::Other("group count is unresolved".into()))?
-            .max(0) as usize
-    } else {
-        effect.count.min
-    };
+    let required = minimum_selection_cost_count(effect, game, ctx)
+        .map_err(|_| CostValidationError::Other("group count is unresolved".into()))?;
     if effect.count.max.is_some_and(|max| max < required) {
         return Err(CostValidationError::NotEnoughCards);
     }
@@ -497,6 +490,7 @@ impl EffectExecutor for ChooseObjectsEffect {
 
     fn references_cost_x(&self) -> bool {
         self.count.dynamic_x
+            || selection_cost_x_multiplier(self).is_some()
             || mana_value_equals_x(&self.filter)
             || self
                 .aggregate_constraint
@@ -551,9 +545,11 @@ impl EffectExecutor for ChooseObjectsEffect {
                 .ok()
                 .map(|amount| amount.max(0) as u32);
         }
+        let multiplier = selection_cost_x_multiplier(self).unwrap_or(1);
         cost_candidate_count(self, game, source, controller, None)
             .ok()
             .and_then(|count| u32::try_from(count).ok())
+            .map(|count| count / multiplier)
     }
 
     fn supports_prepared_action_program(&self) -> bool {
@@ -705,6 +701,38 @@ impl EffectExecutor for ChooseObjectsEffect {
     }
 }
 
+/// The coefficient of an independently announced X cardinality. A value
+/// expression remains authoritative even when ChoiceCount is only a shell.
+fn selection_cost_x_multiplier(effect: &ChooseObjectsEffect) -> Option<u32> {
+    match effect.count_value.as_ref().map(crate::effect::Value::unhinted) {
+        Some(crate::effect::Value::X) => Some(1),
+        Some(crate::effect::Value::XTimes(multiplier)) if *multiplier > 0 => Some(*multiplier as u32),
+        Some(crate::effect::Value::Scaled(inner, multiplier))
+            if *multiplier > 0 && matches!(inner.unhinted(), crate::effect::Value::X) => Some(*multiplier as u32),
+        None if effect.count.dynamic_x => Some(1),
+        _ => None,
+    }
+}
+
+/// The smallest legal cardinality for a feasibility query. Unannounced
+/// nonnegative X admits X=0. Once X is announced, resolve the full expression;
+/// payment itself retains its stricter binding/finalization owner.
+pub(crate) fn minimum_selection_cost_count(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<usize, ExecutionError> {
+    if effect.count.up_to_x
+        || (effect.is_search && effect.search_mode == crate::effect::SearchSelectionMode::Optional)
+        || (ctx.x_value.is_none() && selection_cost_x_multiplier(effect).is_some()) {
+        return Ok(0);
+    }
+    if let Some(value) = &effect.count_value {
+        return crate::effects::helpers::resolve_value(game, value, ctx).map(|value| value.max(0) as usize);
+    }
+    Ok(if effect.count.dynamic_x { ctx.x_value.unwrap_or(0) as usize } else { effect.count.min })
+}
+
 /// Cost preflight uses the same captured value and filter inputs as live
 /// selection, including participant tags and the source's last known state.
 fn check_selection_cost_with_context(
@@ -719,17 +747,8 @@ fn check_selection_cost_with_context(
     {
         return Err(CostValidationError::NotEnoughCards);
     }
-    let required = if effect.count.up_to_x
-        || (effect.is_search && effect.search_mode == crate::effect::SearchSelectionMode::Optional)
-    {
-        0
-    } else if let Some(value) = &effect.count_value {
-        crate::effects::helpers::resolve_value(game, value, ctx)
-            .map_err(|error| CostValidationError::Other(format!("unresolved selection cost: {error:?}")))?
-            .max(0) as usize
-    } else {
-        effect.count.min
-    };
+    let required = minimum_selection_cost_count(effect, game, ctx)
+        .map_err(|error| CostValidationError::Other(format!("unresolved selection cost: {error:?}")))?;
     if required == 0 {
         return Ok(());
     }
@@ -840,6 +859,10 @@ fn aggregate_cost_capacity_with_context(
         })
         .map(|id| crate::targeting::aggregate_object_value(game, id, constraint.metric))
         .collect();
+    if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives {
+        let matched = crate::targeting::card_type_slot_matching_size(&contributions.iter().map(|mask| *mask as u32).collect::<Vec<_>>());
+        return Ok(matched.min(effect.count.max.unwrap_or(usize::MAX)) as i32);
+    }
     if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes {
         let mut states = std::collections::HashMap::from([(0i32, 0usize)]);
         for value in contributions {

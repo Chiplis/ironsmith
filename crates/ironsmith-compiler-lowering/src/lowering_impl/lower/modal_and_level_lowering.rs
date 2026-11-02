@@ -240,7 +240,7 @@ pub fn lower_parsed_modal(
             effects: effects.to_vec(),
         });
         mode_point_costs.push(point_cost);
-        if spree || tiered {
+        if spree || tiered || descriptive_mode_costs {
             mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "Costed modal mode '{}' is missing its typed additional mana cost",
@@ -323,6 +323,7 @@ pub fn lower_parsed_modal(
                     crate::cards::builders::ConditionalModeSelection::BothOrTwo => {
                         (if *optional { 1 } else { 2.min(mode_count).max(1) }, 2)
                     }
+                    crate::cards::builders::ConditionalModeSelection::UpTo(maximum) => (0, (*maximum).min(i32::MAX as u32) as i32),
                     crate::cards::builders::ConditionalModeSelection::AnyNumber => (0, mode_count),
                     crate::cards::builders::ConditionalModeSelection::OneOrMore => (1, mode_count),
                     crate::cards::builders::ConditionalModeSelection::One => (1, 1),
@@ -353,6 +354,8 @@ pub fn lower_parsed_modal(
             choose_mode = choose_mode.with_spree_mana_costs(mode_additional_mana_costs.clone());
         } else if tiered {
             choose_mode = choose_mode.with_tiered_mana_costs(mode_additional_mana_costs.clone());
+        } else if descriptive_mode_costs {
+            choose_mode = choose_mode.with_resolution_mana_costs(mode_additional_mana_costs.clone());
         }
         if mode_must_be_unchosen {
             choose_mode = if mode_must_be_unchosen_this_turn {
@@ -438,6 +441,9 @@ pub fn lower_parsed_modal(
                     let max = mode_count.clamp(1, 2);
                     (if *optional { 1 } else { max }, max)
                 }
+                crate::cards::builders::ConditionalModeSelection::UpTo(maximum) => {
+                    (0, ((*maximum).min(i32::MAX as u32) as i32).min(mode_count))
+                }
                 crate::cards::builders::ConditionalModeSelection::AnyNumber => {
                     (0, mode_count.max(1))
                 }
@@ -447,7 +453,7 @@ pub fn lower_parsed_modal(
                 crate::cards::builders::ConditionalModeSelection::One => (1, 1),
             })
             .unwrap_or((1, mode_count.clamp(1, 2)));
-        let choose_both = if max_both == 1 {
+        let choose_both = if max_both == 1 && min_both == 1 {
             let mut effect =
                 apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
             if compiled_conditional_mode_change.is_some()
@@ -612,6 +618,7 @@ pub fn lower_parsed_modal(
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: activated.functional_zones,
         });
     } else if let Some(ref mut existing) = builder.spell_effect {

@@ -468,33 +468,35 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
     // "an Aura [enchantment] with enchant creature ..." or, with the enchant
     // ability quoted, 'an Aura with "enchant creature put onto the
     // battlefield with Necromancy"'.
-    let aura_tail = primitives::parse_prefix(
-        body_tokens,
-        primitives::phrase(&["aura", "enchantment", "with"]).void(),
-    )
-    .or_else(|| primitives::parse_prefix(body_tokens, primitives::phrase(&["aura", "with"]).void()))
-    .map(|(_, tail)| tail)
-    .map(|tail| match tail.first() {
-        Some(token) if token.kind == crate::TokenKind::Quote => &tail[1..],
-        _ => tail,
-    })
-    .and_then(|tail| {
-        primitives::parse_prefix(tail, primitives::phrase(&["enchant", "creature"]).void())
-            .map(|_| &tail[1..])
-    });
-    let aura = aura_tail.map(|enchant_tokens| {
-        let filter_end = enchant_tokens
-            .iter()
+    let aura_frame = if body_tokens.first().is_some_and(|token| token.is_word("aura")) {
+        body_tokens.iter().position(|token| token.is_word("with")).and_then(|with| {
+            let before = &body_tokens[1..with];
+            if before.is_empty() {
+                Some((&body_tokens[with..with], &body_tokens[with + 1..]))
+            } else if before.last().is_some_and(|token| token.is_word("enchantment")) {
+                Some((&before[..before.len() - 1], &body_tokens[with + 1..]))
+            } else { None }
+        })
+    } else { None };
+    let aura = aura_frame.and_then(|(additional_subtype_tokens, tail)| {
+        let tail = match tail.first() {
+            Some(token) if token.kind == crate::TokenKind::Quote => &tail[1..],
+            _ => tail,
+        };
+        if !tail.first().is_some_and(|token| token.is_word("enchant")) { return None; }
+        let enchant_tokens = &tail[1..];
+        if enchant_tokens.is_empty() { return None; }
+        let filter_end = enchant_tokens.iter()
             .position(|token| token.kind == crate::TokenKind::Quote)
             .unwrap_or(enchant_tokens.len());
         let enchant_filter_tokens = &enchant_tokens[..filter_end];
-        BecomeAuraShape {
+        Some(BecomeAuraShape {
+            additional_subtype_tokens,
             attachment_you_control: permission_shapes::prefix_tokens(
-                &enchant_filter_tokens[1..],
-                &["you", "control"],
+                &enchant_filter_tokens[1..], &["you", "control"],
             ),
             enchant_filter_tokens,
-        }
+        })
     });
     let equal_to_source_power_toughness =
         primitives::parse_prefix(body_tokens, primitives::phrase(&["equal", "to"]).void())

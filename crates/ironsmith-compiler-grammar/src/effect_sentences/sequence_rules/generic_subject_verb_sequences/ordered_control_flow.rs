@@ -1762,6 +1762,7 @@ pub fn parse_look_at_top_partition_face_down_then_filtered_permission(
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                starts_after_current_turn: false,
                 player,
                 allow_land,
                 without_paying_mana_cost,
@@ -1811,6 +1812,7 @@ pub fn parse_look_at_top_partition_face_down_then_filtered_permission(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    starts_after_current_turn: false,
                     player,
                     allow_land,
                     without_paying_mana_cost,

@@ -218,6 +218,9 @@ fn stack_entry_cast_alternative_matches(
     obj: &crate::object::Object,
     predicate: impl Fn(&crate::alternative_cast::AlternativeCastingMethod) -> bool,
 ) -> bool {
+    // The cast proposal froze the selected price independently of its origin
+    // wrapper. Reuse that receipt after ExactPermission/AlternativePrice casts.
+    if let Some(method)=obj.cast_alternative_method_owned(){return predicate(&method)}
     match &entry.casting_method {
         CastingMethod::Alternative(idx) => obj
             .alternative_casts
@@ -863,14 +866,13 @@ fn execute_resolution_program_with_trigger_matching_outputs_typed(
                 game,
                 match_triggers_per_instruction,
                 |game| {
-                    let mut execution = execute_resolution_program_inner(
-                        game,
-                        ctx,
-                        program,
-                        chosen_modes,
-                        valid_target_assignments,
+                    let previous_designations = std::mem::take(&mut ctx.cause.resolving_ability_designations);
+                    let result = execute_resolution_program_inner(
+                        game, ctx, program, chosen_modes, valid_target_assignments,
                         match_triggers_per_instruction,
-                    )?;
+                    );
+                    ctx.cause.resolving_ability_designations = previous_designations;
+                    let mut execution = result?;
                     // Reported events a boundary already matched are not matched
                     // again by whoever consumes this resolution's events.
                     crate::effects::retain_unmatched_outcome_events(game, &mut execution.events);
@@ -931,12 +933,13 @@ fn execute_resolution_program_inner(
 
     let initial_subgame_depth = game.subgame_depth();
     let mut all_events = Vec::new();
-    let mut outputs = Vec::new();
+    let mut outputs: Vec<crate::effects::CompletedEffectOutputs> = Vec::new();
     let mut unmatched_outcome_events = Vec::new();
     let mut consumed_modal_selection = false;
     let mut assignment_cursor = 0usize;
     let mut declared_targets = Vec::new();
     for segment in &program.segments {
+        ctx.cause.resolving_ability_designations = segment.ability_designations.clone();
         let (selected_effects, selected_self_replacement) = if segment.self_replacements.is_empty()
         {
             (segment.default_effects.clone(), false)
@@ -1016,6 +1019,7 @@ fn execute_resolution_program_inner(
             Vec<crate::effects::ResolvedTarget>,
             Vec<crate::game_state::TargetAssignment>,
         )> = None;
+        let mut previous_entry_outcome: Option<crate::effect::EffectOutcome> = None;
         for (effect_index, effect) in selected_effects.iter().enumerate() {
             let is_modal_effect = effect.modal_effect_spec().is_some();
             let assignment_start = assignment_cursor;
@@ -1076,6 +1080,20 @@ fn execute_resolution_program_inner(
                     selected_effects.get(effect_index + 1),
                 ),
             );
+            let entry_receipts = if effect_index > 0
+                && crate::effects::permanents::entry_attachment_for_move(
+                    &selected_effects[effect_index - 1], Some(effect),
+                ).is_some()
+            {
+                Some(previous_entry_outcome.as_ref().map(|outcome| outcome.entry_attachments())
+                    .unwrap_or_else(|| Some(Vec::new()))
+                    .ok_or_else(|| crate::effects::ExecutionError::InternalError(
+                        "entry instruction lost its attachment receipt".into(),
+                    ))?)
+            } else { None };
+            let previous_entry_receipts = std::mem::replace(
+                &mut ctx.entry_attachment_receipts, entry_receipts,
+            );
             let previous_entry_attachment = std::mem::replace(
                 &mut ctx.pending_entry_attachment,
                 crate::effects::permanents::entry_attachment_for_move(
@@ -1096,6 +1114,8 @@ fn execute_resolution_program_inner(
             };
             ctx.public_search_reveal_tag = previous_search_reveal;
             ctx.pending_entry_attachment = previous_entry_attachment;
+            ctx.entry_attachment_receipts = previous_entry_receipts;
+            previous_entry_outcome = outcome.as_ref().ok().map(|completed| completed.outcome.clone());
             match outcome {
                 // Per-event matching: the events an instruction reports are
                 // matched with the ones it queued, at its end (CR 603.2);
@@ -1374,6 +1394,8 @@ pub(super) fn stack_entry_execution_context<'a>(
     }
     ctx.activation_origin = entry.activation_origin.clone();
     ctx.activation_definition = entry.activation_definition;
+    ctx.cause.activation_definition = entry.activation_definition;
+    ctx.cause.activation_label = entry.ability_effects.as_ref().and_then(|program|program.activation_label.clone());
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
@@ -1425,6 +1447,18 @@ pub(super) fn stack_entry_execution_context<'a>(
     }
     if !tagged_objects.is_empty() {
         ctx = ctx.with_tagged_objects(tagged_objects);
+    }
+    // Captures are owned by this exact granted ability, independently of
+    // any other grant on the same permanent. Refresh only the sampled IDs;
+    // absence/new incarnation never widens into source-wide linked cards.
+    if let Some(program) = &entry.ability_effects {
+        for (tag, ids) in &program.captured_object_references {
+            let snapshots = ids.iter().filter_map(|id|game.object(*id).filter(|object|game.find_object_by_stable_id(object.stable_id)==Some(*id)))
+                .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
+                .collect::<Result<Vec<_>, _>>().map_err(GameLoopError::ExecutionFailed)?;
+            ctx.set_tagged_objects(tag.clone(), snapshots);
+            ctx.exact_object_reference_tags.insert(tag.clone());
+        }
     }
     // Pass pre-chosen modes from casting (per MTG rule 601.2b)
     if let Some(ref modes) = entry.chosen_modes {
@@ -1678,8 +1712,20 @@ fn resolve_stack_entry_full_inner(
             trigger_queue.as_deref_mut(),
             completion_receipts,
             root_outputs,
+            None,
         );
     }
+
+    // Preserve the actual resolving incarnation before its instructions can
+    // move or change it. Countered/fizzled spells and resolving abilities do
+    // not publish this successful-completion fact.
+    let spell_resolution_event = if !entry.is_ability {
+        obj.as_ref().map(|object| {
+            ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+                .map(|snapshot| crate::events::spells::SpellResolvedEvent::new(
+                    entry.object_id, entry.controller, snapshot))
+        }).transpose()?
+    } else { None };
 
     // Mark provenance only after the illegal-target exit above. Abilities
     // and countering effects must not look like the affected spell resolving.
@@ -1723,7 +1769,7 @@ fn resolve_stack_entry_full_inner(
     }
     if let Some(ref condition) = entry.intervening_if
         && let Some(ref triggering_event) = entry.triggering_event
-        && !crate::triggers::verify_intervening_if_at_resolution_checked(
+        && !crate::triggers::check::verify_intervening_if_at_resolution_with_memory_owner_checked(
             game,
             condition,
             entry.controller,
@@ -1731,6 +1777,7 @@ fn resolve_stack_entry_full_inner(
             execution_source,
             entry.trigger_identity,
             Some(&entry.optional_costs_paid),
+            entry.source_number_owner.as_ref(),
         )
         .map_err(GameLoopError::ExecutionFailed)?
     {
@@ -1767,18 +1814,26 @@ fn resolve_stack_entry_full_inner(
         .flatten();
 
     let initial_subgame_depth = game.subgame_depth();
-    let completed_program = execute_resolution_program_with_trigger_matching_outputs_typed(
-        game,
-        &mut ctx,
-        entry.controller,
-        entry.object_id,
-        &program,
-        entry.chosen_modes.as_deref(),
-        &valid_target_assignments,
-        true,
-    )
-    .map_err(GameLoopError::ExecutionFailed)?;
+    // Physical child completions can already be published by their native
+    // owner rather than repeated in the program's aggregate event vector.
+    // Observe only this resolution's exact completed receipts; never recover
+    // a changed target by looking up a later incarnation through its stable ID.
+    let (completed_program, resolution_observations) = crate::effects::with_action_observations(game, |game| {
+        execute_resolution_program_with_trigger_matching_outputs_typed(
+            game,
+            &mut ctx,
+            entry.controller,
+            entry.object_id,
+            &program,
+            entry.chosen_modes.as_deref(),
+            &valid_target_assignments,
+            true,
+        )
+    }).map_err(GameLoopError::ExecutionFailed)?;
     let all_events = completed_program.events;
+    let resolution_target_movements = resolution_observations.iter().chain(all_events.iter()).filter_map(|event|
+        event.downcast::<crate::events::zones::ZoneChangeEvent>().cloned()
+    ).collect::<Vec<_>>();
     root_outputs.retain_published_children(completed_program.outputs);
     if game.subgame_depth() > initial_subgame_depth {
         return Ok(root_outputs);
@@ -1821,6 +1876,33 @@ fn resolve_stack_entry_full_inner(
     }
 
     if let Some(chapter_resolution) = chapter_resolution {
+        // Resolution instructions are read from the Saga's current static
+        // abilities. Removing the static ability after a chapter was stacked
+        // removes this operation; the chapter's captured effect program does
+        // not acquire a permanent unconditional counter-removal instruction.
+        let counter_names: Vec<String> = game.current_abilities(chapter_resolution.saga_id)
+            .unwrap_or_default().iter().filter_map(|ability| {
+                let AbilityKind::Static(ability) = &ability.kind else { return None; };
+                if !ability.is_active(game, chapter_resolution.saga_id) { return None; }
+                match ability.keyword_marker_mechanic() {
+                    Some(ironsmith_core::KeywordMarkerMechanic::FinalChapterResolutionRemovesCounters { counter_name }) => Some(counter_name),
+                    _ => None,
+                }
+            }).collect();
+        let counters: Vec<_> = game.object(chapter_resolution.saga_id).into_iter()
+            .flat_map(|object| object.counters.iter())
+            .filter(|(kind, _)| counter_names.iter().any(|name| kind.description().eq_ignore_ascii_case(name)))
+            .map(|(kind, amount)| (*kind, *amount)).collect();
+        for (kind, amount) in counters {
+            let effect = Effect::new(crate::effects::RemoveCountersEffect::new(kind, amount,
+                crate::target::ChooseSpec::SpecificObject(chapter_resolution.saga_id)));
+            let completion = crate::effects::execute_effect_with_outputs(game, &effect, &mut ctx)
+                .map_err(GameLoopError::ExecutionFailed)?;
+            if let Some(ref mut tq) = trigger_queue {
+                crate::game_loop::try_queue_triggers_from_reported_events(game, tq, completion.outcome.events.clone(), false)?;
+            }
+            root_outputs.retain_published_children([completion]);
+        }
         let event_provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::ChapterAbilityResolved);
@@ -1887,6 +1969,7 @@ fn resolve_stack_entry_full_inner(
                 trigger_queue.as_deref_mut(),
                 completion_receipts,
                 root_outputs,
+                spell_resolution_event,
             );
         }
     }
@@ -1900,11 +1983,67 @@ fn resolve_stack_entry_full_inner(
         return Ok(root_outputs);
     }
 
+    // A selected permission may turn the completed nonpermanent spell into
+    // a creature only after its ordinary resolution instructions have run.
+    // Reuse the entry-characteristic restoration owner for later zone exits.
+    let resolved_creature = game.object(entry.object_id).filter(|object| object.zone == Zone::Stack)
+        .and_then(|object| object.cast_alternative_method_owned().or_else(|| {
+            if let CastingMethod::Alternative(index) = entry.casting_method {
+                object.alternative_casts.get(index).cloned()
+            } else { None }
+        })).and_then(|method| method.battlefield_instructions().resolves_as_creature);
+    if let Some(subtypes) = resolved_creature
+        && let Some(object) = game.object_mut(entry.object_id) {
+        object.capture_enters_as_copy_restore_state();
+        object.card_types = vec![crate::types::CardType::Creature].into();
+        object.subtypes = subtypes.into();
+    }
+
     // Effects can already have moved the resolving spell (for example cipher).
     let completion_object = game.object(entry.object_id).cloned();
     if let Some(obj) = &completion_object {
+        // A selected method may resolve the front-face nonpermanent program
+        // before entering its linked back face. Casting still used the front.
+        let selected_transformed_entry = stack_entry_cast_alternative_matches(
+            game, &entry, obj, |method| method.battlefield_instructions().enters_transformed,
+        );
+        let selected_target_attachment = stack_entry_cast_alternative_matches(
+            game, &entry, obj, |method| method.battlefield_instructions().attach_to_resolving_spell_target,
+        );
+        let attachment_candidates = if selected_target_attachment {
+            // Only this resolution's completed movement receipts can advance
+            // a target to its returned incarnation; never rediscover by name.
+            let targets=entry.targets.iter().zip(&slot_legality).filter(|(_,legal)|**legal).map(|(target,_)|match target {
+                Target::Object(id)=>{
+                    let mut current=*id;
+                    for movement in &resolution_target_movements {
+                        let prior=movement.snapshots().iter().find(|snapshot|
+                            snapshot.object_id==current && snapshot.zone==movement.from);
+                        if let Some(prior)=prior
+                        {
+                            let arrival=movement.destination_snapshots.iter().find(|snapshot|snapshot.stable_id==prior.stable_id)
+                                .map(|snapshot|snapshot.object_id)
+                                .or_else(||movement.result_objects.iter().copied().find(|id|
+                                    game.object(*id).is_some_and(|object|object.stable_id==prior.stable_id)));
+                            if let Some(arrival)=arrival{current=arrival;}
+                        }
+                    }
+                    crate::object::AttachmentTarget::Object(current)
+                },
+                Target::Player(id)=>crate::object::AttachmentTarget::Player(*id),
+            }).collect::<Vec<_>>();
+            crate::effects::zones::transformed_aura_entry_targets(game,entry.object_id,entry.controller,&targets)
+        } else {Vec::new()};
+        let selected_creature_entry = stack_entry_cast_alternative_matches(
+            game, &entry, obj, |method| method.battlefield_instructions().resolution_entry_creature_subtypes.is_some(),
+        );
+        let copy_entry_forbidden = obj.spell_copy_entry_forbidden || (obj.kind == crate::object::ObjectKind::SpellCopy && stack_entry_cast_alternative_matches(
+            game, &entry, obj, |method| method.battlefield_instructions().spell_copies_cannot_enter,
+        ));
         if obj.zone == Zone::Stack
-            && obj.is_permanent()
+            && !copy_entry_forbidden
+            && (!selected_target_attachment || !attachment_candidates.is_empty())
+            && (obj.is_permanent() || selected_transformed_entry || selected_creature_entry)
             && !game.resolving_daybound_spell_cannot_enter(entry.object_id)
         {
             if let Some(target_id) = mutate_target.flatten() {
@@ -1957,7 +2096,8 @@ fn resolve_stack_entry_full_inner(
                         game.queue_trigger_event(event_provenance, event);
                     }
                     root_outputs.retain_published_children([completed]);
-                    return Ok(root_outputs);
+                    return finish_resolving_spell_receipts(game,&mut ctx,
+                        trigger_queue.as_deref_mut(),completion_receipts,root_outputs,spell_resolution_event);
                 }
             }
 
@@ -2008,7 +2148,24 @@ fn resolve_stack_entry_full_inner(
 
             // It's a permanent spell, move to battlefield with ETB processing
             // This handles replacement effects like "enters tapped" or "enters with counters"
-            let aura_target = obj
+            let selected_aura_target = if selected_target_attachment {
+                let index=if attachment_candidates.len()>1 {
+                    let options=attachment_candidates.iter().enumerate().map(|(index,target)|{
+                        let label=match target {
+                            crate::object::AttachmentTarget::Object(id)=>game.object(*id).map(|object|object.name.to_string()).unwrap_or_else(||"Permanent".into()),
+                            crate::object::AttachmentTarget::Player(id)=>game.player(*id).map(|player|player.name.clone()).unwrap_or_else(||"Player".into()),
+                        };
+                        crate::decisions::SelectableOption::new(index,label)
+                    }).collect();
+                    let choice=crate::decisions::SelectOptionsContext::new(entry.controller,Some(entry.object_id),"Choose a target for the entering Aura",options,1,1);
+                    let selected=ctx.decision_maker.decide_options(game,&choice).into_iter().next().unwrap_or(0);
+                    if ctx.decision_maker.awaiting_choice(){return Ok(root_outputs)}
+                    if selected>=attachment_candidates.len(){return Err(GameLoopError::ResolutionFailed("Invalid Aura attachment selection".into()))}
+                    selected
+                }else{0};
+                Some(attachment_candidates[index])
+            }else{None};
+            let aura_target = selected_aura_target.or_else(||obj
                 .subtypes
                 .contains(&Subtype::Aura)
                 .then(|| {
@@ -2017,7 +2174,7 @@ fn resolve_stack_entry_full_inner(
                         Target::Player(id) => crate::object::AttachmentTarget::Player(*id),
                     })
                 })
-                .flatten();
+                .flatten());
             if let Some(player) = chosen_player {
                 game.set_chosen_player(entry.object_id, player);
             }
@@ -2025,10 +2182,29 @@ fn resolve_stack_entry_full_inner(
                 obj.initial_controller,
                 cast_with_sneak || battlefield_method.as_ref().is_some_and(|method| method.battlefield_instructions().enters_tapped),
             );
+            options = options.transformed(selected_transformed_entry);
+            if let Some(method) = &battlefield_method {
+                let instructions = method.battlefield_instructions();
+                if let Some(subtypes) = &instructions.resolution_entry_creature_subtypes {
+                    let mut definition = obj.to_card_definition();
+                    let retain_creature_types = instructions.keep_kindred_creature_types_on_entry && obj.card_types.contains(&CardType::Kindred);
+                    definition.card.card_types = vec![CardType::Creature];
+                    definition.card.subtypes.retain(|subtype| retain_creature_types && subtype.is_creature_type());
+                    for subtype in subtypes {
+                        if !definition.card.subtypes.contains(subtype) { definition.card.subtypes.push(*subtype); }
+                    }
+                    definition.card.custom_subtypes = definition.card.subtypes.iter().copied().filter(|subtype| subtype.is_custom_vocabulary()).collect();
+                    // Preserve this physical card's original characteristics
+                    // using the existing zone-lifetime presentation overlay.
+                    if let Some(spell) = game.object_mut(entry.object_id) { spell.capture_enters_as_copy_restore_state(); }
+                    options.entry_definition = Some(definition);
+                }
+            }
+
             if let Some(method) = &battlefield_method {
                 options = options.with_initial_counters(method.entry_counters().to_vec());
             }
-            if obj.subtypes.contains(&Subtype::Aura) {
+            if selected_target_attachment || obj.subtypes.contains(&Subtype::Aura) {
                 options = options.with_aura_entry_attachment(aura_target);
             }
             let receipt = crate::effects::zones::move_to_battlefield_with_options(
@@ -2412,201 +2588,88 @@ fn resolve_stack_entry_full_inner(
                 }
             };
 
-            // CR 720.3d: as an Omen spell resolves, its controller shuffles it
-            // into its owner's library instead of putting it into the
-            // graveyard. The move still goes through replacement processing.
-            // A permission whose alternative cost exiles the spell (granted
-            // flashback, CR 702.34a: "exile it instead of putting it anywhere
-            // else") overrides the Omen shuffle.
-            let omen_alternative_exiles = match entry.casting_method.origin_method() {
-                CastingMethod::SplitOtherHalfPlayFrom {
-                    zone,
-                    use_alternative: Some(use_alternative),
-                    ..
-                } => crate::decision::resolve_play_from_alternative_method(
-                    game,
-                    entry.controller,
-                    obj,
-                    *zone,
-                    *use_alternative,
-                )
-                .is_some_and(|method| method.exiles_after_resolution()),
-                _ => false,
-            };
+            // CR 720.3d: the Omen shuffle competes with other terminal
+            // replacements. Stack-exit exile riders can replace the resulting
+            // library move, but do not suppress the Omen's shuffle instruction.
             let resolving_as_omen = (matches!(
                 entry.casting_method.origin_method(),
                 CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
             ) || obj.kind == crate::object::ObjectKind::SpellCopy)
-                && !omen_alternative_exiles
                 && obj.subtypes.contains(&crate::types::Subtype::Omen);
 
+            // Terminal disposition effects are ordinary competing replacements
+            // of the same graveyard proposal. The affected player chooses their
+            // order; choosing one can make another cease to apply.
+            let mut terminal_rules = Vec::new();
             if resolving_as_omen {
-                let receipt = apply_resolving_spell_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Library,
-                    crate::events::cause::EventCause::from_spell_resolution(
-                        entry.object_id,
-                        entry.controller,
-                    ),
-                    &mut ctx,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(root_outputs);
-                }
-                // CR 701.24c: the library is shuffled even if a replacement
-                // effect moved the Omen card somewhere else instead.
-                {
-                    let shuffle = crate::effects::cards::commit_library_shuffle_with_outputs(
-                        game,
-                        obj.owner,
-                        &[],
-                        1,
-                        "library shuffled",
-                        crate::events::cause::EventCause::from_spell_resolution(
-                            entry.object_id,
-                            entry.controller,
-                        ),
-                        |game| {
-                            game.provenance_graph_mut()
-                                .alloc_root_event(crate::events::EventKind::ShuffleLibrary)
-                        },
-                    );
-                    for event in shuffle.outcome.events.iter().cloned() {
-                        if let Some(ref mut tq) = trigger_queue {
-                            if let Some(capture) =
-                                crate::game_loop::queue_triggers_from_event_with_outputs(
-                                    game, tq, event, false,
-                                )
-                            {
-                                root_outputs.retain_published_children([capture]);
-                            }
-                        }
-                    }
-                    root_outputs.retain_published_children([shuffle]);
-                }
-                completion_receipts.push((entry.object_id, receipt));
-            } else if has_rebound {
-                let receipt = apply_resolving_spell_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Exile,
-                    crate::events::cause::EventCause::from_spell_resolution(
-                        entry.object_id,
-                        entry.controller,
-                    ),
-                    &mut ctx,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(root_outputs);
-                }
-                if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
-                    && result.final_zone == Zone::Exile
-                    && let Some(exiled_id) = result.new_object_id
-                {
-                    game.effect_store
-                        .delayed_triggers
-                        .push(crate::triggers::DelayedTrigger {
-                            linked_exile_owner: None,
-                            source_number_owner: None,
-                            trigger: crate::triggers::Trigger::beginning_of_upkeep(
-                                crate::target::PlayerFilter::Specific(entry.controller),
-                            ),
-                            effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                                Effect::may_single(Effect::new(
-                                    crate::effects::CastSourceEffect::new()
-                                        .without_paying_mana_cost()
-                                        .require_exile(),
-                                )),
-                            ]),
-                            one_shot: true,
-                            x_value: entry.x_value,
-                            not_before_turn: None,
-                            expires_at_turn: None,
-                            expires_before_controller_turn_after: None,
-                            expires_after_controller_turn_after: None,
-                            expires_at_end_of_combat: false,
-                            bound_extra_turn_index: None,
-                            while_any_tagged_object_in_zone: None,
-                            while_source_tapped: None,
-                            target_objects: vec![exiled_id],
-                            ability_source: None,
-                            ability_source_stable_id: None,
-                            ability_source_name: None,
-                            ability_source_snapshot: None,
-                            controller: entry.controller,
-                            choices: vec![],
-                            tagged_objects: std::collections::HashMap::new(),
-                            tagged_players: std::collections::HashMap::new(),
-                            prepayment: None,
-                            prevention_shield: None,
-                            defending_player_reference: None,
-                        });
-                }
-                completion_receipts.push((entry.object_id, receipt));
-            } else if should_exile {
-                let was_adventure = obj.subtypes.contains(&crate::types::Subtype::Adventure);
-                let receipt = apply_resolving_spell_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Exile,
-                    crate::events::cause::EventCause::from_spell_resolution(
-                        entry.object_id,
-                        entry.controller,
-                    ),
-                    &mut ctx,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(root_outputs);
-                }
-                if let crate::events::processing::EventOutcome::Proceed(result) = &receipt.original
-                    && result.final_zone == Zone::Exile
-                    && let Some(exiled_id) = result.new_object_id
-                    && was_adventure
-                {
-                    game.set_adventure_exiled_for(exiled_id, entry.controller);
-                }
-                completion_receipts.push((entry.object_id, receipt));
-            } else if entry.optional_costs_paid.was_bought_back()
-                || obj.optional_costs_paid.was_bought_back()
-            {
-                let receipt = apply_resolving_spell_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Hand,
-                    crate::events::cause::EventCause::from_spell_resolution(
-                        entry.object_id,
-                        entry.controller,
-                    ),
-                    &mut ctx,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(root_outputs);
-                }
-                completion_receipts.push((entry.object_id, receipt));
-            } else {
-                // Process zone change through replacement effects
-                // (e.g., Yawgmoth's Will exiles cards going to graveyard)
-                let receipt = apply_resolving_spell_zone_change(
-                    game,
-                    entry.object_id,
-                    Zone::Stack,
-                    Zone::Graveyard,
-                    crate::events::cause::EventCause::from_spell_resolution(
-                        entry.object_id,
-                        entry.controller,
-                    ),
-                    &mut ctx,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(root_outputs);
-                }
-                completion_receipts.push((entry.object_id, receipt));
+                terminal_rules.push(terminal_destination_replacement(
+                    entry.object_id, entry.controller, Zone::Library,
+                    Vec::new(),
+                    vec![Effect::new(crate::effects::ShuffleLibraryEffect::new(
+                        crate::target::PlayerFilter::Specific(obj.owner),
+                    ))],
+                    None, "Shuffle this spell into its owner's library",
+                ));
             }
+            if has_rebound {
+                let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                    crate::triggers::Trigger::beginning_of_upkeep(
+                        crate::target::PlayerFilter::Specific(entry.controller),
+                    ),
+                    crate::resolution::ResolutionProgram::from_effects(vec![
+                        Effect::may_single(Effect::new(
+                            crate::effects::CastSourceEffect::new()
+                                .without_paying_mana_cost().require_exile(),
+                        )),
+                    ]),
+                    true,
+                    crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG,
+                    crate::target::PlayerFilter::Specific(entry.controller),
+                );
+                terminal_rules.push(terminal_destination_replacement(
+                    entry.object_id, entry.controller, Zone::Exile,
+                    vec![crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(delayed)])],
+                    Vec::new(), None, "Exile this spell and allow casting it at your next upkeep",
+                ));
+            }
+            if should_exile {
+                if obj.subtypes.contains(&crate::types::Subtype::Adventure) {
+                    terminal_rules.push(terminal_destination_replacement(
+                        entry.object_id, entry.controller, Zone::Exile,
+                        Vec::new(), Vec::new(), Some(entry.controller), "Exile this Adventure and allow casting its permanent spell",
+                    ));
+                } else if obj.cast_alternative_method.as_deref()
+                    .and_then(crate::replacement_ability_processor::selected_stack_exile_scope).is_none()
+                {
+                    // The native method's persistent rider is already registered
+                    // for every appropriate departure. Only an entry-local
+                    // method without that owner needs this fallback.
+                    // Stack-exit price riders apply to any non-exile destination,
+                    // including a hand/library destination selected first.
+                    let matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                        crate::target::ObjectFilter::specific(entry.object_id),
+                        Some(Zone::Stack), None,
+                    ).excluding_destinations(vec![Zone::Exile]);
+                    terminal_rules.push(crate::replacement::ReplacementEffect::with_matcher(
+                        entry.object_id, entry.controller, matcher,
+                        crate::replacement::ReplacementAction::ChangeDestination(Zone::Exile),
+                    ));
+                }
+            }
+            if entry.optional_costs_paid.was_bought_back() || obj.optional_costs_paid.was_bought_back() {
+                terminal_rules.push(terminal_destination_replacement(
+                    entry.object_id, entry.controller, Zone::Hand,
+                    Vec::new(), Vec::new(), None, "Return this spell to its owner's hand",
+                ));
+            }
+            let completion = apply_completed_spell_zone_change(
+                game, entry.object_id, Zone::Stack, Zone::Graveyard,
+                crate::events::cause::EventCause::from_spell_resolution(entry.object_id, entry.controller),
+                terminal_rules, &mut ctx,
+            )?;
+            root_outputs.retain_published_children([completion]);
+            if ctx.decision_maker.awaiting_choice() { return Ok(root_outputs); }
+
         }
         // Abilities just disappear from the stack
     }
@@ -2617,7 +2680,214 @@ fn resolve_stack_entry_full_inner(
         trigger_queue.as_deref_mut(),
         completion_receipts,
         root_outputs,
+        spell_resolution_event,
     )
+}
+
+/// Install one terminal replacement per destination, retaining every ability
+/// instance's continuation. This is called only after successful spell effects;
+/// countered spells and spells with no remaining legal target never reach it.
+fn apply_completed_spell_zone_change(
+    game: &mut GameState,
+    object: ObjectId,
+    from: Zone,
+    to: Zone,
+    cause: EventCause,
+    mut terminal_rules: Vec<crate::replacement::ReplacementEffect>,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
+    let Some(spell) = game.object(object) else {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
+    };
+    let mut groups: Vec<(Zone, Vec<crate::resolution::ResolutionProgram>)> = Vec::new();
+    let mut completed_recipe_keys=std::collections::HashSet::new();
+    if from == Zone::Stack && to == Zone::Graveyard
+        && spell.kind != crate::object::ObjectKind::SpellCopy
+    {
+        let cast_origin = game.turn_store.turn_history.latest_cast_zone(spell.stable_id);
+        for ability in game.current_abilities(object).unwrap_or_default() {
+            if !ability.functions_in(&Zone::Stack) { continue; }
+            let AbilityKind::Static(owner) = &ability.kind else { continue; };
+            let Some(model) = owner.compiled_model() else { continue; };
+            let ironsmith_core::StaticAbilityPayload::SpellResolutionDestinationProgram {
+                origin_zone, destination, follow_up, multiplicity,
+            } = &model.payload else { continue; };
+            // Even an unrestricted declaration requires an actual cast receipt.
+            if cast_origin.is_none() || origin_zone.is_some_and(|zone| Some(zone) != cast_origin) { continue; }
+            if let ironsmith_core::static_ability_model::SpellResolutionProgramMultiplicity::OncePerDeclaredKey { key } = multiplicity {
+                // Idempotence belongs to this disposition and selected destination,
+                // never to another spell, provider, controller or later turn.
+                if !completed_recipe_keys.insert((*destination,key.clone())) { continue; }
+            }
+            if let Some((_, programs)) = groups.iter_mut().find(|(zone, _)| zone == destination) {
+                programs.push(follow_up.clone());
+            } else {
+                groups.push((*destination, vec![follow_up.clone()]));
+            }
+        }
+    }
+    terminal_rules.extend(groups.into_iter().map(|(destination, programs)| {
+        terminal_destination_replacement(object, ctx.controller, destination, programs, Vec::new(), None,
+            format!("Put this spell into {} and perform its resolution continuations", destination.name()))
+    }));
+    // Keep all competing terminal rules in scope until their original move
+    // and continuations finish, including a nested replacement destination.
+    ctx.with_temp_additional_replacement_effects(terminal_rules, |ctx| {
+        let receipt = apply_resolving_spell_zone_change(game, object, from, to, cause, ctx)?;
+        crate::effects::zones::finish_zone_change_receipts_with_outputs(
+            game, ctx, crate::effect::EffectOutcome::count(0), vec![(object, receipt)],
+        )
+    })
+}
+
+fn terminal_destination_replacement(
+    object: ObjectId,
+    controller: PlayerId,
+    destination: Zone,
+    programs: Vec<crate::resolution::ResolutionProgram>,
+    after_attempt: Vec<Effect>,
+    adventure_player: Option<PlayerId>,
+    choice_description: impl Into<String>,
+) -> crate::replacement::ReplacementEffect {
+    let matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+        crate::target::ObjectFilter::specific(object), Some(Zone::Stack), Some(Zone::Graveyard),
+    );
+    crate::replacement::ReplacementEffect::with_matcher(
+        object, controller, matcher,
+        crate::replacement::ReplacementAction::Instead(vec![Effect::new(
+            ResolvingDestinationProgram { object, destination, programs, after_attempt, adventure_player, choice_description: choice_description.into() },
+        )]),
+    )
+
+}
+
+/// The event-local payload uses the existing movement executor and exact
+/// original movement receipt; independent replacement additions cannot create
+/// another continuation or supply a different card as its reference.
+#[derive(Clone, Debug)]
+struct ResolvingDestinationProgram {
+    object: ObjectId,
+    destination: Zone,
+    programs: Vec<crate::resolution::ResolutionProgram>,
+    after_attempt: Vec<Effect>,
+    adventure_player: Option<PlayerId>,
+    choice_description: String,
+}
+impl crate::effects::EffectExecutor for ResolvingDestinationProgram {
+    fn replacement_choice_description(&self) -> Option<String> { Some(self.choice_description.clone()) }
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
+    {
+        self.execute_with_outputs(game, ctx).map(|outputs| outputs.outcome)
+    }
+    fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError>
+    {
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
+            game, ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)),
+            |game, ctx| {
+        use crate::effects::EffectExecutor as _;
+        if !game.object(self.object).is_some_and(|object| object.zone == Zone::Stack) {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
+        }
+        let origin = ObjectSnapshot::try_from_object_id(game, self.object)?;
+        // This exact source is still on the stack. Start a new native movement
+        // receipt scope so a previous instruction cannot supply an arrival.
+        game.take_zone_change_results(self.object);
+        // Resolution already owns this exact incarnation, whose StackEntry
+        // was popped before the body ran. A fresh Object-filter selection would
+        // incorrectly look among spell targets instead of this resolving card.
+        let movement = crate::effects::MoveToZoneEffect::new(
+            crate::target::ChooseSpec::SpecificObject(self.object), self.destination, false,
+        );
+        let mut proposal = movement.prepare_simultaneous_player_action(game, ctx)?;
+        proposal.prepare_selection(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0))); }
+        proposal.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0))); }
+        proposal.seal_original(game, ctx)?;
+        let committed = proposal.commit_original_with_outputs(game, ctx)?;
+        if committed.completion.as_ref().is_some_and(|completion|
+            completion.original_phase_status() == crate::effects::OriginalPhaseStatus::Combined)
+        {
+            return Err(crate::effects::ExecutionError::InternalError(
+                "terminal exact-object movement retained an uncommitted replacement original".into(),
+            ));
+        }
+        let committed = crate::effects::composition::complete_retained_original_phase_with_outputs(game, ctx, committed)?;
+        let Some(mut committed) = crate::effects::composition::prepare_standalone_completion_with_outputs(game, ctx, committed)? else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
+        };
+        let completed = &mut committed.outcome;
+        let mut arrivals = Vec::new();
+        for fact in &completed.outcome.instruction_result().execution_facts {
+            if let crate::effect::ExecutionFact::OriginalZoneMoveObjects(moves) = fact {
+                for (origin, destination, arrival) in moves {
+                    if origin.object_id == self.object && *destination == self.destination
+                        && arrival.zone == self.destination
+                        && !arrivals.iter().any(|old: &ObjectSnapshot| old.object_id == arrival.object_id)
+                    { arrivals.push(arrival.clone()); }
+                }
+            }
+        }
+        // Instead prefixes can finish the same authored move in a retained
+        // original tail. The zone owner records those exact successor IDs under
+        // the old ObjectId (the same receipt consumed by freeze_zone_change_receipts).
+        // Read before additions, never chase stable IDs or later incarnations.
+        let ids = game.take_zone_change_results(self.object);
+        if !ids.is_empty() { game.record_zone_change_results(self.object, ids.clone()); }
+        if let Some(origin) = &origin {
+            for id in ids {
+                if let Some(object) = game.object(id)
+                    && object.zone == self.destination && object.stable_id == origin.stable_id
+                    && !arrivals.iter().any(|arrival| arrival.object_id == id)
+                {
+                    arrivals.push(ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)?);
+                }
+            }
+        }
+        if let Some(player) = self.adventure_player {
+            for arrival in &arrivals { game.set_adventure_exiled_for(arrival.object_id, player); }
+        }
+        if !arrivals.is_empty() {
+        for program in &self.programs {
+            let children = ctx.with_object_tag(
+                crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG,
+                arrivals.clone(),
+                |ctx| {
+                    ctx.exact_object_reference_tags.insert(crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG.into());
+                    let controller = ctx.controller;
+                    let source = ctx.source;
+                    execute_resolution_program_with_trigger_matching_outputs_typed(
+                        game, ctx, controller, source, program, None, &[], true,
+                    )
+                },
+            )?;
+            for event in children.events { game.queue_trigger_event(event.provenance(), event); }
+            completed.retain_published_children(children.outputs);
+            if ctx.decision_maker.awaiting_choice() { break; }
+        }
+        }
+        for effect in &self.after_attempt {
+            if ctx.decision_maker.awaiting_choice() { break; }
+            let mut child = crate::effects::execute_effect_with_outputs(game, effect, ctx)?;
+            crate::effects::capture_triggers_before_added_program(
+                game, ctx, None, child.outcome.events.iter_mut(),
+            )?;
+            crate::effects::retain_unmatched_outcome_events(game, &mut child.outcome.events);
+            child.synchronize_observations();
+            for event in child.outcome.events.iter().cloned() { game.queue_trigger_event(event.provenance(), event); }
+            completed.retain_published_children([child]);
+        }
+        crate::effects::composition::complete_committed_original_with_outputs(game, ctx, committed)
+            },
+        )
+    }
+    fn visit_child_effects(&self, visit: &mut dyn FnMut(&Effect)) {
+        for program in &self.programs { for effect in program.all_effects() { visit(effect); } }
+        for effect in &self.after_attempt { visit(effect); }
+    }
 }
 
 fn apply_resolving_spell_zone_change(
@@ -2652,6 +2922,7 @@ fn finish_resolving_spell_receipts(
         crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
     )>,
     original: crate::effects::CompletedEffectOutputs,
+    resolution_event: Option<crate::events::spells::SpellResolvedEvent>,
 ) -> Result<crate::effects::CompletedEffectOutputs, GameLoopError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(original);
@@ -2661,6 +2932,10 @@ fn finish_resolving_spell_receipts(
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(outputs);
+    }
+    if let Some(event)=resolution_event {
+        let provenance=game.provenance_graph_mut().alloc_child_event(ctx.provenance,crate::events::EventKind::SpellResolved);
+        outputs.outcome.events.push(TriggerEvent::new_with_provenance(event,provenance));
     }
     crate::effects::retain_unmatched_outcome_events(game, &mut outputs.outcome.events);
     outputs.synchronize_observations();
@@ -2851,7 +3126,7 @@ fn spell_has_keyword_marker(
         let AbilityKind::Static(static_ability) = &ability.kind else {
             return false;
         };
-        static_ability.keyword_marker_mechanic() == Some(mechanic)
+        static_ability.keyword_marker_mechanic().as_ref() == Some(&mechanic)
     })
 }
 

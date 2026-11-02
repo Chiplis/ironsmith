@@ -2854,6 +2854,8 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
             crate::special_actions::SpecialAction::Suspend { card_id } => {
                 crate::special_actions::suspend_action_keyword(game, *card_id)
             }
+            crate::special_actions::SpecialAction::PrepareGrantedExile { grant,.. } => format!("Prepare exile ability from {}",grant.source.0),
+            crate::special_actions::SpecialAction::PrepareExile { method_index, .. } => format!("Prepare exile ability {}",method_index+1),
             crate::special_actions::SpecialAction::Foretell { .. } => "Foretell".to_string(),
             crate::special_actions::SpecialAction::Plot { .. } => "Plot".to_string(),
             crate::special_actions::SpecialAction::ActivateManaAbility { .. } => {
@@ -2879,6 +2881,10 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                     .unwrap_or("companion");
                 format!("{{3}}: Put {name} into your hand")
             }
+            crate::special_actions::SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+                crate::special_actions::intrinsic_action_cost_display(game, *source_id, *ability_index)
+                    .map(|cost| format!("{cost}: {}", crate::special_actions::intrinsic_action_label(game, *source_id, *ability_index).unwrap_or_else(|| "Take special action".into())))
+                    .unwrap_or_else(|| "Take special action".into()),
             crate::special_actions::SpecialAction::DiscardFromHand { card_id } => {
                 let name = game
                     .object(*card_id)

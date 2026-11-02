@@ -43,7 +43,9 @@ fn parses_modal_result_predicates() {
         ),
         ("you lost the flip", IfResultPredicate::DidNot),
         ("that player doesn't", IfResultPredicate::DidNot),
-        ("its power becomes 3 this way", IfResultPredicate::Did),
+        // Exact-power result clauses retain the typed threshold. General
+        // success cannot substitute for the source reaching this value.
+        ("its power becomes 3 this way", IfResultPredicate::SourcePowerBecomes(3)),
         (
             "you milled a card this way",
             IfResultPredicate::PriorEffectResult({
@@ -79,12 +81,12 @@ fn parses_modal_result_predicates() {
         // antecedent token creation happened.
         (
             "you didn't create a token this way",
-            IfResultPredicate::DidNot,
+            IfResultPredicate::ResultObjectsMatch {filter:{let mut filter=crate::target::ObjectFilter::default();filter.token=true;filter},negated:true},
         ),
-        ("you create a token this way", IfResultPredicate::Did),
+        ("you create a token this way", IfResultPredicate::ResultObjectsMatch {filter:{let mut filter=crate::target::ObjectFilter::default();filter.token=true;filter},negated:false}),
         (
             "you didn't create tokens this way",
-            IfResultPredicate::DidNot,
+            IfResultPredicate::ResultObjectsMatch {filter:{let mut filter=crate::target::ObjectFilter::default();filter.token=true;filter},negated:true},
         ),
     ] {
         let tokens = lex_line(raw, 0).unwrap();
@@ -340,4 +342,31 @@ fn counted_sharing_decomposes_filter_relation_and_authored_action_without_absorb
     for text in ["two cards that share a color and a name were milled this way", "two cards that share a color were milled this way yesterday"] {
         assert!(!matches!(parse_direct_prior_effect_result_surface(&lex_line(text, 0).unwrap()), Some(_)));
     }
+}
+
+#[test]
+fn completed_token_creation_requires_typed_original_destination_results() {
+    for text in ["you don't create a token this way","you did not create any tokens this way","you created tokens this way","you create any token this way"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        let Some(IfResultPredicate::ResultObjectsMatch{filter,negated})=parse_if_result_predicate_lexed_tokens(&tokens) else {panic!("typed result: {text}")};
+        assert!(filter.token);assert_eq!(negated,text.contains("don't")||text.contains("did not"));
+        assert!(matches!(parse_if_result_predicate_tokens(&tokens),Some(IfResultPredicate::ResultObjectsMatch{..})));
+    }
+    for text in ["you don't create two tokens this way","they don't create a token this way","you create a token somewhere else"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(parse_if_result_predicate_lexed_tokens(&tokens).is_none(),"unowned cardinality/actor/tail: {text}");
+    }
+}
+
+#[test]
+fn created_result_descriptor_keeps_the_complete_ordinary_object_filter() {
+    for text in ["you create a Role this way", "you created any Role tokens this way", "you don't create an Aura token this way"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        let Some(IfResultPredicate::ResultObjectsMatch {filter,negated})=parse_if_result_predicate_lexed_tokens(&tokens) else {panic!("{text}")};
+        assert!(filter.token);
+        assert_eq!(negated,text.contains("don't"));
+        assert!(!filter.subtypes.is_empty(), "complete subtype predicate: {text}");
+    }
+    let tokens=crate::lexer::lex_line("you create two Role tokens this way",0).unwrap();
+    assert!(parse_if_result_predicate_lexed_tokens(&tokens).is_none());
 }

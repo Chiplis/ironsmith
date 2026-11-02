@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "scope": "msem",
+    "policy": "Exact source cards retained; executable reader is in next-wave categories scratch patch until approved integration.",
+    "materialization_runtime": "Staged patched frontend in tmp/custom-mechanics/next-wave/categories/work; rerun production materializer after approved integration."
+  },
+  "mechanics": [
+    {
+      "id": "msem-923",
+      "keyword": "Forsake",
+      "original_reminder": "As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.",
+      "executable_reminder": "As a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its printed alternative mana cost. When cast this way, this spell and the permanent it becomes have the printed alternative mana cost, its corresponding colors, and the printed alternative power and toughness if present. It keeps its other characteristics. These are copiable characteristics.",
+      "source_cards": [
+        "Cling to Old Dreams",
+        "Faces of War",
+        "Witch's Whisper"
+      ],
+      "rule_reference": "702.298.",
+      "rule_text": [
+        {
+          "name": "702.298a",
+          "rule": "Forsake is a static ability that appears on forsake cards that have a secondary set of mana cost and/or power and toughness characteristics. Any time a player could cast a sorcery, they may pay {2} and exile a card with forsake from their hand face down. That player may look at that card as long as it remains in exile. After the current turn has ended, they may cast that card from exile \"forsaken.\" If they do, the alternative set of its mana cost and/or power and toughness characteristics are used. See 751, \u201cPrototype Cards.\u201d",
+          "custom": true
+        },
+        {
+          "name": "702.298b",
+          "rule": "Exiling a card using its forsake ability is a special action, which doesn\u2019t use the stack. See rule 116, \u201cSpecial Actions.\u201d",
+          "custom": true
+        },
+        {
+          "name": "702.298c",
+          "rule": "If a player owns multiple forsake cards in exile, they must ensure that those cards can be easily differentiated from each other and from any other face-down cards in exile which that player owns. This includes knowing the order in which those cards were put into exile.",
+          "custom": true
+        },
+        {
+          "name": "702.298d",
+          "rule": "If a player leaves the game, all face-down forsake cards that player owns must be revealed to all players. At the end of each game, all face-down forsake cards must be revealed to all players.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "source_card_key": "Cling to Old Dreams_HQZ",
+          "name": "Cling to Old Dreams",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cling to Old Dreams",
+              "original_text": "Mana cost: {1}{G}{W}{U}\nType: Instant\nForsake {4}{B}{B} \u2014 7/7 *(As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.)*\nSearch your library for a card, put that card into your hand, then shuffle.\nIf Cling to Old Dreams was cast for its forsake cost, it enters as a Nightmare creature after it resolves."
+            }
+          ],
+          "id": "Cling to Old Dreams_HQZ",
+          "source_face": "front",
+          "original_text": "Mana cost: {1}{G}{W}{U}\nType: Instant\nForsake {4}{B}{B} \u2014 7/7 *(As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.)*\nSearch your library for a card, put that card into your hand, then shuffle.\nIf Cling to Old Dreams was cast for its forsake cost, it enters as a Nightmare creature after it resolves.",
+          "executable_text": "Mana cost: {1}{G}{W}{U}\nType: Instant\nAs a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for {4}{B}{B}. When cast this way, this spell and the permanent it becomes have mana cost {4}{B}{B}, colors determined by that mana cost, and base power and toughness 7/7. It keeps its other characteristics. These are copiable characteristics. When cast this way, after resolving this spell enters the battlefield as a Nightmare creature.\nSearch your library for a card, put that card into your hand, then shuffle.\n",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Cling to Old Dreams",
+              "executable_text": "Mana cost: {1}{G}{W}{U}\nType: Instant\nAs a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for {4}{B}{B}. When cast this way, this spell and the permanent it becomes have mana cost {4}{B}{B}, colors determined by that mana cost, and base power and toughness 7/7. It keeps its other characteristics. These are copiable characteristics. When cast this way, after resolving this spell enters the battlefield as a Nightmare creature.\nSearch your library for a card, put that card into your hand, then shuffle.\n",
+              "custom_keyword_identities": [
+                "forsake"
+              ],
+              "custom_keyword_payments": [
+                "forsake"
+              ],
+              "original_display_text": "Forsake {4}{B}{B} \u2014 7/7\nSearch your library for a card, put that card into your hand, then shuffle.\nIf Cling to Old Dreams was cast for its forsake cost, it enters as a Nightmare creature after it resolves."
+            }
+          ],
+          "custom_keyword_identities": [
+            "forsake"
+          ],
+          "custom_keyword_payments": [
+            "forsake"
+          ],
+          "original_display_text": "Forsake {4}{B}{B} \u2014 7/7\nSearch your library for a card, put that card into your hand, then shuffle.\nIf Cling to Old Dreams was cast for its forsake cost, it enters as a Nightmare creature after it resolves."
+        },
+        {
+          "source_card_key": "Faces of War_HQZ",
+          "name": "Faces of War",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Faces of War",
+              "original_text": "Mana cost: {2}{R}{G}{W}\nType: Sorcery\nForsake {1}{R}{R} *(As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.)*\nChoose two \u2014 \n\u2022 Faces of War deals 4 damage to each creature.\n\u2022 Destroy all artifacts with mana value 4 or less.\n\u2022 Each player chooses four lands they control and sacrifices the rest."
+            }
+          ],
+          "id": "Faces of War_HQZ",
+          "source_face": "front",
+          "original_text": "Mana cost: {2}{R}{G}{W}\nType: Sorcery\nForsake {1}{R}{R} *(As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.)*\nChoose two \u2014 \n\u2022 Faces of War deals 4 damage to each creature.\n\u2022 Destroy all artifacts with mana value 4 or less.\n\u2022 Each player chooses four lands they control and sacrifices the rest.",
+          "executable_text": "Mana cost: {2}{R}{G}{W}\nType: Sorcery\nAs a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for {1}{R}{R}. When cast this way, this spell and the permanent it becomes have mana cost {1}{R}{R}, colors determined by that mana cost. It keeps its other characteristics. These are copiable characteristics.\nChoose two \u2014\n\u2022 Faces of War deals 4 damage to each creature.\n\u2022 Destroy all artifacts with mana value 4 or less.\n\u2022 Each player chooses four lands they control and sacrifices the rest.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Faces of War",
+              "executable_text": "Mana cost: {2}{R}{G}{W}\nType: Sorcery\nAs a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for {1}{R}{R}. When cast this way, this spell and the permanent it becomes have mana cost {1}{R}{R}, colors determined by that mana cost. It keeps its other characteristics. These are copiable characteristics.\nChoose two \u2014\n\u2022 Faces of War deals 4 damage to each creature.\n\u2022 Destroy all artifacts with mana value 4 or less.\n\u2022 Each player chooses four lands they control and sacrifices the rest.",
+              "custom_keyword_identities": [
+                "forsake"
+              ],
+              "custom_keyword_payments": [
+                "forsake"
+              ],
+              "original_display_text": "Forsake {1}{R}{R}\nChoose two \u2014\n\u2022 Faces of War deals 4 damage to each creature.\n\u2022 Destroy all artifacts with mana value 4 or less.\n\u2022 Each player chooses four lands they control and sacrifices the rest."
+            }
+          ],
+          "custom_keyword_identities": [
+            "forsake"
+          ],
+          "custom_keyword_payments": [
+            "forsake"
+          ],
+          "original_display_text": "Forsake {1}{R}{R}\nChoose two \u2014\n\u2022 Faces of War deals 4 damage to each creature.\n\u2022 Destroy all artifacts with mana value 4 or less.\n\u2022 Each player chooses four lands they control and sacrifices the rest."
+        },
+        {
+          "source_card_key": "Witch's Whisper_HQZ",
+          "name": "Witch's Whisper",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Witch's Whisper",
+              "original_text": "Mana cost: {2}{W}\nType: Creature \u2014 Spirit Shaman\nPower/Toughness: 2/3\nForsake {2}{B} \u2014 3/2 *(As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.)*\nFlying, lifelink\nWhen Witch's Whisper enters, if it wasn't cast from your hand, return target creature card from your graveyard to your hand."
+            }
+          ],
+          "id": "Witch's Whisper_HQZ",
+          "source_face": "front",
+          "original_text": "Mana cost: {2}{W}\nType: Creature \u2014 Spirit Shaman\nPower/Toughness: 2/3\nForsake {2}{B} \u2014 3/2 *(As a sorcery, exile this from your hand face down for {2}. Cast it with different mana cost and color on a later turn.)*\nFlying, lifelink\nWhen Witch's Whisper enters, if it wasn't cast from your hand, return target creature card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature \u2014 Spirit Shaman\nPower/Toughness: 2/3\nAs a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for {2}{B}. When cast this way, this spell and the permanent it becomes have mana cost {2}{B}, colors determined by that mana cost, and base power and toughness 3/2. It keeps its other characteristics. These are copiable characteristics.\nFlying, lifelink\nWhen Witch's Whisper enters, if it wasn't cast from your hand, return target creature card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Witch's Whisper",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature \u2014 Spirit Shaman\nPower/Toughness: 2/3\nAs a sorcery, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for {2}{B}. When cast this way, this spell and the permanent it becomes have mana cost {2}{B}, colors determined by that mana cost, and base power and toughness 3/2. It keeps its other characteristics. These are copiable characteristics.\nFlying, lifelink\nWhen Witch's Whisper enters, if it wasn't cast from your hand, return target creature card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "forsake"
+              ],
+              "custom_keyword_payments": [
+                "forsake"
+              ],
+              "original_display_text": "Forsake {2}{B} \u2014 3/2\nFlying, lifelink\nWhen Witch's Whisper enters, if it wasn't cast from your hand, return target creature card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "forsake"
+          ],
+          "custom_keyword_payments": [
+            "forsake"
+          ],
+          "original_display_text": "Forsake {2}{B} \u2014 3/2\nFlying, lifelink\nWhen Witch's Whisper enters, if it wasn't cast from your hand, return target creature card from your graveyard to your hand."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "implementation_status": "scratch_patch_pending_integration",
+      "semantic_gate": "requires_native_behavior_and_complete_source_verification"
+    }
+  ]
+}

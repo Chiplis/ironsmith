@@ -1,0 +1,695 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact source text retained. Bounded declared payment programs cover fixed-number prices, announced-X prices, and resolving local-X selections. Resolving local X reads exact historical chosen-set cardinality and scopes downstream references. Whole-payment named receipts are a separate pending shared wrapper dependency; native verification pending."
+  },
+  "mechanics": [
+    {
+      "id": "msem-385",
+      "keyword": "Collect backing",
+      "original_reminder": "For two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Andazir, Acrimony's Toy",
+        "Volleyweaver Conjurer"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Andazir, Acrimony's Toy_G5L",
+          "name": "Andazir, Acrimony's Toy",
+          "original_text": "Mana cost: {R}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/2\n{R}, Collect backing 2: Andazir becomes a Mutant with base power and toughness 3/3. *(For two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\n{1}{R}, Collect backing 3: If Andazir is a Mutant, it becomes a Dragon Horror with base power and toughness 5/5 and gains flying.\n{4}{R}, Collect backing 5: If Andazir is a Dragon, it deals 5 damage to any target.",
+          "executable_text": null,
+          "mana_cost": "{R}",
+          "type_line": "Legendary Creature — Human Noble",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Andazir, Acrimony's Toy_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Andazir, Acrimony's Toy",
+              "original_text": "Mana cost: {R}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/2\n{R}, Collect backing 2: Andazir becomes a Mutant with base power and toughness 3/3. *(For two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\n{1}{R}, Collect backing 3: If Andazir is a Mutant, it becomes a Dragon Horror with base power and toughness 5/5 and gains flying.\n{4}{R}, Collect backing 5: If Andazir is a Dragon, it deals 5 damage to any target."
+            }
+          ]
+        },
+        {
+          "id": "Volleyweaver Conjurer_G5L",
+          "name": "Volleyweaver Conjurer",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/2\nWhen Volleyweaver Conjurer enters, you may collect backing 2. If you do, Volleyweaver Conjurer deals 2 damage to each opponent. *(For two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "Volleyweaver Conjurer_G5L",
+          "source_layout": "normal"
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    },
+    {
+      "id": "msem-386",
+      "keyword": "Collect backing",
+      "original_reminder": "For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Blade of the Faceless",
+        "Condemn the Div",
+        "Fate of the Forgotten",
+        "Pathfinder of the Dunesea",
+        "Sarvagan Footman",
+        "Spoils of the Stinging King"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blade of the Faceless_G5L",
+          "name": "Blade of the Faceless",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin\nPower/Toughness: 3/1\nAs an additional cost to cast this spell, you may collect backing 3. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nWhen Blade of the Faceless enters, each player sacrifices a creature. If backing was collected, instead each opponent sacrifices a creature.",
+          "executable_text": null,
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Assassin",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Blade of the Faceless_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blade of the Faceless",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin\nPower/Toughness: 3/1\nAs an additional cost to cast this spell, you may collect backing 3. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nWhen Blade of the Faceless enters, each player sacrifices a creature. If backing was collected, instead each opponent sacrifices a creature."
+            }
+          ]
+        },
+        {
+          "id": "Condemn the Div_G5L",
+          "name": "Condemn the Div",
+          "original_text": "Mana cost: {3}{B}\nType: Instant\nAs an additional cost to cast this spell, you may collect backing 3. This spell costs {3} less to cast if backing was collected. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nDestroy target creature or planeswalker.",
+          "executable_text": null,
+          "source_card_key": "Condemn the Div_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Fate of the Forgotten_G5L",
+          "name": "Fate of the Forgotten",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nDestroy up to one target artifact or enchantment you don't control. Then you may collect backing 3. If you do, exile up to four cards from an opponent's graveyard. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "Fate of the Forgotten_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Pathfinder of the Dunesea_G5L",
+          "name": "Pathfinder of the Dunesea",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Scout\nPower/Toughness: 1/3\nAs an additional cost to cast this spell, you may collect backing 3. When you do, put two +1+1 counters on another target creature you control. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\n{T}: Add {G}.",
+          "executable_text": null,
+          "source_card_key": "Pathfinder of the Dunesea_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Sarvagan Footman_G5L",
+          "name": "Sarvagan Footman",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may collect backing 3. If you do, put a +1/+1 counter on each creature you control. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "Sarvagan Footman_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Spoils of the Stinging King_G5L",
+          "name": "Spoils of the Stinging King",
+          "original_text": "Mana cost: {1}{B}\nType: Enchantment\n{5}{B}, Collect backing 3: Create a 3/3 red Manticore creature token. It can't block this turn. *(For three colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nWhenever you collect backing from one or more colors, each opponent loses X life and you gain X life, where X is that number.",
+          "executable_text": null,
+          "source_card_key": "Spoils of the Stinging King_G5L",
+          "source_layout": "normal"
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    },
+    {
+      "id": "msem-387",
+      "keyword": "Collect backing",
+      "original_reminder": "For four colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Blinding Grit",
+        "Fall of Marjavar"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blinding Grit_G5L",
+          "name": "Blinding Grit",
+          "original_text": "Mana cost: {R}\nType: Instant\nAs an additional cost to cast this spell, you may collect backing 4. *(For four colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nBlinding Grit deals 2 damage to any target. If backing was collected, it deals 4 damage to any target instead.",
+          "executable_text": null,
+          "mana_cost": "{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Blinding Grit_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blinding Grit",
+              "original_text": "Mana cost: {R}\nType: Instant\nAs an additional cost to cast this spell, you may collect backing 4. *(For four colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nBlinding Grit deals 2 damage to any target. If backing was collected, it deals 4 damage to any target instead."
+            }
+          ]
+        },
+        {
+          "id": "Fall of Marjavar_G5L",
+          "name": "Fall of Marjavar",
+          "original_text": "Mana cost: {1}{B}{G}{U}\nType: Sorcery\nCreate a 4/4 green Horror creature token. You gain 4 life.\nAt the beginning of your end step, you may collect backing 4. If you do, return Fall of Marjavar from your graveyard to your hand. *(For four colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "Fall of Marjavar_G5L",
+          "source_layout": "normal"
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    },
+    {
+      "id": "msem-388",
+      "keyword": "Collect backing",
+      "original_reminder": "For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Dali, Scribe of the Fields",
+        "Echoing Arcanist",
+        "Fell the Scourge",
+        "Golna, Shah",
+        "March of Many Banners",
+        "Omens by Starlight",
+        "Petition the Bakhtak"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dali, Scribe of the Fields_G5L",
+          "name": "Dali, Scribe of the Fields",
+          "original_text": "Mana cost: {2}{B}{G}{U}\nType: Legendary Creature — Sphinx Noble\nPower/Toughness: 4/5\nFlash\nFlying\nWhenever Dali attacks, you may collect backing X. When you do, you may a spell from your graveyard with mana value X without paying its mana cost. If that spell would be put into a graveyard, exile it instead. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "mana_cost": "{2}{B}{G}{U}",
+          "type_line": "Legendary Creature — Sphinx Noble",
+          "power": "4",
+          "toughness": "5",
+          "source_card_key": "Dali, Scribe of the Fields_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dali, Scribe of the Fields",
+              "original_text": "Mana cost: {2}{B}{G}{U}\nType: Legendary Creature — Sphinx Noble\nPower/Toughness: 4/5\nFlash\nFlying\nWhenever Dali attacks, you may collect backing X. When you do, you may a spell from your graveyard with mana value X without paying its mana cost. If that spell would be put into a graveyard, exile it instead. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*"
+            }
+          ]
+        },
+        {
+          "id": "Echoing Arcanist_G5L",
+          "name": "Echoing Arcanist",
+          "original_text": "Mana cost: {U}{U}{R}{R}\nType: Creature — Human Wizard\nPower/Toughness: 3/3\nFlash \nWhen Echoing Arcanist enters, you may collect backing X. When you do, exile target instant or sorcery card with mana value X or less from your graveyard. Copy it. You may cast the copy without paying its mana cost. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "Echoing Arcanist_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Fell the Scourge_G5L",
+          "name": "Fell the Scourge",
+          "original_text": "Mana cost: {W}\nType: Instant\nAs an additional cost to cast this spell, collect backing X. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nExile target nonland permanent with mana value X or less.",
+          "executable_text": null,
+          "source_card_key": "Fell the Scourge_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Golna, Shah_G5L",
+          "name": "Golna, Shah",
+          "original_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Creature — Human Noble\nPower/Toughness: 5/5\nVigilance\nAt the beginning of your end step, you may collect backing X. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nWhenever you collect backing from one or more colors, you may return to your hand a card from your graveyard with mana value less than or equal to that number.",
+          "executable_text": null,
+          "source_card_key": "Golna, Shah_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "March of Many Banners_G5L",
+          "name": "March of Many Banners",
+          "original_text": "Mana cost: {2}{G}\nType: Enchantment\nAt the beginning of your end step, you may collect backing X. If you do, create a X/X red Army creature token. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "March of Many Banners_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Omens by Starlight_G5L",
+          "name": "Omens by Starlight",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nYou may collect backing X. If you do, scry X. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nDraw a card.",
+          "executable_text": null,
+          "source_card_key": "Omens by Starlight_G5L",
+          "source_layout": "normal"
+        },
+        {
+          "id": "Petition the Bakhtak_G5L",
+          "name": "Petition the Bakhtak",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Sorcery\nAs an additional cost to cast this spell, you may collect backing X. *(For X colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\nSearch your library for an instant, sorcery, or artifact card, exile it, then shuffle. If backing was collected and it has mana value X or less, you may cast it without paying its mana cost. Otherwise, put it into your hand.",
+          "executable_text": null,
+          "source_card_key": "Petition the Bakhtak_G5L",
+          "source_layout": "normal"
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    },
+    {
+      "id": "msem-389",
+      "keyword": "Collect backing",
+      "original_reminder": "For five colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Div of Ruined Bargains"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Div of Ruined Bargains_G5L",
+          "name": "Div of Ruined Bargains",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Horror\nPower/Toughness: 2/2\nFlying\nCollect backing 5: Return Div of Ruined Bargains from your graveyard to the battlefield tapped. *(For five colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Horror",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Div of Ruined Bargains_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Div of Ruined Bargains",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Horror\nPower/Toughness: 2/2\nFlying\nCollect backing 5: Return Div of Ruined Bargains from your graveyard to the battlefield tapped. *(For five colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*"
+            }
+          ]
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    },
+    {
+      "id": "msem-390",
+      "keyword": "Collect backing",
+      "original_reminder": "To collect backing 2, for two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Earthbound Simurgh"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Earthbound Simurgh_G5L",
+          "name": "Earthbound Simurgh",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Chimera\nPower/Toughness: 4/4\nDefender\nAt the beginning of combat on your turn, you may collect backing 2. If you do, Earthbound Simurgh can attack as though it didn't have defender this turn. *(To collect backing 2, for two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Chimera",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Earthbound Simurgh_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Earthbound Simurgh",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Chimera\nPower/Toughness: 4/4\nDefender\nAt the beginning of combat on your turn, you may collect backing 2. If you do, Earthbound Simurgh can attack as though it didn't have defender this turn. *(To collect backing 2, for two colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*"
+            }
+          ]
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    },
+    {
+      "id": "msem-391",
+      "keyword": "Collect backing",
+      "original_reminder": "For one color, tap an untapped creature you control of that color or exile a card of that color from your graveyard.",
+      "executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "source_cards": [
+        "Plumecrowned Steed",
+        "Soli Skyguard"
+      ],
+      "rule_reference": "701.106.",
+      "rule_text": [
+        {
+          "name": "701.106a",
+          "rule": "\"Collect backing N\" means \"For each of N different colors, tap an untapped creature you control of that color or exile a card of that color from your graveyard.\"",
+          "custom": true
+        },
+        {
+          "name": "701.106b",
+          "rule": "If a player is given the choice to collect backing but is unable to complete the process N times, they can't choose to collect backing.",
+          "custom": true
+        },
+        {
+          "name": "701.106c",
+          "rule": "A spell that has an ability that allows a player to collect backing as an additional cost to cast it may have another ability that refers to whether backing was collected. These abilities are linked. See rule 607, “Linked Abilities.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Plumecrowned Steed_G5L",
+          "name": "Plumecrowned Steed",
+          "original_text": "Mana cost: {G}\nType: Creature — Unicorn\nPower/Toughness: 1/1\n{T}: Add {C}.\n{T}, Collect backing 1: Add one mana of any color. *(For one color, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\n{T}, Collect backing 5: Add two mana in any combination of colors.",
+          "executable_text": null,
+          "mana_cost": "{G}",
+          "type_line": "Creature — Unicorn",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Plumecrowned Steed_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Plumecrowned Steed",
+              "original_text": "Mana cost: {G}\nType: Creature — Unicorn\nPower/Toughness: 1/1\n{T}: Add {C}.\n{T}, Collect backing 1: Add one mana of any color. *(For one color, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*\n{T}, Collect backing 5: Add two mana in any combination of colors."
+            }
+          ]
+        },
+        {
+          "id": "Soli Skyguard_G5L",
+          "name": "Soli Skyguard",
+          "original_text": "Mana cost: {W}\nType: Creature — Human Knight\nPower/Toughness: 2/3\nFlying\nAt the beginning of combat on your turn, tap Soli Skyguard unless you collect backing 1. *(For one color, tap an untapped creature you control of that color or exile a card of that color from your graveyard.)*",
+          "executable_text": null,
+          "source_card_key": "Soli Skyguard_G5L",
+          "source_layout": "normal"
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+      "executable_definitions": [
+        {
+          "keyword": "Collect backing {Number}",
+          "reminder": "Choose {Number} untapped creatures you control or cards from your graveyard, each representing a different color it has. Tap the chosen creatures on the battlefield. Exile the chosen cards from your graveyard.",
+          "costProgram": true,
+          "paymentReferences": [
+            {
+              "subject": "backing",
+              "participle": "collected",
+              "countUnit": "color"
+            }
+          ],
+          "forms": {
+            "eventVerb": "collect backing",
+            "eventLabel": "collect backing"
+          }
+        }
+      ],
+      "support_status": "scratch bounded payment source path with fixed/announced/local variable count; shared named receipt and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "matching-and-payment",
+          "status": "pending",
+          "test_reference": "custom_colored_resource_costs; custom_collect_partition_replacement",
+          "observable": "Pay N distinct colors with N separate matching original resources; mixed tap/exile pays atomically, movement replacements do not consume one resource twice."
+        }
+      ]
+    }
+  ]
+}

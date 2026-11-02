@@ -71,6 +71,7 @@ pub enum DelayedEffectAst {
         /// Keep the registration active only while at least one object from
         /// the captured tag remains in this zone.
         while_any_tagged_object_in_zone: Option<(TagRef, Zone)>,
+        source_collection_scope: Option<ironsmith_core::effect::SourceCollectionScope>,
     },
     DelayedWhenLastObjectDiesThisTurn {
         /// Restricts which object is captured when the delayed ability is installed.
@@ -90,4 +91,14 @@ pub enum DelayedEffectAst {
         /// their source.
         watched_object_is_source: bool,
     },
+    /// One source-free, repeating registration per resolved player and name.
+    RegisterPersistentPlayerRule {
+        name: String,
+        controller: PlayerAst,
+        trigger: TriggerSpec,
+        effects: Vec<EffectAst>,
+        condition: Option<PredicateAst>,
+        event_only_condition: bool,
+    },
+
 }

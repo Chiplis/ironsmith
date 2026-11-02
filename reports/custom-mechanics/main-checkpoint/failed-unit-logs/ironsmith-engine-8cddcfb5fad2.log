@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'effects::cards::create_cards::tests::duplicate_back_face_name_selects_the_supplied_physical_front_card' panicked at crates/ironsmith-engine/src/effects/cards/create_cards.rs:797:9:
+assertion `left == right` failed
+  left: "Supplied reverse identity"
+ right: "Supplied physical front"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::cards::create_cards::tests::duplicate_back_face_name_selects_the_supplied_physical_front_card ... FAILED
+
+failures:
+
+failures:
+    effects::cards::create_cards::tests::duplicate_back_face_name_selects_the_supplied_physical_front_card
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.04s
+

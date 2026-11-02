@@ -1,0 +1,427 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "scope": "6 exact source-backed Profit/Forebode reminder variants; Idolize has a source rule but no card occurrence/reminder in main snapshot",
+    "validation": "Native test authored, not executed"
+  },
+  "rule_only_cases": [
+    {
+      "keyword": "Idolize",
+      "rule_reference": "701.71.",
+      "source": "reports/cards/lackey-audit-2026-11-01/msem-custom-rules.json",
+      "source_card_status": "No occurrences in main-card snapshot; no source card invented.",
+      "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs"
+    }
+  ],
+  "mechanics": [
+    {
+      "id": "msem-324",
+      "keyword": "Profit",
+      "original_reminder": "To profit, create a colorless Gold artifact token with “Sacrifice this artifact: Add one mana of any color.”",
+      "executable_reminder": "Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\".",
+      "source_cards": [
+        "Turn to Gold"
+      ],
+      "rule_reference": "701.83.",
+      "rule_text": [
+        {
+          "name": "701.83a",
+          "rule": "To profit, create a colorless Gold artifact token with “Sacrifice this artifact: Add one mana of any color.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Turn to Gold_MS2",
+          "name": "Turn to Gold",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nExile target creature. Its controller may profit. *(To profit, create a colorless Gold artifact token with “Sacrifice this artifact: Add one mana of any color.”)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nExile target creature. Its controller may Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\".",
+          "mana_cost": "{1}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "profit"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Exile target creature. Its controller may profit.",
+          "executable_faces": [
+            {
+              "name": "Turn to Gold",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nExile target creature. Its controller may Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\".",
+              "custom_keyword_identities": [
+                "profit"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Exile target creature. Its controller may profit."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Gold token definition follows701.83; sacrifice mana ability preserves no tap cost. Any separate Persevere definition remains an independent mechanic, not dropped from operative text."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Profit",
+          "reminder": "Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    },
+    {
+      "id": "msem-325",
+      "keyword": "Profit",
+      "original_reminder": "A creature perseveres when it survives damage. To profit, create a colorless Gold artifact token with “Sacrifice this artifact: Add one mana of any color.”",
+      "executable_reminder": "Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\".",
+      "source_cards": [
+        "Death Pits Gladiator"
+      ],
+      "rule_reference": "701.83.",
+      "rule_text": [
+        {
+          "name": "701.83a",
+          "rule": "To profit, create a colorless Gold artifact token with “Sacrifice this artifact: Add one mana of any color.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Death Pits Gladiator_OTH",
+          "name": "Death Pits Gladiator",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Nomad Warrior\nPower/Toughness: 4/3\nEngage *(This creature must be blocked each combat if able.)*\nWhenever Death Pits Gladiator perseveres, profit. *(A creature perseveres when it survives damage. To profit, create a colorless Gold artifact token with “Sacrifice this artifact: Add one mana of any color.”)*",
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Nomad Warrior\nPower/Toughness: 4/3\nEngage\nWhenever Death Pits Gladiator perseveres, Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\".",
+          "mana_cost": "{2}{G}{G}",
+          "type_line": "Creature — Human Nomad Warrior",
+          "power": "4",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "profit"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Engage\nWhenever Death Pits Gladiator perseveres, profit.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Death Pits Gladiator",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Nomad Warrior\nPower/Toughness: 4/3\nEngage\nWhenever Death Pits Gladiator perseveres, Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\".",
+              "custom_keyword_identities": [
+                "profit"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Engage\nWhenever Death Pits Gladiator perseveres, profit."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Gold token definition follows701.83; sacrifice mana ability preserves no tap cost. Any separate Persevere definition remains an independent mechanic, not dropped from operative text."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Profit",
+          "reminder": "Create a colorless Gold artifact token with \"Sacrifice this artifact: Add one mana of any color.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    },
+    {
+      "id": "msem-357",
+      "keyword": "Forebode",
+      "original_reminder": "Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”",
+      "executable_reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+      "source_cards": [
+        "Abandon Ship",
+        "Adoroth, the Baneful",
+        "Calamitous Wave",
+        "Captain's Companion",
+        "Civil Discourse",
+        "Dusk Lieutenant",
+        "Fated Mariner",
+        "Helicos Aberration",
+        "Old Salt",
+        "Perilous Treaty",
+        "Rattled Bones",
+        "Raving Brigand",
+        "Rum Guzzler",
+        "Siren's Song",
+        "Fretport Market Smuggler"
+      ],
+      "rule_reference": "701.91.",
+      "rule_text": [
+        {
+          "name": "701.91a",
+          "rule": "To forebode, create a tapped colorless Omen artifact token with “T, Discard a card, Sacrifice this artifact: Draw a card.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Abandon Ship_DSS",
+          "name": "Abandon Ship",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nAs an additional cost to cast this spell, discard a card.\nDraw two cards. Forebode. *(Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nAs an additional cost to cast this spell, discard a card.\nDraw two cards. Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+          "mana_cost": "{1}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "forebode"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "As an additional cost to cast this spell, discard a card.\nDraw two cards. Forebode.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Abandon Ship",
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nAs an additional cost to cast this spell, discard a card.\nDraw two cards. Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+              "custom_keyword_identities": [
+                "forebode"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "As an additional cost to cast this spell, discard a card.\nDraw two cards. Forebode."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Preserves tapped entry and all three activation costs; explicitly closes source formatting quote where absent. Three-token reminder is source-specific while operative three-times repetition must remain three independent forebode instructions."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Forebode",
+          "reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    },
+    {
+      "id": "msem-358",
+      "keyword": "Forebode",
+      "original_reminder": "Create three tapped colorless Omen artifact tokens with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”",
+      "executable_reminder": "Create three tapped colorless Omen artifact tokens with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+      "source_cards": [
+        "Last Passage"
+      ],
+      "rule_reference": "701.91.",
+      "rule_text": [
+        {
+          "name": "701.91a",
+          "rule": "To forebode, create a tapped colorless Omen artifact token with “T, Discard a card, Sacrifice this artifact: Draw a card.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Last Passage_DSS",
+          "name": "Last Passage",
+          "original_text": "Mana cost: {1}{U}\nType: Sorcery\nForebode three times, then untap each Omen you control. Until end of turn, if you would draw a card while your library has no cards in it, you win the game instead. *(Create three tapped colorless Omen artifact tokens with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Sorcery\nCreate a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\". Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\". Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\", then untap each Omen you control. Until end of turn, if you would draw a card while your library has no cards in it, you win the game instead.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "forebode"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Forebode three times, then untap each Omen you control. Until end of turn, if you would draw a card while your library has no cards in it, you win the game instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Last Passage",
+              "executable_text": "Mana cost: {1}{U}\nType: Sorcery\nCreate a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\". Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\". Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\", then untap each Omen you control. Until end of turn, if you would draw a card while your library has no cards in it, you win the game instead.",
+              "custom_keyword_identities": [
+                "forebode"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Forebode three times, then untap each Omen you control. Until end of turn, if you would draw a card while your library has no cards in it, you win the game instead."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Preserves tapped entry and all three activation costs; explicitly closes source formatting quote where absent. Three-token reminder is source-specific while operative three-times repetition must remain three independent forebode instructions."
+      },
+      "source_discrepancy": {
+        "issue": "Reminder aggregates three tokens while source operative action says forebode three times.",
+        "resolution": "Use single-token definition and preserve operative repetition as three separate instructions; do not multiply it by a three-token definition."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Forebode",
+          "reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    },
+    {
+      "id": "msem-359",
+      "keyword": "Forebode",
+      "original_reminder": "Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.",
+      "executable_reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+      "source_cards": [
+        "Infamous Bilgecaptain"
+      ],
+      "rule_reference": "701.91.",
+      "rule_text": [
+        {
+          "name": "701.91a",
+          "rule": "To forebode, create a tapped colorless Omen artifact token with “T, Discard a card, Sacrifice this artifact: Draw a card.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Infamous Bilgecaptain_OTH",
+          "name": "Infamous Bilgecaptain",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\nWhen Infamous Bilgecaptain enters, forebode. *(Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.)*\nOther Pirates you control get +1/+1.\nAt the beginning of your end step, you may put a Pirate card with mana value less than or equal to the number of artifacts you control from your hand onto the battlefield.",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\nWhen Infamous Bilgecaptain enters, Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".\nOther Pirates you control get +1/+1.\nAt the beginning of your end step, you may put a Pirate card with mana value less than or equal to the number of artifacts you control from your hand onto the battlefield.",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Creature — Human Pirate",
+          "power": "3",
+          "toughness": "2",
+          "custom_keyword_identities": [
+            "forebode"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Infamous Bilgecaptain enters, forebode.\nOther Pirates you control get +1/+1.\nAt the beginning of your end step, you may put a Pirate card with mana value less than or equal to the number of artifacts you control from your hand onto the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Infamous Bilgecaptain",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Creature — Human Pirate\nPower/Toughness: 3/2\nWhen Infamous Bilgecaptain enters, Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".\nOther Pirates you control get +1/+1.\nAt the beginning of your end step, you may put a Pirate card with mana value less than or equal to the number of artifacts you control from your hand onto the battlefield.",
+              "custom_keyword_identities": [
+                "forebode"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Infamous Bilgecaptain enters, forebode.\nOther Pirates you control get +1/+1.\nAt the beginning of your end step, you may put a Pirate card with mana value less than or equal to the number of artifacts you control from your hand onto the battlefield."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Preserves tapped entry and all three activation costs; explicitly closes source formatting quote where absent. Three-token reminder is source-specific while operative three-times repetition must remain three independent forebode instructions."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Forebode",
+          "reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    },
+    {
+      "id": "msem-360",
+      "keyword": "Forebode",
+      "original_reminder": "To forebode, create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”",
+      "executable_reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+      "source_cards": [
+        "Sky-Torrent Navigator"
+      ],
+      "rule_reference": "701.91.",
+      "rule_text": [
+        {
+          "name": "701.91a",
+          "rule": "To forebode, create a tapped colorless Omen artifact token with “T, Discard a card, Sacrifice this artifact: Draw a card.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sky-Torrent Navigator_OTH",
+          "name": "Sky-Torrent Navigator",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Crab Pirate\nPower/Toughness: 3/4\nFlying\nWhen Sky-Torrent Navigator enters, forebode. If you control two or more Pirates, forebode again. *(To forebode, create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)*",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Crab Pirate\nPower/Toughness: 3/4\nFlying\nWhen Sky-Torrent Navigator enters, Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\". If you control two or more Pirates, forebode again.",
+          "mana_cost": "{4}{U}",
+          "type_line": "Creature — Crab Pirate",
+          "power": "3",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "forebode"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhen Sky-Torrent Navigator enters, forebode. If you control two or more Pirates, forebode again.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Sky-Torrent Navigator",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Crab Pirate\nPower/Toughness: 3/4\nFlying\nWhen Sky-Torrent Navigator enters, Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\". If you control two or more Pirates, forebode again.",
+              "custom_keyword_identities": [
+                "forebode"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhen Sky-Torrent Navigator enters, forebode. If you control two or more Pirates, forebode again."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Preserves tapped entry and all three activation costs; explicitly closes source formatting quote where absent. Three-token reminder is source-specific while operative three-times repetition must remain three independent forebode instructions."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Forebode",
+          "reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    }
+  ]
+}

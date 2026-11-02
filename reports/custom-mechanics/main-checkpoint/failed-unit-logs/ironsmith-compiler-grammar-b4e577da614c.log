@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effect_sentences::gain_ability::granted_component_readings::named_payment_component_tests::exact_source_payment_rule_precedes_prefix_restriction_with_or_without_outer_quote_role' panicked at crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability/granted_component_readings.rs:466:82:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effect_sentences::gain_ability::granted_component_readings::named_payment_component_tests::exact_source_payment_rule_precedes_prefix_restriction_with_or_without_outer_quote_role ... FAILED
+
+failures:
+
+failures:
+    effect_sentences::gain_ability::granted_component_readings::named_payment_component_tests::exact_source_payment_rule_precedes_prefix_restriction_with_or_without_outer_quote_role
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.02s
+

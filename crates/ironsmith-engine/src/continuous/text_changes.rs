@@ -10,6 +10,7 @@ use ironsmith_core::{ObjectFilter, TextChange};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextChangeDomainError {
     SpellProgram,
+    OptionalFragments,
     Value,
     Condition,
     Cost,
@@ -30,6 +31,7 @@ impl std::fmt::Display for TextChangeDomainError {
             Self::Condition => f.write_str("unmodeled condition"),
             Self::Cost => f.write_str("unmodeled cost"),
             Self::Effect => f.write_str("unmodeled effect program"),
+            Self::OptionalFragments => f.write_str("incomplete or incompatible optional text fragment plan"),
             Self::SpellProgram => f.write_str("missing retained spell-program evidence"),
             Self::ActivatedAbility => f.write_str("activated ability program/cost/choice model"),
             Self::TriggeredAbility => f.write_str("triggered ability program/trigger/condition model"),
@@ -361,7 +363,8 @@ mod tests {
         let receiver = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Receiver")
             .card_types(vec![CardType::Creature]).build(), PlayerId::from_index(0), Zone::Battlefield);
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(id, PlayerId::from_index(0),
-            EffectTarget::Specific(receiver), Modification::CopyOf { retain_original_name: false,
+            EffectTarget::Specific(receiver), Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
                 target_id: id, copiable_values: Box::new(values), preserve_source_abilities: false,
                 name_override: None, name_override_surface: None, add_supertypes: vec![],
             }));

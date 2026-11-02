@@ -1,0 +1,1576 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Colossal independent alternative price, entry counters, and activated condition",
+  "notes": [
+    "All20 immutable source variants retained. Reminder candidates only until structural/native checks; source-card references to named activation require exact ability provenance."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-821",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {8} as a sorcery: Put four +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Anvilwrought Colossus"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Anvilwrought Colossus_TTR",
+          "name": "Anvilwrought Colossus",
+          "original_text": "Mana cost: {4}\nType: Artifact Creature — Golem\nPower/Toughness: 4/3\nColossal 4—{8} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {8} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+          "executable_text": "Mana cost: {4}\nType: Artifact Creature — Golem\nPower/Toughness: 4/3\nYou may pay {8} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{8}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+          "mana_cost": "{4}",
+          "type_line": "Artifact Creature — Golem",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Anvilwrought Colossus_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Anvilwrought Colossus",
+              "original_text": "Mana cost: {4}\nType: Artifact Creature — Golem\nPower/Toughness: 4/3\nColossal 4—{8} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {8} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Anvilwrought Colossus",
+              "executable_text": "Mana cost: {4}\nType: Artifact Creature — Golem\nPower/Toughness: 4/3\nYou may pay {8} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{8}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 4—{8}\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 4—{8}\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-822",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {3}{R} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Emberhound"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Emberhound_TTR",
+          "name": "Emberhound",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Elemental Dog\nPower/Toughness: 2/1\nColossal 2—{3}{R} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {3}{R} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhen Emberhound's colossal ability puts one or more counters on it, target creature can't block this turn.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Elemental Dog\nPower/Toughness: 2/1\nYou may pay {3}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{3}{R}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhen Emberhound's colossal ability puts one or more counters on it, target creature can't block this turn.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Elemental Dog",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Emberhound_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Emberhound",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Elemental Dog\nPower/Toughness: 2/1\nColossal 2—{3}{R} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {3}{R} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhen Emberhound's colossal ability puts one or more counters on it, target creature can't block this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Emberhound",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Elemental Dog\nPower/Toughness: 2/1\nYou may pay {3}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{3}{R}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhen Emberhound's colossal ability puts one or more counters on it, target creature can't block this turn.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{3}{R}\nWhen Emberhound's colossal ability puts one or more counters on it, target creature can't block this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{3}{R}\nWhen Emberhound's colossal ability puts one or more counters on it, target creature can't block this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-823",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {4}{G}{G}{G} as a sorcery: Put four +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Endless Hydra"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Endless Hydra_TTR",
+          "name": "Endless Hydra",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Hydra\nPower/Toughness: 4/4\nColossal 4—{4}{G}{G}{G} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {4}{G}{G}{G} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nWhenever a nontoken creature you control with a counter on it dies, create a 4/4 green Hydra creature token.",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Hydra\nPower/Toughness: 4/4\nYou may pay {4}{G}{G}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{4}{G}{G}{G}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nWhenever a nontoken creature you control with a counter on it dies, create a 4/4 green Hydra creature token.",
+          "mana_cost": "{4}{G}",
+          "type_line": "Creature — Hydra",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Endless Hydra_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Endless Hydra",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Hydra\nPower/Toughness: 4/4\nColossal 4—{4}{G}{G}{G} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {4}{G}{G}{G} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nWhenever a nontoken creature you control with a counter on it dies, create a 4/4 green Hydra creature token."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Endless Hydra",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Hydra\nPower/Toughness: 4/4\nYou may pay {4}{G}{G}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{4}{G}{G}{G}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nWhenever a nontoken creature you control with a counter on it dies, create a 4/4 green Hydra creature token.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 4—{4}{G}{G}{G}\nWhenever a nontoken creature you control with a counter on it dies, create a 4/4 green Hydra creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 4—{4}{G}{G}{G}\nWhenever a nontoken creature you control with a counter on it dies, create a 4/4 green Hydra creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-824",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {4}{R}{G} as a sorcery: Put three +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Feral Persuader"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Feral Persuader_TTR",
+          "name": "Feral Persuader",
+          "original_text": "Mana cost: {1}{R}{G}\nType: Creature — Manticore\nPower/Toughness: 3/3\nColossal 3—{4}{R}{G} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {4}{R}{G} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nEach creature you control with a counter on it can't be blocked by more than one creature.",
+          "executable_text": "Mana cost: {1}{R}{G}\nType: Creature — Manticore\nPower/Toughness: 3/3\nYou may pay {4}{R}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{4}{R}{G}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nEach creature you control with a counter on it can't be blocked by more than one creature.",
+          "mana_cost": "{1}{R}{G}",
+          "type_line": "Creature — Manticore",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Feral Persuader_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Feral Persuader",
+              "original_text": "Mana cost: {1}{R}{G}\nType: Creature — Manticore\nPower/Toughness: 3/3\nColossal 3—{4}{R}{G} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {4}{R}{G} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nEach creature you control with a counter on it can't be blocked by more than one creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Feral Persuader",
+              "executable_text": "Mana cost: {1}{R}{G}\nType: Creature — Manticore\nPower/Toughness: 3/3\nYou may pay {4}{R}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{4}{R}{G}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nEach creature you control with a counter on it can't be blocked by more than one creature.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 3—{4}{R}{G}\nEach creature you control with a counter on it can't be blocked by more than one creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 3—{4}{R}{G}\nEach creature you control with a counter on it can't be blocked by more than one creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-825",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with five +1/+1 counters; or pay {8}{W}{W} as a sorcery: Put five +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Hekaton Dismantler"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hekaton Dismantler_TTR",
+          "name": "Hekaton Dismantler",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Giant\nPower/Toughness: 5/5\nColossal 5—{8}{W}{W} *(You may cast this for its colossal cost to have it enter with five +1/+1 counters; or pay {8}{W}{W} as a sorcery: Put five +1/+1 counters on it if it has none.)*\nWard {5}\nWhen Hekaton Dismantler's colossal ability puts one or more counters on it, tap each creature you don't control. Those creatures don't untap during their controller's next 100 untap steps.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Giant\nPower/Toughness: 5/5\nYou may pay {8}{W}{W} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 5 +1/+1 counters on it.\n{8}{W}{W}: If this permanent has no +1/+1 counters on it, put 5 +1/+1 counters on it. Activate only as a sorcery.\nWard {5}\nWhen Hekaton Dismantler's colossal ability puts one or more counters on it, tap each creature you don't control. Those creatures don't untap during their controller's next 100 untap steps.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Giant",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Hekaton Dismantler_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hekaton Dismantler",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Giant\nPower/Toughness: 5/5\nColossal 5—{8}{W}{W} *(You may cast this for its colossal cost to have it enter with five +1/+1 counters; or pay {8}{W}{W} as a sorcery: Put five +1/+1 counters on it if it has none.)*\nWard {5}\nWhen Hekaton Dismantler's colossal ability puts one or more counters on it, tap each creature you don't control. Those creatures don't untap during their controller's next 100 untap steps."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hekaton Dismantler",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Giant\nPower/Toughness: 5/5\nYou may pay {8}{W}{W} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 5 +1/+1 counters on it.\n{8}{W}{W}: If this permanent has no +1/+1 counters on it, put 5 +1/+1 counters on it. Activate only as a sorcery.\nWard {5}\nWhen Hekaton Dismantler's colossal ability puts one or more counters on it, tap each creature you don't control. Those creatures don't untap during their controller's next 100 untap steps.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 5—{8}{W}{W}\nWard {5}\nWhen Hekaton Dismantler's colossal ability puts one or more counters on it, tap each creature you don't control. Those creatures don't untap during their controller's next 100 untap steps."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 5—{8}{W}{W}\nWard {5}\nWhen Hekaton Dismantler's colossal ability puts one or more counters on it, tap each creature you don't control. Those creatures don't untap during their controller's next 100 untap steps.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-826",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {6}{W}{W} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Heroes' Adversary"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Heroes' Adversary_TTR",
+          "name": "Heroes' Adversary",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Cat\nPower/Toughness: 3/3\nColossal 2—{6}{W}{W} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {6}{W}{W} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhen Heroes' Adversary's colossal ability puts one or more counters on it, exile target creature an opponent controls until Heroes' Adversary leaves the battlefield.",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Cat\nPower/Toughness: 3/3\nYou may pay {6}{W}{W} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{6}{W}{W}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhen Heroes' Adversary's colossal ability puts one or more counters on it, exile target creature an opponent controls until Heroes' Adversary leaves the battlefield.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Cat",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Heroes' Adversary_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Heroes' Adversary",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Cat\nPower/Toughness: 3/3\nColossal 2—{6}{W}{W} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {6}{W}{W} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhen Heroes' Adversary's colossal ability puts one or more counters on it, exile target creature an opponent controls until Heroes' Adversary leaves the battlefield."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Heroes' Adversary",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Cat\nPower/Toughness: 3/3\nYou may pay {6}{W}{W} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{6}{W}{W}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhen Heroes' Adversary's colossal ability puts one or more counters on it, exile target creature an opponent controls until Heroes' Adversary leaves the battlefield.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{6}{W}{W}\nWhen Heroes' Adversary's colossal ability puts one or more counters on it, exile target creature an opponent controls until Heroes' Adversary leaves the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{6}{W}{W}\nWhen Heroes' Adversary's colossal ability puts one or more counters on it, exile target creature an opponent controls until Heroes' Adversary leaves the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-827",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {5}{U}{U}{U} as a sorcery: Put four +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Megalokraken"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Megalokraken_TTR",
+          "name": "Megalokraken",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Kraken Leviathan\nPower/Toughness: 4/5\nColossal 4—{5}{U}{U}{U} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {5}{U}{U}{U} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nWhenever Megalokraken enters after being cast or attacks, reveal the top X cards of your library, where X is Megalokraken's power. You may cast a noncreature spell with mana value X or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Kraken Leviathan\nPower/Toughness: 4/5\nYou may pay {5}{U}{U}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{5}{U}{U}{U}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nWhenever Megalokraken enters after being cast or attacks, reveal the top X cards of your library, where X is Megalokraken's power. You may cast a noncreature spell with mana value X or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Creature — Kraken Leviathan",
+          "power": "4",
+          "toughness": "5",
+          "source_card_key": "Megalokraken_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Megalokraken",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Kraken Leviathan\nPower/Toughness: 4/5\nColossal 4—{5}{U}{U}{U} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {5}{U}{U}{U} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nWhenever Megalokraken enters after being cast or attacks, reveal the top X cards of your library, where X is Megalokraken's power. You may cast a noncreature spell with mana value X or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Megalokraken",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Kraken Leviathan\nPower/Toughness: 4/5\nYou may pay {5}{U}{U}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{5}{U}{U}{U}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nWhenever Megalokraken enters after being cast or attacks, reveal the top X cards of your library, where X is Megalokraken's power. You may cast a noncreature spell with mana value X or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 4—{5}{U}{U}{U}\nWhenever Megalokraken enters after being cast or attacks, reveal the top X cards of your library, where X is Megalokraken's power. You may cast a noncreature spell with mana value X or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 4—{5}{U}{U}{U}\nWhenever Megalokraken enters after being cast or attacks, reveal the top X cards of your library, where X is Megalokraken's power. You may cast a noncreature spell with mana value X or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-828",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {6}{R} as a sorcery: Put three +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Minotaur Rampager"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Minotaur Rampager_TTR",
+          "name": "Minotaur Rampager",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Minotaur Berserker\nPower/Toughness: 5/2\nColossal 3—{6}{R} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {6}{R} as a sorcery: Put three +1/+1 counters on it if it has none.)*",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Minotaur Berserker\nPower/Toughness: 5/2\nYou may pay {6}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{6}{R}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Minotaur Berserker",
+          "power": "5",
+          "toughness": "2",
+          "source_card_key": "Minotaur Rampager_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Minotaur Rampager",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Minotaur Berserker\nPower/Toughness: 5/2\nColossal 3—{6}{R} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {6}{R} as a sorcery: Put three +1/+1 counters on it if it has none.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Minotaur Rampager",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Minotaur Berserker\nPower/Toughness: 5/2\nYou may pay {6}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{6}{R}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 3—{6}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 3—{6}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ],
+      "verification": {
+        "status": "focused_native_scenarios_passed",
+        "log": "/tmp/custom-colossal-round114.log",
+        "tests": 2,
+        "scope": "Exact source materialization direct/artifact. Colossal covers totalalternative price, entry counters, timing/resolution condition; Improve covers dynamic activation prices, timing, repeated resolution and Corym counter replacement. Other source interactions remain separately unverified."
+      }
+    },
+    {
+      "id": "msem-829",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{G} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Nessian Recluse"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Nessian Recluse_TTR",
+          "name": "Nessian Recluse",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Spider\nPower/Toughness: 2/3\nColossal 2—{4}{G} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{G} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nReach",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Spider\nPower/Toughness: 2/3\nYou may pay {4}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{4}{G}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nReach",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Spider",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Nessian Recluse_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nessian Recluse",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Spider\nPower/Toughness: 2/3\nColossal 2—{4}{G} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{G} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nReach"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Nessian Recluse",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Spider\nPower/Toughness: 2/3\nYou may pay {4}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{4}{G}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nReach",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{4}{G}\nReach"
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{4}{G}\nReach",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-830",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {5}{U} as a sorcery: Put three +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Omendiver"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Omendiver_TTR",
+          "name": "Omendiver",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Horse Fish\nPower/Toughness: 3/2\nColossal 3—{5}{U} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {5}{U} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nWhen Omendiver's colossal ability puts one or more counters on it, scry 3.",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Horse Fish\nPower/Toughness: 3/2\nYou may pay {5}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{5}{U}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nWhen Omendiver's colossal ability puts one or more counters on it, scry 3.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Horse Fish",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Omendiver_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Omendiver",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Horse Fish\nPower/Toughness: 3/2\nColossal 3—{5}{U} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {5}{U} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nWhen Omendiver's colossal ability puts one or more counters on it, scry 3."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Omendiver",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Horse Fish\nPower/Toughness: 3/2\nYou may pay {5}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{5}{U}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nWhen Omendiver's colossal ability puts one or more counters on it, scry 3.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 3—{5}{U}\nWhen Omendiver's colossal ability puts one or more counters on it, scry 3."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 3—{5}{U}\nWhen Omendiver's colossal ability puts one or more counters on it, scry 3.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-831",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {5}{G}{U} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Paradise Chimera"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Paradise Chimera_TTR",
+          "name": "Paradise Chimera",
+          "original_text": "Mana cost: {2}{G}{U}\nType: Creature — Chimera\nPower/Toughness: 2/4\nColossal 2—{5}{G}{U} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {5}{G}{U} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nFlying\nEach creature you control with a counter on it has vigilance and “{T}: Add one mana of any color.”",
+          "executable_text": "Mana cost: {2}{G}{U}\nType: Creature — Chimera\nPower/Toughness: 2/4\nYou may pay {5}{G}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{5}{G}{U}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nFlying\nEach creature you control with a counter on it has vigilance and “{T}: Add one mana of any color.”",
+          "mana_cost": "{2}{G}{U}",
+          "type_line": "Creature — Chimera",
+          "power": "2",
+          "toughness": "4",
+          "source_card_key": "Paradise Chimera_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Paradise Chimera",
+              "original_text": "Mana cost: {2}{G}{U}\nType: Creature — Chimera\nPower/Toughness: 2/4\nColossal 2—{5}{G}{U} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {5}{G}{U} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nFlying\nEach creature you control with a counter on it has vigilance and “{T}: Add one mana of any color.”"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Paradise Chimera",
+              "executable_text": "Mana cost: {2}{G}{U}\nType: Creature — Chimera\nPower/Toughness: 2/4\nYou may pay {5}{G}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{5}{G}{U}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nFlying\nEach creature you control with a counter on it has vigilance and “{T}: Add one mana of any color.”",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{5}{G}{U}\nFlying\nEach creature you control with a counter on it has vigilance and “{T}: Add one mana of any color.”"
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{5}{G}{U}\nFlying\nEach creature you control with a counter on it has vigilance and “{T}: Add one mana of any color.”",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-832",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {1}{G}{G} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Phalanx Beetle"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Phalanx Beetle_TTR",
+          "name": "Phalanx Beetle",
+          "original_text": "Mana cost: {G}\nType: Creature — Insect\nPower/Toughness: 2/1\nColossal 2—{1}{G}{G} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {1}{G}{G} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhenever a permanent you control with a counter on it becomes the target of a spell or ability an opponent controls, draw a card.",
+          "executable_text": "Mana cost: {G}\nType: Creature — Insect\nPower/Toughness: 2/1\nYou may pay {1}{G}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{1}{G}{G}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhenever a permanent you control with a counter on it becomes the target of a spell or ability an opponent controls, draw a card.",
+          "mana_cost": "{G}",
+          "type_line": "Creature — Insect",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Phalanx Beetle_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Phalanx Beetle",
+              "original_text": "Mana cost: {G}\nType: Creature — Insect\nPower/Toughness: 2/1\nColossal 2—{1}{G}{G} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {1}{G}{G} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhenever a permanent you control with a counter on it becomes the target of a spell or ability an opponent controls, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Phalanx Beetle",
+              "executable_text": "Mana cost: {G}\nType: Creature — Insect\nPower/Toughness: 2/1\nYou may pay {1}{G}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{1}{G}{G}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhenever a permanent you control with a counter on it becomes the target of a spell or ability an opponent controls, draw a card.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{1}{G}{G}\nWhenever a permanent you control with a counter on it becomes the target of a spell or ability an opponent controls, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{1}{G}{G}\nWhenever a permanent you control with a counter on it becomes the target of a spell or ability an opponent controls, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-833",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {4}{R} as a sorcery: Put three +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Storm-Eye Salamander"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Storm-Eye Salamander_TTR",
+          "name": "Storm-Eye Salamander",
+          "original_text": "Mana cost: {R}\nType: Creature — Salamander\nPower/Toughness: 1/2\nColossal 3—{4}{R} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {4}{R} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nWhen Storm-Eye Salamander's colossal ability puts one or more counters on it, exile the top three cards of your library. Until the end of your next turn, you may play one of those cards.",
+          "executable_text": "Mana cost: {R}\nType: Creature — Salamander\nPower/Toughness: 1/2\nYou may pay {4}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{4}{R}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nWhen Storm-Eye Salamander's colossal ability puts one or more counters on it, exile the top three cards of your library. Until the end of your next turn, you may play one of those cards.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Salamander",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Storm-Eye Salamander_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Storm-Eye Salamander",
+              "original_text": "Mana cost: {R}\nType: Creature — Salamander\nPower/Toughness: 1/2\nColossal 3—{4}{R} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {4}{R} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nWhen Storm-Eye Salamander's colossal ability puts one or more counters on it, exile the top three cards of your library. Until the end of your next turn, you may play one of those cards."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Storm-Eye Salamander",
+              "executable_text": "Mana cost: {R}\nType: Creature — Salamander\nPower/Toughness: 1/2\nYou may pay {4}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{4}{R}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nWhen Storm-Eye Salamander's colossal ability puts one or more counters on it, exile the top three cards of your library. Until the end of your next turn, you may play one of those cards.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 3—{4}{R}\nWhen Storm-Eye Salamander's colossal ability puts one or more counters on it, exile the top three cards of your library. Until the end of your next turn, you may play one of those cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 3—{4}{R}\nWhen Storm-Eye Salamander's colossal ability puts one or more counters on it, exile the top three cards of your library. Until the end of your next turn, you may play one of those cards.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-834",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {7}{R}{R} as a sorcery: Put three +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Talonwing Dragon"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Talonwing Dragon_TTR",
+          "name": "Talonwing Dragon",
+          "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nColossal 3—{7}{R}{R} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {7}{R}{R} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nFlying\nEach creature you control with a counter on it has double strike.",
+          "executable_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nYou may pay {7}{R}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{7}{R}{R}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nFlying\nEach creature you control with a counter on it has double strike.",
+          "mana_cost": "{4}{R}{R}",
+          "type_line": "Creature — Dragon",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Talonwing Dragon_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Talonwing Dragon",
+              "original_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nColossal 3—{7}{R}{R} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {7}{R}{R} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nFlying\nEach creature you control with a counter on it has double strike."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Talonwing Dragon",
+              "executable_text": "Mana cost: {4}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 5/5\nYou may pay {7}{R}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{7}{R}{R}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nFlying\nEach creature you control with a counter on it has double strike.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 3—{7}{R}{R}\nFlying\nEach creature you control with a counter on it has double strike."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 3—{7}{R}{R}\nFlying\nEach creature you control with a counter on it has double strike.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-835",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {6}{U} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Titanic Fathomclaw"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Titanic Fathomclaw_TTR",
+          "name": "Titanic Fathomclaw",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Crab\nPower/Toughness: 3/6\nColossal 2—{6}{U} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {6}{U} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhen Titanic Fathomclaw's colossal ability puts one or more counters on it, return target instant or sorcery card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Crab\nPower/Toughness: 3/6\nYou may pay {6}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{6}{U}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhen Titanic Fathomclaw's colossal ability puts one or more counters on it, return target instant or sorcery card from your graveyard to your hand.",
+          "mana_cost": "{4}{U}",
+          "type_line": "Creature — Crab",
+          "power": "3",
+          "toughness": "6",
+          "source_card_key": "Titanic Fathomclaw_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Titanic Fathomclaw",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Crab\nPower/Toughness: 3/6\nColossal 2—{6}{U} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {6}{U} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nWhen Titanic Fathomclaw's colossal ability puts one or more counters on it, return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Titanic Fathomclaw",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Crab\nPower/Toughness: 3/6\nYou may pay {6}{U} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{6}{U}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nWhen Titanic Fathomclaw's colossal ability puts one or more counters on it, return target instant or sorcery card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{6}{U}\nWhen Titanic Fathomclaw's colossal ability puts one or more counters on it, return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{6}{U}\nWhen Titanic Fathomclaw's colossal ability puts one or more counters on it, return target instant or sorcery card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-836",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{B} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Underworld Myrmex"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Underworld Myrmex_TTR",
+          "name": "Underworld Myrmex",
+          "original_text": "Mana cost: {B}\nType: Creature — Insect\nPower/Toughness: 1/1\nColossal 2—{4}{B} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{B} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nLifelink",
+          "executable_text": "Mana cost: {B}\nType: Creature — Insect\nPower/Toughness: 1/1\nYou may pay {4}{B} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{4}{B}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nLifelink",
+          "mana_cost": "{B}",
+          "type_line": "Creature — Insect",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Underworld Myrmex_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Underworld Myrmex",
+              "original_text": "Mana cost: {B}\nType: Creature — Insect\nPower/Toughness: 1/1\nColossal 2—{4}{B} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{B} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nLifelink"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Underworld Myrmex",
+              "executable_text": "Mana cost: {B}\nType: Creature — Insect\nPower/Toughness: 1/1\nYou may pay {4}{B} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{4}{B}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nLifelink",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{4}{B}\nLifelink"
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{4}{B}\nLifelink",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-837",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {7}{G} as a sorcery: Put three +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Voracious Asvosydna"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Voracious Asvosydna_TTR",
+          "name": "Voracious Asvosydna",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Badger\nPower/Toughness: 5/5\nColossal 3—{7}{G} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {7}{G} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nWhen Voracious Asvosydna's colossal ability puts one or more counters on it, you gain 5 life.",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Badger\nPower/Toughness: 5/5\nYou may pay {7}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{7}{G}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nWhen Voracious Asvosydna's colossal ability puts one or more counters on it, you gain 5 life.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Badger",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Voracious Asvosydna_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Voracious Asvosydna",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Badger\nPower/Toughness: 5/5\nColossal 3—{7}{G} *(You may cast this for its colossal cost to have it enter with three +1/+1 counters; or pay {7}{G} as a sorcery: Put three +1/+1 counters on it if it has none.)*\nWhen Voracious Asvosydna's colossal ability puts one or more counters on it, you gain 5 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Voracious Asvosydna",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Badger\nPower/Toughness: 5/5\nYou may pay {7}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 3 +1/+1 counters on it.\n{7}{G}: If this permanent has no +1/+1 counters on it, put 3 +1/+1 counters on it. Activate only as a sorcery.\nWhen Voracious Asvosydna's colossal ability puts one or more counters on it, you gain 5 life.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 3—{7}{G}\nWhen Voracious Asvosydna's colossal ability puts one or more counters on it, you gain 5 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 3—{7}{G}\nWhen Voracious Asvosydna's colossal ability puts one or more counters on it, you gain 5 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-838",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {5}{G} as a sorcery: Put four +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Wild-Trail Chimera"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Wild-Trail Chimera_TTR",
+          "name": "Wild-Trail Chimera",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Chimera\nPower/Toughness: 3/2\nColossal 4—{5}{G} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {5}{G} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nTrample",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Chimera\nPower/Toughness: 3/2\nYou may pay {5}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{5}{G}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nTrample",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Chimera",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Wild-Trail Chimera_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wild-Trail Chimera",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Chimera\nPower/Toughness: 3/2\nColossal 4—{5}{G} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {5}{G} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nTrample"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wild-Trail Chimera",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Chimera\nPower/Toughness: 3/2\nYou may pay {5}{G} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{5}{G}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nTrample",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 4—{5}{G}\nTrample"
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 4—{5}{G}\nTrample",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-839",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{B}{B} as a sorcery: Put two +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Wretched Catoblepas"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Wretched Catoblepas_TTR",
+          "name": "Wretched Catoblepas",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Beast\nPower/Toughness: 2/3\nColossal 2—{4}{B}{B} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{B}{B} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nMenace\nWhen Wretched Catoblepas's colossal ability puts one or more counters on it, each opponent sacrifices a creature.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Beast\nPower/Toughness: 2/3\nYou may pay {4}{B}{B} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{4}{B}{B}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nMenace\nWhen Wretched Catoblepas's colossal ability puts one or more counters on it, each opponent sacrifices a creature.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Beast",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Wretched Catoblepas_TTR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wretched Catoblepas",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Beast\nPower/Toughness: 2/3\nColossal 2—{4}{B}{B} *(You may cast this for its colossal cost to have it enter with two +1/+1 counters; or pay {4}{B}{B} as a sorcery: Put two +1/+1 counters on it if it has none.)*\nMenace\nWhen Wretched Catoblepas's colossal ability puts one or more counters on it, each opponent sacrifices a creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wretched Catoblepas",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Beast\nPower/Toughness: 2/3\nYou may pay {4}{B}{B} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 2 +1/+1 counters on it.\n{4}{B}{B}: If this permanent has no +1/+1 counters on it, put 2 +1/+1 counters on it. Activate only as a sorcery.\nMenace\nWhen Wretched Catoblepas's colossal ability puts one or more counters on it, each opponent sacrifices a creature.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 2—{4}{B}{B}\nMenace\nWhen Wretched Catoblepas's colossal ability puts one or more counters on it, each opponent sacrifices a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 2—{4}{B}{B}\nMenace\nWhen Wretched Catoblepas's colossal ability puts one or more counters on it, each opponent sacrifices a creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    },
+    {
+      "id": "msem-840",
+      "keyword": "Colossal",
+      "original_reminder": "You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {7}{R}{R} as a sorcery: Put four +1/+1 counters on it if it has none.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: This is the colossal activated ability. If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery.",
+      "source_cards": [
+        "Calefactor of Seas"
+      ],
+      "rule_reference": "702.276.",
+      "rule_text": [
+        {
+          "name": "702.276a",
+          "rule": "Colossal is a keyword ability that represents a static ability that functions while the spell with colossal is on the stack, and an activated ability. “Colossal N—[cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, the permanent it becomes enters the battlefield with N +1/+1 counters on it” and “[cost]: If this permanent has no +1/+1 counters on it, put N +1/+1 counters on it. Activate only as a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Calefactor of Seas_HQZ",
+          "name": "Calefactor of Seas",
+          "original_text": "Mana cost: {3}{R}{R}\nType: Creature — Serpent\nPower/Toughness: 5/5\nColossal 4—{7}{R}{R} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {7}{R}{R} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nTrample, haste\nWard—Pay life equal to Calefactor of Seas's power.",
+          "executable_text": "Mana cost: {3}{R}{R}\nType: Creature — Serpent\nPower/Toughness: 5/5\nYou may pay {7}{R}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{7}{R}{R}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nTrample, haste\nWard—Pay life equal to Calefactor of Seas's power.",
+          "mana_cost": "{3}{R}{R}",
+          "type_line": "Creature — Serpent",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Calefactor of Seas_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Calefactor of Seas",
+              "original_text": "Mana cost: {3}{R}{R}\nType: Creature — Serpent\nPower/Toughness: 5/5\nColossal 4—{7}{R}{R} *(You may cast this for its colossal cost to have it enter with four +1/+1 counters; or pay {7}{R}{R} as a sorcery: Put four +1/+1 counters on it if it has none.)*\nTrample, haste\nWard—Pay life equal to Calefactor of Seas's power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Calefactor of Seas",
+              "executable_text": "Mana cost: {3}{R}{R}\nType: Creature — Serpent\nPower/Toughness: 5/5\nYou may pay {7}{R}{R} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with 4 +1/+1 counters on it.\n{7}{R}{R}: If this permanent has no +1/+1 counters on it, put 4 +1/+1 counters on it. Activate only as a sorcery.\nTrample, haste\nWard—Pay life equal to Calefactor of Seas's power.",
+              "custom_keyword_identities": [
+                "colossal"
+              ],
+              "custom_keyword_payments": [
+                "colossal"
+              ],
+              "original_display_text": "Colossal 4—{7}{R}{R}\nTrample, haste\nWard—Pay life equal to Calefactor of Seas's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "colossal"
+          ],
+          "custom_keyword_payments": [
+            "colossal"
+          ],
+          "original_display_text": "Colossal 4—{7}{R}{R}\nTrample, haste\nWard—Pay life equal to Calefactor of Seas's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Colossal {Number}—{Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nIf its colossal cost was paid, this permanent enters with {Number} +1/+1 counters on it.\n{Cost}: If this permanent has no +1/+1 counters on it, put {Number} +1/+1 counters on it. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.276a: alternative total casting price plus entry replacement dependent on selected price; separate repeatable activated ability checks zero +1/+1 counters at resolution, restricted to sorcery timing.",
+      "behavioral_assertions": [
+        "Normal casting does not receive alternative-price entry counters.",
+        "Alternative casting uses the complete specified price and replacement-aware entry counters.",
+        "Activated ability is sorcery-only and checks counter absence on resolution, not an activation restriction.",
+        "Counters from other operations do not impersonate the named ability for source-card trigger conditions."
+      ]
+    }
+  ]
+}

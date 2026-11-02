@@ -274,6 +274,10 @@ impl GameState {
                 Zone::Library
             };
 
+            // A new game learns only its physical source definitions. The
+            // old registry may include departed tokens and must not be copied.
+            restarted.register_ability_counter_definitions(&card.definition)
+                .expect("a surviving physical definition must retain its admitted counter programs");
             restarted.prime_linked_face_definitions(&card.definition);
             let new_id = restarted.new_object_id();
             let mut object =

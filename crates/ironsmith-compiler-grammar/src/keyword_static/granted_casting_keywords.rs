@@ -91,7 +91,7 @@ fn granted_casting_method(
             condition: Some(
                 crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn,
             ),
-            prototype_power_toughness: None,
+            prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
         },
         GrantedCastingKeyword::Freerunning => Method::alternative_cost_with_condition(
             "Freerunning",

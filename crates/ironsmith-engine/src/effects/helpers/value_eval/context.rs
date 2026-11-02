@@ -868,6 +868,9 @@ impl EvaluationContext<'_, '_> {
         let missing = |tense| {
             ExecutionError::UnresolvableValue(format!("Source {tense} no {}", property.label()))
         };
+        if let Some(snapshot) = crate::condition_eval::projected_condition_source_numeric_facts(ctx) {
+            return property.source_snapshot(snapshot).ok_or_else(|| missing("had"));
+        }
         if self.game.is_phased_out(self.source) {
             let snapshot =
                 source_characteristic_lki_for_execution(self.game, ctx).ok_or_else(|| {

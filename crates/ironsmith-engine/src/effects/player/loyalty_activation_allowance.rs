@@ -59,6 +59,13 @@ pub(crate) fn loyalty_allowance_count(
 }
 
 impl EffectExecutor for GrantLoyaltyActivationAllowanceEffect {
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        match &self.scope {
+            LoyaltyActivationScope::Objects(target) => Some(target),
+            _ => None,
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -66,6 +73,13 @@ impl EffectExecutor for GrantLoyaltyActivationAllowanceEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
             match &self.scope {
+                LoyaltyActivationScope::Objects(target) => {
+                    let objects=crate::effects::helpers::resolve_objects_for_effect(game, ctx, target)?;
+                    for object in &objects {
+                        game.increment_named_turn_counter(object_counter(self.allowance, *object));
+                    }
+                    return Ok(EffectOutcome::with_objects(objects));
+                }
                 LoyaltyActivationScope::Source => {
                     let source = crate::effects::helpers::resolve_source_object_id(game, ctx)
                         .unwrap_or(ctx.source);
@@ -99,5 +113,25 @@ impl EffectExecutor for GrantLoyaltyActivationAllowanceEffect {
             }
             Ok(EffectOutcome::resolved())
         })
+    }
+}
+
+#[cfg(test)]
+mod targeted_allowance_tests {
+    use super::*;
+    #[test]
+    fn ordinary_object_operand_grants_only_its_exact_recipient_incarnation(){
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let player=PlayerId(0);
+        let definition=crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Allowance recipient").card_types(vec![CardType::Planeswalker]).loyalty(3).build();
+        let first=game.create_object_from_definition(&definition,player,crate::zone::Zone::Battlefield);
+        let other=game.create_object_from_definition(&definition,player,crate::zone::Zone::Battlefield);
+        let grant=GrantLoyaltyActivationAllowanceEffect::new(LoyaltyActivationScope::Objects(crate::target::ChooseSpec::SpecificObject(first)),LoyaltyActivationAllowance::ExtraActivation);
+        let outcome=grant.execute(&mut game,&mut ExecutionContext::new_default(other,player)).unwrap();
+        assert_eq!(outcome.explicit_objects(),Some(&[first][..]));
+        assert_eq!(loyalty_allowance_count(&game,player,first,LoyaltyActivationAllowance::ExtraActivation),1);
+        assert_eq!(loyalty_allowance_count(&game,player,other,LoyaltyActivationAllowance::ExtraActivation),0);
+        let departed=game.move_object_by_effect(first,crate::zone::Zone::Graveyard).unwrap();
+        let returned=game.move_object_by_effect(departed,crate::zone::Zone::Battlefield).unwrap();
+        assert_eq!(loyalty_allowance_count(&game,player,returned,LoyaltyActivationAllowance::ExtraActivation),0);
     }
 }

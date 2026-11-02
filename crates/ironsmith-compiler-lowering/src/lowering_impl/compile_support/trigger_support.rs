@@ -336,6 +336,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             unreachable!("leading trigger intro surfaces are removed before lowering")
         }
         TriggerSpec::ZoneChange(event) => Trigger::new(event),
+        TriggerSpec::ExternallyInvoked { class } => Trigger::custom(format!("externally-triggered:{class}"), format!("Externally triggered ability named {class}")),
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::StateBasedObjects { filter, display } => Trigger::state_based_objects(filter, display),
         TriggerSpec::AnyOf(branches) => {
@@ -581,6 +582,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             one_or_more,
             during_untap_step,
         ),
+        TriggerSpec::CharacteristicGained(trigger) => Trigger::characteristic_gained(trigger),
         TriggerSpec::ControlChanged(trigger) => Trigger::control_changed(trigger),
         TriggerSpec::RingBearerChosen(player) => Trigger::ring_bearer_chosen(player),
         TriggerSpec::PlayerBecomesTargeted {
@@ -588,6 +590,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             source_controller,
             source_kind,
         } => Trigger::player_becomes_targeted(player, source_controller, source_kind),
+        TriggerSpec::AttachmentChangedToPlayer { attachment, recipient, attached } => Trigger::attachment_changed_to_player(attachment, recipient, attached),
         TriggerSpec::AttachmentChanged {
             attachment,
             recipient,
@@ -1142,6 +1145,8 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         } => Trigger::cards_leave_your_graveyard(filter, one_or_more, during_your_turn),
         TriggerSpec::CounterPutOn {
             filter,
+            cause_designation,
+            activation_label,
             counter_type,
             source_controller,
             one_or_more,
@@ -1149,6 +1154,8 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             one_or_more_objects,
         } => {
             let mut trigger = crate::triggers::CounterPutOnTrigger::new(filter);
+            trigger.activation_label = activation_label;
+            trigger.cause_designation = cause_designation;
             if include_players {
                 trigger = trigger.include_players();
             }
@@ -1463,6 +1470,16 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             Trigger::transforms_with_destination(destination_name.clone())
         }
         TriggerSpec::PermanentTransforms(filter) => Trigger::permanent_transforms(filter.clone()),
+        TriggerSpec::PermanentTransformsFromOwnNamedActivation {filter,label,activator} => Trigger {
+            label: "permanent_transforms_from_own_named_activation".into(),
+            kind: ironsmith_core::TriggerKind::PermanentTransformsFromOwnNamedActivation {filter,label,activator},
+            intro_surface: None,
+        },
+        TriggerSpec::PermanentTransformsFromNamedActivation {filter,label} => Trigger {
+            label: "permanent_transforms_from_named_activation".into(),
+            kind: ironsmith_core::TriggerKind::PermanentTransformsFromNamedActivation {filter,label},
+            intro_surface: None,
+        },
         TriggerSpec::ThisTransformsWithSurface {
             surface,
             destination_name,
@@ -1527,6 +1544,10 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             trigger
         },
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
+        TriggerSpec::NamedActionParticipant { label, player, participant_filter, performer_filter, one_or_more } =>
+            Trigger::named_action_participant(label, player, participant_filter, performer_filter, one_or_more),
+        TriggerSpec::NamedAction { label, player, source_filter, object_filter, minimum_amount } =>
+            Trigger::named_action_with_minimum_amount(label, player, source_filter, object_filter, minimum_amount),
         TriggerSpec::KeywordAction {
             action,
             player,
@@ -1723,6 +1744,8 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
+        | TriggerSpec::NamedActionParticipant { .. }
+        | TriggerSpec::NamedAction { .. }
         | TriggerSpec::KeywordAction { .. }
         | TriggerSpec::KeywordActionTaggedObject { .. }
         | TriggerSpec::KeywordActionFromSource { .. }
@@ -1886,7 +1909,9 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
             | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
-            | TriggerSpec::KeywordAction { .. }
+            | TriggerSpec::NamedActionParticipant { .. }
+        | TriggerSpec::NamedAction { .. }
+        | TriggerSpec::KeywordAction { .. }
             | TriggerSpec::KeywordActionTaggedObject { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. }

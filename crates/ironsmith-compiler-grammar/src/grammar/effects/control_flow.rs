@@ -95,6 +95,7 @@ impl ControlFlowPlan<'_> {
                     condition,
                     original_program: None,
                     replacement_program: 0,
+                    registration: None,
                     affected_reference: None,
                 }),
             ),

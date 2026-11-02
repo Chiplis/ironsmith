@@ -26,7 +26,9 @@ fn filtered_unpreventability<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<FilteredUnpreventability<'a>> {
     let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
-    primitives::phrase(&["damage", "that", "would", "be", "dealt", "by"]).parse_next(input)?;
+    primitives::kw("damage").parse_next(input)?;
+    opt(primitives::phrase(&["that", "would", "be"])).parse_next(input)?;
+    primitives::phrase(&["dealt", "by"]).parse_next(input)?;
     let sources =
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("can't")))
             .map(|((), _)| ())
@@ -108,6 +110,8 @@ mod tests {
     #[test]
     fn owns_only_complete_source_filtered_prevention_prohibitions() {
         for (text, combat) in [
+            ("Damage dealt by sources with text added from this card can't be prevented.",false),
+            ("Combat damage dealt by creatures you control can't be prevented.",true),
             (
                 "Damage that would be dealt by this creature can't be prevented.",
                 false,

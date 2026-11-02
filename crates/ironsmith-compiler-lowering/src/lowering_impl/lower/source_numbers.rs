@@ -30,6 +30,26 @@ fn bind_value(value: &mut Value, pair: LinkedExilePair) -> usize {
         _=>0,
     }
 }
+fn bind_condition(condition: &mut crate::effect::Condition, pair: LinkedExilePair) -> usize {
+    match condition {
+        crate::effect::Condition::ValueComparison { left, right, .. } => bind_value(left,pair)+bind_value(right,pair),
+        crate::effect::Condition::ValueIsPrime(value) => bind_value(value,pair),
+        crate::effect::Condition::And(left,right) | crate::effect::Condition::Or(left,right) => bind_condition(left,pair)+bind_condition(right,pair),
+        crate::effect::Condition::Not(inner) => bind_condition(inner,pair),
+        _ => 0,
+    }
+}
+fn bind_static(ability: &mut crate::static_abilities::StaticAbility, pair: LinkedExilePair) {
+    match &mut ability.payload {
+        StaticAbilityPayload::AsEntersEffectProgram{program,..} if program_choices(program)>0=>program.source_number_pair=Some(pair),
+        StaticAbilityPayload::CharacteristicDefiningPt{power,toughness}=>{bind_value(power,pair);bind_value(toughness,pair);}
+        StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::CastSpellsMatching(_,filter),..}=>{bind_filter(filter,pair);}
+        StaticAbilityPayload::Conditional { ability, condition, .. } => { bind_condition(condition,pair); bind_static(ability,pair); }
+        StaticAbilityPayload::Anthem(anthem) => { if let Some(condition)=&mut anthem.condition {bind_condition(condition,pair);} }
+        StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => { if let Some(condition)=&mut grant.condition {bind_condition(condition,pair);} }
+        _=>{}
+    }
+}
 fn bind_effect(mut effect: Effect, pair: LinkedExilePair, reads: &mut usize) -> Effect {
     if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let mut create = create.clone();
@@ -80,8 +100,11 @@ fn last_choice_cda(value:&Value)->bool{
 /// never from card names, text labels, or the number selected at runtime.
 pub(super) fn bind_source_number_pair(definition: &mut CardDefinition) -> Result<Option<GeneratedSourceNumberDefinition>,CardTextError> {
     let entries=definition.abilities.iter().enumerate().filter_map(|(slot,ability)| {
-        let AbilityKind::Static(ability)=&ability.kind else{return None};
-        let StaticAbilityPayload::AsEntersEffectProgram{program,..}=&ability.payload else{return None};
+        let program=match &ability.kind {
+            AbilityKind::Static(ability)=>match &ability.payload {StaticAbilityPayload::AsEntersEffectProgram{program,..}=>program,_=>return None},
+            AbilityKind::Activated(ability)=>&ability.effects,
+            _=>return None,
+        };
         (program_choices(program)>0).then_some((slot,program_choices(program)))
     }).collect::<Vec<_>>();
     if entries.is_empty(){return Ok(None)}
@@ -114,13 +137,8 @@ pub(super) fn bind_source_number_pair(definition: &mut CardDefinition) -> Result
 fn apply_pair(definition: &mut CardDefinition, pair: LinkedExilePair) {
     for ability in &mut definition.abilities {
         match &mut ability.kind {
-            AbilityKind::Static(ability)=>match &mut ability.payload {
-                StaticAbilityPayload::AsEntersEffectProgram{program,..} if program_choices(program)>0=>program.source_number_pair=Some(pair),
-                StaticAbilityPayload::CharacteristicDefiningPt{power,toughness}=>{bind_value(power,pair);bind_value(toughness,pair);}
-                StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::CastSpellsMatching(_,filter),..}=>{bind_filter(filter,pair);}
-                _=>{}
-            },
-            AbilityKind::Activated(ability)=>{ bind_program(&mut ability.effects, pair); }
+            AbilityKind::Static(ability)=>bind_static(ability,pair),
+            AbilityKind::Activated(ability)=>{ bind_program(&mut ability.effects, pair); if program_choices(&ability.effects)>0 {ability.effects.source_number_pair=Some(pair);} }
             AbilityKind::Triggered(ability)=>{
                 bind_program(&mut ability.effects, pair);
                 let reads=match &mut ability.trigger.kind {

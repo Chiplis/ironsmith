@@ -2229,6 +2229,8 @@ pub enum ActivatedAbilityCostCondition {
     /// The first activation during the activator's turn that targets an
     /// object matching `filter`.
     FirstTargetingActivationDuringYourTurn { filter: ObjectFilter },
+    /// The exact name on the original selected activation program.
+    Named(String),
 }
 
 /// "Activated abilities of a permanent cost {2} less to activate if it's a
@@ -2301,9 +2303,11 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
                 ironsmith_core::ActivatedAbilityKeyword::Encore => "encore",
                 ironsmith_core::ActivatedAbilityKeyword::Fortify => "fortify",
+                ironsmith_core::ActivatedAbilityKeyword::Grouped { family, group, step, rule } => return format!("if it's the {rule:?} ability in family {family}, group {group}, at step {step}"),
             };
             format!("if it's a {keyword} ability")
         }
+        ActivatedAbilityCostCondition::Named(label) => format!("if it's named \"{label}\""),
         ActivatedAbilityCostCondition::NonManaAbility => "unless it's a mana ability".into(),
         ActivatedAbilityCostCondition::ManaAbility => "if it's a mana ability".into(),
         ActivatedAbilityCostCondition::FirstActivationOfMatchingSourceThisTurn { filter } => {
@@ -2335,6 +2339,7 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
                 ironsmith_core::ActivatedAbilityKeyword::Encore => "encore",
                 ironsmith_core::ActivatedAbilityKeyword::Fortify => "fortify",
+                ironsmith_core::ActivatedAbilityKeyword::Grouped { family, group, step, rule } => return format!("if it's the first {rule:?} ability in family {family}, group {group}, at step {step} activated {turn}"),
             };
             format!("if it's the first {keyword} ability activated {turn}")
         }
@@ -2400,13 +2405,15 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     modifier_source: crate::ids::ObjectId,
     condition: &ActivatedAbilityCostCondition,
     chosen_targets: &[crate::game_state::Target],
-    ability: Option<crate::decision::ActivationCostAbility>,
+    ability: Option<&crate::decision::ActivationCostAbility>,
 ) -> bool {
     let Some(source_obj) = game.object(source) else {
         return false;
     };
     let controller = game.controller_of(source_obj);
     match condition {
+        ActivatedAbilityCostCondition::Named(label) => ability.is_some_and(|facts|
+            facts.activation_label.as_deref() == Some(label.as_str())),
         // Kind-scoped prices require facts from the selected activation. An
         // absent context must not grant another ability's discount or tax.
         ActivatedAbilityCostCondition::Keyword(keyword) => {
@@ -2581,7 +2588,12 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
     fn display(&self) -> String {
         // An audit always takes the structural reading of the fields below.
         let display = ironsmith_core::semantic_audit::authored(self.display.as_deref());
-        let mut line = if let Some(display) = display {
+        let named = if self.replacement_mana_cost.is_none() && self.multiplier.is_none() {
+            if let Some(ActivatedAbilityCostCondition::Named(label)) = &self.condition {Some(label)} else {None}
+        } else {None};
+        let mut line = if let Some(label) = named {
+            format!("Activated abilities named \"{label}\" of {} cost {}{{{}}} less to activate", self.filter.description(), if self.optional {"up to "} else {""}, self.reduction)
+        } else if let Some(display) = display {
             display.to_string()
         } else if let Some(replacement) = &self.replacement_mana_cost {
             if self.filter == ObjectFilter::source() {
@@ -2659,6 +2671,7 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         if let Some(condition) = &self.condition
             && display.is_none()
             && !matches!(condition, ActivatedAbilityCostCondition::ThisAbility { .. })
+            && !(named.is_some() && matches!(condition,ActivatedAbilityCostCondition::Named(_)))
         {
             line.push(' ');
             line.push_str(&describe_activated_ability_cost_condition(condition));
@@ -3516,18 +3529,18 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
         }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) =>
             completed_combat_qualification(game, game.turn_store.turn_history
-                .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype)),
+                .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype, game)),
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn => {
             // The spell's current creature types (changeling counts, CR 702.73a).
             let creature_types = crate::filter::object_creature_subtypes_for_cost(source_obj, game);
             !creature_types.is_empty()
                 && completed_combat_qualification(game, game.turn_store.turn_history
-                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(controller, &creature_types))
+                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(controller, &creature_types, game))
         }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
             subtype,
         ) => completed_combat_qualification(game, game.turn_store.turn_history
-            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(controller, *subtype)),
+            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(controller, *subtype, game)),
     }
 }
 
@@ -3646,6 +3659,7 @@ pub struct ThisSpellCostReductionManaCost {
     /// false, colored mana the cost doesn't require reduces generic mana
     /// instead (CR 118.7b-c).
     pub colored_only: bool,
+    pub one_mana_of_any_color: bool,
 }
 
 impl ThisSpellCostReductionManaCost {
@@ -3655,6 +3669,7 @@ impl ThisSpellCostReductionManaCost {
             repetitions: None,
             condition,
             colored_only: false,
+            one_mana_of_any_color: false,
         }
     }
 
@@ -3675,7 +3690,7 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
     }
 
     fn display(&self) -> String {
-        let amount_text = describe_cost_modifier_mana_cost(&self.reduction);
+        let amount_text = if self.one_mana_of_any_color { "one mana of any color".to_string() } else { describe_cost_modifier_mana_cost(&self.reduction) };
         let tail = self.repetitions.as_ref().and_then(|repetitions| {
             let (_, tail) = describe_cost_modifier_amount(repetitions);
             tail
@@ -3917,6 +3932,7 @@ pub struct CostReductionManaCost {
     /// false, colored mana the cost doesn't require reduces generic mana
     /// instead (CR 118.7b-c).
     pub colored_only: bool,
+    pub one_mana_of_any_color: bool,
     /// Apply the reduction once per unit of this count ("{U} less to cast
     /// for each land you control with a flood counter on it").
     pub repetitions: Option<Value>,
@@ -3931,6 +3947,7 @@ impl CostReductionManaCost {
             per_target: false,
             optional_life_additional_cost: None,
             colored_only: false,
+            one_mana_of_any_color: false,
             repetitions: None,
         }
     }
@@ -3983,12 +4000,13 @@ impl StaticAbilityKind for CostReductionManaCost {
             let mut line = format!(
                 "As an additional cost to cast {subject}, you may pay {} life. Those spells cost {} less to cast if you paid life this way",
                 optional.life_cost,
-                describe_cost_modifier_mana_cost(&self.reduction)
+                if self.one_mana_of_any_color { "one mana of any color".to_string() } else { describe_cost_modifier_mana_cost(&self.reduction) }
             );
             if self.per_target {
                 line.push_str(" for each target");
             }
-            if mana_cost_contains_colored_symbol(&self.reduction) {
+            if (!self.one_mana_of_any_color || self.colored_only)
+                && mana_cost_contains_colored_symbol(&self.reduction) {
                 if let Some(color) = single_colored_mana_word(&self.reduction) {
                     line.push_str(&format!(
                         ". This effect reduces only the amount of {color} mana you pay"
@@ -4008,13 +4026,13 @@ impl StaticAbilityKind for CostReductionManaCost {
             format!(
                 "The first {} each turn costs {} less to cast",
                 describe_single_spell_filter(&base),
-                describe_cost_modifier_mana_cost(&self.reduction)
+                if self.one_mana_of_any_color { "one mana of any color".to_string() } else { describe_cost_modifier_mana_cost(&self.reduction) }
             )
         } else {
             format!(
                 "{} cost {} less to cast",
                 describe_spell_filter(&self.filter),
-                describe_cost_modifier_mana_cost(&self.reduction)
+                if self.one_mana_of_any_color { "one mana of any color".to_string() } else { describe_cost_modifier_mana_cost(&self.reduction) }
             )
         };
         if let Some((_, Some(tail))) =
@@ -4027,7 +4045,7 @@ impl StaticAbilityKind for CostReductionManaCost {
             line.push_str(" for each target");
         }
         if (self.colored_only
-            || (self.condition.is_none()
+            || (!self.one_mana_of_any_color && self.condition.is_none()
                 && (!self.filter.subtypes.is_empty()
                     || !self.filter.supertypes.is_empty()
                     || self.filter.chosen_creature_type
@@ -4270,7 +4288,7 @@ mod tests {
                 source,
                 &condition,
                 &[],
-                Some(facts(activator)),
+                Some(&facts(activator)),
             )
         };
         assert!(active(&game, alice));

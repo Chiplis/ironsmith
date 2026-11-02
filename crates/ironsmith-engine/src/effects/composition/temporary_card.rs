@@ -19,6 +19,9 @@ pub(crate) fn with_temporary_card_copy(
                 let id = game.new_object_id();
                 let mut copy = Object::token_copy_of(card, id, ctx.controller);
                 copy.zone = Zone::Exile;
+                if !copy.card_types.contains(&crate::types::CardType::Land) {
+                    copy.kind = crate::object::ObjectKind::SpellCopy;
+                }
                 game.add_object(copy);
                 let snapshot = crate::snapshot::ObjectSnapshot::from_object(
                     game.object(id).expect("materialized card copy"),

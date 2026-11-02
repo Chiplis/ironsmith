@@ -38,6 +38,8 @@ function ensureCanvas() {
     console.warn("[stack fx] GPU effects unavailable", error);
     return false;
   }
+  canvas.style.display = "none";
+  watchReadiness(renderer);
   document.body.appendChild(canvas);
   const resize = () => {
     if (!renderer) return;
@@ -50,14 +52,30 @@ function ensureCanvas() {
   canvas.addEventListener("webglcontextlost", event => {
     event.preventDefault();
     stopEffects();
+    renderer?.dispose();
     renderer = null;
     unavailable = true;
   });
   canvas.addEventListener("webglcontextrestored", () => {
-    try { renderer = new StackFxRenderer(canvas); unavailable = false; resize(); }
+    try { renderer = new StackFxRenderer(canvas); unavailable = false; resize(); watchReadiness(renderer); }
     catch (error) { console.warn("[stack fx] GPU restore failed", error); }
   });
   return true;
+}
+
+function watchReadiness(current) {
+  current.ready.catch(error => {
+    if (renderer !== current) return;
+    stopEffects();
+    current.dispose();
+    renderer = null;
+    unavailable = true;
+    console.warn('[stack fx] shader warmup failed', error);
+  });
+}
+
+export function warmStackFx() {
+  if (!prefersReducedMotion()) ensureCanvas();
 }
 
 function start() {

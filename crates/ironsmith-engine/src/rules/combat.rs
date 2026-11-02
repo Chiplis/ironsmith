@@ -85,7 +85,7 @@ pub(crate) fn can_block_with_view(
     // Tapped creatures can't block, unless they can block as though they
     // were untapped (CR 509.1a).
     if game.is_tapped(blocker.id)
-        && !view.object_has_static_ability_id(blocker.id, StaticAbilityId::CanBlockAsThoughUntapped)
+        && !crate::combat_state::blocker_ignores_tapping_against(game, blocker.id, attacker.id, &game.all_continuous_effects_arc())
     {
         return false;
     }
@@ -1005,6 +1005,8 @@ mod tests {
     fn make_creature(name: &str, power: i32, toughness: i32) -> Object {
         let raw = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Object {
+            spell_copy_entry_forbidden: false,
+            source_definition_metadata: Default::default(),
             copied_face_values: None,
             token_creation_method: None,
             id: ObjectId::from_raw(raw),
@@ -1051,6 +1053,7 @@ mod tests {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: vec![].into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -1062,6 +1065,7 @@ mod tests {
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: crate::cost::TotalCost::free().into(),
             bestow_cast_state: None,
             face_down_cast_state: None,

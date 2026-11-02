@@ -361,8 +361,16 @@ fn static_ability_has_spell_cost_modifier(
 fn static_ability_has_activated_ability_cost_modifier(
     static_ability: &crate::static_abilities::StaticAbility,
 ) -> bool {
+    fn source_tap_payment(model:&crate::static_abilities::CompiledStaticAbility)->bool{
+        match &model.payload{
+            ironsmith_core::StaticAbilityPayload::GenericManaTapPayment{activated_abilities:true,..}=>true,
+            ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>source_tap_payment(ability),
+            _=>false,
+        }
+    }
     static_ability.activated_ability_cost_reduction().is_some()
         || static_ability.activated_ability_cost_increase().is_some()
+        || static_ability.compiled_model().is_some_and(source_tap_payment)
 }
 
 fn static_ability_has_minimum_total_spell_mana(
@@ -823,7 +831,8 @@ impl<'a> DerivedGameView<'a> {
             .current_controller(object_id)
             .unwrap_or_else(|| self.game.controller_of(object));
         for (ability_index, ability) in abilities.iter().enumerate() {
-            if !ability.functions_in(&object.zone) {
+            if !ability.functions_in(&object.zone)
+                && crate::activation_zone_permissions::permission(self.game, object_id, ability_index).is_none() {
                 continue;
             }
             if let AbilityKind::Activated(activated) = &ability.kind {
@@ -914,7 +923,7 @@ impl<'a> DerivedGameView<'a> {
     ) -> bool {
         self.static_abilities_rc(object_id).is_some_and(|abilities| {
             abilities.iter().any(|ability| {
-                ability.keyword_marker_mechanic() == Some(mechanic)
+                ability.keyword_marker_mechanic().as_ref() == Some(&mechanic)
                     && ability.is_active(self.game, object_id)
             })
         })
@@ -1598,6 +1607,31 @@ impl<'a> DerivedGameView<'a> {
         }).collect()))
     }
 
+    /// Keep the acquisition alongside each static. Equal semantic abilities can
+    /// belong to independent grants and must not share their noted information.
+    pub(crate) fn spell_cost_modifier_static_abilities_with_origins(
+        &self, object_id:ObjectId,
+    )->Option<Vec<(crate::static_abilities::StaticAbility,Option<crate::continuous::AbilityOrigin>)>>{
+        let object=self.game.object(object_id)?;
+        if object.zone==Zone::Battlefield && !self.requires_battlefield_characteristic_calculation(object_id){
+            return Some(object.abilities.iter().enumerate().filter_map(|(slot,ability)|{
+                if !ability.functions_in(&object.zone){return None;}
+                match &ability.kind{
+                    AbilityKind::Static(ability)=>Some((ability.clone(),Some(crate::continuous::AbilityOrigin::Printed(slot)))),
+                    _=>None,
+                }
+            }).collect());
+        }
+        let current=self.current_characteristics_arc(object_id)?;
+        Some(current.abilities.iter().enumerate().filter_map(|(slot,ability)|{
+            if !ability.functions_in(&object.zone){return None;}
+            match &ability.kind{
+                AbilityKind::Static(ability)=>Some((ability.clone(),current.abilities.origin(slot).cloned())),
+                _=>None,
+            }
+        }).collect())
+    }
+
     pub(crate) fn activated_ability_cost_modifier_sources(&self) -> Vec<ObjectId> {
         self.ensure_memo_context();
         if let Some(cached) = self
@@ -2133,10 +2167,7 @@ impl<'a> DerivedGameView<'a> {
         }
         // Keyword counters participate in layer six without a registered
         // continuous instruction. The raw printed-ability fast path omits them.
-        if object
-            .counters
-            .iter()
-            .any(|(kind, count)| *count > 0 && kind.is_ability_counter())
+        if object.counters.has_ability_occurrences()
         {
             return true;
         }
@@ -2239,22 +2270,7 @@ fn grant_filter_context(
     grant: &Grant,
     game: &GameState,
 ) -> crate::filter::FilterContext {
-    let mut ctx = ctx.clone();
-    let source_id = grant.source.source_id();
-    ctx.source = Some(source_id);
-    let source_exiled = game
-        .get_exiled_with_source_links(source_id)
-        .iter()
-        .filter_map(|id| {
-            game.object(*id)
-                .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
-        })
-        .collect::<Vec<_>>();
-    if !source_exiled.is_empty() {
-        ctx.tagged_objects
-            .insert(crate::tag::SOURCE_EXILED_TAG.into(), source_exiled);
-    }
-    ctx
+    crate::grant_registry::grant_filter_context(ctx,grant,game)
 }
 
 fn materialize_derived_alternative_cast(

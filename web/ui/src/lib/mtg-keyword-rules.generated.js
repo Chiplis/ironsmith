@@ -4,8 +4,8 @@
 export const MTG_KEYWORD_RULESET_SOURCE = Object.freeze(
 {
   "title": "Magic: The Gathering Comprehensive Rules",
-  "effectiveDate": "April 17, 2026",
-  "url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260417.txt"
+  "effectiveDate": "September 25, 2026",
+  "url": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt"
 }
 );
 
@@ -704,6 +704,36 @@ export const MTG_KEYWORD_RULES = Object.freeze(
       "blight"
     ],
     "summary": "A keyword action. To blight N means to put N -1/-1 counters on a creature you control."
+  },
+  {
+    "id": "action-701-69-heal",
+    "kind": "keywordAction",
+    "rule": "701.69",
+    "title": "Heal",
+    "aliases": [
+      "heal"
+    ],
+    "summary": "To remove damage marked on a permanent."
+  },
+  {
+    "id": "action-701-70-recruit",
+    "kind": "keywordAction",
+    "rule": "701.70",
+    "title": "Recruit",
+    "aliases": [
+      "recruit"
+    ],
+    "summary": "A keyword action that lets a player draw a card, discard a card, and then create a creature token if a nonland card was discarded."
+  },
+  {
+    "id": "action-701-71-empower-jace",
+    "kind": "keywordAction",
+    "rule": "701.71",
+    "title": "Empower Jace",
+    "aliases": [
+      "empower jace"
+    ],
+    "summary": "A keyword action that gives you a Jace planeswalker token and/or puts loyalty counters on a Jace token you already have."
   },
   {
     "id": "ability-702-2-deathtouch",
@@ -2158,7 +2188,7 @@ export const MTG_KEYWORD_RULES = Object.freeze(
     "aliases": [
       "boast"
     ],
-    "summary": "A special kind of activated ability that can be activated only once each turn if the creature with the boast ability attacked that turn."
+    "summary": "An activated ability that can be activated only once each turn if the creature with the boast ability attacked that turn."
   },
   {
     "id": "ability-702-143-foretell",
@@ -2514,7 +2544,7 @@ export const MTG_KEYWORD_RULES = Object.freeze(
     "aliases": [
       "exhaust"
     ],
-    "summary": "A special kind of activated ability that may be activated only once."
+    "summary": "An activated ability that may be activated only once."
   },
   {
     "id": "ability-702-178-max-speed",
@@ -2671,6 +2701,37 @@ export const MTG_KEYWORD_RULES = Object.freeze(
       "paradigm"
     ],
     "summary": "A keyword ability that allows you to cast a copy of a spell at the beginning of each of your first main phases."
+  },
+  {
+    "id": "ability-702-193-power-up",
+    "kind": "keywordAbility",
+    "rule": "702.193",
+    "title": "Power-up",
+    "aliases": [
+      "power up",
+      "power-up"
+    ],
+    "summary": "A one-time activated ability found on permanents that costs less during the turn the permanent with the ability entered the battlefield."
+  },
+  {
+    "id": "ability-702-194-teamwork",
+    "kind": "keywordAbility",
+    "rule": "702.194",
+    "title": "Teamwork",
+    "aliases": [
+      "teamwork"
+    ],
+    "summary": "A keyword ability that represents an optional additional cost of tapping creatures."
+  },
+  {
+    "id": "ability-702-195-storied",
+    "kind": "keywordAbility",
+    "rule": "702.195",
+    "title": "Storied",
+    "aliases": [
+      "storied"
+    ],
+    "summary": "A keyword causing a player to get the enduring story designation once they control three or more permanents that are artifacts, Sagas, and/or legendary."
   }
 ]
 );

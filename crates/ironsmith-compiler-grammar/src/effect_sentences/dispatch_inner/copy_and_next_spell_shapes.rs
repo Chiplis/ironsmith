@@ -35,7 +35,7 @@ pub fn parse_delayed_next_combat_phase_this_turn_sentence(
                 one_shot: true,
                 duration: crate::effect::Until::Forever,
                 either_of_watched_objects: false,
-                while_any_tagged_object_in_zone: None,
+                while_any_tagged_object_in_zone: None, source_collection_scope: None,
             },
         )]));
     }
@@ -284,8 +284,21 @@ fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
 /// creatures you control attacking.
 fn next_attack_trigger_from_core(trigger_core_tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     let words = crate::lexer::token_word_refs(trigger_core_tokens);
-    (words == ["you", "next", "attack"])
-        .then(|| TriggerSpec::AttacksOneOrMore(ObjectFilter::creature().you_control()))
+    if words == ["you", "next", "attack"] {
+        return Some(TriggerSpec::AttacksOneOrMore(ObjectFilter::creature().you_control()));
+    }
+    // An indefinite event subject denotes each actual attacker, without a
+    // target chosen when this delayed rule is created. The enclosing reader
+    // owns its duration and whether the event repeats.
+    if matches!(words.first(), Some(&"a") | Some(&"an"))
+        && words.last() == Some(&"attacks")
+        && let Some(verb) = trigger_core_tokens.iter().rposition(|token| token.is_word("attacks"))
+        && let Ok(filter) = parse_object_filter(&trigger_core_tokens[..verb], false)
+    {
+        crate::word_claims::claim_tokens(&trigger_core_tokens[verb..]);
+        return Some(TriggerSpec::Attacks(filter));
+    }
+    None
 }
 
 fn delayed_trigger_is_one_shot(trigger_clause: LexedClause<'_>) -> bool {
@@ -590,9 +603,58 @@ pub fn parse_next_activation_with_mana_spent_delayed_sentence(
     })]))
 }
 
+/// "When you next cast <spell filter>, <effect program>" has no turn expiry.
+/// The event filter and body each keep their ordinary independent readers.
+fn parse_unbounded_next_cast_sentence(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
+ let Some(comma)=tokens.iter().position(|token|token.is_comma()) else{return Ok(None)};
+ let head=&tokens[..comma];let words=crate::lexer::TokenWordView::new(head).word_refs();
+ if !words.starts_with(&["when","you","next","cast"]) || words.ends_with(&["this","turn"]) || words.ends_with(&["this","combat"]) {return Ok(None)}
+ // Remove only the temporal selector, whose one-shot meaning is represented
+ // by the delayed registration; ordinary trigger grammar owns the cast filter.
+ let view=crate::lexer::TokenWordView::new(head);let next=view.token_start_indices()[2];
+ let mut trigger_tokens=head[1..next].to_vec();trigger_tokens.extend_from_slice(&head[next+1..]);
+ let trigger=parse_trigger_clause_lexed(&trigger_tokens)?;
+ let effects=parse_effect_chain(&tokens[comma+1..])?;
+ if effects.is_empty(){return Err(CardTextError::ParseError("next-cast delayed trigger requires an effect program".into()))}
+ // This owner reads the actor and one-shot temporal header. The nested
+ // trigger reader owns the remaining filter; the effect reader owns its body.
+ let cast_end=view.token_start_indices()[3]+1;
+ crate::word_claims::claim_tokens(&head[..cast_end]);
+ Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration{
+  trigger,effects,one_shot:true,duration:crate::effect::Until::Forever,
+  either_of_watched_objects:false,while_any_tagged_object_in_zone:None,
+  source_collection_scope:None,
+ })]))
+}
+
+/// A definite previously-selected object can own an unbounded one-shot zone
+/// event. Ordinary trigger grammar determines the exact source/destination;
+/// the delayed body retains independent free-reference imports.
+fn parse_unbounded_referenced_zone_event(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
+ let Some(comma)=tokens.iter().position(|token|token.is_comma()) else{return Ok(None)};
+ let head=&tokens[..comma];let words=crate::lexer::TokenWordView::new(head).word_refs();
+ if !words.starts_with(&["when","that"]) || words.ends_with(&["this","turn"]) || words.ends_with(&["this","combat"]){return Ok(None)}
+ let Ok(trigger)=parse_trigger_clause_lexed(&head[1..]) else{return Ok(None)};
+ fn zone_event(trigger:&TriggerSpec)->bool{match trigger{
+  TriggerSpec::Dies(_)|TriggerSpec::PutIntoGraveyard(_)|TriggerSpec::PutIntoGraveyardFromZone{..}|TriggerSpec::LeavesBattlefield(_)|TriggerSpec::ZoneChange(_)=>true,
+  TriggerSpec::WithIntro{trigger,..}=>zone_event(trigger),_=>false,
+ }}
+ if !zone_event(&trigger){return Ok(None)}
+ let effects=parse_effect_chain(&tokens[comma+1..])?;
+ if effects.is_empty(){return Err(CardTextError::ParseError("referenced-object delayed trigger requires an effect program".into()))}
+ crate::word_claims::claim_tokens(&head[..1]);
+ Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration{
+  trigger,effects,one_shot:true,duration:crate::effect::Until::Forever,
+  either_of_watched_objects:false,while_any_tagged_object_in_zone:None,
+  source_collection_scope:None,
+ })]))
+}
+
 pub fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_unbounded_next_cast_sentence(tokens)? {return Ok(Some(effects));}
+    if let Some(effects) = parse_unbounded_referenced_zone_event(tokens)? {return Ok(Some(effects));}
     if let Some(effects) = parse_next_activation_with_mana_spent_delayed_sentence(tokens)? {
         return Ok(Some(effects));
     }
@@ -641,7 +703,7 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                 trigger, effects, one_shot: true,
                 duration: crate::effect::Until::Forever,
-                either_of_watched_objects: false, while_any_tagged_object_in_zone: None,
+                either_of_watched_objects: false, while_any_tagged_object_in_zone: None, source_collection_scope: None,
             })]));
         }
     }
@@ -1187,7 +1249,7 @@ pub fn parse_delayed_when_that_leaves_battlefield_sentence(
             one_shot: true,
             duration: crate::effect::Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None,
         })]));
     }
     let Some(shape) = delayed_shapes::parse_delayed_tagged_leaves_shape(tokens) else {

@@ -1,0 +1,1926 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "rules": "reports/cards/lackey-audit-2026-11-01/rev-rules.json",
+    "native_verification": "UNRUN"
+  },
+  "mechanics": [
+    {
+      "id": "rev-indulgence-177",
+      "keyword": "Indulgence",
+      "scope": "revolution",
+      "rule_reference": "702.212.",
+      "rule_text": {
+        "name": "702.212.",
+        "rule": "Indulgence",
+        "subrules": [
+          {
+            "name": "702.212a",
+            "rule": "Indulgence is a static ability found on some permanents.",
+            "custom": true
+          },
+          {
+            "name": "702.212b",
+            "rule": "As a player's end step begins, if they control any permanents with indulgence and they either gained 3 or more life or drew two or more cards this turn, that player “indulges.” Indulges is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Catacomb Stewards",
+          "Conspiracy of Wealth",
+          "Decadent Duchess",
+          "Divine Rule",
+          "Enlightened Contributor",
+          "Feast of Whispered Knives",
+          "Foundation Magistrate",
+          "Glauna, Decadent Demon",
+          "Gustav, Pactmaker",
+          "Highborn Cavalry",
+          "Lavish Host",
+          "Lost in the Moment",
+          "Maelle, Opulent Stoneshaper",
+          "Noemie Beauclaire",
+          "Pagentry Golem",
+          "Palace Gargoyle",
+          "Patron of the Sciences",
+          "Sponsored Apprentice",
+          "The Beauclaire Family",
+          "Vivaire, Sanguine Patriarch",
+          "Vivaire's Hedonist",
+          "Waltzing Marquise"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.",
+      "executable_reminder": "As your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability.",
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Complete exact 702 source-authored policy; all original bodies and seed identity retained. Generic player history, phase boundary policy and persistent ordinary characteristic effects; source/native checks await parent execution."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Catacomb Stewards_DOV",
+          "name": "Catacomb Stewards",
+          "original_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}{B}\nPower/Toughness: 3/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may return target creature card from your graveyard to your hand.",
+          "executable_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}{B}\nPower/Toughness: 3/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may return target creature card from your graveyard to your hand.",
+          "source_card_key": "rev:Catacomb Stewards_DOV",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "Catacomb Stewards",
+              "original_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}{B}\nPower/Toughness: 3/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may return target creature card from your graveyard to your hand.",
+              "source_face_key": "Catacomb Stewards_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nIndulgence\nWhenever you indulge, you may return target creature card from your graveyard to your hand.",
+          "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may return target creature card from your graveyard to your hand.",
+          "executable_faces": [
+            {
+              "name": "Catacomb Stewards",
+              "executable_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}{B}\nPower/Toughness: 3/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may return target creature card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nIndulgence\nWhenever you indulge, you may return target creature card from your graveyard to your hand.",
+              "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may return target creature card from your graveyard to your hand."
+            }
+          ]
+        },
+        {
+          "id": "rev:Conspiracy of Wealth_DOV",
+          "name": "Conspiracy of Wealth",
+          "original_text": "Type: Enchantment\nMana cost: {B}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you indulge, you may exile target card from a graveyard.",
+          "source_card_key": "rev:Conspiracy of Wealth_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment\nMana cost: {B}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you perform the indulge action, you may exile target card from a graveyard.",
+          "source_faces": [
+            {
+              "name": "Conspiracy of Wealth",
+              "original_text": "Type: Enchantment\nMana cost: {B}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you indulge, you may exile target card from a graveyard.",
+              "source_face_key": "Conspiracy of Wealth_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you indulge, you may exile target card from a graveyard.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you indulge, you may exile target card from a graveyard.",
+          "executable_faces": [
+            {
+              "name": "Conspiracy of Wealth",
+              "executable_text": "Type: Enchantment\nMana cost: {B}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you perform the indulge action, you may exile target card from a graveyard.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you indulge, you may exile target card from a graveyard.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhen Conspiracy of Wealth enters, draw a card.\nWhenever you indulge, you may exile target card from a graveyard."
+            }
+          ]
+        },
+        {
+          "id": "rev:Decadent Duchess_DOV",
+          "name": "Decadent Duchess",
+          "original_text": "Type: Creature — Human Noble \nMana cost: {2}{W}\nPower/Toughness: 3/2\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on target creature you control.",
+          "source_card_key": "rev:Decadent Duchess_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble \nMana cost: {2}{W}\nPower/Toughness: 3/2\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on target creature you control.",
+          "source_faces": [
+            {
+              "name": "Decadent Duchess",
+              "original_text": "Type: Creature — Human Noble \nMana cost: {2}{W}\nPower/Toughness: 3/2\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on target creature you control.",
+              "source_face_key": "Decadent Duchess_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, put a +1/+1 counter on target creature you control.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on target creature you control.",
+          "executable_faces": [
+            {
+              "name": "Decadent Duchess",
+              "executable_text": "Type: Creature — Human Noble \nMana cost: {2}{W}\nPower/Toughness: 3/2\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on target creature you control.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, put a +1/+1 counter on target creature you control.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on target creature you control."
+            }
+          ]
+        },
+        {
+          "id": "rev:Divine Rule_DOV",
+          "name": "Divine Rule",
+          "original_text": "Type: Legendary Enchantment\nMana cost: {3}{W}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you indulge, create a 4/4 white Angel creature token with flying.",
+          "source_card_key": "rev:Divine Rule_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Enchantment\nMana cost: {3}{W}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you perform the indulge action, create a 4/4 white Angel creature token with flying.",
+          "source_faces": [
+            {
+              "name": "Divine Rule",
+              "original_text": "Type: Legendary Enchantment\nMana cost: {3}{W}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you indulge, create a 4/4 white Angel creature token with flying.",
+              "source_face_key": "Divine Rule_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you indulge, create a 4/4 white Angel creature token with flying.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you indulge, create a 4/4 white Angel creature token with flying.",
+          "executable_faces": [
+            {
+              "name": "Divine Rule",
+              "executable_text": "Type: Legendary Enchantment\nMana cost: {3}{W}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you perform the indulge action, create a 4/4 white Angel creature token with flying.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you indulge, create a 4/4 white Angel creature token with flying.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nIf a source an opponent controls would deal damage to you, prevent 1 of that damage.\nWhenever you indulge, create a 4/4 white Angel creature token with flying."
+            }
+          ]
+        },
+        {
+          "id": "rev:Enlightened Contributor_DOV",
+          "name": "Enlightened Contributor",
+          "original_text": "Type: Creature — Human Noble Wizard \nMana cost: {2}{U}\nPower/Toughness: 3/2\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, surveil 2. *(Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)*",
+          "source_card_key": "rev:Enlightened Contributor_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble Wizard \nMana cost: {2}{U}\nPower/Toughness: 3/2\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, surveil 2.",
+          "source_faces": [
+            {
+              "name": "Enlightened Contributor",
+              "original_text": "Type: Creature — Human Noble Wizard \nMana cost: {2}{U}\nPower/Toughness: 3/2\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, surveil 2. *(Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)*",
+              "source_face_key": "Enlightened Contributor_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, surveil 2.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, surveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
+          "executable_faces": [
+            {
+              "name": "Enlightened Contributor",
+              "executable_text": "Type: Creature — Human Noble Wizard \nMana cost: {2}{U}\nPower/Toughness: 3/2\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, surveil 2.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, surveil 2.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, surveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)"
+            }
+          ]
+        },
+        {
+          "id": "rev:Feast of Whispered Knives_DOV",
+          "name": "Feast of Whispered Knives",
+          "original_text": "Type: Legendary Enchantment\nMana cost: {1}{B}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+          "source_card_key": "rev:Feast of Whispered Knives_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Enchantment\nMana cost: {1}{B}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+          "source_faces": [
+            {
+              "name": "Feast of Whispered Knives",
+              "original_text": "Type: Legendary Enchantment\nMana cost: {1}{B}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+              "source_face_key": "Feast of Whispered Knives_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Feast of Whispered Knives",
+              "executable_text": "Type: Legendary Enchantment\nMana cost: {1}{B}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, choose one —\n• Scry 2. Each opponent loses 2 life.\n• Create a tapped 2/1 black Rogue creature token with menace.\n• Target creature gets -2/-2 until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Foundation Magistrate_DOV",
+          "name": "Foundation Magistrate",
+          "original_text": "Type: Creature — Human Noble Wizard \nMana cost: {3}{U}{U}\nPower/Toughness: 4/5\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+          "source_card_key": "rev:Foundation Magistrate_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble Wizard \nMana cost: {3}{U}{U}\nPower/Toughness: 4/5\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Foundation Magistrate",
+              "original_text": "Type: Creature — Human Noble Wizard \nMana cost: {3}{U}{U}\nPower/Toughness: 4/5\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+              "source_face_key": "Foundation Magistrate_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Foundation Magistrate",
+              "executable_text": "Type: Creature — Human Noble Wizard \nMana cost: {3}{U}{U}\nPower/Toughness: 4/5\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may exile target instant or sorcery card from your graveyard. If you do, cast a copy of that card without paying its mana cost."
+            }
+          ]
+        },
+        {
+          "id": "rev:Glauna, Decadent Demon_DOV",
+          "name": "Glauna, Decadent Demon",
+          "original_text": "Type: Legendary Planeswalker — Glauna \nMana cost: {1}{B}{B}\nLoyalty: 3\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+          "source_card_key": "rev:Glauna, Decadent Demon_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Planeswalker — Glauna \nMana cost: {1}{B}{B}\nLoyalty: 3\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+          "source_faces": [
+            {
+              "name": "Glauna, Decadent Demon",
+              "original_text": "Type: Legendary Planeswalker — Glauna \nMana cost: {1}{B}{B}\nLoyalty: 3\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+              "source_face_key": "Glauna, Decadent Demon_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+          "executable_faces": [
+            {
+              "name": "Glauna, Decadent Demon",
+              "executable_text": "Type: Legendary Planeswalker — Glauna \nMana cost: {1}{B}{B}\nLoyalty: 3\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a loyalty counter on Glauna, Decadent Demon.\n[-1]: Create a 2/1 black Imp creature token with flying and “This creature can't block.”\n[-2]: Destroy target creature or planeswalker. Its controller loses 2 life."
+            }
+          ]
+        },
+        {
+          "id": "rev:Gustav, Pactmaker_DOV",
+          "name": "Gustav, Pactmaker",
+          "original_text": "Type: Legendary Creature — Human Noble Warlock \nMana cost: {3}{U}{B}\nPower/Toughness: 5/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+          "source_card_key": "rev:Gustav, Pactmaker_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Human Noble Warlock \nMana cost: {3}{U}{B}\nPower/Toughness: 5/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+          "source_faces": [
+            {
+              "name": "Gustav, Pactmaker",
+              "original_text": "Type: Legendary Creature — Human Noble Warlock \nMana cost: {3}{U}{B}\nPower/Toughness: 5/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+              "source_face_key": "Gustav, Pactmaker_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nIndulgence\nWhenever you indulge, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+          "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+          "executable_faces": [
+            {
+              "name": "Gustav, Pactmaker",
+              "executable_text": "Type: Legendary Creature — Human Noble Warlock \nMana cost: {3}{U}{B}\nPower/Toughness: 5/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nIndulgence\nWhenever you indulge, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+              "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, look at the top seven cards of your library. You may reveal an instant, sorcery, Demon, or Glauna card from among them and put it into your hand. Put the rest on the bottom of your library in a random order."
+            }
+          ]
+        },
+        {
+          "id": "rev:Highborn Cavalry_DOV",
+          "name": "Highborn Cavalry",
+          "original_text": "Type: Creature — Human Noble Knight \nMana cost: {4}{W}{W}\nPower/Toughness: 4/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on each other creature you control.",
+          "source_card_key": "rev:Highborn Cavalry_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble Knight \nMana cost: {4}{W}{W}\nPower/Toughness: 4/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on each other creature you control.",
+          "source_faces": [
+            {
+              "name": "Highborn Cavalry",
+              "original_text": "Type: Creature — Human Noble Knight \nMana cost: {4}{W}{W}\nPower/Toughness: 4/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on each other creature you control.",
+              "source_face_key": "Highborn Cavalry_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nIndulgence\nWhenever you indulge, put a +1/+1 counter on each other creature you control.",
+          "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on each other creature you control.",
+          "executable_faces": [
+            {
+              "name": "Highborn Cavalry",
+              "executable_text": "Type: Creature — Human Noble Knight \nMana cost: {4}{W}{W}\nPower/Toughness: 4/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on each other creature you control.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nIndulgence\nWhenever you indulge, put a +1/+1 counter on each other creature you control.",
+              "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on each other creature you control."
+            }
+          ]
+        },
+        {
+          "id": "rev:Lavish Host_DOV",
+          "name": "Lavish Host",
+          "original_text": "Type: Creature — Human Noble \nMana cost: {1}{B}\nPower/Toughness: 2/1\nMenace\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on Lavish Host.",
+          "source_card_key": "rev:Lavish Host_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble \nMana cost: {1}{B}\nPower/Toughness: 2/1\nMenace\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on Lavish Host.",
+          "source_faces": [
+            {
+              "name": "Lavish Host",
+              "original_text": "Type: Creature — Human Noble \nMana cost: {1}{B}\nPower/Toughness: 2/1\nMenace\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on Lavish Host.",
+              "source_face_key": "Lavish Host_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nIndulgence\nWhenever you indulge, put a +1/+1 counter on Lavish Host.",
+          "original_printed_rules_text": "Menace\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on Lavish Host.",
+          "executable_faces": [
+            {
+              "name": "Lavish Host",
+              "executable_text": "Type: Creature — Human Noble \nMana cost: {1}{B}\nPower/Toughness: 2/1\nMenace\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on Lavish Host.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nIndulgence\nWhenever you indulge, put a +1/+1 counter on Lavish Host.",
+              "original_printed_rules_text": "Menace\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on Lavish Host."
+            }
+          ]
+        },
+        {
+          "id": "rev:Lost in the Moment_DOV",
+          "name": "Lost in the Moment",
+          "original_text": "Type: Enchantment\nMana cost: {1}{U}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you indulge, each opponent mills four cards. *(Those players put the top four cards from their library into their graveyard.)*",
+          "source_card_key": "rev:Lost in the Moment_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment\nMana cost: {1}{U}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you perform the indulge action, each opponent mills four cards.",
+          "source_faces": [
+            {
+              "name": "Lost in the Moment",
+              "original_text": "Type: Enchantment\nMana cost: {1}{U}\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you indulge, each opponent mills four cards. *(Those players put the top four cards from their library into their graveyard.)*",
+              "source_face_key": "Lost in the Moment_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you indulge, each opponent mills four cards.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you indulge, each opponent mills four cards. (Those players put the top four cards from their library into their graveyard.)",
+          "executable_faces": [
+            {
+              "name": "Lost in the Moment",
+              "executable_text": "Type: Enchantment\nMana cost: {1}{U}\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you perform the indulge action, each opponent mills four cards.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you indulge, each opponent mills four cards.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhen Lost in the Moment enters, draw a card then discard a card.\nWhenever you indulge, each opponent mills four cards. (Those players put the top four cards from their library into their graveyard.)"
+            }
+          ]
+        },
+        {
+          "id": "rev:Maelle, Opulent Stoneshaper_DOV",
+          "name": "Maelle, Opulent Stoneshaper",
+          "original_text": "Type: Legendary Creature — Human Noble Artificer \nMana cost: {1}{W}{U}\nPower/Toughness: 2/4\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, create a 1/1 blue Gargoyle artifact creature token with flying.",
+          "source_card_key": "rev:Maelle, Opulent Stoneshaper_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Human Noble Artificer \nMana cost: {1}{W}{U}\nPower/Toughness: 2/4\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, create a 1/1 blue Gargoyle artifact creature token with flying.",
+          "source_faces": [
+            {
+              "name": "Maelle, Opulent Stoneshaper",
+              "original_text": "Type: Legendary Creature — Human Noble Artificer \nMana cost: {1}{W}{U}\nPower/Toughness: 2/4\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, create a 1/1 blue Gargoyle artifact creature token with flying.",
+              "source_face_key": "Maelle, Opulent Stoneshaper_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, create a 1/1 blue Gargoyle artifact creature token with flying.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, create a 1/1 blue Gargoyle artifact creature token with flying.",
+          "executable_faces": [
+            {
+              "name": "Maelle, Opulent Stoneshaper",
+              "executable_text": "Type: Legendary Creature — Human Noble Artificer \nMana cost: {1}{W}{U}\nPower/Toughness: 2/4\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, create a 1/1 blue Gargoyle artifact creature token with flying.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, create a 1/1 blue Gargoyle artifact creature token with flying.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, create a 1/1 blue Gargoyle artifact creature token with flying."
+            }
+          ]
+        },
+        {
+          "id": "rev:Noemie Beauclaire_DOV",
+          "name": "Noemie Beauclaire",
+          "original_text": "Type: Legendary Creature — Human Noble Rogue \nMana cost: {1}{U}{B}\nPower/Toughness: 3/3\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+          "source_card_key": "rev:Noemie Beauclaire_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Human Noble Rogue \nMana cost: {1}{U}{B}\nPower/Toughness: 3/3\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+          "source_faces": [
+            {
+              "name": "Noemie Beauclaire",
+              "original_text": "Type: Legendary Creature — Human Noble Rogue \nMana cost: {1}{U}{B}\nPower/Toughness: 3/3\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+              "source_face_key": "Noemie Beauclaire_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+          "executable_faces": [
+            {
+              "name": "Noemie Beauclaire",
+              "executable_text": "Type: Legendary Creature — Human Noble Rogue \nMana cost: {1}{U}{B}\nPower/Toughness: 3/3\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may put a toxin counter on target creature an opponent controls. Surveil 1.\nCreatures your opponents control get -1/-1 for each toxin counter on them."
+            }
+          ]
+        },
+        {
+          "id": "rev:Pagentry Golem_DOV",
+          "name": "Pagentry Golem",
+          "original_text": "Type: Artifact Creature — Golem Noble \nMana cost: {4}\nPower/Toughness: 3/3\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, create a tapped token that's a copy of Pagentry Golem.",
+          "source_card_key": "rev:Pagentry Golem_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Artifact Creature — Golem Noble \nMana cost: {4}\nPower/Toughness: 3/3\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, create a tapped token that's a copy of Pagentry Golem.",
+          "source_faces": [
+            {
+              "name": "Pagentry Golem",
+              "original_text": "Type: Artifact Creature — Golem Noble \nMana cost: {4}\nPower/Toughness: 3/3\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, create a tapped token that's a copy of Pagentry Golem.",
+              "source_face_key": "Pagentry Golem_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, create a tapped token that's a copy of Pagentry Golem.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, create a tapped token that's a copy of Pagentry Golem.",
+          "executable_faces": [
+            {
+              "name": "Pagentry Golem",
+              "executable_text": "Type: Artifact Creature — Golem Noble \nMana cost: {4}\nPower/Toughness: 3/3\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, create a tapped token that's a copy of Pagentry Golem.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, create a tapped token that's a copy of Pagentry Golem.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, create a tapped token that's a copy of Pagentry Golem."
+            }
+          ]
+        },
+        {
+          "id": "rev:Palace Gargoyle_DOV",
+          "name": "Palace Gargoyle",
+          "original_text": "Type: Artifact Creature — Gargoyle \nMana cost: {W}{U}\nPower/Toughness: 4/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nPalace Gargoyle can't attack or block unless you indulged during your last turn.",
+          "source_card_key": "rev:Palace Gargoyle_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Artifact Creature — Gargoyle \nMana cost: {W}{U}\nPower/Toughness: 4/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nPalace Gargoyle can't attack or block unless you have performed the indulge action during your last turn.",
+          "source_faces": [
+            {
+              "name": "Palace Gargoyle",
+              "original_text": "Type: Artifact Creature — Gargoyle \nMana cost: {W}{U}\nPower/Toughness: 4/5\nFlying\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nPalace Gargoyle can't attack or block unless you indulged during your last turn.",
+              "source_face_key": "Palace Gargoyle_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nIndulgence\nPalace Gargoyle can't attack or block unless you indulged during your last turn.",
+          "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nPalace Gargoyle can't attack or block unless you indulged during your last turn.",
+          "executable_faces": [
+            {
+              "name": "Palace Gargoyle",
+              "executable_text": "Type: Artifact Creature — Gargoyle \nMana cost: {W}{U}\nPower/Toughness: 4/5\nFlying\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nPalace Gargoyle can't attack or block unless you have performed the indulge action during your last turn.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nIndulgence\nPalace Gargoyle can't attack or block unless you indulged during your last turn.",
+              "original_printed_rules_text": "Flying\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nPalace Gargoyle can't attack or block unless you indulged during your last turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Patron of the Sciences_DOV",
+          "name": "Patron of the Sciences",
+          "original_text": "Type: Creature — Human Noble \nMana cost: {1}{U}\nPower/Toughness: 1/4\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, create a Treasure token. *(It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)*",
+          "source_card_key": "rev:Patron of the Sciences_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble \nMana cost: {1}{U}\nPower/Toughness: 1/4\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, create a Treasure token.",
+          "source_faces": [
+            {
+              "name": "Patron of the Sciences",
+              "original_text": "Type: Creature — Human Noble \nMana cost: {1}{U}\nPower/Toughness: 1/4\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, create a Treasure token. *(It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)*",
+              "source_face_key": "Patron of the Sciences_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, create a Treasure token.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, create a Treasure token. (It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)",
+          "executable_faces": [
+            {
+              "name": "Patron of the Sciences",
+              "executable_text": "Type: Creature — Human Noble \nMana cost: {1}{U}\nPower/Toughness: 1/4\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, create a Treasure token.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, create a Treasure token.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, create a Treasure token. (It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)"
+            }
+          ]
+        },
+        {
+          "id": "rev:Sponsored Apprentice_DOV",
+          "name": "Sponsored Apprentice",
+          "original_text": "Type: Creature — Human Noble Wizard \nMana cost: {4}{U}\nPower/Toughness: 3/5\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+          "source_card_key": "rev:Sponsored Apprentice_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble Wizard \nMana cost: {4}{U}\nPower/Toughness: 3/5\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+          "source_faces": [
+            {
+              "name": "Sponsored Apprentice",
+              "original_text": "Type: Creature — Human Noble Wizard \nMana cost: {4}{U}\nPower/Toughness: 3/5\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+              "source_face_key": "Sponsored Apprentice_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+          "executable_faces": [
+            {
+              "name": "Sponsored Apprentice",
+              "executable_text": "Type: Creature — Human Noble Wizard \nMana cost: {4}{U}\nPower/Toughness: 3/5\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may tap target artifact or creature. That permanent doesn't untap during its controller's next untap step."
+            }
+          ]
+        },
+        {
+          "id": "rev:The Beauclaire Family_DOV",
+          "name": "The Beauclaire Family",
+          "original_text": "Type: Legendary Creature — Human Noble \nMana cost: {2}{W}{U}{B}\nPower/Toughness: 3/6\nLifelink\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+          "source_card_key": "rev:The Beauclaire Family_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Human Noble \nMana cost: {2}{W}{U}{B}\nPower/Toughness: 3/6\nLifelink\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+          "source_faces": [
+            {
+              "name": "The Beauclaire Family",
+              "original_text": "Type: Legendary Creature — Human Noble \nMana cost: {2}{W}{U}{B}\nPower/Toughness: 3/6\nLifelink\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+              "source_face_key": "The Beauclaire Family_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Lifelink\nIndulgence\nWhenever you indulge, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+          "original_printed_rules_text": "Lifelink\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+          "executable_faces": [
+            {
+              "name": "The Beauclaire Family",
+              "executable_text": "Type: Legendary Creature — Human Noble \nMana cost: {2}{W}{U}{B}\nPower/Toughness: 3/6\nLifelink\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lifelink\nIndulgence\nWhenever you indulge, you may gain control of target nonland permanent for as long as you control The Beauclaire Family.",
+              "original_printed_rules_text": "Lifelink\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may gain control of target nonland permanent for as long as you control The Beauclaire Family."
+            }
+          ]
+        },
+        {
+          "id": "rev:Vivaire, Sanguine Patriarch_DOV",
+          "name": "Vivaire, Sanguine Patriarch",
+          "original_text": "Type: Legendary Creature — Vampire Noble \nMana cost: {1}{W}{B}\nPower/Toughness: 2/3\nLifelink, deathtouch\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on each Noble you control.",
+          "source_card_key": "rev:Vivaire, Sanguine Patriarch_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Vampire Noble \nMana cost: {1}{W}{B}\nPower/Toughness: 2/3\nLifelink, deathtouch\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on each Noble you control.",
+          "source_faces": [
+            {
+              "name": "Vivaire, Sanguine Patriarch",
+              "original_text": "Type: Legendary Creature — Vampire Noble \nMana cost: {1}{W}{B}\nPower/Toughness: 2/3\nLifelink, deathtouch\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, put a +1/+1 counter on each Noble you control.",
+              "source_face_key": "Vivaire, Sanguine Patriarch_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Lifelink, deathtouch\nIndulgence\nWhenever you indulge, put a +1/+1 counter on each Noble you control.",
+          "original_printed_rules_text": "Lifelink, deathtouch\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on each Noble you control.",
+          "executable_faces": [
+            {
+              "name": "Vivaire, Sanguine Patriarch",
+              "executable_text": "Type: Legendary Creature — Vampire Noble \nMana cost: {1}{W}{B}\nPower/Toughness: 2/3\nLifelink, deathtouch\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, put a +1/+1 counter on each Noble you control.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lifelink, deathtouch\nIndulgence\nWhenever you indulge, put a +1/+1 counter on each Noble you control.",
+              "original_printed_rules_text": "Lifelink, deathtouch\nIndulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, put a +1/+1 counter on each Noble you control."
+            }
+          ]
+        },
+        {
+          "id": "rev:Vivaire's Hedonist_DOV",
+          "name": "Vivaire's Hedonist",
+          "original_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}\nPower/Toughness: 3/4\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, each opponent loses 2 life.",
+          "source_card_key": "rev:Vivaire's Hedonist_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}\nPower/Toughness: 3/4\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, each opponent loses 2 life.",
+          "source_faces": [
+            {
+              "name": "Vivaire's Hedonist",
+              "original_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}\nPower/Toughness: 3/4\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, each opponent loses 2 life.",
+              "source_face_key": "Vivaire's Hedonist_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, each opponent loses 2 life.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, each opponent loses 2 life.",
+          "executable_faces": [
+            {
+              "name": "Vivaire's Hedonist",
+              "executable_text": "Type: Creature — Vampire Noble \nMana cost: {3}{B}\nPower/Toughness: 3/4\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, each opponent loses 2 life.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, each opponent loses 2 life.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, each opponent loses 2 life."
+            }
+          ]
+        },
+        {
+          "id": "rev:Waltzing Marquise_DOV",
+          "name": "Waltzing Marquise",
+          "original_text": "Type: Creature — Human Noble \nMana cost: {3}{W}\nPower/Toughness: 2/5\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may untap target permanent you control.",
+          "source_card_key": "rev:Waltzing Marquise_DOV",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Noble \nMana cost: {3}{W}\nPower/Toughness: 2/5\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may untap target permanent you control.",
+          "source_faces": [
+            {
+              "name": "Waltzing Marquise",
+              "original_text": "Type: Creature — Human Noble \nMana cost: {3}{W}\nPower/Toughness: 2/5\nIndulgence *(You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)*\nWhenever you indulge, you may untap target permanent you control.",
+              "source_face_key": "Waltzing Marquise_DOV:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "indulgence"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Indulgence\nWhenever you indulge, you may untap target permanent you control.",
+          "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may untap target permanent you control.",
+          "executable_faces": [
+            {
+              "name": "Waltzing Marquise",
+              "executable_text": "Type: Creature — Human Noble \nMana cost: {3}{W}\nPower/Toughness: 2/5\nAs your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability\nWhenever you perform the indulge action, you may untap target permanent you control.",
+              "custom_keyword_identities": [
+                "indulgence"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Indulgence\nWhenever you indulge, you may untap target permanent you control.",
+              "original_printed_rules_text": "Indulgence (You indulge at the beginning of your end step if you gained 3 or more life and/or drew two or more cards this turn.)\nWhenever you indulge, you may untap target permanent you control."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Catacomb Stewards",
+        "Conspiracy of Wealth",
+        "Decadent Duchess",
+        "Divine Rule",
+        "Enlightened Contributor",
+        "Feast of Whispered Knives",
+        "Foundation Magistrate",
+        "Glauna, Decadent Demon",
+        "Gustav, Pactmaker",
+        "Highborn Cavalry",
+        "Lavish Host",
+        "Lost in the Moment",
+        "Maelle, Opulent Stoneshaper",
+        "Noemie Beauclaire",
+        "Pagentry Golem",
+        "Palace Gargoyle",
+        "Patron of the Sciences",
+        "Sponsored Apprentice",
+        "The Beauclaire Family",
+        "Vivaire, Sanguine Patriarch",
+        "Vivaire's Hedonist",
+        "Waltzing Marquise"
+      ],
+      "behavioral_assertions": [
+        "All exact physical source faces compile strictly through independent native and serialized artifact routes.",
+        "Multiple providers produce exactly one action per eligible player at the actual boundary; life>=3 OR cards drawn>=2; last own turn history survives other players turns."
+      ],
+      "test_status": "native_unverified",
+      "support_status": "equivalent_reminder_candidate",
+      "ordinary_operation_mapping": "One player designation/event as that player end step begins if any controlled permanent has the ability and life gained >=3 OR cards drawn >=2. Multiple indulgence sources must produce one event, while each watcher triggers independently.",
+      "executable_definitions": [
+        {
+          "keyword": "Indulgence",
+          "reminder": "As your end step begins, if you gained 3 or more life this turn or you drew 2 or more cards this turn, you perform the indulge action once rather than once for each permanent with this ability.",
+          "forms": {
+            "eventVerb": "indulge",
+            "eventLabel": "indulge",
+            "participle": "indulged"
+          }
+        }
+      ],
+      "inventory_selection": "complete_source_overlay"
+    },
+    {
+      "id": "rev-favored-178",
+      "keyword": "Favored",
+      "scope": "revolution",
+      "rule_reference": "702.213.",
+      "rule_text": {
+        "name": "702.213.",
+        "rule": "Favored",
+        "subrules": [
+          {
+            "name": "702.213a",
+            "rule": "Favored is a triggered ability. “Favored” means “At the beginning of each of your combats, if you haven't chosen a Champion this combat, you may choose a nonlegendary creature you control to be your Champion. As long as that creature remains on the battlefield, it gets +1/+1, becomes legendary, and its name becomes The Champion.",
+            "custom": true
+          },
+          {
+            "name": "702.213b",
+            "rule": "Some effects refer to “your Champion.” This means “a permanent you control named The Champion.”",
+            "custom": true
+          },
+          {
+            "name": "702.213c",
+            "rule": "The Champion will continue to get +1/+1, be legendary, and be named the Champion as long as it remains on the battlefield, but it will only be considered “your Champion” for the player that currently controls it, regardless of if they chose it as their Champion or not.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alseid of Stilled Hearts",
+          "Apprentice of the Forge-God",
+          "Archon of the Legion",
+          "Audience at Zakros",
+          "Axiomene, Syrurian Tyrant",
+          "Eidolon of Graceful Steps",
+          "Guardians of Zakros",
+          "Hekatan Demagogue",
+          "Hero in the Making",
+          "Iara, Blessed-Hart",
+          "Invest in the Future",
+          "Labyrinthine Hydra",
+          "Nessian Scout-Captain",
+          "Petraform Hermit",
+          "Prince of the Pride",
+          "Slighos the Body-Binder",
+          "Stoic Phylaskia",
+          "Sunbeam Alseid"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”",
+      "executable_reminder": "At the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion.",
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Complete exact 702 source-authored policy; all original bodies and seed identity retained. Generic player history, phase boundary policy and persistent ordinary characteristic effects; source/native checks await parent execution."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Alseid of Stilled Hearts_TRX",
+          "name": "Alseid of Stilled Hearts",
+          "original_text": "Type: Enchantment Creature — Nymph \nMana cost: {2}{W}\nPower/Toughness: 2/2\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, tap target creature.",
+          "executable_text": "Type: Enchantment Creature — Nymph \nMana cost: {2}{W}\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, tap target creature.",
+          "source_card_key": "rev:Alseid of Stilled Hearts_TRX",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "Alseid of Stilled Hearts",
+              "original_text": "Type: Enchantment Creature — Nymph \nMana cost: {2}{W}\nPower/Toughness: 2/2\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, tap target creature.",
+              "source_face_key": "Alseid of Stilled Hearts_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion attacks, tap target creature.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, tap target creature.",
+          "executable_faces": [
+            {
+              "name": "Alseid of Stilled Hearts",
+              "executable_text": "Type: Enchantment Creature — Nymph \nMana cost: {2}{W}\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, tap target creature.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion attacks, tap target creature.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, tap target creature."
+            }
+          ]
+        },
+        {
+          "id": "rev:Apprentice of the Forge-God_TRX",
+          "name": "Apprentice of the Forge-God",
+          "original_text": "Type: Creature — Giant Artificer \nMana cost: {2}{R}{R}\nPower/Toughness: 4/4\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion deals combat damage to a player, create that many Treasure tokens.",
+          "source_card_key": "rev:Apprentice of the Forge-God_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Giant Artificer \nMana cost: {2}{R}{R}\nPower/Toughness: 4/4\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" deals combat damage to a player, create that many Treasure tokens.",
+          "source_faces": [
+            {
+              "name": "Apprentice of the Forge-God",
+              "original_text": "Type: Creature — Giant Artificer \nMana cost: {2}{R}{R}\nPower/Toughness: 4/4\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion deals combat damage to a player, create that many Treasure tokens.",
+              "source_face_key": "Apprentice of the Forge-God_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion deals combat damage to a player, create that many Treasure tokens.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion deals combat damage to a player, create that many Treasure tokens.",
+          "executable_faces": [
+            {
+              "name": "Apprentice of the Forge-God",
+              "executable_text": "Type: Creature — Giant Artificer \nMana cost: {2}{R}{R}\nPower/Toughness: 4/4\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" deals combat damage to a player, create that many Treasure tokens.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion deals combat damage to a player, create that many Treasure tokens.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion deals combat damage to a player, create that many Treasure tokens."
+            }
+          ]
+        },
+        {
+          "id": "rev:Archon of the Legion_TRX",
+          "name": "Archon of the Legion",
+          "original_text": "Type: Creature — Archon \nMana cost: {3}{W}{W}\nPower/Toughness: 3/3\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+          "source_card_key": "rev:Archon of the Legion_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Archon \nMana cost: {3}{W}{W}\nPower/Toughness: 3/3\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+          "source_faces": [
+            {
+              "name": "Archon of the Legion",
+              "original_text": "Type: Creature — Archon \nMana cost: {3}{W}{W}\nPower/Toughness: 3/3\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+              "source_face_key": "Archon of the Legion_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nFavored\nWhenever your Champion attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+          "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+          "executable_faces": [
+            {
+              "name": "Archon of the Legion",
+              "executable_text": "Type: Creature — Archon \nMana cost: {3}{W}{W}\nPower/Toughness: 3/3\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nFavored\nWhenever your Champion attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control.",
+              "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, create a 0/0 white Army creature token, then put a +1/+1 counter on each Army you control."
+            }
+          ]
+        },
+        {
+          "id": "rev:Audience at Zakros_TRX",
+          "name": "Audience at Zakros",
+          "original_text": "Type: Enchantment\nMana cost: {4}{R}{R}\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+          "source_card_key": "rev:Audience at Zakros_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment\nMana cost: {4}{R}{R}\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+          "source_faces": [
+            {
+              "name": "Audience at Zakros",
+              "original_text": "Type: Enchantment\nMana cost: {4}{R}{R}\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+              "source_face_key": "Audience at Zakros_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+          "executable_faces": [
+            {
+              "name": "Audience at Zakros",
+              "executable_text": "Type: Enchantment\nMana cost: {4}{R}{R}\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever a legendary creature you control attacks, create a tapped and attacking token that's a copy of that creature, except it's not legendary and is an enchantment in addition to its other types."
+            }
+          ]
+        },
+        {
+          "id": "rev:Axiomene, Syrurian Tyrant_TRX",
+          "name": "Axiomene, Syrurian Tyrant",
+          "original_text": "Type: Legendary Creature — Demon \nMana cost: {B}{B}{B}\nPower/Toughness: 2/2\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+          "source_card_key": "rev:Axiomene, Syrurian Tyrant_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Demon \nMana cost: {B}{B}{B}\nPower/Toughness: 2/2\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+          "source_faces": [
+            {
+              "name": "Axiomene, Syrurian Tyrant",
+              "original_text": "Type: Legendary Creature — Demon \nMana cost: {B}{B}{B}\nPower/Toughness: 2/2\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+              "source_face_key": "Axiomene, Syrurian Tyrant_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nFavored\nWhenever your Champion attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+          "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+          "executable_faces": [
+            {
+              "name": "Axiomene, Syrurian Tyrant",
+              "executable_text": "Type: Legendary Creature — Demon \nMana cost: {B}{B}{B}\nPower/Toughness: 2/2\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nFavored\nWhenever your Champion attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step.",
+              "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, you may double its power until end of turn. If you do, sacrifice it at the beginning of the next end step."
+            }
+          ]
+        },
+        {
+          "id": "rev:Eidolon of Graceful Steps_TRX",
+          "name": "Eidolon of Graceful Steps",
+          "original_text": "Type: Enchantment Creature — Spirit \nMana cost: {3}{U}\nPower/Toughness: 2/2\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, it can't be blocked this turn.",
+          "source_card_key": "rev:Eidolon of Graceful Steps_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment Creature — Spirit \nMana cost: {3}{U}\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, it can't be blocked this turn.",
+          "source_faces": [
+            {
+              "name": "Eidolon of Graceful Steps",
+              "original_text": "Type: Enchantment Creature — Spirit \nMana cost: {3}{U}\nPower/Toughness: 2/2\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, it can't be blocked this turn.",
+              "source_face_key": "Eidolon of Graceful Steps_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion attacks, it can't be blocked this turn.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, it can't be blocked this turn.",
+          "executable_faces": [
+            {
+              "name": "Eidolon of Graceful Steps",
+              "executable_text": "Type: Enchantment Creature — Spirit \nMana cost: {3}{U}\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, it can't be blocked this turn.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion attacks, it can't be blocked this turn.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, it can't be blocked this turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Guardians of Zakros_TRX",
+          "name": "Guardians of Zakros",
+          "original_text": "Type: Creature — Cyclops Warrior \nMana cost: {4}{R}\nPower/Toughness: 5/3\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nLegendary creatures you control have trample.",
+          "source_card_key": "rev:Guardians of Zakros_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Cyclops Warrior \nMana cost: {4}{R}\nPower/Toughness: 5/3\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nLegendary creatures you control have trample.",
+          "source_faces": [
+            {
+              "name": "Guardians of Zakros",
+              "original_text": "Type: Creature — Cyclops Warrior \nMana cost: {4}{R}\nPower/Toughness: 5/3\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nLegendary creatures you control have trample.",
+              "source_face_key": "Guardians of Zakros_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nLegendary creatures you control have trample.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nLegendary creatures you control have trample.",
+          "executable_faces": [
+            {
+              "name": "Guardians of Zakros",
+              "executable_text": "Type: Creature — Cyclops Warrior \nMana cost: {4}{R}\nPower/Toughness: 5/3\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nLegendary creatures you control have trample.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nLegendary creatures you control have trample.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nLegendary creatures you control have trample."
+            }
+          ]
+        },
+        {
+          "id": "rev:Hekatan Demagogue_TRX",
+          "name": "Hekatan Demagogue",
+          "original_text": "Type: Creature — Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 1/3\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, scry 1.",
+          "source_card_key": "rev:Hekatan Demagogue_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 1/3\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, scry 1.",
+          "source_faces": [
+            {
+              "name": "Hekatan Demagogue",
+              "original_text": "Type: Creature — Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 1/3\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, scry 1.",
+              "source_face_key": "Hekatan Demagogue_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion attacks, scry 1.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, scry 1.",
+          "executable_faces": [
+            {
+              "name": "Hekatan Demagogue",
+              "executable_text": "Type: Creature — Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 1/3\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, scry 1.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion attacks, scry 1.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, scry 1."
+            }
+          ]
+        },
+        {
+          "id": "rev:Hero in the Making_TRX",
+          "name": "Hero in the Making",
+          "original_text": "Type: Enchantment Creature — Satyr Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*",
+          "source_card_key": "rev:Hero in the Making_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment Creature — Satyr Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion",
+          "source_faces": [
+            {
+              "name": "Hero in the Making",
+              "original_text": "Type: Enchantment Creature — Satyr Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*",
+              "source_face_key": "Hero in the Making_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)",
+          "executable_faces": [
+            {
+              "name": "Hero in the Making",
+              "executable_text": "Type: Enchantment Creature — Satyr Soldier \nMana cost: {R}\nPower/Toughness: 1/1\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)"
+            }
+          ]
+        },
+        {
+          "id": "rev:Iara, Blessed-Hart_TRX",
+          "name": "Iara, Blessed-Hart",
+          "original_text": "Type: Legendary Creature — Human Soldier \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+          "source_card_key": "rev:Iara, Blessed-Hart_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Human Soldier \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+          "source_faces": [
+            {
+              "name": "Iara, Blessed-Hart",
+              "original_text": "Type: Legendary Creature — Human Soldier \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+              "source_face_key": "Iara, Blessed-Hart_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Iara, Blessed-Hart",
+              "executable_text": "Type: Legendary Creature — Human Soldier \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever Iara, Blessed-Hart attacks, Iara and another target attacking creature gain double strike until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Invest in the Future_TRX",
+          "name": "Invest in the Future",
+          "original_text": "Type: Enchantment\nMana cost: {1}{R}\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+          "source_card_key": "rev:Invest in the Future_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment\nMana cost: {1}{R}\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+          "source_faces": [
+            {
+              "name": "Invest in the Future",
+              "original_text": "Type: Enchantment\nMana cost: {1}{R}\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+              "source_face_key": "Invest in the Future_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+          "executable_faces": [
+            {
+              "name": "Invest in the Future",
+              "executable_text": "Type: Enchantment\nMana cost: {1}{R}\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nLegendary permanents you control have haste and “Ward—Pay 3 life.”",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nLegendary permanents you control have haste and “Ward—Pay 3 life.”"
+            }
+          ]
+        },
+        {
+          "id": "rev:Labyrinthine Hydra_TRX",
+          "name": "Labyrinthine Hydra",
+          "original_text": "Type: Creature — Hydra \nMana cost: {7}{G}\nPower/Toughness: 5/5\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, creatures you control get +2/+2 until end of turn.",
+          "source_card_key": "rev:Labyrinthine Hydra_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Hydra \nMana cost: {7}{G}\nPower/Toughness: 5/5\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, creatures you control get +2/+2 until end of turn.",
+          "source_faces": [
+            {
+              "name": "Labyrinthine Hydra",
+              "original_text": "Type: Creature — Hydra \nMana cost: {7}{G}\nPower/Toughness: 5/5\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, creatures you control get +2/+2 until end of turn.",
+              "source_face_key": "Labyrinthine Hydra_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion attacks, creatures you control get +2/+2 until end of turn.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, creatures you control get +2/+2 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Labyrinthine Hydra",
+              "executable_text": "Type: Creature — Hydra \nMana cost: {7}{G}\nPower/Toughness: 5/5\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, creatures you control get +2/+2 until end of turn.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion attacks, creatures you control get +2/+2 until end of turn.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, creatures you control get +2/+2 until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Nessian Scout-Captain_TRX",
+          "name": "Nessian Scout-Captain",
+          "original_text": "Type: Creature — Minotaur Soldier \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+          "source_card_key": "rev:Nessian Scout-Captain_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Minotaur Soldier \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+          "source_faces": [
+            {
+              "name": "Nessian Scout-Captain",
+              "original_text": "Type: Creature — Minotaur Soldier \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+              "source_face_key": "Nessian Scout-Captain_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Nessian Scout-Captain",
+              "executable_text": "Type: Creature — Minotaur Soldier \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, creatures you control with power 4 or greater get +1/+1 and gain trample until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Petraform Hermit_TRX",
+          "name": "Petraform Hermit",
+          "original_text": "Type: Creature — Gorgon Cleric \nMana cost: {1}{B}\nPower/Toughness: 1/1\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nYour Champion has deathtouch.",
+          "source_card_key": "rev:Petraform Hermit_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Gorgon Cleric \nMana cost: {1}{B}\nPower/Toughness: 1/1\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nA permanent you control named \"The Champion\" has deathtouch.",
+          "source_faces": [
+            {
+              "name": "Petraform Hermit",
+              "original_text": "Type: Creature — Gorgon Cleric \nMana cost: {1}{B}\nPower/Toughness: 1/1\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nYour Champion has deathtouch.",
+              "source_face_key": "Petraform Hermit_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nYour Champion has deathtouch.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nYour Champion has deathtouch.",
+          "executable_faces": [
+            {
+              "name": "Petraform Hermit",
+              "executable_text": "Type: Creature — Gorgon Cleric \nMana cost: {1}{B}\nPower/Toughness: 1/1\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nA permanent you control named \"The Champion\" has deathtouch.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nYour Champion has deathtouch.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nYour Champion has deathtouch."
+            }
+          ]
+        },
+        {
+          "id": "rev:Prince of the Pride_TRX",
+          "name": "Prince of the Pride",
+          "original_text": "Type: Creature — Cat Soldier \nMana cost: {W}{W}\nPower/Toughness: 0/1\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nAt the beginning of your end step, put a +1/+1 counter on your Champion.",
+          "source_card_key": "rev:Prince of the Pride_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Cat Soldier \nMana cost: {W}{W}\nPower/Toughness: 0/1\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nAt the beginning of your end step, put a +1/+1 counter on a permanent you control named \"The Champion\".",
+          "source_faces": [
+            {
+              "name": "Prince of the Pride",
+              "original_text": "Type: Creature — Cat Soldier \nMana cost: {W}{W}\nPower/Toughness: 0/1\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nAt the beginning of your end step, put a +1/+1 counter on your Champion.",
+              "source_face_key": "Prince of the Pride_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nAt the beginning of your end step, put a +1/+1 counter on your Champion.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nAt the beginning of your end step, put a +1/+1 counter on your Champion.",
+          "executable_faces": [
+            {
+              "name": "Prince of the Pride",
+              "executable_text": "Type: Creature — Cat Soldier \nMana cost: {W}{W}\nPower/Toughness: 0/1\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nAt the beginning of your end step, put a +1/+1 counter on a permanent you control named \"The Champion\".",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nAt the beginning of your end step, put a +1/+1 counter on your Champion.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nAt the beginning of your end step, put a +1/+1 counter on your Champion."
+            }
+          ]
+        },
+        {
+          "id": "rev:Skophos Trainee_TRX",
+          "name": "Skophos Trainee",
+          "source_card_key": "rev:Skophos Trainee_TRX",
+          "source_layout": "normal",
+          "original_text": "Type: Creature — Human Soldier \nMana cost: {2}{R}\nPower/Toughness: 3/2\nMenace\nWhenever your Champion attacks, you may discard a card. If you do, draw a card.",
+          "executable_text": "Type: Creature — Human Soldier \nMana cost: {2}{R}\nPower/Toughness: 3/2\nMenace\nWhenever a permanent you control named \"The Champion\" attacks, you may discard a card. If you do, draw a card.",
+          "source_faces": [
+            {
+              "name": "Skophos Trainee",
+              "original_text": "Type: Creature — Human Soldier \nMana cost: {2}{R}\nPower/Toughness: 3/2\nMenace\nWhenever your Champion attacks, you may discard a card. If you do, draw a card.",
+              "source_face_key": "Skophos Trainee_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "named_reference_consumer",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nWhenever your Champion attacks, you may discard a card. If you do, draw a card.",
+          "original_printed_rules_text": "Menace\nWhenever your Champion attacks, you may discard a card. If you do, draw a card.",
+          "executable_faces": [
+            {
+              "name": "Skophos Trainee",
+              "executable_text": "Type: Creature — Human Soldier \nMana cost: {2}{R}\nPower/Toughness: 3/2\nMenace\nWhenever a permanent you control named \"The Champion\" attacks, you may discard a card. If you do, draw a card.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhenever your Champion attacks, you may discard a card. If you do, draw a card.",
+              "original_printed_rules_text": "Menace\nWhenever your Champion attacks, you may discard a card. If you do, draw a card."
+            }
+          ]
+        },
+        {
+          "id": "rev:Slighos the Body-Binder_TRX",
+          "name": "Slighos the Body-Binder",
+          "original_text": "Type: Legendary Creature — Demon \nMana cost: {2}{B}{B}\nPower/Toughness: 3/3\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+          "source_card_key": "rev:Slighos the Body-Binder_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Demon \nMana cost: {2}{B}{B}\nPower/Toughness: 3/3\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+          "source_faces": [
+            {
+              "name": "Slighos the Body-Binder",
+              "original_text": "Type: Legendary Creature — Demon \nMana cost: {2}{B}{B}\nPower/Toughness: 3/3\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+              "source_face_key": "Slighos the Body-Binder_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nFavored\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+          "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+          "executable_faces": [
+            {
+              "name": "Slighos the Body-Binder",
+              "executable_text": "Type: Legendary Creature — Demon \nMana cost: {2}{B}{B}\nPower/Toughness: 3/3\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nFavored\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie.",
+              "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever another legendary nontoken creature you control dies, you may exile it. If you do, create a token that's a copy of it, except it has no name, it isn't legendary, and it is a Zombie."
+            }
+          ]
+        },
+        {
+          "id": "rev:Stoic Phylaskia_TRX",
+          "name": "Stoic Phylaskia",
+          "original_text": "Type: Creature — Skeleton Soldier \nMana cost: {3}{B}\nPower/Toughness: 2/3\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, it gets +2/+0 until end of turn.",
+          "source_card_key": "rev:Stoic Phylaskia_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Skeleton Soldier \nMana cost: {3}{B}\nPower/Toughness: 2/3\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, it gets +2/+0 until end of turn.",
+          "source_faces": [
+            {
+              "name": "Stoic Phylaskia",
+              "original_text": "Type: Creature — Skeleton Soldier \nMana cost: {3}{B}\nPower/Toughness: 2/3\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, it gets +2/+0 until end of turn.",
+              "source_face_key": "Stoic Phylaskia_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Favored\nWhenever your Champion attacks, it gets +2/+0 until end of turn.",
+          "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, it gets +2/+0 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Stoic Phylaskia",
+              "executable_text": "Type: Creature — Skeleton Soldier \nMana cost: {3}{B}\nPower/Toughness: 2/3\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, it gets +2/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Favored\nWhenever your Champion attacks, it gets +2/+0 until end of turn.",
+              "original_printed_rules_text": "Favored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, it gets +2/+0 until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "rev:Sunbeam Alseid_TRX",
+          "name": "Sunbeam Alseid",
+          "original_text": "Type: Enchantment Creature — Nymph \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, untap it.",
+          "source_card_key": "rev:Sunbeam Alseid_TRX",
+          "source_layout": "normal",
+          "executable_text": "Type: Enchantment Creature — Nymph \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, untap it.",
+          "source_faces": [
+            {
+              "name": "Sunbeam Alseid",
+              "original_text": "Type: Enchantment Creature — Nymph \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlying\nFavored *(At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)*\nWhenever your Champion attacks, untap it.",
+              "source_face_key": "Sunbeam Alseid_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "declaration_and_consumer",
+          "custom_keyword_identities": [
+            "favored"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nFavored\nWhenever your Champion attacks, untap it.",
+          "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, untap it.",
+          "executable_faces": [
+            {
+              "name": "Sunbeam Alseid",
+              "executable_text": "Type: Enchantment Creature — Nymph \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlying\nAt the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion\nWhenever a permanent you control named \"The Champion\" attacks, untap it.",
+              "custom_keyword_identities": [
+                "favored"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nFavored\nWhenever your Champion attacks, untap it.",
+              "original_printed_rules_text": "Flying\nFavored (At the beginning of your combat, you may have a nonlegendary creature you control get +1/+1 and become legendary and named “The Champion.”)\nWhenever your Champion attacks, untap it."
+            }
+          ]
+        },
+        {
+          "id": "rev:Xarr's Mockery_TRX",
+          "name": "Xarr's Mockery",
+          "source_card_key": "rev:Xarr's Mockery_TRX",
+          "source_layout": "normal",
+          "original_text": "Type: Creature — Cyclops Zombie \nMana cost: {2}{B}\nPower/Toughness: 4/2\nWhenever your Champion attacks, Xarr's Mockery gains indestructible until end of turn.",
+          "executable_text": "Type: Creature — Cyclops Zombie \nMana cost: {2}{B}\nPower/Toughness: 4/2\nWhenever a permanent you control named \"The Champion\" attacks, Xarr's Mockery gains indestructible until end of turn.",
+          "source_faces": [
+            {
+              "name": "Xarr's Mockery",
+              "original_text": "Type: Creature — Cyclops Zombie \nMana cost: {2}{B}\nPower/Toughness: 4/2\nWhenever your Champion attacks, Xarr's Mockery gains indestructible until end of turn.",
+              "source_face_key": "Xarr's Mockery_TRX:front"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_role": "named_reference_consumer",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever your Champion attacks, Xarr's Mockery gains indestructible until end of turn.",
+          "original_printed_rules_text": "Whenever your Champion attacks, Xarr's Mockery gains indestructible until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Xarr's Mockery",
+              "executable_text": "Type: Creature — Cyclops Zombie \nMana cost: {2}{B}\nPower/Toughness: 4/2\nWhenever a permanent you control named \"The Champion\" attacks, Xarr's Mockery gains indestructible until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever your Champion attacks, Xarr's Mockery gains indestructible until end of turn.",
+              "original_printed_rules_text": "Whenever your Champion attacks, Xarr's Mockery gains indestructible until end of turn."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Alseid of Stilled Hearts",
+        "Apprentice of the Forge-God",
+        "Archon of the Legion",
+        "Audience at Zakros",
+        "Axiomene, Syrurian Tyrant",
+        "Eidolon of Graceful Steps",
+        "Guardians of Zakros",
+        "Hekatan Demagogue",
+        "Hero in the Making",
+        "Iara, Blessed-Hart",
+        "Invest in the Future",
+        "Labyrinthine Hydra",
+        "Nessian Scout-Captain",
+        "Petraform Hermit",
+        "Prince of the Pride",
+        "Skophos Trainee",
+        "Slighos the Body-Binder",
+        "Stoic Phylaskia",
+        "Sunbeam Alseid",
+        "Xarr's Mockery"
+      ],
+      "behavioral_assertions": [
+        "All exact physical source faces compile strictly through independent native and serialized artifact routes.",
+        "One accepted selection per player per combat; decline does not consume; later combat resets only selection eligibility.",
+        "Exact chosen incarnation retains +1/+1/name/legendary after source leaves; current controller determines named references; zone reentry and ordinary copies do not inherit resolution effects."
+      ],
+      "test_status": "native_unverified",
+      "support_status": "equivalent_reminder_candidate",
+      "ordinary_operation_mapping": "At each own combat, at most one successful non-targeting Champion choice across all Favored triggers. Nonlegendary own creature permanently gains +1/+1, legendary and name The Champion while that object stays on battlefield. Control transfer changes whose Champion it is; choice receipt resets each combat.",
+      "executable_definitions": [
+        {
+          "keyword": "Favored",
+          "reminder": "At the beginning of combat on your turn, if you have not performed the champion selection action this combat, you may choose a nonlegendary creature you control. If you do, perform the champion selection action with that creature, then that creature gets +1/+1 and becomes legendary named The Champion.",
+          "namedObjectReferences": [
+            {
+              "reference": "your Champion",
+              "name": "The Champion",
+              "controller": "you"
+            }
+          ]
+        }
+      ],
+      "inventory_selection": "complete_source_overlay"
+    }
+  ]
+}

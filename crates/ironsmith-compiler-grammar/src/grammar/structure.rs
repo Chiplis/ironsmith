@@ -876,9 +876,9 @@ pub fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPre
 fn parse_sentence_segment_len<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<usize, ErrMode<ContextError>> {
-    fn quoted_period_continues_sentence(next: Option<&LexToken>, after: Option<&LexToken>) -> bool {
+    fn quoted_period_continues_sentence(next: Option<&LexToken>, after: Option<&LexToken>,third:Option<&LexToken>,fourth:Option<&LexToken>,fifth:Option<&LexToken>) -> bool {
         match next {
-            Some(token) if token.kind == TokenKind::Comma => true,
+            Some(token) if matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon | TokenKind::Pipe) => true,
             Some(token)
                 if token.kind == TokenKind::Word
                     && matches!(
@@ -888,6 +888,10 @@ fn parse_sentence_segment_len<'a>(
             {
                 true
             }
+            Some(token) if token.is_word("as") && after.is_some_and(|t|t.is_word("you"))
+                && third.is_some_and(|t|t.is_word("cast"))
+                && (fourth.is_some_and(|t|t.is_any_word(&["it","them"]))
+                    || (fourth.is_some_and(|t|t.is_word("that"))&&fifth.is_some_and(|t|t.is_word("spell")))) => true,
             // `"..." this turn` continues the sentence; `"..." this creature
             // loses ...` (a normalized card name) starts a new one.
             Some(token) if token.kind == TokenKind::Word && token.parser_text() == "this" => after
@@ -905,10 +909,10 @@ fn parse_sentence_segment_len<'a>(
     while let Some(token) = input.peek_token() {
         if is_sentence_quote(token) {
             primitives::quote().parse_next(input)?;
-            let ahead = input.peek_slice(input.eof_offset().min(2));
+            let ahead = input.peek_slice(input.eof_offset().min(5));
             if inside_quotes
                 && last_inner_token_was_period
-                && !quoted_period_continues_sentence(ahead.first(), ahead.get(1))
+                && !quoted_period_continues_sentence(ahead.first(), ahead.get(1),ahead.get(2),ahead.get(3),ahead.get(4))
             {
                 let consumed = initial_len - input.len();
                 return Ok(consumed);
@@ -1854,3 +1858,22 @@ pub use structure_reference_programs::parse_who_player_predicate_lexed;
 #[path = "structure/structure_core.rs"]
 mod structure_core_programs;
 use structure_core_programs::rfind_unquoted_dynamic_word;
+
+#[cfg(test)]
+mod quoted_instruction_menu_boundaries {
+    #[test]
+    fn grammar_sentence_owner_retains_all_quoted_instruction_branches() {
+        let text = "Choose one instruction — Create an artifact token named \"First\" with \"{0}: Draw a card.\" | Create an artifact token named \"Second\" with \"{0}: You gain 1 life.\". Draw a card.";
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let sentences = super::split_lexed_sentences(&tokens);
+        assert_eq!(sentences.len(), 2);
+        assert_eq!(sentences[0].iter().filter(|token| token.kind == crate::lexer::TokenKind::Pipe).count(), 1);
+        let menu = crate::instruction_menu::parse(sentences[0]).unwrap().expect("complete instruction menu");
+        let [crate::cards::builders::EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf { modes, .. }
+        )] = menu.as_slice() else { panic!("resolution-time modal program"); };
+        assert_eq!(modes.len(), 2);
+        assert!(modes.iter().all(|mode| !mode.effects.is_empty()));
+        assert_eq!(crate::lexer::parser_token_word_refs(sentences[1]), ["draw", "a", "card"]);
+    }
+}

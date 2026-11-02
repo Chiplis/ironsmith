@@ -70,7 +70,7 @@ impl GameState {
             vec![event.clone()],
             true,
         );
-        self.defer_trigger_entries(captured.take_all());
+        captured.defer_into_game(self);
         event.mark_triggers_captured();
         self.queue_trigger_event(id, event);
         self.return_exiled_for_opponent_becoming_monarch(monarch);

@@ -8,7 +8,7 @@ export function manaPaymentActionMap(state) {
   const payment = state.mana_payment;
   const options = paymentSourceOptions(payment);
   const planned = options.map(option => ({ ...option, object_id: Number(option.source_id), kind: "plan_payment_source",
-    label: `${option.label || option.payment_kind}${Object.entries(option.expected_mana || {}).filter(([, count]) => count > 0).map(([color, count]) => ` · ${count} ${color}`).join("")}` }));
+    label: `${option.label || (option.payment_kind === "put_minus_one_counter" ? "Put a -1/-1 counter" : option.payment_kind)}${Object.entries(option.expected_mana || {}).filter(([, count]) => count > 0).map(([color, count]) => ` · ${count} ${color}`).join("")}` }));
   const manual = (payment?.mana_abilities || [])
     .filter(ability => !options.some(option => String(option.source_id) === String(ability.source_id) && option.payment_kind === "mana_ability" && option.ability_index === ability.ability_index))
     .map(ability => ({ ...ability, object_id: Number(ability.source_id), kind: "activate_mana_ability", label: `Activate now: ${ability.label}` }));
@@ -23,7 +23,7 @@ export function manaPaymentActionMap(state) {
     return true;
   }).map(action => ({ ...action, kind: "activate_mana_ability" }));
   const manaSources = new Set(activations.map(action => String(action.source_id)));
-  const alternatives = planned.filter(action => action.payment_kind !== "mana_ability" && !manaSources.has(String(action.source_id)));
+  const alternatives = planned.filter(action => action.payment_kind !== "mana_ability" && (!manaSources.has(String(action.source_id)) || action.payment_kind === "put_minus_one_counter"));
   for (const action of [...activations, ...alternatives]) {
     const id = Number(action.source_id);
     if (!Number.isFinite(id)) continue;

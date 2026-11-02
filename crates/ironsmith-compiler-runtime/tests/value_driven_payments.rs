@@ -101,6 +101,7 @@ struct Choices {
     sacrifice: Option<ObjectId>,
     cancel: bool,
     cancelled: bool,
+    expect_unpayable_mana: bool,
 }
 impl DecisionMaker for Choices {
     fn decide_number(&mut self, _game: &GameState, ctx: &NumberContext) -> u32 {
@@ -149,6 +150,7 @@ impl DecisionMaker for Choices {
         game: &GameState,
         ctx: &ManaPaymentContext,
     ) -> ManaPaymentResponse {
+        if self.expect_unpayable_mana { assert!(!ctx.plan.payable, "the announced X price still has to be paid in full"); }
         if self.cancel {
             self.cancelled = true;
             ManaPaymentResponse::Cancel
@@ -381,7 +383,9 @@ fn chthonian_energy_is_payers_resource_and_bounce_uses_sources_owner() {
 #[test]
 fn krumar_x_is_bounded_by_both_life_and_mana_and_endure_keeps_announced_amount() {
     for definition in definitions("Krumar Initiate") {
-        for (life, available_mana, max, x) in [(20, 6, 5, 3), (2, 6, 2, 1)] {
+        // Announce against nonmana bounds; mana funding is checked later,
+        // after possible mana-ability decisions, and must pay the exact X.
+        for (life, available_mana, max, x) in [(20, 6, 20, 3), (2, 6, 2, 1)] {
             let mut game = game();
             let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
             game.remove_summoning_sickness(source);
@@ -639,5 +643,35 @@ fn x_resource_preflight_is_nonmutating_and_announced_amounts_fail_closed() {
         assert_eq!(game.player(A).unwrap().energy_counters, 2);
         assert_eq!(game.player(A).unwrap().life, 3);
         assert_eq!(game.player(A).unwrap().mana_pool, pool);
+    }
+}
+
+
+#[test]
+fn krumar_unfunded_announced_x_rejects_or_cancels_without_spending_life_or_tapping() {
+    for definition in definitions("Krumar Initiate") {
+        let mut game = game();
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        game.remove_summoning_sickness(source);
+        mana(&mut game, ManaSymbol::Black, 6);
+        let mut dm = Choices { x:6, max_x:Some(20), cancel:true, expect_unpayable_mana:true, ..Default::default() };
+        let mut queue=TriggerQueue::new();let mut state=PriorityLoopState::new(2);
+        let mut progress=apply_priority_response_with_dm(&mut game,&mut queue,&mut state,&PriorityResponse::PriorityAction(action(&definition,source)),&mut dm);
+        let mut rejected=false;
+        for _ in 0..40 {
+            match progress {
+                Err(ironsmith::game_loop::GameLoopError::ActionCancelled(_)) => {rejected=true;break;},
+                Err(error) => panic!("unexpected activation failure: {error:?}"),
+                Ok(_) if state.pending_activation.is_none() => {rejected=game.stack.is_empty();break;},
+                Ok(GameProgress::NeedsDecisionCtx(context)) => {
+                    progress=apply_decision_context_with_dm(&mut game,&mut queue,&mut state,&context,&mut dm);
+                },
+                Ok(other) => panic!("unfinished activation: {other:?}"),
+            }
+        }
+        assert!(dm.saw_x && (rejected || dm.cancelled));
+        assert!(state.pending_activation.is_none());assert!(game.stack.is_empty());
+        assert_eq!(game.player(A).unwrap().life,20);assert_eq!(game.player(A).unwrap().mana_pool.total(),6);
+        assert!(!game.is_tapped(source));assert!(game.object(source).unwrap().counters.is_empty());
     }
 }

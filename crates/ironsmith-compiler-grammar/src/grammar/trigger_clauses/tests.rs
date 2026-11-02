@@ -2598,3 +2598,15 @@ fn active_last_counter_removal_preserves_player_and_counter_type() {
     assert_eq!(trigger.source_controller, Some(PlayerFilter::You));
     assert!(trigger.last);
 }
+
+#[test]
+fn attack_creature_type_diversity_is_an_event_time_condition() {
+    let tokens=tokenize_line("you attack and there are six or more different creature types among attacking creatures",0);
+    let parsed=crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).expect("diversity attack trigger");
+    let crate::model::ast::TriggerSpec::ConditionQualified {condition,..}=parsed else {panic!("event-time condition expected: {parsed:?}")};
+    let crate::cards::builders::PredicateAst::ValueComparison {left,right,..}=condition else {panic!("typed comparison")};
+    let crate::effect::Value::CreatureTypesAmong(filter)=left else {panic!("creature type aggregate")};
+    assert!(filter.attacking);
+    assert_eq!(filter.controller,None,"the formal among-attacking-creatures set has no controller restriction");
+    assert_eq!(right,crate::effect::Value::Fixed(6));
+}

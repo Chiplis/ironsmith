@@ -293,7 +293,8 @@ fn wiretapping_hideaway_free_play_and_first_card_are_scoped_to_each_actual_draw_
         assert_eq!(
             battlefield(&game, "Draw resource", A).len(),
             1,
-            "the hidden nine-mana artifact was played with no mana available"
+            "the hidden nine-mana artifact was played with no mana available; abilities={:#?}; links={:?}; hand={:?}; stack={:?}",
+            definition.abilities, game.get_exiled_with_source_links(source), game.player(A).unwrap().hand, game.stack
         );
         assert_eq!(game.draw_step_context_for_player(A), (true, 2));
         draw(&mut game, source, A, 2);
@@ -1492,6 +1493,10 @@ fn each_players_draw_receipt_precedes_the_next_players_replacement_program() {
     for definition in definitions("Wedding Ring") {
         let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
         game.turn.active_player = B;
+        // Team membership order is not its selected action order. Explicitly
+        // select B before A so B's completed draw precedes A's replacement.
+        game.set_shared_team_member_order(0, vec![B, A]).unwrap();
+        assert_eq!(&game.team_apnap_player_order()[..2], &[B, A]);
         library(&mut game, B, 3);
         game.effect_store.replacement_effects.add_resolution_effect(
             ironsmith::replacement::ReplacementEffect::with_matcher(

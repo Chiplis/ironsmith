@@ -5641,6 +5641,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
             "until end of turn, or until any player rolls a {result}, whichever comes first"
         ),
         Until::YourNextTurn => "until your next turn".to_string(),
+        Until::OpponentsNextTurn => "until an opponent's next turn".to_string(),
         Until::YourNextTurnEnd => "until the end of your next turn".to_string(),
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
         Until::YourNextUpkeepEnd => "until the end of your next upkeep".to_string(),
@@ -6447,6 +6448,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "Spells and abilities {} control can't cause their controller to search their library",
             describe_player_set_filter(filter)
         ),
+        crate::effect::Restriction::MoveBetweenZones { from, to, initial_state, cards_only } => {
+            let condition = initial_state.map(|(zone, face_down)| format!(" that began the game {} in {zone:?}", if face_down {"face down"} else {"face up"})).unwrap_or_default();
+            format!("Players can't move {}{condition} from {from:?}{}", if *cards_only {"cards"} else {"objects"}, to.map(|zone|format!(" to {zone:?}")).unwrap_or_default())
+        }
         crate::effect::Restriction::SearchLibraries(filter) => {
             format!(
                 "{} can't search libraries",
@@ -6482,6 +6487,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
                 ironsmith_core::ActivatedAbilityKeyword::Encore => "encore",
                 ironsmith_core::ActivatedAbilityKeyword::Fortify => "fortify",
+                ironsmith_core::ActivatedAbilityKeyword::Grouped { family, group, step, rule } => return format!("the {rule:?} ability in family {family}, group {group}, at step {step} of {} can't be activated", filter.description()),
             };
             if *filter == crate::target::ObjectFilter::default() {
                 format!("{keyword} abilities can't be activated")
@@ -8011,6 +8017,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Shuffled => "shuffle",
         crate::effect::PriorEffectAction::Tapped => "tap",
         crate::effect::PriorEffectAction::ManaLost => "lose",
+        crate::effect::PriorEffectAction::Affected => "affect",
     }
 }
 
@@ -8382,6 +8389,8 @@ fn describe_prior_effect_result_surface_inner(
 
 pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
     match predicate {
+        EffectPredicate::NamedActionCompleted {label}=>format!("the preceding program included the {label} action"),
+        EffectPredicate::ResultObjectsMatch {filter,negated} => format!("you {}create {} this way",if *negated {"don't "}else{""},filter.description()),
         EffectPredicate::Succeeded => "succeeded".to_string(),
         EffectPredicate::Failed => "failed".to_string(),
         EffectPredicate::Happened => "happened".to_string(),
@@ -8436,6 +8445,7 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::Value(cmp) => format!("its count {}", describe_comparison(cmp)),
         EffectPredicate::Chosen => "was chosen".to_string(),
         EffectPredicate::WasDeclined => "was declined".to_string(),
+        EffectPredicate::ChoiceUnavailable => "no choice was available this way".to_string(),
     }
 }
 

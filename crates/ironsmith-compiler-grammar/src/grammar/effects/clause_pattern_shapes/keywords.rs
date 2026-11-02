@@ -74,6 +74,8 @@ pub enum KeywordMechanicShape<'a> {
         /// "phases out until you roll a 3 or less while rolling to visit
         /// your Attractions" (Ferris Wheel): the highest releasing result.
         until_visit_roll_at_most: Option<u32>,
+        until_controller_casts_nth_spell: Option<u32>,
+        until_end_of_turn: bool,
     },
     PhaseExchange {
         phase_in: &'a [OwnedLexToken],
@@ -463,6 +465,26 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
     } else {
         None
     };
+    let until_controller_casts_nth_spell = if direction == PhaseDirectionShape::Out
+        && until_source_leaves.is_none() && until_visit_roll_at_most.is_none()
+    {
+        opt(|input: &mut LexStream<'a>| -> WResult<u32> {
+            primitives::phrase(&["until", "you", "cast", "your"]).parse_next(input)?;
+            let (nth, ordinal_token) = any.verify_map(|token: &OwnedLexToken| {
+                token.as_word().and_then(ironsmith_core::parse_ordinal_word).map(|nth| (nth, token))
+            }).parse_next(input)?;
+            primitives::phrase(&["spell", "in", "a", "turn"]).parse_next(input)?;
+            if nth == 0 { return Err(primitives::backtrack_err("phase duration", "positive spell ordinal")); }
+            // The raw token reader recognizes a typed ordinal; unlike a
+            // keyword primitive it does not record its own surface claim.
+            crate::word_claims::claim_tokens(std::slice::from_ref(ordinal_token));
+            Ok(nth)
+        }).parse_next(input)?
+    } else { None };
+    let until_end_of_turn = direction == PhaseDirectionShape::Out
+        && until_source_leaves.is_none() && until_visit_roll_at_most.is_none()
+        && until_controller_casts_nth_spell.is_none()
+        && opt(primitives::phrase(&["until","end","of","turn"])).parse_next(input)?.is_some();
     // A restated replacement ("... phases out instead") carries its
     // `instead` marker; the conditional reading owns that surface.
     opt(primitives::kw("instead")).parse_next(input)?;
@@ -479,6 +501,8 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
         subject,
         until_source_leaves,
         until_visit_roll_at_most,
+        until_controller_casts_nth_spell,
+        until_end_of_turn,
     })
 }
 

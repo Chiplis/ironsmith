@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'effects::cards::reveal_action_offer::tests::decline_then_accept_uses_one_shared_player_allowance_and_exact_arrival' panicked at crates/ironsmith-engine/src/effects/cards/reveal_action_offer.rs:211:9:
+assertion failed: crate::effects::helpers::resolve_objects_from_spec(&game,
+            &ChooseSpec::Tagged("revealed pool".into()),
+            &ctx).unwrap().is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::cards::reveal_action_offer::tests::decline_then_accept_uses_one_shared_player_allowance_and_exact_arrival ... FAILED
+
+failures:
+
+failures:
+    effects::cards::reveal_action_offer::tests::decline_then_accept_uses_one_shared_player_allowance_and_exact_arrival
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.04s
+

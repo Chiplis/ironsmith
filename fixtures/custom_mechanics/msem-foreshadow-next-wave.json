@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact source identities preserved. Disgraced decomposes into entry replacement and damage trigger; Memory uses existing flashback with a complete discard cost."
+  },
+  "mechanics": [
+    {
+      "id": "msem-916",
+      "keyword": "Foreshadow",
+      "original_reminder": "You may cast this spell for its foreshadow cost. If you do, also trigger its “dies” abilities when it enters.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. If you cast this spell this way, entering the battlefield causes this permanent's own abilities to trigger as though it died.",
+      "source_cards": [
+        "Acolyte of Griselbrand",
+        "Affluent Host",
+        "Briarswine",
+        "Cathedral Gargoyle",
+        "Contagious Ghoul",
+        "Creep of the Crop",
+        "Doomsday Horde",
+        "Dread Elk",
+        "Glutton of Zhava",
+        "Guardian Grotesque",
+        "Krothuss, Abyssal Terror",
+        "Lambholt Tracker",
+        "Liesa, Enemy of Shadow",
+        "Loyal Retriever",
+        "Morkrut Gryff",
+        "Mortalcoil Hydra",
+        "Obsidian Hellkite",
+        "Orchard Overseer",
+        "Primordial Slime",
+        "The Wickerscreech of Gatstaf",
+        "Umbersteed",
+        "Vespercloak Vampire",
+        "Wurgelurg"
+      ],
+      "rule_reference": "702.291.",
+      "rule_text": [
+        {
+          "name": "702.291a",
+          "rule": "Foreshadow represents two static abilities: one that functions on the stack and other that functions on the battlefield. \"Foreshadow [cost]\" means \"You may cast this card by paying [cost] rather than its mana cost\" and \"If this spell's foreshadow cost was paid, entering the battlefield causes its abilities to trigger as though it died.\"",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Acolyte of Griselbrand_INM",
+          "name": "Acolyte of Griselbrand",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 3/1\nWhen Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nForeshadow {4}{B} *(You may cast this spell for its foreshadow cost. If you do, also trigger its “dies” abilities when it enters.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 3/1\nWhen Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nYou may pay {4}{B} rather than pay this spell's mana cost. If you cast this spell this way, entering the battlefield causes this permanent's own abilities to trigger as though it died.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Warlock",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Acolyte of Griselbrand_INM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Acolyte of Griselbrand",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 3/1\nWhen Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nForeshadow {4}{B} *(You may cast this spell for its foreshadow cost. If you do, also trigger its “dies” abilities when it enters.)*"
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Acolyte of Griselbrand",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 3/1\nWhen Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nYou may pay {4}{B} rather than pay this spell's mana cost. If you cast this spell this way, entering the battlefield causes this permanent's own abilities to trigger as though it died.",
+              "custom_keyword_identities": [
+                "foreshadow"
+              ],
+              "custom_keyword_payments": [
+                "foreshadow"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nForeshadow {4}{B}",
+              "original_printed_rules_text": "When Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nForeshadow {4}{B} (You may cast this spell for its foreshadow cost. If you do, also trigger its “dies” abilities when it enters.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "foreshadow"
+          ],
+          "custom_keyword_payments": [
+            "foreshadow"
+          ],
+          "original_display_text": "When Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nForeshadow {4}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "When Acolyte of Griselbrand dies, you draw a card and you lose 1 life.\nForeshadow {4}{B} (You may cast this spell for its foreshadow cost. If you do, also trigger its “dies” abilities when it enters.)"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    }
+  ]
+}

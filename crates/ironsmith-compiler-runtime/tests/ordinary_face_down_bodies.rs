@@ -116,7 +116,7 @@ fn activation(definition: &CardDefinition) -> usize {
 }
 fn turn_down(g: &mut GameState, id: ObjectId) {
     let outcome = TurnFaceDownEffect::new(ChooseSpec::SpecificObject(id)).execute(g, &mut EffectContext::new_default(id, A)).unwrap();
-    assert_eq!(outcome.count_or_zero(), 1);
+    assert_eq!(outcome.explicit_objects(), Some([id].as_slice()));
     assert!(outcome.events.is_empty());
 }
 fn turn_up(g: &mut GameState, id: ObjectId, dm: &mut Choices) {
@@ -202,7 +202,7 @@ fn source_activations_preserve_incarnation_counters_attachments_control_tap_and_
             assert_eq!(turn_face_up_cost_display(&g, source, TurnFaceUpMethod::TurnFaceUpAbility).unwrap().as_deref(), Some(morph_cost));
             assert_eq!(turn_face_up_cost_display(&g, source, TurnFaceUpMethod::PrintedManaCost).unwrap(), None);
             let repeat = TurnFaceDownEffect::new(ChooseSpec::Source).execute(&mut g, &mut EffectContext::new_default(source, A)).unwrap();
-            assert_eq!(repeat.count_or_zero(), 0);
+            assert_eq!(repeat.explicit_objects(), Some([].as_slice()));
             TurnFaceUpEffect::new(ChooseSpec::SpecificObject(source)).execute(&mut g, &mut EffectContext::new_default(source, A)).unwrap();
             assert_eq!(g.current_power(source), Some(power + 1));
             assert_eq!(g.current_toughness(source), Some(toughness + 1));
@@ -449,7 +449,7 @@ fn ordinary_turn_down_rejects_double_faced_cards_but_does_not_change_face_down_e
         let dfc = g.create_object_from_definition(&definition, A, Zone::Battlefield);
         let stable = g.object(dfc).unwrap().stable_id;
         let result = TurnFaceDownEffect::new(ChooseSpec::SpecificObject(dfc)).execute(&mut g, &mut EffectContext::new_default(dfc, A)).unwrap();
-        assert_eq!(result.count_or_zero(), 0);
+        assert_eq!(result.explicit_objects(), Some([].as_slice()));
         assert!(!g.is_face_down(dfc));
         assert_eq!(g.object(dfc).unwrap().stable_id, stable);
         // Entry/casting uses the low-level status setter; this patch must not
@@ -500,7 +500,8 @@ fn merged_orientation_checks_buried_dfc_and_turns_all_single_face_components_tog
         g.take_pending_trigger_events();
         let result = TurnFaceDownEffect::new(ChooseSpec::SpecificObject(host))
             .execute(&mut g, &mut EffectContext::new_default(host, A)).unwrap();
-        assert_eq!(result.count_or_zero(), if buried_dfc { 0 } else { 1 });
+        let expected_changed = if buried_dfc { Vec::new() } else { vec![host] };
+        assert_eq!(result.explicit_objects(), Some(expected_changed.as_slice()));
         assert_eq!(g.is_face_down(host), !buried_dfc);
         assert_eq!(g.object(host).unwrap().stable_id, stable);
         let merged = g.merged_permanent(stable).unwrap();

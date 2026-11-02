@@ -6684,6 +6684,7 @@ fn describe_payment_action_predicate(
             ironsmith_core::ActivatedAbilityKeyword::Craft => "activate craft abilities",
             ironsmith_core::ActivatedAbilityKeyword::Encore => "activate encore abilities",
             ironsmith_core::ActivatedAbilityKeyword::Fortify => "activate fortify abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Grouped { family, group, step, rule } => return Some(format!("activate the {rule:?} ability in family {family}, group {group}, at step {step}")),
         }.to_string()),
         P::DisturbCost => Some("pay a disturb cost".to_string()),
         P::Purpose(Purpose::Foretell) => Some("foretell cards".to_string()),

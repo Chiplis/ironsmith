@@ -30,6 +30,10 @@ pub use ironsmith_core::RemoveUpToAnyCountersEffect;
 /// let effect = RemoveUpToAnyCountersEffect::new(Value::X, ChooseSpec::permanent());
 /// ```
 impl EffectExecutor for RemoveUpToAnyCountersEffect {
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        self.target.is_target().then(|| self.target.clone()).into_iter().collect()
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

@@ -2,6 +2,7 @@ import {isBuilderCreatedCard} from './card-glint/printing-choices.mjs';
 import {printableCardOrder} from './card-print-order.mjs';
 import {MSE_PRINTING_FIELDS} from './mse/printing-style.mjs';
 import {cardIntrinsicManaColors,withoutIntrinsicManaLines} from './land-mana-choices.js';
+import {isIntrinsicStartingCounterLine} from './inspector-ability-lines.js';
 
 const fields = ['id','stable_id','name','source_kind','source_ability_text','oracle_id','oracleId','oracle_text','flavor_text','rarity',
   'card_types','supertypes','subtypes','effect_text','ability_text','compiled_text','abilities','mana_cost','display_mana_cost','type_line','type_line_display',
@@ -14,7 +15,7 @@ export function cardFrameSnapshot(card) {
   // Intrinsic basic-land mana is never printed; the mana strip uses it.
   if (typeof snapshot.oracle_text === 'string') {
     const lines = snapshot.oracle_text.split('\n');
-    const kept = withoutIntrinsicManaLines(lines, cardIntrinsicManaColors(card));
+    const kept = withoutIntrinsicManaLines(lines, cardIntrinsicManaColors(card)).filter(line=>!isIntrinsicStartingCounterLine(line));
     if (kept.length !== lines.length) snapshot.oracle_text = kept.join('\n');
   }
   // A land's frame follows the mana it makes, so a land that an effect such as

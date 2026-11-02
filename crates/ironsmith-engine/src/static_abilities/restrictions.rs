@@ -926,6 +926,17 @@ fn lowercase_first_ascii(text: &str) -> String {
 }
 
 impl StaticAbilityKind for RuleRestriction {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        // Native materializers also construct this ordinary runtime leaf. Its
+        // typed payload must remain available to source-context rebinding.
+        if self.condition.is_some(){return None}
+        Some(super::CompiledStaticAbility {
+            id:Some(StaticAbilityId::RuleRestriction),label:self.display.clone(),
+            payload:ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction:self.restriction.clone(),additional_restrictions:self.additional_restrictions.clone(),display:self.display.clone(),
+            },
+        })
+    }
     fn may_generate_continuous_effects(&self) -> bool {
         // Keep unreviewed and conditional restrictions conservative for the
         // mana dependency classifier. These unconditional derived limits do

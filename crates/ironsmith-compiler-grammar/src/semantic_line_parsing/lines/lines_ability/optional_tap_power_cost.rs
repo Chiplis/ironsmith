@@ -6,13 +6,24 @@ struct TapPayment {
     filter: ObjectFilter,
     count: crate::effect::ChoiceCount,
     label: String,
+    name: Option<String>,
 }
 
 fn read_payment(tokens: &[OwnedLexToken]) -> Result<Option<TapPayment>, CardTextError> {
     use crate::grammar::primitives;
-    let Some((_, tail)) = primitives::parse_prefix(tokens, primitives::phrase(&[
-        "as", "an", "additional", "cost", "to", "cast", "this", "spell",
-    ])) else { return Ok(None); };
+    let (tail,name)=if let Some((_,tail))=primitives::parse_prefix(tokens,primitives::phrase(&[
+        "as","an","additional","cost","to","cast","this","spell",
+    ])){(tail,None)}else{
+        let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+        if !words.starts_with(&["as","an","additional","cost","named"]){return Ok(None)}
+        let Some(at)=words.windows(4).position(|part|part==["to","cast","this","spell"])else{return Ok(None)};
+        if at<=5{return Ok(None)}
+        let name=words[5..at].join(" ");
+        if !name.chars().all(|c|c.is_alphabetic()||c==' '||c=='-'||c=='\''){return Ok(None)}
+        let Some(end)=view.token_index_after_words(at+4) else {return Ok(None)};
+        crate::word_claims::claim_tokens(&tokens[..end]);
+        (&tokens[end..],Some(name))
+    };
     let tail = crate::util::trim_commas(tail);
     let Some((_, cost_tokens)) = primitives::parse_prefix(&tail, primitives::phrase(&["you", "may"])) else { return Ok(None); };
     let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(cost_tokens)?;
@@ -21,7 +32,7 @@ fn read_payment(tokens: &[OwnedLexToken]) -> Result<Option<TapPayment>, CardText
     // counts retain their ordinary readers and require a distinct composition.
     if count.min != 1 || count.max != Some(1) { return Ok(None); }
     Ok(Some(TapPayment { filter: filter.clone(), count: *count,
-        label: render_token_slice(tokens) }))
+        label: render_token_slice(tokens),name }))
 }
 
 fn read_reduction(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
@@ -54,6 +65,7 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardText
     optional.reference = crate::cost::OptionalCostRef::with_discriminator(
         crate::cost::OptionalCostKind::Additional, payment.label);
     optional.reference.custom_keyword_attributable = true;
+    optional.reference.custom_keyword = payment.name;
     let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(value) = &mut reduction.payload else { unreachable!() };
     value.amount = Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(
         ironsmith_core::EffectMetricSource::AffectedObjects, ironsmith_core::EffectMetric::TotalPower,
@@ -62,4 +74,23 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardText
     // grammar own their respective words. There is no whole-paragraph claim.
     Ok(Some(LineAst::Multiple(vec![LineAst::OptionalCost(optional),
         LineAst::StaticAbilities(vec![reduction.into()])])))
+}
+
+/// Adapt the already parsed optional payment and matching modifier as one
+/// static acquisition recipe. It is used only by the quoted grant route.
+pub(super) fn read_granted_policy(tokens:&[OwnedLexToken])->Result<Option<StaticAbility>,CardTextError>{
+ let Some(LineAst::Multiple(lines))=read(tokens)? else{return Ok(None)};
+ let mut payment=None;let mut reduction=None;
+ for line in lines {match line{
+  LineAst::OptionalCost(cost)=>payment=Some(cost),
+  LineAst::StaticAbilities(abilities)=>for ability in abilities {if let crate::cards::builders::StaticAbilityAst::Static(ability)=ability {
+   if let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(value)=ability.payload {reduction=Some(value.amount);}
+  }},_=>return Ok(None),
+ }}
+ let (Some(payment),Some(reduction))=(payment,reduction)else{return Ok(None)};
+ let locals=match reduction.unhinted(){Value::PendingPriorEffectMetric(query)=>query.filter.as_ref().map(|filter|filter.tagged_constraints.iter().map(|constraint|constraint.tag.clone()).collect()).unwrap_or_default(),_=>Vec::new()};
+ Ok(Some(StaticAbility::grant_optional_spell_cost(ObjectFilter::source(),
+  ironsmith_core::static_ability_model::GrantedOptionalCostPrice::Fixed(payment.cost),payment.reference,Vec::new(),
+  ironsmith_core::static_ability_model::GrantedOptionalCostTiming::DuringCasting,render_token_slice(tokens))
+  .with_optional_spell_cost_reduction(reduction).with_optional_spell_cost_local_references(locals)))
 }

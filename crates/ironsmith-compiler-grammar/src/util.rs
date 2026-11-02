@@ -2381,7 +2381,42 @@ fn parse_one_target_per_card_type_phrase(
     Ok(Some(target))
 }
 
+#[path="util/payment_receipt_references.rs"]
+pub(crate) mod payment_receipt_references;
+
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    // Event-role nouns name the immutable triggering object, independently
+    // of a later local target or the ability's source permanent.
+    if matches!(crate::lexer::parser_token_word_refs(tokens).as_slice(),
+        ["the", "entering", "creature" | "permanent" | "artifact" | "enchantment" | "land"]
+        | ["that", "loyalty", "ability"])
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), span_from_tokens(tokens)));
+    }
+    if let Some(tag)=entry_exiled_reference_tag_for_tokens(tokens) {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(tag), span_from_tokens(tokens)));
+    }
+    if crate::lexer::token_word_refs(tokens)==["the","most","recently","exiled","card"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(ironsmith_core::tag::LAST_EXILED_RESULT_TAG),span_from_tokens(tokens)));
+    }
+    if crate::lexer::token_word_refs(tokens)==["the","proposed","objects"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__proposed_action_objects")),span_from_tokens(tokens)));
+    }
+    if crate::lexer::token_word_refs(tokens)==["the","action","performer"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::TagRef::of(crate::tag::TagKey::from("__named_action_source")),span_from_tokens(tokens)));
+    }
+    if let Some(tag)=payment_receipt_references::selected_tap_target(tokens){return Ok(TargetAst::Tagged(tag,span_from_tokens(tokens)));}
+    if let Some(tag)=payment_receipt_references::tap_target(tokens){return Ok(TargetAst::Tagged(tag,span_from_tokens(tokens)));}
+    // An explicit persistent source choice, independent of local "it" bindings.
+    if crate::lexer::token_word_refs(tokens) == ["the", "card", "chosen", "for", "this", "source"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(TargetAst::Tagged(crate::tag::CompilerReferenceTag::ChosenObjects.bind(), span_from_tokens(tokens)));
+    }
     // "up to one target nonland card of each card type" (Uldaros Theorix)
     // announces one target slot per card type: any number of targets, each
     // filling a distinct card-type slot (targeting validates the slots by
@@ -2700,6 +2735,7 @@ pub fn parse_level_up_line(
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
@@ -2944,7 +2980,7 @@ pub fn parse_evoke_line_lexed(
         name: "Evoke".into(),
         total_cost,
         condition: None,
-        prototype_power_toughness: None,
+        prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
     }))
 }
 
@@ -2967,7 +3003,7 @@ pub fn parse_prowl_line_lexed(
         condition: Some(
             crate::static_abilities::ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn,
         ),
-        prototype_power_toughness: None,
+        prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
     }))
 }
 
@@ -3406,6 +3442,7 @@ pub fn parse_reinforce_line(
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Hand],
         }
         .into(),
@@ -3722,4 +3759,92 @@ fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
 /// The same typed reference is used by an optional mana payment and its readers.
 pub(crate) fn additional_mana_payment_reference(mana: &ManaCost) -> ironsmith_core::OptionalCostRef {
     ironsmith_core::OptionalCostRef::with_discriminator(ironsmith_core::OptionalCostKind::Additional, mana.to_oracle())
+}
+
+/// Exact source-owned entry result, distinct from local latest-object tags and
+/// ordinary linked-exile ability pairs. This phrase never names a later zone incarnation.
+pub(crate) const ENTRY_EXILED_REFERENCE_TAG: &str = "__entry_reference_exiled__";
+pub(crate) fn is_entry_exiled_reference_words(words: &[&str]) -> bool {
+    let words = words.strip_prefix(&["the"]).or_else(|| words.strip_prefix(&["a"]))
+        .unwrap_or(words);
+    words.first().is_some_and(|word| matches!(*word, "card" | "cards"))
+        && words.get(1..3) == Some(&["exiled", "as"][..])
+        && words.last() == Some(&"entered")
+        && words.len() > 4
+        && is_source_reference_words(&words[3..words.len()-1])
+}
+pub(crate) fn entry_exiled_reference_filter() -> crate::target::ObjectFilter {
+    crate::target::ObjectFilter { zone: Some(crate::zone::Zone::Exile), ..Default::default() }
+        .match_tagged(ENTRY_EXILED_REFERENCE_TAG, crate::target::TaggedOpbjectRelation::SameObjectId)
+}
+
+
+/// The designation is a terminal quoted identity operand, not free prose and
+/// never a substring comparison. Keep quote tokens while trimming punctuation.
+pub(crate) fn split_entry_exile_designation(tokens:&[OwnedLexToken])->Option<(&[OwnedLexToken],Option<String>)> {
+    let mut end=tokens.len();
+    while end>0 && matches!(tokens[end-1].kind,TokenKind::Period|TokenKind::Comma|TokenKind::Semicolon) {end-=1;}
+    let tokens=&tokens[..end];
+    let marker=["by","its","ability","with","designation"];
+    let mut quoted=false;
+    for start in 0..tokens.len() {
+        if tokens[start].is_quote(){quoted=!quoted;continue;}
+        if quoted || !tokens.get(start..start+5).is_some_and(|part|
+            part.iter().zip(marker).all(|(token,word)|token.is_word(word))) {continue;}
+        if !tokens.get(start+5).is_some_and(|token|token.is_quote()) || !tokens.last().is_some_and(|token|token.is_quote()) {return None;}
+        let body=tokens.get(start+6..tokens.len()-1)?;
+        if body.is_empty() || body.iter().any(|token|token.is_quote()){return None;}
+        let label=crate::lexer::render_literal_token_slice(body).split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+        if label.is_empty() || label.len()>64{return None;}
+        return Some((&tokens[..start],Some(label)));
+    }
+    Some((tokens,None))
+}
+pub(crate) fn entry_exiled_tag(designation:Option<&str>,historical:bool)->crate::tag::TagKey {
+    match (designation,historical) {
+        (Some(label),false)=>format!("__entry_reference_exiled_by__:{label}").into(),
+        (Some(label),true)=>format!("__entry_action_exiled_by__:{label}").into(),
+        (None,false)=>ENTRY_EXILED_REFERENCE_TAG.into(),
+        (None,true)=>"__entry_action_exiled__".into(),
+    }
+}
+pub(crate) fn entry_exiled_reference_tag_for_tokens(tokens:&[OwnedLexToken])->Option<crate::tag::TagKey> {
+    let (base,label)=split_entry_exile_designation(tokens)?;
+    is_entry_exiled_reference_words(&crate::lexer::token_word_refs(base))
+        .then(||entry_exiled_tag(label.as_deref(),false))
+}
+pub(crate) fn entry_exiled_filter_for_tag(tag:crate::tag::TagKey)->crate::target::ObjectFilter {
+    crate::target::ObjectFilter {zone:Some(crate::zone::Zone::Exile),..Default::default()}
+        .match_tagged(tag,crate::target::TaggedOpbjectRelation::SameObjectId)
+}
+
+#[cfg(test)]
+mod entry_producer_identity_tests {
+    #[test]
+    fn quoted_entry_producer_identity_is_complete_and_near_names_do_not_alias() {
+        for label in ["moon spark","doctor's star","doctor's starlet"] {
+            let text=format!("the card exiled as this creature entered by its ability with designation \"{label}\"");
+            let tokens=crate::lexer::lex_line(&text,0).unwrap();
+            let tag=super::entry_exiled_reference_tag_for_tokens(&tokens).unwrap();
+            assert_eq!(tag.as_str(),format!("__entry_reference_exiled_by__:{label}"));
+        }
+        for text in ["the card exiled as this creature entered by its ability with designation moon spark",
+            "the card exiled as another creature entered by its ability with designation \"moon spark\"",
+            "the card exiled as this creature entered by its ability with designation \"moon spark\" then draw a card"] {
+            assert!(super::entry_exiled_reference_tag_for_tokens(&crate::lexer::lex_line(text,0).unwrap()).is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod explicit_event_role_targets {
+    #[test]
+    fn entering_and_loyalty_event_roles_keep_the_trigger_object() {
+        for text in ["the entering creature", "the entering land", "that loyalty ability"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(matches!(super::parse_target_phrase(&tokens).unwrap(), crate::cards::builders::TargetAst::Tagged(tag,_) if tag.key.as_str()=="triggering"));
+        }
+        let unrelated=crate::lexer::lex_line("a loyalty ability",0).unwrap();
+        assert!(!matches!(super::parse_target_phrase(&unrelated), Ok(crate::cards::builders::TargetAst::Tagged(_, _))));
+    }
 }

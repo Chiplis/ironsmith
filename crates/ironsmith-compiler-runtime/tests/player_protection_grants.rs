@@ -49,7 +49,7 @@ fn eon_frolicker_protects_you_and_your_planeswalkers_from_the_target_opponent() 
         let frolicker = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         let walker = compile_to_runtime_definition(
             "Witness Walker",
-            "Mana cost: {3}\nType: Legendary Planeswalker — Witness\nLoyalty: 5",
+            "Mana cost: {3}\nType: Legendary Planeswalker — Jace\nLoyalty: 5",
             false,
         )
         .unwrap();

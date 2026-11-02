@@ -510,7 +510,17 @@ fn parse_payment_alternative_split_lexed<'a>(
 ) -> WResult<PaymentAlternativeSplit> {
     let initial_len = input.len();
     let mut previous_word = None;
+    let mut quoted=false;
+    let mut depth=0usize;
     while let Some(token) = input.peek_token() {
+        if token.kind==TokenKind::Quote {
+            quoted=!quoted;let _: &'a OwnedLexToken=any.parse_next(input)?;continue;
+        }
+        if !quoted {
+            match token.kind {TokenKind::LBracket=>depth+=1,TokenKind::RBracket=>depth=depth.saturating_sub(1),_=>{}}
+        }
+        if quoted || depth>0 {let _: &'a OwnedLexToken=any.parse_next(input)?;continue;}
+
         if token.is_word("or") {
             let next_word = input.get(1).and_then(OwnedLexToken::as_word);
             let comparison_tail = next_word

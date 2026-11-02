@@ -393,6 +393,10 @@ fn continuous_effect_scope_and_duration(
             target,
             duration,
             ..
+        } | CharacteristicActionAst::RemoveOptionalTextFragment {
+            target,
+            duration,
+            ..
         }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
             target,
             duration,

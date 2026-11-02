@@ -16,6 +16,24 @@ pub(super) fn pre_rule_do_the_same_for_keywords_followup(
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
     let words = crate::lexer::token_word_refs(sentence_tokens);
+    if words.starts_with(&["the","same","is","true","for"]) {
+        let view=crate::lexer::TokenWordView::new(sentence_tokens);
+        let start=*view.token_start_indices().get(5).unwrap_or(&sentence_tokens.len());
+        let Some(keywords)=crate::effect_sentences::gain_ability::snapshot_keyword_ids(&sentence_tokens[start..])else{return Ok(None);};
+        fn extend(effect:&mut EffectAst,keywords:&[crate::static_abilities::StaticAbilityId])->bool {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom{keywords:existing,..}),..})=effect {
+                for keyword in keywords {if !existing.contains(keyword){existing.push(*keyword);}}return true;
+            }
+            let mut extended=false;
+            crate::effect_ast_traversal::for_each_nested_effects_mut(effect,true,|children|{for child in children {extended|=extend(child,keywords);}});
+            extended
+        }
+        if state.effects.last_mut().is_some_and(|effect|extend(effect,&keywords)) {
+            crate::word_claims::claim_tokens(sentence_tokens);
+            return Ok(Some(PreParseFollowupResult::Handled{consumed_sentences:1,route:None}));
+        }
+        return Ok(None);
+    }
     let Some(list) = words.strip_prefix(&["do", "the", "same", "for"][..]) else {
         return Ok(None);
     };

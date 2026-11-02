@@ -46,7 +46,7 @@ fn parse_scope(tokens: &[OwnedLexToken]) -> Option<LoyaltyActivationScope> {
 }
 
 fn effect(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> EffectAst {
-    EffectAst::GrantLoyaltyActivationAllowance { scope, allowance }
+    EffectAst::GrantLoyaltyActivationAllowance { target: None, scope, allowance }
 }
 
 /// "you may activate Comet's loyalty ability two more times this turn"
@@ -122,6 +122,22 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if let Some(effect) = parse_more_times_this_turn(tokens) {
         return Ok(Some(effect));
     }
+    // The object operand belongs to normal target announcement, rather than
+    // being approximated as the source or every controlled planeswalker.
+    if let Some(((), rest)) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["you", "may", "activate", "loyalty", "abilities", "of"]))
+        && let Some((index, (), tail)) = primitives::find_prefix(rest, ||
+            primitives::phrase(&["an", "additional", "time", "this", "turn"]))
+        && primitives::probe_all(tail, primitives::sentence_end(), "additional loyalty activation").is_some()
+        && rest[..index].first().is_some_and(|token| token.is_word("target"))
+    {
+        let target = crate::util::parse_target_phrase(&rest[..index])?;
+        return Ok(Some(EffectAst::GrantLoyaltyActivationAllowance {
+            target: Some(target),
+            scope: LoyaltyActivationScope::Source,
+            allowance: LoyaltyActivationAllowance::ExtraActivation,
+        }));
+    }
     let (instant_prefix, rest) = match primitives::parse_prefix(
         tokens,
         (
@@ -174,4 +190,21 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(Some(effect(scope, LoyaltyActivationAllowance::InstantSpeed)));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod targeted_allowance_tests {
+    use super::*;
+    #[test]
+    fn additional_activation_retains_announced_target_and_controller_filter(){
+        let tokens=crate::lexer::lex_line("You may activate loyalty abilities of target planeswalker you control an additional time this turn.",0).unwrap();
+        let effect=parse(&tokens).unwrap().unwrap();
+        let EffectAst::GrantLoyaltyActivationAllowance{target:Some(crate::cards::builders::TargetAst::Object(filter,span,_)),allowance:LoyaltyActivationAllowance::ExtraActivation,..}=effect else{panic!("expected explicit target allowance")};
+        assert!(span.is_some());assert_eq!(filter.controller,Some(crate::target::PlayerFilter::You));assert!(filter.card_types.contains(&crate::types::CardType::Planeswalker));
+    }
+    #[test]
+    fn existing_global_allowance_does_not_acquire_target_choices(){
+        let tokens=crate::lexer::lex_line("You may activate the loyalty abilities of planeswalkers you control twice this turn rather than only once.",0).unwrap();
+        assert!(matches!(parse(&tokens).unwrap(),Some(EffectAst::GrantLoyaltyActivationAllowance{target:None,scope:LoyaltyActivationScope::ControlledPlaneswalkers{subtype:None},..})));
+    }
 }

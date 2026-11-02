@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -57,13 +57,13 @@ impl EffectExecutor for ClearDamageEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-        let removed = super::remove_marked_damage(game, ctx, target_id, None)?;
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::resolved(),
-            [removed],
-        ))
+        let targets = resolve_objects_for_effect(game, ctx, &self.target)?;
+        let mut outcomes = Vec::new();
+        for target in targets { outcomes.push(super::remove_marked_damage(game, ctx, target, None)?); }
+        Ok(EffectOutcome::aggregate_with_primary_result(EffectOutcome::resolved(), outcomes))
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)

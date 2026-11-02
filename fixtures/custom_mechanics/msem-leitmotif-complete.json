@@ -1,0 +1,867 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Complete16physical Leitmotif source family",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "inventory_evidence": "action_choices/pending-family-audit/all-family-physical-inventory.json",
+    "status": "exact_source_unmaterialized_native_pending"
+  },
+  "notes": [
+    "All16physical sourcecards preserved.13additional sources beyond frozen Planet/TimeAfterTime/StartTheFire.",
+    "No source text repair for GrowingUp omittedgets; native strictcompilation must identify any reusable parsergap.",
+    "PicturePerfect must go bottomlibrary on exile recast; source additionalprogram retained.",
+    "Multipleinstances redundant per formalrules; authoritative recipe multiplicity dependency coordinated actions_status, not programtext/name dedup.",
+    "No worker materialization/probes/tests/builds."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-leitmotif-color-complete",
+      "original_source_row": "msem-673",
+      "keyword": "Leitmotif",
+      "scope": "msem",
+      "rule_reference": "702.239.",
+      "rule_text": [
+        {
+          "name": "702.239a",
+          "rule": "Leitmotif appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Leitmotif” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, when you cast a spell that shares a color with this card, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.239b",
+          "rule": "Casting a spell as an effect of its leitmotif ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.239c",
+          "rule": "Multiple instances of leitmotif on the same spell are redundant.",
+          "custom": true
+        },
+        {
+          "name": "702.239d",
+          "rule": "Type leitmotif is a variant of the leitmotif ability. “Type leitmotif” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, when you cast a spell that shares a type with this card, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        }
+      ],
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost.",
+      "executable_definitions": [
+        {
+          "keyword": "Leitmotif",
+          "reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost.",
+          "resolutionProgramMultiplicity": {
+            "mode": "once-per-declared-key",
+            "key": "msem leitmotif color"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "A Planet Far, Far Away_LVS",
+          "source_card_key": "A Planet Far, Far Away_LVS",
+          "name": "A Planet Far, Far Away",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "A Planet Far, Far Away",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": true,
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Draw a card.\nLeitmotif",
+          "original_printed_rules_text": "Draw a card.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "A Planet Far, Far Away",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw a card.\nLeitmotif",
+              "original_printed_rules_text": "Draw a card.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Dead on Arrival_LVS",
+          "source_card_key": "Dead on Arrival_LVS",
+          "name": "Dead on Arrival",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player sacrifices a creature or planeswalker.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dead on Arrival",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player sacrifices a creature or planeswalker.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player sacrifices a creature or planeswalker.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player sacrifices a creature or planeswalker.\nLeitmotif",
+          "original_printed_rules_text": "Target player sacrifices a creature or planeswalker.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Dead on Arrival",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player sacrifices a creature or planeswalker.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player sacrifices a creature or planeswalker.\nLeitmotif",
+              "original_printed_rules_text": "Target player sacrifices a creature or planeswalker.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Find Happiness in Misery_LVS",
+          "source_card_key": "Find Happiness in Misery_LVS",
+          "name": "Find Happiness in Misery",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget player mills two cards. You draw a card and you lose 1 life.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Find Happiness in Misery",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget player mills two cards. You draw a card and you lose 1 life.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget player mills two cards. You draw a card and you lose 1 life.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{1}{B}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player mills two cards. You draw a card and you lose 1 life.\nLeitmotif",
+          "original_printed_rules_text": "Target player mills two cards. You draw a card and you lose 1 life.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Find Happiness in Misery",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget player mills two cards. You draw a card and you lose 1 life.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player mills two cards. You draw a card and you lose 1 life.\nLeitmotif",
+              "original_printed_rules_text": "Target player mills two cards. You draw a card and you lose 1 life.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Ground Bound_LVS",
+          "source_card_key": "Ground Bound_LVS",
+          "name": "Ground Bound",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nTap up to two target creatures.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ground Bound",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nTap up to two target creatures.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nTap up to two target creatures.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Tap up to two target creatures.\nLeitmotif",
+          "original_printed_rules_text": "Tap up to two target creatures.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Ground Bound",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nTap up to two target creatures.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Tap up to two target creatures.\nLeitmotif",
+              "original_printed_rules_text": "Tap up to two target creatures.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Growing Up_LVS",
+          "source_card_key": "Growing Up_LVS",
+          "name": "Growing Up",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Instant\nTarget creature +3/+3 and gains trample until end of turn.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Growing Up",
+              "original_text": "Mana cost: {2}{G}\nType: Instant\nTarget creature +3/+3 and gains trample until end of turn.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Instant\nTarget creature +3/+3 and gains trample until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{2}{G}",
+          "type_line": "Instant",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature +3/+3 and gains trample until end of turn.\nLeitmotif",
+          "original_printed_rules_text": "Target creature +3/+3 and gains trample until end of turn.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Growing Up",
+              "executable_text": "Mana cost: {2}{G}\nType: Instant\nTarget creature +3/+3 and gains trample until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature +3/+3 and gains trample until end of turn.\nLeitmotif",
+              "original_printed_rules_text": "Target creature +3/+3 and gains trample until end of turn.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Head on Collision_LVS",
+          "source_card_key": "Head on Collision_LVS",
+          "name": "Head on Collision",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{R}\nType: Instant\nHead on Collision deals 2 damage to any target.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Head on Collision",
+              "original_text": "Mana cost: {2}{R}\nType: Instant\nHead on Collision deals 2 damage to any target.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Instant\nHead on Collision deals 2 damage to any target.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{2}{R}",
+          "type_line": "Instant",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Head on Collision deals 2 damage to any target.\nLeitmotif",
+          "original_printed_rules_text": "Head on Collision deals 2 damage to any target.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Head on Collision",
+              "executable_text": "Mana cost: {2}{R}\nType: Instant\nHead on Collision deals 2 damage to any target.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Head on Collision deals 2 damage to any target.\nLeitmotif",
+              "original_printed_rules_text": "Head on Collision deals 2 damage to any target.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Hostile Habitat_LVS",
+          "source_card_key": "Hostile Habitat_LVS",
+          "name": "Hostile Habitat",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nHostile Habitat deals 2 damage to each creature.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hostile Habitat",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nHostile Habitat deals 2 damage to each creature.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nHostile Habitat deals 2 damage to each creature.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{1}{R}{R}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Hostile Habitat deals 2 damage to each creature.\nLeitmotif",
+          "original_printed_rules_text": "Hostile Habitat deals 2 damage to each creature.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Hostile Habitat",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nHostile Habitat deals 2 damage to each creature.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Hostile Habitat deals 2 damage to each creature.\nLeitmotif",
+              "original_printed_rules_text": "Hostile Habitat deals 2 damage to each creature.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Lead the Nation_LVS",
+          "source_card_key": "Lead the Nation_LVS",
+          "name": "Lead the Nation",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreatures you control get +2/+2 until end of turn.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lead the Nation",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreatures you control get +2/+2 until end of turn.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreatures you control get +2/+2 until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{2}{W}{W}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Creatures you control get +2/+2 until end of turn.\nLeitmotif",
+          "original_printed_rules_text": "Creatures you control get +2/+2 until end of turn.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Lead the Nation",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreatures you control get +2/+2 until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Creatures you control get +2/+2 until end of turn.\nLeitmotif",
+              "original_printed_rules_text": "Creatures you control get +2/+2 until end of turn.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "No Rest_LVS",
+          "source_card_key": "No Rest_LVS",
+          "name": "No Rest",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}{B}\nType: Sorcery\nPut target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "No Rest",
+              "original_text": "Mana cost: {2}{W}{B}\nType: Sorcery\nPut target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}{B}\nType: Sorcery\nPut target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{2}{W}{B}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Put target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nLeitmotif",
+          "original_printed_rules_text": "Put target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "No Rest",
+              "executable_text": "Mana cost: {2}{W}{B}\nType: Sorcery\nPut target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Put target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nLeitmotif",
+              "original_printed_rules_text": "Put target permanent card with mana value 3 or less from a graveyard onto the battlefield under your control.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Ready to Go_LVS",
+          "source_card_key": "Ready to Go_LVS",
+          "name": "Ready to Go",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreate two 1/1 colorless Servo artifact creature tokens.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ready to Go",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreate two 1/1 colorless Servo artifact creature tokens.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreate two 1/1 colorless Servo artifact creature tokens.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{2}{W}{W}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create two 1/1 colorless Servo artifact creature tokens.\nLeitmotif",
+          "original_printed_rules_text": "Create two 1/1 colorless Servo artifact creature tokens.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Ready to Go",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nCreate two 1/1 colorless Servo artifact creature tokens.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create two 1/1 colorless Servo artifact creature tokens.\nLeitmotif",
+              "original_printed_rules_text": "Create two 1/1 colorless Servo artifact creature tokens.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Remember for Centuries_LVS",
+          "source_card_key": "Remember for Centuries_LVS",
+          "name": "Remember for Centuries",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Remember for Centuries",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target instant or sorcery card from your graveyard to your hand.\nLeitmotif",
+          "original_printed_rules_text": "Return target instant or sorcery card from your graveyard to your hand.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Remember for Centuries",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target instant or sorcery card from your graveyard to your hand.\nLeitmotif",
+              "original_printed_rules_text": "Return target instant or sorcery card from your graveyard to your hand.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Take a Walk_LVS",
+          "source_card_key": "Take a Walk_LVS",
+          "name": "Take a Walk",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nExile target nonland permanent you control, then return that card to the battlefield under your control.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Take a Walk",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nExile target nonland permanent you control, then return that card to the battlefield under your control.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nExile target nonland permanent you control, then return that card to the battlefield under your control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile target nonland permanent you control, then return that card to the battlefield under your control.\nLeitmotif",
+          "original_printed_rules_text": "Exile target nonland permanent you control, then return that card to the battlefield under your control.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Take a Walk",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nExile target nonland permanent you control, then return that card to the battlefield under your control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile target nonland permanent you control, then return that card to the battlefield under your control.\nLeitmotif",
+              "original_printed_rules_text": "Exile target nonland permanent you control, then return that card to the battlefield under your control.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Picture Perfect_MSC",
+          "source_card_key": "Picture Perfect_MSC",
+          "name": "Picture Perfect",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nCreate a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Picture Perfect",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nCreate a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nCreate a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nLeitmotif",
+          "original_printed_rules_text": "Create a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Picture Perfect",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nCreate a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nLeitmotif",
+              "original_printed_rules_text": "Create a token that's a copy of target permanent you control, except it isn't legendary. Then put Picture Perfect on the bottom of its owner's library if you cast it from exile.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        },
+        {
+          "id": "Turning of the Cosmos_HQZ",
+          "source_card_key": "Turning of the Cosmos_HQZ",
+          "name": "Turning of the Cosmos",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{U}\nType: Instant\nChoose one — \n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Turning of the Cosmos",
+              "original_text": "Mana cost: {3}{U}\nType: Instant\nChoose one — \n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nLeitmotif *(If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{U}\nType: Instant\nChoose one —\n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "color",
+          "previously_in_seed": false,
+          "mana_cost": "{3}{U}",
+          "type_line": "Instant",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one —\n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nLeitmotif",
+          "original_printed_rules_text": "Choose one — \n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Turning of the Cosmos",
+              "executable_text": "Mana cost: {3}{U}\nType: Instant\nChoose one —\n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif color\" and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nLeitmotif",
+              "original_printed_rules_text": "Choose one — \n• Surveil 1, then draw a card.\n• Copy target spell you control. You may choose new targets for the copy.\nLeitmotif (If you cast this spell from your hand, exile it as it resolves. When you next cast a spell that shares a color with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "A Planet Far, Far Away",
+        "Dead on Arrival",
+        "Find Happiness in Misery",
+        "Ground Bound",
+        "Growing Up",
+        "Head on Collision",
+        "Hostile Habitat",
+        "Lead the Nation",
+        "No Rest",
+        "Ready to Go",
+        "Remember for Centuries",
+        "Take a Walk",
+        "Picture Perfect",
+        "Turning of the Cosmos"
+      ]
+    },
+    {
+      "id": "msem-leitmotif-grant-complete",
+      "original_source_row": "msem-674",
+      "keyword": "Leitmotif",
+      "scope": "msem",
+      "rule_reference": "702.239.",
+      "rule_text": [
+        {
+          "name": "702.239a",
+          "rule": "Leitmotif appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Leitmotif” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, when you cast a spell that shares a color with this card, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.239b",
+          "rule": "Casting a spell as an effect of its leitmotif ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.239c",
+          "rule": "Multiple instances of leitmotif on the same spell are redundant.",
+          "custom": true
+        },
+        {
+          "name": "702.239d",
+          "rule": "Type leitmotif is a variant of the leitmotif ability. “Type leitmotif” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, when you cast a spell that shares a type with this card, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        }
+      ],
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost.",
+      "executable_definitions": [
+        {
+          "keyword": "Leitmotif",
+          "reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost.",
+          "resolutionProgramMultiplicity": {
+            "mode": "once-per-declared-key",
+            "key": "msem leitmotif color"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "Time After Time_LVS",
+          "source_card_key": "Time After Time_LVS",
+          "name": "Time After Time",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Enchantment\nInstant and sorcery spells you control have leitmotif. *(Exile that spell as it resolves if you cast it from your hand. When you next cast a spell that shares a color with that card, you may cast it from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Time After Time",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Enchantment\nInstant and sorcery spells you control have leitmotif. *(Exile that spell as it resolves if you cast it from your hand. When you next cast a spell that shares a color with that card, you may cast it from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Enchantment\nInstant and sorcery spells you control have custom keyword \"leitmotif\", and \"If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named 'msem leitmotif color' and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost.\".",
+          "variant": "grant",
+          "previously_in_seed": true,
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Enchantment",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Instant and sorcery spells you control have leitmotif.",
+          "original_printed_rules_text": "Instant and sorcery spells you control have leitmotif. (Exile that spell as it resolves if you cast it from your hand. When you next cast a spell that shares a color with that card, you may cast it from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Time After Time",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Enchantment\nInstant and sorcery spells you control have custom keyword \"leitmotif\", and \"If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named 'msem leitmotif color' and when you next cast a spell that shares a color with the card exiled this way, you may cast the card exiled this way without paying its mana cost.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Instant and sorcery spells you control have leitmotif.",
+              "original_printed_rules_text": "Instant and sorcery spells you control have leitmotif. (Exile that spell as it resolves if you cast it from your hand. When you next cast a spell that shares a color with that card, you may cast it from exile without paying its mana cost.)"
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Time After Time"
+      ]
+    },
+    {
+      "id": "msem-leitmotif-type-complete",
+      "original_source_row": "msem-675",
+      "keyword": "Leitmotif",
+      "scope": "msem",
+      "rule_reference": "702.239.",
+      "rule_text": [
+        {
+          "name": "702.239a",
+          "rule": "Leitmotif appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Leitmotif” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, when you cast a spell that shares a color with this card, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.239b",
+          "rule": "Casting a spell as an effect of its leitmotif ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.239c",
+          "rule": "Multiple instances of leitmotif on the same spell are redundant.",
+          "custom": true
+        },
+        {
+          "name": "702.239d",
+          "rule": "Type leitmotif is a variant of the leitmotif ability. “Type leitmotif” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, when you cast a spell that shares a type with this card, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        }
+      ],
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and when you next cast a spell that shares a card type with the card exiled this way, you may cast the card exiled this way without paying its mana cost.",
+      "executable_definitions": [
+        {
+          "keyword": "Type leitmotif",
+          "reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and when you next cast a spell that shares a card type with the card exiled this way, you may cast the card exiled this way without paying its mana cost.",
+          "resolutionProgramMultiplicity": {
+            "mode": "once-per-declared-key",
+            "key": "msem leitmotif type"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "Start the Fire_OTH",
+          "source_card_key": "Start the Fire_OTH",
+          "name": "Start the Fire",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{R}\nType: Sorcery\nYou may discard a card. If you do, draw two cards.\nType leitmotif *(If you cast this spell from your hand, exile it as it resolves. When you cast your next spell that shares a type with this card, you may cast this from exile without paying its mana cost.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Start the Fire",
+              "original_text": "Mana cost: {2}{R}\nType: Sorcery\nYou may discard a card. If you do, draw two cards.\nType leitmotif *(If you cast this spell from your hand, exile it as it resolves. When you cast your next spell that shares a type with this card, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nYou may discard a card. If you do, draw two cards.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif type\" and when you next cast a spell that shares a card type with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+          "variant": "type",
+          "previously_in_seed": true,
+          "mana_cost": "{2}{R}",
+          "type_line": "Sorcery",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "type leitmotif"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "You may discard a card. If you do, draw two cards.\nType leitmotif",
+          "original_printed_rules_text": "You may discard a card. If you do, draw two cards.\nType leitmotif (If you cast this spell from your hand, exile it as it resolves. When you cast your next spell that shares a type with this card, you may cast this from exile without paying its mana cost.)",
+          "executable_faces": [
+            {
+              "name": "Start the Fire",
+              "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nYou may discard a card. If you do, draw two cards.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it once for the resolution recipe named \"msem leitmotif type\" and when you next cast a spell that shares a card type with the card exiled this way, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "type leitmotif"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may discard a card. If you do, draw two cards.\nType leitmotif",
+              "original_printed_rules_text": "You may discard a card. If you do, draw two cards.\nType leitmotif (If you cast this spell from your hand, exile it as it resolves. When you cast your next spell that shares a type with this card, you may cast this from exile without paying its mana cost.)"
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Start the Fire"
+      ]
+    }
+  ]
+}

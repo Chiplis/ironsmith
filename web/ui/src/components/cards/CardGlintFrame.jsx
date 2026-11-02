@@ -1,8 +1,9 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {cardGlintFace} from '@/lib/card-glint/card.mjs';
-import {renderCardGlint,peekCardGlintFrame} from '@/lib/card-glint/session.mjs';
+import {renderCardGlint,peekCardGlintFrame,renderCardGlintWithoutRules} from '@/lib/card-glint/session.mjs';
 import {peekScryfallPrintingMetadata,resolveScryfallPrintingMetadata} from '@/lib/scryfall';
 import CardGlintInteractions from './CardGlintInteractions';
+import CardGlintScrollableRules from './CardGlintScrollableRules';
 import {cardGlintRegions,cardGlintActionsCovered,cardGlintRulesFontSize} from '@/lib/card-glint/interactions.mjs';
 import {cardPresentation} from '@/lib/card-glint/printing-choices.mjs';
 import useCardGlintLive from './useCardGlintLive';
@@ -45,11 +46,15 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     };
     const cached = peekCardGlintFrame(face);
     if (cached) {paint(cached);return () => {cancelled=true;};}
-    renderCardGlint(face).then(paint).catch(error => {
+    renderCardGlint(face).catch(error=>{
+      if (!cancelled && interactive && error.message==='Magic rules text does not fit the available area.')
+        return renderCardGlintWithoutRules(face);
+      throw error;
+    }).then(paint).catch(error => {
       if (!cancelled) {console.error('[card-glint] Card render failed',face.name,error); setFinished({face,error});}
     });
     return () => {cancelled = true;};
-  }, [face,imageUrl,printing]);
+  }, [face,imageUrl,printing,interactive]);
   // A warmed face is ready on its first render. Mounting the text fallback
   // before the layout effect paints this cache hit needlessly runs its fitter.
   const result = finished?.face === face ? finished.result : peekCardGlintFrame(face);
@@ -61,10 +66,14 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     const box = event.currentTarget.getBoundingClientRect();
     live.pointer({x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height});
   };
-  const regions = useMemo(() => cardGlintRegions(result,rulesView), [result,rulesView]);
-  const paintedFontSize=useMemo(()=>rulesView?cardGlintRulesFontSize(result):null,[result,rulesView]);
-  const readable=!rulesView || paintedFontSize==null || displayWidth==null || paintedFontSize*displayWidth/488>=14;
-  const ready = Boolean(result && readable && cardGlintActionsCovered(regions,rulesView));
+  const regions = useMemo(() => result?.rulesOmitted?[]:cardGlintRegions(result,rulesView), [result,rulesView]);
+  const paintedFontSize=useMemo(()=>rulesView&&!result?.rulesOmitted?cardGlintRulesFontSize(result):null,[result,rulesView]);
+  const readable=!rulesView || paintedFontSize==null || displayWidth==null || paintedFontSize*displayWidth/488>=12;
+  const covered=cardGlintActionsCovered(regions,rulesView);
+  const kind=result?.api.faceFrame(result.face);
+  const scrollable=Boolean(result&&rulesView&&(result.rulesOmitted||!readable||!covered)&&!result.face.faces?.length
+    && ['normal','planeswalker','planeswalker-large','saga'].includes(kind));
+  const ready = Boolean(result && (scrollable || !result.rulesOmitted && readable && covered));
   return <>
     {!ready && fallback}
     <div className="card-glint-surface" style={{display:ready?'block':'none'}}
@@ -73,8 +82,10 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
         data-card-glint-error={finished?.face===face?finished.error?.message:undefined}
         aria-label={`${face.name}: ${face.typeLine}. ${face.rulesText}`} role="img"/>
       {presentation && <canvas ref={liveCanvas} className="card-glint-surface__live" aria-hidden="true"
-        data-card-glint-finish={foil?presentation.finish:undefined} style={{visibility:foil?'visible':'hidden'}}/>}
-      {ready && rulesView && <CardGlintInteractions result={result} regions={regions} rulesView={rulesView}
+        data-card-glint-finish={foil?presentation.finish:undefined} style={{visibility:foil&&!scrollable?'visible':'hidden'}}/>}
+      {ready && scrollable && <CardGlintScrollableRules result={result} rulesView={rulesView}
+        onActivate={onActivate} highlighted={highlighted} name={face.name}/>}
+      {ready && rulesView && !scrollable && <CardGlintInteractions result={result} regions={regions} rulesView={rulesView}
         onActivate={onActivate} highlighted={highlighted} name={face.name}/>}
       {details && <span className="mse-card-live-details">{details}</span>}
     </div>

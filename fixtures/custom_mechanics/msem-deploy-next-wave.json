@@ -1,0 +1,396 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "mechanics": [
+    {
+      "id": "msem-878",
+      "keyword": "Deploy",
+      "original_reminder": "As this enters, you may tap any number of other creatures you control with total power 2 or more.",
+      "executable_reminder": "As this permanent enters, you may tap any number of other untapped creatures you control with total power {Number} or more. If you do, give this permanent the deployed status.",
+      "source_cards": [
+        "Battlefield Preserver"
+      ],
+      "rule_reference": "702.284.",
+      "rule_text": [
+        {
+          "name": "702.284a",
+          "rule": "Deploy is a static ability. “Deploy N” means “As this permanent enters, you may tap any number of other untapped creatures you control with total power N or more. If you do, this permanent is deployed.” Tapping the creatures is a cost (see rule 118) and may be referred to as paying the permanent's deploy cost.",
+          "custom": true
+        },
+        {
+          "name": "702.284b",
+          "rule": "Deployed is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become deployed. Once a permanent becomes deployed, it stays deployed until it leaves the battlefield. Deployed is neither an ability nor part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.284c",
+          "rule": "A permanent “enters deployed” as it enters the battlefield if its deploy cost was paid.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Battlefield Preserver_ETF",
+          "name": "Battlefield Preserver",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/1\nDeploy 2 *(As this enters, you may tap any number of other creatures you control with total power 2 or more.)*\nWhen Battlefield Preserver enters deployed, exile target nonland permanent until Battlefield Preserver leaves the battlefield.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/1\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 2 or more. If you do, give this permanent the deployed status.\nWhen Battlefield Preserver with the deployed status enters, exile target nonland permanent until Battlefield Preserver leaves the battlefield.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Cleric",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Battlefield Preserver_ETF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Battlefield Preserver",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/1\nDeploy 2 *(As this enters, you may tap any number of other creatures you control with total power 2 or more.)*\nWhen Battlefield Preserver enters deployed, exile target nonland permanent until Battlefield Preserver leaves the battlefield."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Battlefield Preserver",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/1\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 2 or more. If you do, give this permanent the deployed status.\nWhen Battlefield Preserver with the deployed status enters, exile target nonland permanent until Battlefield Preserver leaves the battlefield.",
+              "custom_keyword_identities": [
+                "deploy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deploy 2\nWhen Battlefield Preserver enters deployed, exile target nonland permanent until Battlefield Preserver leaves the battlefield.",
+              "original_printed_rules_text": "Deploy 2 (As this enters, you may tap any number of other creatures you control with total power 2 or more.)\nWhen Battlefield Preserver enters deployed, exile target nonland permanent until Battlefield Preserver leaves the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deploy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deploy 2\nWhen Battlefield Preserver enters deployed, exile target nonland permanent until Battlefield Preserver leaves the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Deploy 2 (As this enters, you may tap any number of other creatures you control with total power 2 or more.)\nWhen Battlefield Preserver enters deployed, exile target nonland permanent until Battlefield Preserver leaves the battlefield."
+        }
+      ],
+      "support_status": "candidate_requires_native_verification"
+    },
+    {
+      "id": "msem-879",
+      "keyword": "Deploy",
+      "original_reminder": "As this enters, you may tap any number of other creatures you control with total power 3 or more.",
+      "executable_reminder": "As this permanent enters, you may tap any number of other untapped creatures you control with total power {Number} or more. If you do, give this permanent the deployed status.",
+      "source_cards": [
+        "Coalition Alchemist"
+      ],
+      "rule_reference": "702.284.",
+      "rule_text": [
+        {
+          "name": "702.284a",
+          "rule": "Deploy is a static ability. “Deploy N” means “As this permanent enters, you may tap any number of other untapped creatures you control with total power N or more. If you do, this permanent is deployed.” Tapping the creatures is a cost (see rule 118) and may be referred to as paying the permanent's deploy cost.",
+          "custom": true
+        },
+        {
+          "name": "702.284b",
+          "rule": "Deployed is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become deployed. Once a permanent becomes deployed, it stays deployed until it leaves the battlefield. Deployed is neither an ability nor part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.284c",
+          "rule": "A permanent “enters deployed” as it enters the battlefield if its deploy cost was paid.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Coalition Alchemist_ETF",
+          "name": "Coalition Alchemist",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nDeploy 3 *(As this enters, you may tap any number of other creatures you control with total power 3 or more.)*\nWhen Coalition Alchemist enters deployed, return target instant or sorcery card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 3 or more. If you do, give this permanent the deployed status.\nWhen Coalition Alchemist with the deployed status enters, return target instant or sorcery card from your graveyard to your hand.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Human Wizard",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Coalition Alchemist_ETF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Coalition Alchemist",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nDeploy 3 *(As this enters, you may tap any number of other creatures you control with total power 3 or more.)*\nWhen Coalition Alchemist enters deployed, return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Coalition Alchemist",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 3 or more. If you do, give this permanent the deployed status.\nWhen Coalition Alchemist with the deployed status enters, return target instant or sorcery card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "deploy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deploy 3\nWhen Coalition Alchemist enters deployed, return target instant or sorcery card from your graveyard to your hand.",
+              "original_printed_rules_text": "Deploy 3 (As this enters, you may tap any number of other creatures you control with total power 3 or more.)\nWhen Coalition Alchemist enters deployed, return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deploy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deploy 3\nWhen Coalition Alchemist enters deployed, return target instant or sorcery card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Deploy 3 (As this enters, you may tap any number of other creatures you control with total power 3 or more.)\nWhen Coalition Alchemist enters deployed, return target instant or sorcery card from your graveyard to your hand."
+        }
+      ],
+      "support_status": "candidate_requires_native_verification"
+    },
+    {
+      "id": "msem-880",
+      "keyword": "Deploy",
+      "original_reminder": "As this enters, you may tap any number of other creatures you control with total power 5 or more.",
+      "executable_reminder": "As this permanent enters, you may tap any number of other untapped creatures you control with total power {Number} or more. If you do, give this permanent the deployed status.",
+      "source_cards": [
+        "Earthly Principality"
+      ],
+      "rule_reference": "702.284.",
+      "rule_text": [
+        {
+          "name": "702.284a",
+          "rule": "Deploy is a static ability. “Deploy N” means “As this permanent enters, you may tap any number of other untapped creatures you control with total power N or more. If you do, this permanent is deployed.” Tapping the creatures is a cost (see rule 118) and may be referred to as paying the permanent's deploy cost.",
+          "custom": true
+        },
+        {
+          "name": "702.284b",
+          "rule": "Deployed is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become deployed. Once a permanent becomes deployed, it stays deployed until it leaves the battlefield. Deployed is neither an ability nor part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.284c",
+          "rule": "A permanent “enters deployed” as it enters the battlefield if its deploy cost was paid.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Earthly Principality_ETF",
+          "name": "Earthly Principality",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 5/5\nVigilance, reach\nDeploy 5 *(As this enters, you may tap any number of other creatures you control with total power 5 or more.)*\nWhen Earthly Principality enters deployed, your life total becomes equal to your starting life total plus 5.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 5/5\nVigilance, reach\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 5 or more. If you do, give this permanent the deployed status.\nWhen Earthly Principality with the deployed status enters, your life total becomes equal to your starting life total plus 5.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Angel",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Earthly Principality_ETF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Earthly Principality",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 5/5\nVigilance, reach\nDeploy 5 *(As this enters, you may tap any number of other creatures you control with total power 5 or more.)*\nWhen Earthly Principality enters deployed, your life total becomes equal to your starting life total plus 5."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Earthly Principality",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 5/5\nVigilance, reach\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 5 or more. If you do, give this permanent the deployed status.\nWhen Earthly Principality with the deployed status enters, your life total becomes equal to your starting life total plus 5.",
+              "custom_keyword_identities": [
+                "deploy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance, reach\nDeploy 5\nWhen Earthly Principality enters deployed, your life total becomes equal to your starting life total plus 5.",
+              "original_printed_rules_text": "Vigilance, reach\nDeploy 5 (As this enters, you may tap any number of other creatures you control with total power 5 or more.)\nWhen Earthly Principality enters deployed, your life total becomes equal to your starting life total plus 5."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deploy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance, reach\nDeploy 5\nWhen Earthly Principality enters deployed, your life total becomes equal to your starting life total plus 5.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Vigilance, reach\nDeploy 5 (As this enters, you may tap any number of other creatures you control with total power 5 or more.)\nWhen Earthly Principality enters deployed, your life total becomes equal to your starting life total plus 5."
+        }
+      ],
+      "support_status": "candidate_requires_native_verification"
+    },
+    {
+      "id": "msem-881",
+      "keyword": "Deploy",
+      "original_reminder": "As this enters, you may tap any number of other creatures you control with total power 6 or more.",
+      "executable_reminder": "As this permanent enters, you may tap any number of other untapped creatures you control with total power {Number} or more. If you do, give this permanent the deployed status.",
+      "source_cards": [
+        "Glaistig of Wild Hunts"
+      ],
+      "rule_reference": "702.284.",
+      "rule_text": [
+        {
+          "name": "702.284a",
+          "rule": "Deploy is a static ability. “Deploy N” means “As this permanent enters, you may tap any number of other untapped creatures you control with total power N or more. If you do, this permanent is deployed.” Tapping the creatures is a cost (see rule 118) and may be referred to as paying the permanent's deploy cost.",
+          "custom": true
+        },
+        {
+          "name": "702.284b",
+          "rule": "Deployed is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become deployed. Once a permanent becomes deployed, it stays deployed until it leaves the battlefield. Deployed is neither an ability nor part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.284c",
+          "rule": "A permanent “enters deployed” as it enters the battlefield if its deploy cost was paid.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Glaistig of Wild Hunts_ETF",
+          "name": "Glaistig of Wild Hunts",
+          "original_text": "Mana cost: {5}{G}{G}\nType: Creature — Faerie Noble\nPower/Toughness: 7/7\nReach, trample\nDeploy 6 *(As this enters, you may tap any number of other creatures you control with total power 6 or more.)*\nWhen Glaistig of Wild Hunts enters, if it was cast and deployed, untap all lands you control.",
+          "executable_text": "Mana cost: {5}{G}{G}\nType: Creature — Faerie Noble\nPower/Toughness: 7/7\nReach, trample\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 6 or more. If you do, give this permanent the deployed status.\nWhen Glaistig of Wild Hunts enters, if it was cast and it has the deployed status, untap all lands you control.",
+          "mana_cost": "{5}{G}{G}",
+          "type_line": "Creature — Faerie Noble",
+          "power": "7",
+          "toughness": "7",
+          "source_card_key": "Glaistig of Wild Hunts_ETF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Glaistig of Wild Hunts",
+              "original_text": "Mana cost: {5}{G}{G}\nType: Creature — Faerie Noble\nPower/Toughness: 7/7\nReach, trample\nDeploy 6 *(As this enters, you may tap any number of other creatures you control with total power 6 or more.)*\nWhen Glaistig of Wild Hunts enters, if it was cast and deployed, untap all lands you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Glaistig of Wild Hunts",
+              "executable_text": "Mana cost: {5}{G}{G}\nType: Creature — Faerie Noble\nPower/Toughness: 7/7\nReach, trample\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 6 or more. If you do, give this permanent the deployed status.\nWhen Glaistig of Wild Hunts enters, if it was cast and it has the deployed status, untap all lands you control.",
+              "custom_keyword_identities": [
+                "deploy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reach, trample\nDeploy 6\nWhen Glaistig of Wild Hunts enters, if it was cast and deployed, untap all lands you control.",
+              "original_printed_rules_text": "Reach, trample\nDeploy 6 (As this enters, you may tap any number of other creatures you control with total power 6 or more.)\nWhen Glaistig of Wild Hunts enters, if it was cast and deployed, untap all lands you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deploy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Reach, trample\nDeploy 6\nWhen Glaistig of Wild Hunts enters, if it was cast and deployed, untap all lands you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Reach, trample\nDeploy 6 (As this enters, you may tap any number of other creatures you control with total power 6 or more.)\nWhen Glaistig of Wild Hunts enters, if it was cast and deployed, untap all lands you control."
+        }
+      ],
+      "support_status": "candidate_requires_native_verification"
+    },
+    {
+      "id": "msem-882",
+      "keyword": "Deploy",
+      "original_reminder": "As this enters, you may tap any number of other creatures you control with total power 4 or more.",
+      "executable_reminder": "As this permanent enters, you may tap any number of other untapped creatures you control with total power {Number} or more. If you do, give this permanent the deployed status.",
+      "source_cards": [
+        "Hamlet Witch"
+      ],
+      "rule_reference": "702.284.",
+      "rule_text": [
+        {
+          "name": "702.284a",
+          "rule": "Deploy is a static ability. “Deploy N” means “As this permanent enters, you may tap any number of other untapped creatures you control with total power N or more. If you do, this permanent is deployed.” Tapping the creatures is a cost (see rule 118) and may be referred to as paying the permanent's deploy cost.",
+          "custom": true
+        },
+        {
+          "name": "702.284b",
+          "rule": "Deployed is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become deployed. Once a permanent becomes deployed, it stays deployed until it leaves the battlefield. Deployed is neither an ability nor part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.284c",
+          "rule": "A permanent “enters deployed” as it enters the battlefield if its deploy cost was paid.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hamlet Witch_ETF",
+          "name": "Hamlet Witch",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Human Shaman\nPower/Toughness: 4/5\nHexproof\nDeploy 4 *(As this enters, you may tap any number of other creatures you control with total power 4 or more.)*\nWhen Hamlet Witch enters deployed, return target card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Human Shaman\nPower/Toughness: 4/5\nHexproof\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 4 or more. If you do, give this permanent the deployed status.\nWhen Hamlet Witch with the deployed status enters, return target card from your graveyard to your hand.",
+          "mana_cost": "{4}{G}",
+          "type_line": "Creature — Human Shaman",
+          "power": "4",
+          "toughness": "5",
+          "source_card_key": "Hamlet Witch_ETF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hamlet Witch",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Human Shaman\nPower/Toughness: 4/5\nHexproof\nDeploy 4 *(As this enters, you may tap any number of other creatures you control with total power 4 or more.)*\nWhen Hamlet Witch enters deployed, return target card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hamlet Witch",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Human Shaman\nPower/Toughness: 4/5\nHexproof\nAs this permanent enters, you may tap any number of other untapped creatures you control with total power 4 or more. If you do, give this permanent the deployed status.\nWhen Hamlet Witch with the deployed status enters, return target card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "deploy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Hexproof\nDeploy 4\nWhen Hamlet Witch enters deployed, return target card from your graveyard to your hand.",
+              "original_printed_rules_text": "Hexproof\nDeploy 4 (As this enters, you may tap any number of other creatures you control with total power 4 or more.)\nWhen Hamlet Witch enters deployed, return target card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "deploy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Hexproof\nDeploy 4\nWhen Hamlet Witch enters deployed, return target card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Hexproof\nDeploy 4 (As this enters, you may tap any number of other creatures you control with total power 4 or more.)\nWhen Hamlet Witch enters deployed, return target card from your graveyard to your hand."
+        }
+      ],
+      "support_status": "candidate_requires_native_verification"
+    }
+  ]
+}

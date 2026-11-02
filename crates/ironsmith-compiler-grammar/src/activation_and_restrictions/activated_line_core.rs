@@ -199,6 +199,7 @@ fn parse_direct_controller_sacrifice_draw_ability(
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones,
         }
         .into(),
@@ -270,6 +271,7 @@ fn parse_direct_simple_effect_ability(
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
@@ -284,6 +286,41 @@ pub fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     if let Some(split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) {
+        let mut kept = Vec::new();
+        let mut surcharges = Vec::new();
+        for sentence in crate::lexer::split_lexed_sentences(split.after_colon) {
+            let words = crate::lexer::parser_token_word_refs(sentence);
+            let is_own_surcharge = words.starts_with(&["this", "ability", "costs"])
+                && words.windows(3).any(|part| part == ["more", "to", "activate"]);
+            let parsed = if is_own_surcharge { typed_cost_modifiers::parse(sentence)? } else { None };
+            if let Some(StaticAbility { payload: ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease {
+                increase, activator: None, non_mana_only: false, condition: None,
+                ability_condition: Some(ironsmith_core::ActivatedAbilityCostCondition::ThisAbility { ability_index: None }), ..
+            }, .. }) = parsed {
+                let Some(parts) = increase.as_all() else { return Ok(None); };
+                surcharges.extend_from_slice(parts);
+            } else {
+                kept.extend_from_slice(sentence);
+                kept.extend(crate::lexer::lex_line(".", 0)?);
+            }
+        }
+        if !surcharges.is_empty() {
+            // The own-ability surcharge belongs to its price, including when
+            // the activation is granted. No printed/grantor ability index is involved.
+            let prefix = tokens.len() - split.after_colon.len();
+            let mut rewritten = tokens[..prefix].to_vec(); rewritten.extend(kept);
+            let Some(mut parsed) = parse_activated_line_with_raw(&rewritten)? else { return Ok(None); };
+            fn append(cost: ironsmith_core::TotalCost<crate::model::CompilerCost>, extra: &[crate::model::CompilerCost]) -> ironsmith_core::TotalCost<crate::model::CompilerCost> {
+                match cost.kind() {
+                    ironsmith_core::TotalCostKind::All(parts) => { let mut parts=parts.clone();parts.extend_from_slice(extra);ironsmith_core::TotalCost::from_costs(parts) },
+                    ironsmith_core::TotalCostKind::OneOf(branches) => ironsmith_core::TotalCost::one_of(branches.iter().cloned().map(|branch|append(branch,extra)).collect()),
+                }
+            }
+            if let crate::model::CompilerAbilityKindCore::Activated(ability) = parsed.kind_mut() {
+                ability.mana_cost = append(ability.mana_cost.clone(), &surcharges);
+            }
+            return Ok(Some(parsed));
+        }
         let (body, rules) = crate::consumer_mana::split_x_spending_sentences(split.after_colon);
         if !rules.is_empty() {
             let colon = tokens.len() - split.after_colon.len();
@@ -356,6 +393,7 @@ fn parse_activated_line_with_raw_remaining(
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
                 }),
+                designations: Default::default(),
                 functional_zones,
             }
             .into(),
@@ -426,6 +464,7 @@ fn parse_activated_line_with_raw_remaining(
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
                 }),
+                designations: Default::default(),
                 functional_zones,
             }
             .into(),
@@ -527,6 +566,7 @@ fn parse_activated_line_with_raw_remaining(
                         activation_condition: mana_activation_condition.clone(),
                         mana_usage_restrictions: mana_usage_restrictions.clone(),
                     }),
+                    designations: Default::default(),
                     functional_zones: functional_zones.clone(),
                 };
                 let mut effects_ast = vec![mana_ast];
@@ -558,6 +598,7 @@ fn parse_activated_line_with_raw_remaining(
                             activation_condition: mana_activation_condition.clone(),
                             mana_usage_restrictions: mana_usage_restrictions.clone(),
                         }),
+                        designations: Default::default(),
                         functional_zones: functional_zones.clone(),
                     };
                     return Ok(Some(ParsedAbility {
@@ -587,6 +628,7 @@ fn parse_activated_line_with_raw_remaining(
                         activation_condition: mana_activation_condition.clone(),
                         mana_usage_restrictions: mana_usage_restrictions.clone(),
                     }),
+                    designations: Default::default(),
                     functional_zones: functional_zones.clone(),
                 };
                 let mut effects_ast = vec![mana_ast];
@@ -633,6 +675,7 @@ fn parse_activated_line_with_raw_remaining(
                         activation_condition: mana_activation_condition.clone(),
                         mana_usage_restrictions,
                     }),
+                    designations: Default::default(),
                     functional_zones,
                 }
             }
@@ -681,6 +724,7 @@ fn parse_activated_line_with_raw_remaining(
                     activation_condition: mana_activation_condition.clone(),
                     mana_usage_restrictions,
                 }),
+                designations: Default::default(),
                 functional_zones,
             }
         }
@@ -914,6 +958,7 @@ pub fn parse_compiler_activation_cost(
     {
         return Ok(cost);
     }
+    if let Some(cost) = parse_aggregate_tap_cost(tokens)? { return Ok(cost); }
     let cst = parse_activation_cost_tokens(tokens)?;
     Ok(crate::semantic_assembly::assemble_activation_cost(&cst)?.to_core_total_cost())
 }
@@ -1464,4 +1509,51 @@ pub fn parse_source_must_be_blocked_if_able_line(
         )));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod intrinsic_activation_surcharge_tests {
+    use super::*;
+    #[test]
+    fn own_dynamic_surcharge_is_price_not_a_resolving_effect_or_global_static() {
+        let tokens=crate::lexer::lex_line("{1}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",0).unwrap();
+        let parsed=parse_activated_line(&tokens).unwrap().unwrap();
+        let crate::model::CompilerAbilityKindCore::Activated(ability)=parsed.kind() else{panic!()};
+        assert_eq!(ability.mana_cost.costs().len(),2);
+        assert!(ability.mana_cost.costs().iter().any(|cost|matches!(cost,crate::model::CompilerCost::DynamicMana(dynamic) if matches!(dynamic.additional_generic.as_ref().map(crate::effect::Value::unhinted),Some(crate::effect::Value::CountersOn(_,Some(crate::object::CounterType::PlusOnePlusOne)))))));
+        assert_eq!(parsed.effects_ast.as_ref().unwrap().len(),1,"the own surcharge must never execute as an effect");
+    }
+}
+
+/// Read a tap payment's aggregate bound independently of its cast/activation
+/// permission. Selection and tapping remain existing validated cost effects.
+pub(crate) fn parse_aggregate_tap_cost(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if words.first() != Some(&"tap") { return Ok(None); }
+    let (prefix, minimum) = if words.get(1..3) == Some(&["any", "number"]) { (3, 0) }
+        else if words.get(1..4) == Some(&["one", "or", "more"]) { (4, 1) }
+        else { return Ok(None); };
+    let Some(total) = words.windows(3).position(|part| part == ["with", "total", "power"]) else { return Ok(None); };
+    if total <= prefix || words.len() != total + 6 || !matches!(&words[total + 4..], ["or", "more" | "greater"]) { return Ok(None); }
+    let Some(amount) = crate::util::parse_number_word_u32(words[total + 3]).and_then(|amount| i32::try_from(amount).ok()) else { return Ok(None); };
+    let mut start = prefix;
+    if words.get(start) == Some(&"of") { start += 1; }
+    if start >= total { return Ok(None); }
+    let starts = view.token_start_indices();
+    let mut filter = crate::object_filters::parse_object_filter(&tokens[starts[start]..starts[total]], false)?;
+    if filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Battlefield) { return Ok(None); }
+    filter.zone = Some(crate::zone::Zone::Battlefield);
+    filter.untapped = true;
+    let tag = crate::tag::declared_key(format!("aggregate_tap_payment_{}", crate::lexer::render_token_slice(tokens)));
+    let count = crate::effect::ChoiceCount { min: minimum, max: None, ..crate::effect::ChoiceCount::any_number() };
+    let choose = EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+        filter, count, player: PlayerAst::You, tag: tag.clone(),
+        constraint: crate::effect::ChoiceAggregateConstraint::at_least(crate::effect::ChoiceAggregateMetric::Power, amount),
+    });
+    let tap = EffectAst::subject_verb_tap_all(ObjectFilter::tagged(tag));
+    crate::word_claims::claim_tokens(&tokens[..starts[start]]);
+    crate::word_claims::claim_tokens(&tokens[starts[total]..]);
+    Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::ValidatedEffect(Box::new(EffectAst::Sequence { effects: vec![choose, tap] })))))
 }

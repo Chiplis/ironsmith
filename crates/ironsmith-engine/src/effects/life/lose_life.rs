@@ -83,6 +83,10 @@ impl LoseLifeEffect {
 }
 
 impl EffectExecutor for LoseLifeEffect {
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        self.player.is_target().then(||self.player.clone()).into_iter().collect()
+    }
+
     fn replacement_original_event(
         &self,
         game: &GameState,

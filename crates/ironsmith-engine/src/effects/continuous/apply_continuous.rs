@@ -338,12 +338,13 @@ fn is_copy_characteristic_exception(modification: &Modification) -> bool {
 
 /// Characteristics specified as exceptions to a copy are part of its layer-1
 /// values, including when another object copies the result (CR 707.9b/d).
-fn apply_copy_characteristic_exceptions(values: &mut crate::snapshot::CopiableValues, modifications: &[Modification]) {
+fn apply_copy_characteristic_exceptions(values: &mut crate::snapshot::CopiableValues, modifications: &[Modification],game:&GameState) {
     crate::static_abilities::exclude_cdas_from_copy(&mut values.abilities, &mut values.ability_labels,
         false,
         modifications.iter().any(|m| matches!(m, Modification::SetColors(_) | Modification::MakeColorless)),
         modifications.iter().any(|m| matches!(m, Modification::SetCardTypes(_) | Modification::SetSubtypes(_)
             | Modification::RemoveAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature) | Modification::RemoveAllCreatureTypes)));
+    for ty in &mut values.subtypes {*ty=game.admitted_subtype(*ty);}
     for modification in modifications {
         match modification {
             Modification::SetColors(colors) => values.colors = *colors,
@@ -354,16 +355,16 @@ fn apply_copy_characteristic_exceptions(values: &mut crate::snapshot::CopiableVa
                 let mut card_types = values.card_types.clone().into();
                 let mut subtypes = values.subtypes.clone().into();
                 if matches!(modification, Modification::SetCardTypes(_)) {
-                    crate::continuous::replace_card_types_and_prune_subtypes(&mut card_types, &mut subtypes, types);
+                    crate::continuous::replace_card_types_and_prune_subtypes_in_game(&mut card_types, &mut subtypes, types, game);
                 } else {
-                    crate::continuous::remove_card_types_and_prune_subtypes(&mut card_types, &mut subtypes, types);
+                    crate::continuous::remove_card_types_and_prune_subtypes_in_game(&mut card_types, &mut subtypes, types, game);
                 }
                 values.card_types = card_types.to_vec(); values.subtypes = subtypes.to_vec();
             },
-            Modification::AddSubtypes(types) => { for ty in types { if !values.subtypes.contains(ty) { values.subtypes.push(*ty); } } },
+            Modification::AddSubtypes(types) => { let mut subtypes=std::mem::take(&mut values.subtypes).into();for ty in types {crate::continuous::merge_characteristic_subtype(&mut subtypes,game.admitted_subtype(*ty));}values.subtypes=subtypes.to_vec(); },
             Modification::SetSubtypes(types) => {
                 let mut subtypes = values.subtypes.clone().into();
-                crate::continuous::replace_subtypes_for_set(&mut subtypes, types);
+                crate::continuous::replace_subtypes_for_set_in_game(&mut subtypes, types, game);
                 values.subtypes = subtypes.to_vec();
             },
             Modification::RemoveSubtypes(types) => values.subtypes.retain(|ty| !types.contains(ty)),
@@ -519,7 +520,7 @@ fn resolve_runtime_modification(
                 values.power = Some(power);
                 values.toughness = Some(toughness);
             }
-            apply_copy_characteristic_exceptions(values, copy_characteristic_exceptions);
+            apply_copy_characteristic_exceptions(values, copy_characteristic_exceptions,game);
             if clear_copy_mana_cost { values.mana_cost = None; }
             if let RuntimeModification::CopyOfWithAbilities { abilities, .. } = modification
                 && copy_ability_absent_marker.is_none_or(|marker| !crate::filter::copy_abilities_have_marker(&values.abilities, marker)) {
@@ -568,7 +569,8 @@ fn resolve_runtime_modification(
                     preserve_all = false;
                 }
             }
-            Ok(Modification::CopyOf { retain_original_name: false,
+            Ok(Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
                 target_id: source_id,
                 copiable_values: Box::new(copiable_values),
                 preserve_source_abilities: preserve_all,
@@ -661,6 +663,29 @@ fn control_change_target_object_ids(
     }
 }
 
+// Permanent characteristic conversions can be explicit payments just like
+// controller changes. The enclosing selection cost owns exact cardinality;
+// this leaf changes only the selected, still-present objects.
+fn is_static_characteristic_change_cost(effect: &ApplyContinuousEffect) -> bool {
+    let allowed = |modification: &Modification| matches!(modification,
+        Modification::SetName(_) | Modification::SetCardTypes(_)
+        | Modification::AddCardTypes(_) | Modification::RemoveCardTypes(_)
+        | Modification::AddSupertypes(_) | Modification::RemoveSupertypes(_)
+        | Modification::AddSubtypes(_) | Modification::RemoveSubtypes(_)
+        | Modification::RemoveAllSubtypesOfFamily(_)
+        | Modification::AddAbility(_) | Modification::AddAbilityGeneric(_)
+        | Modification::RemoveAllAbilities);
+    effect.modification.as_ref().is_some_and(allowed)
+        && effect.additional_modifications.iter().all(allowed)
+        && effect.runtime_modifications.is_empty()
+        && effect.condition.is_none()
+        && effect.target_spec.as_ref().is_some_and(|target| !target.is_target())
+}
+fn explicitly_empty_cost_binding(effect: &ApplyContinuousEffect, ctx: &ExecutionContext) -> bool {
+    matches!(effect.target_spec.as_ref().map(ChooseSpec::base), Some(ChooseSpec::Tagged(tag))
+        if ctx.tagged_objects.get(tag).is_some_and(Vec::is_empty))
+}
+
 fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
     let base_is_controller_change = effect.modification.as_ref().is_none_or(|modification| {
         matches!(
@@ -713,6 +738,16 @@ fn materialize_runtime_condition(
     ctx: &ExecutionContext,
 ) -> Result<crate::ConditionExpr, ExecutionError> {
     match condition {
+        crate::ConditionExpr::TaggedObjectMatches(tag,filter) if filter.match_current_state=>{
+            let snapshots=ctx.get_tagged_all(tag.as_str()).cloned().unwrap_or_default();
+            let mut predicates=snapshots.into_iter().map(|snapshot|{
+                let mut current=filter.clone();current.match_current_state=false;
+                current.specific=Some(snapshot.object_id);current.zone=filter.zone.or(Some(snapshot.zone));
+                crate::ConditionExpr::ValueComparison{left:Value::Count(current),operator:ironsmith_core::ValueComparisonOperator::GreaterThan,right:Value::Fixed(0)}
+            });
+            let first=predicates.next().unwrap_or(crate::ConditionExpr::ValueComparison{left:Value::Fixed(0),operator:ironsmith_core::ValueComparisonOperator::GreaterThan,right:Value::Fixed(0)});
+            Ok(predicates.fold(first,|left,right|crate::ConditionExpr::Or(Box::new(left),Box::new(right))))
+        }
         crate::ConditionExpr::TaggedObjectIsTopOfLibrary { tag, player } => {
             let player_id = resolve_player_filter(game, player, ctx)?;
             let Some(snapshot) = ctx
@@ -956,6 +991,36 @@ fn entry_count_needs_resolution_context(value: &Value) -> bool {
 /// so the player is fixed as the grant resolves. Attachment-relative
 /// references ("enchanted"/"equipped") stay dynamic: the trigger matcher
 /// follows the source's current attachment.
+/// A gained ability resolves in its host's context, so references to an
+/// explicit parent object are sampled per acquisition. A host-wide map would
+/// conflate two grants that happen to use the same lexical reference tag.
+fn capture_granted_cast_object_references(
+    modification: Modification,
+    ctx: &ExecutionContext,
+) -> Modification {
+    let Modification::AddAbilityGeneric(mut ability) = modification else {return modification;};
+    let program = match &mut ability.kind {
+        crate::ability::AbilityKind::Triggered(triggered) => &mut triggered.effects,
+        crate::ability::AbilityKind::Activated(activated) => &mut activated.effects,
+        _ => return Modification::AddAbilityGeneric(ability),
+    };
+    for tag in program.object_reference_imports.clone() {
+        if program.captured_object_references.iter().any(|(key,_)|key==&tag) {continue;}
+        let snapshots=ctx.get_tagged_all(tag.as_str()).or_else(|| {
+            // An explicit singular "the exiled card" inside gained text
+            // names the parent's own successful exile arrival, not the
+            // recipient's unrelated source-wide links.
+            (tag.as_str()==crate::tag::PRIOR_EXILED_CARD_TAG)
+                .then(||ctx.get_tagged_all(crate::tag::SOURCE_EXILED_SELF_TAG)).flatten()
+        });
+        let ids=snapshots.into_iter().flatten().map(|snapshot|snapshot.object_id).collect::<Vec<_>>();
+        // An unavailable explicit parent remains an empty exact capture;
+        // it cannot fall through to an unrelated tag on the new host.
+        program.captured_object_references.push((tag,ids));
+    }
+    Modification::AddAbilityGeneric(ability)
+}
+
 fn bind_granted_upkeep_trigger_outer_player(
     modification: Modification,
     game: &GameState,
@@ -1443,6 +1508,7 @@ fn acquire_continuous_action(
         for modification in &mut mods { if let Modification::CopyOf { retain_original_name, .. } = modification { *retain_original_name = true; } }
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
+    let mods=mods.into_iter().map(|modification|ctx.bind_definition_scope_modification(modification)).collect::<Result<Vec<_>,_>>()?;
     if definition.grant_only_if_absent
         && let Some(terminal) = skip_objects_already_having_grants(&mods, &mut source_type, game, ctx)
     {
@@ -1502,6 +1568,7 @@ impl ContinuousActionInputs {
         .bind_granting_player_activation(ctx.controller);
         let resolved_modification =
             bind_granted_upkeep_trigger_outer_player(resolved_modification, game, ctx);
+        let resolved_modification=capture_granted_cast_object_references(resolved_modification, ctx);
         if let Modification::ChangeController(new_controller) = &resolved_modification {
             // CR 800.4b: an effect cannot give control of an object to a
             // player who has left the game.
@@ -1846,6 +1913,10 @@ impl crate::effects::SimultaneousEffectProposal for ContinuousActionProposal {
 }
 
 impl EffectExecutor for ApplyContinuousEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool {
+        self.target_spec.as_ref().is_some_and(|role| role == spec)
+    }
+
     fn visit_resolution_child_effects(&self, _visitor: &mut dyn FnMut(&crate::effect::Effect)) {}
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
@@ -1882,7 +1953,7 @@ impl EffectExecutor for ApplyContinuousEffect {
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
-        is_controller_change_cost(self).then_some(self)
+        (is_controller_change_cost(self) || is_static_characteristic_change_cost(self)).then_some(self)
     }
 
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
@@ -1944,12 +2015,40 @@ impl EffectExecutor for ApplyContinuousEffect {
 }
 
 impl CostExecutableEffect for ApplyContinuousEffect {
+    fn execute_payment_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if is_static_characteristic_change_cost(self) && explicitly_empty_cost_binding(self, ctx) {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        }
+        self.execute_with_outputs(game, ctx)
+    }
+    fn can_execute_as_cost_with_context(
+        &self, game: &GameState, ctx: &mut ExecutionContext, _reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        if !is_static_characteristic_change_cost(self) {
+            return <Self as CostExecutableEffect>::can_execute_as_cost(self, game, ctx.source, ctx.controller);
+        }
+        if explicitly_empty_cost_binding(self, ctx) { return Ok(()); }
+        let target = self.target_spec.as_ref().expect("characteristic cost has an object selector");
+        let objects = resolve_non_target_continuous_objects(game, ctx, target)
+            .map_err(CostValidationError::ExecutionFailed)?;
+        if objects.is_empty() || objects.iter().any(|id|
+            game.is_phased_out(*id) || !game.object(*id).is_some_and(|object| object.zone == Zone::Battlefield)) {
+            return Err(CostValidationError::NotEnoughObjects);
+        }
+        Ok(())
+    }
     fn can_execute_as_cost(
         &self,
         game: &GameState,
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
+        if is_static_characteristic_change_cost(self) {
+            let mut ctx = ExecutionContext::new_default(source, controller);
+            return <Self as CostExecutableEffect>::can_execute_as_cost_with_context(self, game, &mut ctx, crate::costs::PaymentReason::Other);
+        }
         if !is_controller_change_cost(self) {
             return Err(CostValidationError::Other(
                 "only controller-change continuous effects can be paid as costs".to_string(),
@@ -2752,6 +2851,7 @@ mod tests {
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: false,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let ability_index = game
@@ -3091,5 +3191,51 @@ mod tests {
             .remove(&CounterType::Shield);
         assert_eq!(game.current_controller(first), Some(bob));
         assert_eq!(game.current_controller(second), Some(alice));
+    }
+}
+
+#[cfg(test)]
+mod granted_capture_import_policy_tests {
+    use super::*;
+    #[test]
+    fn locally_produced_cast_tag_is_not_imported_from_identically_named_parent() {
+        let player=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Parent referent")
+            .card_types(vec![crate::CardType::Creature]).build();
+        let parent=game.create_object_from_card(&card,player,Zone::Exile);
+        let snapshot=crate::snapshot::ObjectSnapshot::from_object(game.object(parent).unwrap(),&game);
+        let mut ctx=ExecutionContext::new_default(parent,player);ctx.set_tagged_objects("shared",vec![snapshot]);
+        for imported in [false,true] {
+            let mut program=crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::SpecificObject(parent))).tag_all("shared"),
+                crate::effect::Effect::new(crate::effects::CastTaggedEffect::new("shared",PlayerFilter::You).as_copy()),
+            ]);
+            if imported {program.object_reference_imports.push(crate::tag::TagKey::from("shared"));}
+            let granted=crate::ability::Ability::triggered(crate::triggers::Trigger::this_attacks(),program);
+            let Modification::AddAbilityGeneric(granted)=capture_granted_cast_object_references(Modification::AddAbilityGeneric(granted),&ctx) else {panic!("grant")};
+            let crate::ability::AbilityKind::Triggered(triggered)=granted.kind else {panic!("trigger")};
+            assert_eq!(!triggered.effects.captured_object_references.is_empty(),imported,
+                "runtime must follow typed free-import metadata, never scan a local body for matching parent tag names");
+        }
+    }
+}
+
+#[cfg(test)]
+mod current_identity_grant_predicate_tests {
+    use super::*;
+    use crate::target::ObjectFilter;
+    #[test]
+    fn frozen_current_identity_condition_hides_and_restores_without_following_reentry(){
+        let player=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Current identity witness").card_types(vec![crate::CardType::Sorcery]).build();let id=game.create_object_from_card(&card,player,Zone::Exile);let stable=game.object(id).unwrap().stable_id;
+        let identity=crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::from_model(crate::static_abilities::CompiledStaticAbility::custom_keyword_identity("Witness")));game.object_mut(id).unwrap().abilities_mut().push(identity.clone());
+        let snapshot=crate::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(),&game);let mut ctx=ExecutionContext::new_default(id,player);ctx.set_tagged_objects("linked_card",vec![snapshot]);
+        let mut filter=ObjectFilter::default();filter.match_current_state=true;filter.ability_markers.push("custom keyword:Witness".into());
+        let bound=materialize_runtime_condition(&crate::ConditionExpr::TaggedObjectMatches(crate::tag::TagKey::from("linked_card"),filter),&game,&ctx).unwrap();
+        assert!(crate::condition_eval::evaluate_condition_resolution(&game,&bound,&ctx).unwrap());
+        game.object_mut(id).unwrap().abilities_mut().clear();assert!(!crate::condition_eval::evaluate_condition_resolution(&game,&bound,&ctx).unwrap());
+        game.object_mut(id).unwrap().abilities_mut().push(identity);assert!(crate::condition_eval::evaluate_condition_resolution(&game,&bound,&ctx).unwrap());
+        let hand=game.move_object_by_effect(id,Zone::Hand).unwrap();let exile=game.move_object_by_effect(hand,Zone::Exile).unwrap();assert_ne!(exile,id);assert_eq!(game.find_object_by_stable_id(stable),Some(exile));
+        assert!(!crate::condition_eval::evaluate_condition_resolution(&game,&bound,&ctx).unwrap(),"new incarnation cannot satisfy frozen reference even if keyword is printed on it");
     }
 }

@@ -26,7 +26,7 @@
 
 pub mod model {
     pub use ironsmith_compiler_semantic::card_document::{
-        ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch,
+        ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch, OptionalTextVariantBranch, OptionalTextVariants,
     };
     pub use ironsmith_compiler_semantic::model::{
         ActivationRestrictionNormalizationFact, AdditionalCostChoiceOptionAst, AnnotatedEffect,
@@ -190,6 +190,8 @@ pub mod front_end {
 pub mod card_builders;
 pub mod card_tokens;
 pub mod custom_tokens;
+pub mod supplied_card_definitions;
+pub use supplied_card_definitions::{with_supplied_card_definitions,supplied_card_definition_named,with_supplied_card_definition_graph,publish_supplied_graph_definition,SuppliedCardDefinitionGraph};
 pub mod keyword_actions;
 
 #[path = "lowering_impl/battlefield_entry_counter_fusion.rs"]

@@ -1146,11 +1146,16 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
         IfResultPredicate::PriorEffectResult(surface) => {
             EffectPredicate::PriorEffectResult(surface)
         }
-        IfResultPredicate::AffectedObjectsShare { required_count, characteristic } => {
+        IfResultPredicate::NamedActionCompleted { label } => EffectPredicate::NamedActionCompleted {label},
+        IfResultPredicate::ResultObjectsMatch { filter, negated } => {
+                    EffectPredicate::ResultObjectsMatch { filter, negated }
+                }
+                IfResultPredicate::AffectedObjectsShare { required_count, characteristic } => {
             EffectPredicate::AffectedObjectsShare { required_count, characteristic }
         }
         IfResultPredicate::ConditionMatched => EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
+        IfResultPredicate::ChoiceUnavailable => EffectPredicate::ChoiceUnavailable,
         IfResultPredicate::Value(cmp) | IfResultPredicate::DieValue(cmp) => EffectPredicate::Value(cmp),
     }
 }
@@ -1647,6 +1652,9 @@ fn vote_extra_amount(effect: &EffectAst) -> Option<(u32, bool)> {
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You | PlayerAst::Implicit,
             effects,
+        } | PermissionEffectAst::MayPay {
+            player: PlayerAst::You | PlayerAst::Implicit,
+            effects,payment_receipt:None,
         }) => match effects.as_slice() {
             [EffectAst::Votes(VoteEffectAst::VoteExtra { count, .. })] => Some((*count, true)),
             _ => None,

@@ -265,6 +265,24 @@ fn recognize_triggered_line_inner(
         return Ok(candidate.into_recognized_line(line, tokens_without_cap));
     }
 
+    // A complete guarded instruction owns its own `if` operand. Expanding
+    // that instruction immediately after a trigger comma must not promote
+    // its internal guard into an intervening-if on the surrounding ability.
+    // Unknown guards still take the strict intervening-if path below.
+    if let Some((header, body)) = grammar::split_lexed_once_on_comma(tokens_without_cap)
+        && header.len() > 1
+        && crate::lexer::split_lexed_sentences(body).first().is_some_and(|sentence| {
+            crate::word_claims::probe_only(||
+                crate::effect_sentences::parse_linked_face_token(sentence))
+                .is_ok_and(|parsed| parsed.is_some())
+        })
+    {
+        let probe=probe_triggered_split(&header[1..],body,None,trailing_cap);
+        if let Some(parsed)=probe.supported_recognized(line,tokens_without_cap) {
+            return Ok(parsed);
+        }
+    }
+
     // Once a triggered ability explicitly starts its post-trigger clause with
     // `if`, that condition is semantic: it is an intervening-if check, not
     // expendable punctuation. Keep track of the surface shape independently
@@ -888,14 +906,18 @@ pub(super) fn recognize_level_item(
         }
     }
 
+    // Every ability inside a level band shares the enclosing permanent's
+    // printed source identity, including triggered self references.
+    let contextual_tokens = normalize_named_source_tokens_for_builder(card, &line.tokens);
+    let level_tokens = contextual_tokens.as_deref().unwrap_or(&line.tokens);
+
     // "LEVEL 7+ ... At the beginning of each end step, if it's not your turn,
     // take an extra turn after this one." (Lighthouse Chronologist): a
     // triggered ability inside a level range (CR 711.2a).
-    if line
-        .tokens
+    if level_tokens
         .first()
         .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
-        && let Ok(chunk @ LineAst::Triggered { .. }) = parse_triggered_line_lexed(&line.tokens)
+        && let Ok(chunk @ LineAst::Triggered { .. }) = parse_triggered_line_lexed(level_tokens)
     {
         return Ok(Some(RecognizedLevelItem {
             info: line.info.clone(),
@@ -921,7 +943,10 @@ pub(super) fn recognize_level_item(
         }));
     }
 
-    if let Some(abilities) = parse_static_ability_ast_line_lexed(&line.tokens)? {
+    // Level-band abilities keep the enclosing permanent's source identity.
+    // Context-free static readers accept a typed source operand, just as in
+    // ordinary static-line dispatch, rather than a guessed proper-name filter.
+    if let Some(abilities) = parse_static_ability_ast_line_lexed(level_tokens)? {
         return Ok(Some(RecognizedLevelItem {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -1155,4 +1180,28 @@ fn rebind_object_pronoun_to_source_card(
     rebound.extend(crate::lexer::synthetic_word_tokens(["this", "card"]));
     rebound.extend_from_slice(&effects[index + 1..]);
     Some(rebound)
+}
+
+#[cfg(test)]
+mod effect_owned_guard_trigger_boundary {
+    use super::*;
+    use crate::host::EffectAst;
+    #[test]
+    fn linked_face_instruction_keeps_its_guard_in_resolution_not_trigger_condition() {
+        let card=ironsmith_core::card::CardBuilder::new(crate::ids::CardId::from_raw(1),"Guard witness")
+            .card_types(vec![crate::CardType::Creature]);
+        let text="When Guard witness enters, If this permanent's back face is a Wizard, create a token that's a copy of its back face attached to target creature.";
+        let document=crate::preprocess::preprocess_document(card,text).unwrap();
+        let recognized=crate::document_parser::recognize_document(&document,false).unwrap();
+        let trigger=recognized.lines.into_iter().find_map(|line|match line {RecognizedLine::Triggered(trigger)=>Some(trigger),_=>None}).unwrap();
+        assert!(trigger.intervening_if.is_none());
+        let ability=trigger.info.semantic_facts.triggered_ability.compiler_ability.unwrap();
+        assert!(ability.intervening_if.is_none());
+        fn linked_count(effects:&[EffectAst])->usize {effects.iter().map(|effect|match effect {
+            EffectAst::CreateLinkedFaceToken{..}=>1,
+            EffectAst::SourceSentence{effects,..}|EffectAst::Sequence{effects}|EffectAst::CommaThen{effects}=>linked_count(effects),
+            _=>0,
+        }).sum()}
+        assert_eq!(linked_count(&ability.effects),1,"one complete guarded creation stays in the effect program");
+    }
 }

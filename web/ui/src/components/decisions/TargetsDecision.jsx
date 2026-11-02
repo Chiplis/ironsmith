@@ -1,3 +1,4 @@
+import { withinAdditionalTargetBudget } from "@/lib/additional-target-budget";
 import DecisionObjectLabel from "./DecisionObjectLabel";
 import { SymbolText } from "@/lib/mana-symbols";
 import useUiText from "@/i18n/useUiText";
@@ -683,7 +684,7 @@ export default function TargetsDecision({
   );
 
   // Advancing past a requirement does not satisfy its minimum.
-  const canSubmit = allMinsMet;
+  const canSubmit = allMinsMet && withinAdditionalTargetBudget(requirements, selectionsByReq);
   const optionsMaxHeight = useMemo(() => {
     const oracleHeight = Number(inspectorOracleTextHeight);
     if (!Number.isFinite(oracleHeight) || oracleHeight <= 0) return 360;
@@ -733,7 +734,9 @@ export default function TargetsDecision({
         );
         if (!legal) return false;
         const reqMax = req?.max_targets ?? req?.legal_targets?.length ?? 1;
-        return (next[reqIdx] || []).length < reqMax;
+        if ((next[reqIdx] || []).length >= reqMax) return false;
+        const proposed = next.map((selected,index) => index === reqIdx ? [...selected,targetInput] : selected);
+        return withinAdditionalTargetBudget(requirements, proposed);
       };
 
       let reqIdx = preferredReqIdx;
@@ -996,6 +999,7 @@ export default function TargetsDecision({
     if (!req.legal_targets?.some((entry) => targetsMatch(entry, target))) return;
     const next = selectionsByReq.map((entries, idx) => idx === reqIdx ? [...entries, target] : entries);
     if (!requirements.every((entry, idx) => next[idx].length >= (entry.min_targets ?? 1))) return;
+    if (!withinAdditionalTargetBudget(requirements,next)) return;
     clearTimeout(gestureSubmitTimerRef.current);
     gestureSubmitTimerRef.current = null;
     setAutoSubmitTarget(null);
@@ -1096,7 +1100,7 @@ export default function TargetsDecision({
             const reqMin = req.min_targets ?? 1;
             const reqMax = req.max_targets ?? req.legal_targets?.length ?? 1;
             const isOptional = reqMin === 0;
-            const canSelectMore = reqSelections.length < reqMax;
+            const canSelectMore = reqSelections.length < reqMax && withinAdditionalTargetBudget(requirements,selectionsByReq.map((selected,index)=>index===reqIdx?[...selected,null]:selected));
             const showCompletedOptions = allDone && reqSelections.length > 0;
             const shouldShowSelectedChips = reqSelections.length > 0 && !isActive && !showCompletedOptions;
             const shouldShowTargetOptions = isActive || showCompletedOptions;

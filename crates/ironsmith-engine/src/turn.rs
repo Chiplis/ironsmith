@@ -1355,7 +1355,7 @@ fn execute_draw_step_for_player_with(
             )
             .with_miracle_decision(completed.miracle);
             let miracle_reveal =
-                crate::effects::cards::miracle_reveal_event(game, &event, draw_event_provenance);
+                crate::effects::cards::miracle_reveal_event(game, &event, draw_event_provenance, decision_maker)?;
             let event = TriggerEvent::new_with_provenance(event, draw_event_provenance);
             if let Some(drawn_event) = event.downcast::<CardsDrawnEvent>() {
                 game.record_cards_drawn_in_current_draw_step(active_player, drawn_event.amount());
@@ -1569,6 +1569,16 @@ pub fn try_execute_cleanup_step(game: &mut GameState)
         return Err(error);
     }
     game.update_cant_effects();
+    // Expired restrictions no longer prevent the duration's return. Returning
+    // static providers can alter discovery, so keep the existing cleanup
+    // transaction's rollback guarantee across this simultaneous transition.
+    if game.release_end_of_turn_phase_out_holds() {
+        if let Err(error)=game.refresh_continuous_state() {
+            game.restore_execution_checkpoint(checkpoint,false);
+            return Err(error);
+        }
+        game.update_cant_effects();
+    }
 
     // Normally no priority during cleanup, but if triggers/SBAs happen, there's a new cleanup
     game.turn.priority_player = None;

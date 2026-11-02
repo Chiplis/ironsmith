@@ -1544,7 +1544,8 @@ fn matching_snapshots<'a>(
     // power among creatures that player controls") still sees the permanents
     // leaving in this event.
     let compares_characteristics =
-        filter.power.is_some() || filter.toughness.is_some() || filter.mana_value.is_some();
+        filter.power.is_some() || filter.toughness.is_some() || filter.mana_value.is_some()
+            || filter.tagged_constraints.iter().any(|constraint|constraint.tag.as_str().starts_with("source_collection:"));
     if zc.from == Zone::Battlefield && compares_characteristics {
         let mut lookback_ctx = ctx.filter_ctx.clone();
         lookback_ctx.departed_battlefield_lookback = Some(zc.snapshots().to_vec().into());

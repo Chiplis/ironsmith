@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effect_sentences::gain_ability::tests::historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand' panicked at crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability_inline_tests.rs:1725:80:
+called `Result::unwrap()` on an `Err` value: ParseError("could not find verb in effect clause (clause: 'the same is true for double strike deathtouch hexproof indestructible lifelink menace protection and trample'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, note, end)")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effect_sentences::gain_ability::tests::historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand ... FAILED
+
+failures:
+
+failures:
+    effect_sentences::gain_ability::tests::historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.57s
+

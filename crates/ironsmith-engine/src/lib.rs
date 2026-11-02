@@ -46,6 +46,7 @@ extern crate self as ironsmith;
 pub mod linked_exile;
 pub mod source_numbers;
 pub mod ability;
+pub mod ability_program_identity;
 pub mod alternative_cast;
 #[cfg(feature = "bench-support")]
 pub mod bench_support;
@@ -74,11 +75,14 @@ pub mod game_state;
 pub mod grant;
 pub mod grant_registry;
 pub(crate) mod granted_spell_keywords;
+pub(crate) mod granted_optional_spell_costs;
+pub(crate) mod named_casting_price_reduction;
 pub mod ids;
 pub mod incremental;
 pub mod mana;
 pub mod mana_payment;
 pub mod marker;
+pub mod object_groups;
 pub mod object;
 pub(crate) mod object_query;
 pub(crate) mod party;
@@ -336,3 +340,13 @@ pub use events::{
 
 #[cfg(test)]
 pub(crate) use cards::CardDefinitionBuilder;
+
+pub mod action_use_receipts;
+pub mod activation_cost_alternatives;
+pub mod activation_zone_permissions;
+/// Source-backed chosen setup cards and their opening-hand exchange session.
+pub mod pregame_setup;
+
+mod activation_color_history;
+
+pub(crate) mod execution_reference_graph;

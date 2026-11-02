@@ -9,7 +9,7 @@
 //! - Static abilities (e.g., Underworld Breach grants escape while on battlefield)
 
 use crate::alternative_cast::AlternativeCastingMethod;
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::grant::{
     DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, GrantUsageLimit, Grantable,
 };
@@ -137,6 +137,8 @@ pub enum GrantSource {
     /// remain exiled, you may play them if you control a Wizard"). The filter
     /// is read with `player` as "you" and `source_id` as its source.
     EffectWhilePlayerControls {
+        #[cfg_attr(feature = "serialization", serde(default))]
+        expires_when_false: bool,
         source_id: ObjectId,
         player: PlayerId,
         filter: ObjectFilter,
@@ -425,11 +427,12 @@ impl GrantSource {
                 source_id,
                 player,
                 filter,
+                ..
             } => {
                 let filter_ctx = crate::filter::FilterContext::new(*player).with_source(*source_id);
                 game.battlefield.iter().any(|id| {
                     game.object(*id).is_some_and(|object| {
-                        game.controller_of(object) == *player && filter.matches(object, &filter_ctx, game)
+                        game.controller_of(object) == *player && !game.is_phased_out(*id) && filter.matches(object, &filter_ctx, game)
                     })
                 })
             }
@@ -1660,6 +1663,103 @@ impl GrantRegistry {
         result
     }
 
+    /// Capture permission authority before revealing a private hand identity.
+    /// Callers must subsequently validate the captured face and full filter.
+    pub(crate) fn potential_hand_reveal_grants(
+        &self,
+        game: &crate::game_state::GameState,
+        card_id: ObjectId,
+        card_zone: Zone,
+        player: PlayerId,
+    ) -> Vec<Grant> {
+        let card = game.object(card_id);
+        let mut result = Vec::new();
+
+        let card_stable_id = card.map(|card| card.stable_id);
+
+        // 1. Collect stored grants
+        for grant in &self.grants {
+            if matches!(grant.source, GrantSource::StaticAbility { .. }) {
+                continue;
+            }
+
+            // Check if grant is still valid
+            if !grant.source.is_valid(game) {
+                continue;
+            }
+
+            if !self.shared_usage_is_available(grant.shared_usage_id) {
+                continue;
+            }
+
+            if grant
+                .available_starting_turn
+                .is_some_and(|turn| game.turn.turn_number < turn)
+            {
+                continue;
+            }
+
+            // Check player matches
+            if grant.player != player {
+                continue;
+            }
+
+            // Check zone matches
+            if !grant_origin_matches(grant, card_zone)
+                || !grant_top_card_matches(game, grant, card_id)
+            {
+                continue;
+            }
+
+
+
+            // Check if this grant applies to this card
+            let matches = if let Some(target_id) = grant.target_id {
+                // Targeted grant - match the current object id, or the stable card
+                // identity when the permission explicitly tracks "that card".
+                target_id == card_id
+                    || grant.target_stable_id.zip(card_stable_id).is_some_and(
+                        |(target_stable_id, card_stable_id)| target_stable_id == card_stable_id,
+                    )
+            } else if grant.filter.is_some() {
+                card.is_some()
+            } else {
+                false
+            };
+
+            if matches {
+                result.push(grant.clone());
+            }
+        }
+
+        // 2. Compute grants from static abilities on demand so static and
+        // effect-based grants don't drift apart.
+        if card.is_none() { return result; }
+        for grant in self.static_grants(game) {
+
+            if grant.player != player
+                || !grant_origin_matches(&grant, card_zone)
+                || !grant_top_card_matches(game, &grant, card_id)
+            {
+                continue;
+            }
+
+            let matches = if let Some(target_id) = grant.target_id {
+                target_id == card_id
+            } else if grant.filter.is_some() {
+                true
+            } else {
+                false
+            };
+
+            if matches {
+                result.push(grant);
+            }
+        }
+
+        result
+    }
+
     /// An unqualified permission can authorize opening a face-down exiled card
     /// without consulting its hidden characteristics. Exact target IDs and the
     /// zone are public authority; a face-name or characteristic filter is not.
@@ -1915,6 +2015,18 @@ impl GrantRegistry {
             && grants
                 .iter()
                 .all(|grant| grant.play_from_constraints.lands_enter_tapped)
+    }
+
+    /// Capture expired condition durations before mutating the registry.
+    pub(crate) fn failed_control_duration_permissions(&self, game: &crate::game_state::GameState) -> std::collections::HashSet<GrantPermissionIdentity> {
+        self.grants.iter().filter(|grant| matches!(&grant.source,
+            GrantSource::EffectWhilePlayerControls { expires_when_false: true, .. }) && !grant.source.is_valid(game))
+            .filter_map(|grant| grant.permission_identity.clone()).collect()
+    }
+    pub(crate) fn expire_permission_identities(&mut self, expired: &std::collections::HashSet<GrantPermissionIdentity>) {
+        if expired.is_empty() { return; }
+        self.grants.retain(|grant| !grant.permission_identity.as_ref().is_some_and(|id| expired.contains(id)));
+        self.cleanup_orphaned_shared_usage();
     }
 
     /// Remove all grants from a specific source.
@@ -2374,13 +2486,11 @@ impl GrantRegistry {
                     let combat = game.combat.as_ref();
                     for player in game.players.iter().filter(|player| {
                         player.is_in_game()
-                            && player_matches_filter_with_combat(
-                                player.id,
-                                &spec.beneficiary,
-                                game,
-                                controller,
-                                combat,
-                            )
+                            && match &spec.beneficiary {
+                                crate::target::PlayerFilter::TaggedPlayer(_) => spec.beneficiary.matches_player(player.id,
+                                    &source_filter_context(&game.filter_context_for(controller,Some(source_id)),source_id,game)),
+                                _=>player_matches_filter_with_combat(player.id,&spec.beneficiary,game,controller,combat),
+                            }
                     }) {
                         let ctx = source_filter_context(
                             &game.filter_context_for(player.id, None), source_id, game);
@@ -2410,13 +2520,11 @@ impl GrantRegistry {
                     let combat = game.combat.as_ref();
                     for player in game.players.iter().filter(|player| {
                         player.is_in_game()
-                            && player_matches_filter_with_combat(
-                                player.id,
-                                &spec.beneficiary,
-                                game,
-                                controller,
-                                combat,
-                            )
+                            && match &spec.beneficiary {
+                                crate::target::PlayerFilter::TaggedPlayer(_) => spec.beneficiary.matches_player(player.id,
+                                    &source_filter_context(&game.filter_context_for(controller,Some(source_id)),source_id,game)),
+                                _=>player_matches_filter_with_combat(player.id,&spec.beneficiary,game,controller,combat),
+                            }
                     }) {
                         for &target_id in &targets {
                             if spec.may_look_at_linked_exile
@@ -2636,12 +2744,16 @@ fn linked_exile_targets_for_identity(
         .collect())
 }
 
-fn grant_filter_context(
+pub(crate) fn grant_filter_context(
     ctx: &crate::filter::FilterContext,
     grant: &Grant,
     game: &crate::game_state::GameState,
 ) -> crate::filter::FilterContext {
-    source_filter_context(ctx, grant.source.source_id(), game)
+    let mut context=source_filter_context(ctx, grant.source.source_id(), game);
+    if matches!(&grant.source,GrantSource::StaticAbility {..}) {
+        context.iterated_player.get_or_insert(grant.player);
+    }
+    context
 }
 
 /// A permission's card filter context: its source and that source's linked
@@ -2653,6 +2765,9 @@ fn source_filter_context(
 ) -> crate::filter::FilterContext {
     let mut ctx = ctx.clone();
     ctx.source = Some(source_id);
+    if let Some(crate::object::AttachmentTarget::Player(player))=game.object(source_id).and_then(|source|source.attached_to) {
+        ctx.tagged_players.insert("enchanted".into(),vec![player]);
+    }
     let source_exiled = game
         .get_exiled_with_source_links(source_id)
         .iter()

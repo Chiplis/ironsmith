@@ -9,6 +9,14 @@ struct Piles {
 }
 impl DecisionMaker for Piles {
     fn decide_objects(&mut self, game: &GameState, context: &SelectObjectsContext) -> Vec<ObjectId> {
+        // This scenario has no event-time alternative casting method in
+        // hand. Decline that independent optional disclosure channel, while
+        // preserving the exact mandatory original opening assertions below.
+        if context.description == "You may reveal cards with a casting permission for this event" {
+            assert_eq!(context.min, 0);
+            assert_eq!(context.reveal_policy, ironsmith::decisions::context::SelectionRevealPolicy::Public);
+            return Vec::new();
+        }
         assert_eq!(context.reveal_policy, ironsmith::decisions::context::SelectionRevealPolicy::Public);
         let ids: Vec<_> = context.candidates.iter().map(|candidate| candidate.id).collect();
         self.openings.push(ids.iter().map(|id| game.object(*id).unwrap().stable_id).collect());

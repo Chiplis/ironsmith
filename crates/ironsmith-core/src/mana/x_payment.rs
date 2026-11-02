@@ -234,6 +234,7 @@ impl ManaCost {
         if let Some(scope) = self.waterbend_payment_scope.as_mut() {
             for obligation in &mut scope.obligations { obligation.announced_x = Some(x); }
             scope.capacity.bind(x);
+            if let Some(capacity) = scope.native_capacity.as_mut() { capacity.bind(x); }
             if self.pips.iter().any(|pip| pip.contains(&ManaSymbol::X)) { scope.x_pip_binding = Some(x); }
         }
         if let Some(scope) = self.x_payment_scope.as_mut() {
@@ -246,6 +247,7 @@ impl ManaCost {
         if let Some(scope) = self.waterbend_payment_scope.as_mut() {
             for obligation in &mut scope.obligations { obligation.announced_x.get_or_insert(x); }
             scope.capacity.bind_if_unbound(x);
+            if let Some(capacity) = scope.native_capacity.as_mut() { capacity.bind_if_unbound(x); }
             if self.pips.iter().any(|pip| pip.contains(&ManaSymbol::X)) { scope.x_pip_binding.get_or_insert(x); }
         }
         self

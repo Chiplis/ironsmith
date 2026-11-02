@@ -1,0 +1,8 @@
+[
+  {
+    "input": 4,
+    "path": "crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs",
+    "snapshot": "tmp/custom-mechanics/next-wave/revolution_abilities/sixth-followup-currentlive/inputs/04-f0d0698618",
+    "merge_files": "tmp/custom-mechanics/next-wave/revolution_abilities/sixth-followup-currentlive/inputs/04-f0d0698618/merges/crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs"
+  }
+]

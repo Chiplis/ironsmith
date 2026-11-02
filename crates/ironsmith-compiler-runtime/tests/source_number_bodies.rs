@@ -313,7 +313,8 @@ fn acquired_copy_numeric_choice_cannot_borrow_original_choice_and_expiry_restore
         let donor=enter(&mut g,&donor_definition,B,&mut dm);
         let values=ironsmith::snapshot::CopiableValues::from_object(g.object(donor).unwrap());
         let copy=g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-            donor,B,vec![original],ironsmith::continuous::Modification::CopyOf{retain_original_name:false,
+            donor,B,vec![original],ironsmith::continuous::Modification::CopyOf{
+retain_original_types: false,retain_original_name:false,
                 target_id:donor,copiable_values:Box::new(values),preserve_source_abilities:false,
                 name_override:None,name_override_surface:None,add_supertypes:vec![],
             }));
@@ -348,7 +349,8 @@ fn copied_shapeshifter_reselection_has_distinct_group_and_public_proof_ignores_i
             }
             let values=ironsmith::snapshot::CopiableValues::from_object(g.object(donor).unwrap());
             let copy=g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-                source,A,vec![source],ironsmith::continuous::Modification::CopyOf{retain_original_name:false,
+                source,A,vec![source],ironsmith::continuous::Modification::CopyOf{
+retain_original_types: false,retain_original_name:false,
                     target_id:donor,copiable_values:Box::new(values),preserve_source_abilities:false,
                     name_override:None,name_override_surface:None,add_supertypes:vec![],
                 }));
@@ -485,6 +487,7 @@ fn delayed_numeric_match_keeps_the_admitted_host_acquisition_and_latest_departur
         let snapshot=ObjectSnapshot::from_object_with_calculated_characteristics(g.object(source).unwrap(),&g);
         let watched=g.create_object_from_definition(&simple("Watched object","Artifact","{1}",None,""),C,Zone::Battlefield);
         g.effect_store.delayed_triggers.push(ironsmith::triggers::DelayedTrigger{
+            source_collection_scope:None,persistent_player_rule:None,intervening_if:None,
             linked_exile_owner:None,source_number_owner:Some(owner.clone()),trigger:ability.trigger.clone(),effects:ability.effects.clone(),
             one_shot:false,x_value:None,not_before_turn:None,expires_at_turn:None,expires_before_controller_turn_after:None,expires_after_controller_turn_after:None,
             expires_at_end_of_combat:false,bound_extra_turn_index:None,while_any_tagged_object_in_zone:None,while_source_tapped:None,
@@ -495,7 +498,8 @@ fn delayed_numeric_match_keeps_the_admitted_host_acquisition_and_latest_departur
         });
         let values=ironsmith::snapshot::CopiableValues::from_object(g.object(source).unwrap());
         g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-            source,A,vec![source],ironsmith::continuous::Modification::CopyOf{retain_original_name:false,target_id:source,copiable_values:Box::new(values),
+            source,A,vec![source],ironsmith::continuous::Modification::CopyOf{
+retain_original_types: false,retain_original_name:false,target_id:source,copiable_values:Box::new(values),
                 preserve_source_abilities:false,name_override:None,name_override_surface:None,add_supertypes:vec![]}));
         g.refresh_continuous_state().unwrap();let copied=g.current_characteristics(source).unwrap();
         let copied_owner=ironsmith::linked_exile::LinkedExileOwner::capture(source,ability.effects.source_number_pair,copied.abilities.origin(slot)).unwrap();
@@ -527,7 +531,8 @@ fn simultaneous_same_definition_acquisitions_on_one_host_keep_each_live_prohibit
         let mut copies=Vec::new();
         for number in [3,4] {
             let id=g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-                source,A,vec![source],ironsmith::continuous::Modification::CopyOf{retain_original_name:false,target_id:source,copiable_values:Box::new(values.clone()),
+                source,A,vec![source],ironsmith::continuous::Modification::CopyOf{
+retain_original_types: false,retain_original_name:false,target_id:source,copiable_values:Box::new(values.clone()),
                     preserve_source_abilities:true,name_override:None,name_override_surface:None,add_supertypes:vec![]}));
             let effect=g.effect_store.continuous_effects.effects().iter().find(|effect|effect.id==id).unwrap();
             let owner=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,
@@ -562,7 +567,8 @@ fn two_preserved_talion_acquisitions_each_trigger_once_when_all_three_axes_match
         let pair=g.numeric_choice_memory(source).keys().next().unwrap().pair;
         let values=ironsmith::snapshot::CopiableValues::from_object(g.object(source).unwrap());
         let copy=g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-            source,A,vec![source],ironsmith::continuous::Modification::CopyOf{retain_original_name:false,target_id:source,copiable_values:Box::new(values),
+            source,A,vec![source],ironsmith::continuous::Modification::CopyOf{
+retain_original_types: false,retain_original_name:false,target_id:source,copiable_values:Box::new(values),
                 preserve_source_abilities:true,name_override:None,name_override_surface:None,add_supertypes:vec![]}));
         let effect=g.effect_store.continuous_effects.effects().iter().find(|effect|effect.id==copy).unwrap();
         let owner=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,

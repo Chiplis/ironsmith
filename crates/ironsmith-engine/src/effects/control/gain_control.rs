@@ -4,11 +4,12 @@ use crate::events::ControlChangedEvent;
 
 use crate::continuous::{EffectTarget, Modification};
 use crate::effect::{Effect, EffectOutcome, Until};
-use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
+use crate::types::CardType;
 
 /// Effect that gains control of a target permanent.
 ///
@@ -64,6 +65,35 @@ impl EffectExecutor for GainControlEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.target_assignments.iter().any(|assignment| {
+            assignment.spec.base() == self.target.base() && assignment.range.len() > 1
+        }) {
+
+        if !game
+            .player(ctx.controller)
+            .is_some_and(|player| player.is_in_game())
+        {
+            return Ok(EffectOutcome::resolved());
+        }
+        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
+        let pending_start = game.effect_store.pending_trigger_events.len();
+
+        let mut apply = ApplyContinuousEffect::new(
+            EffectTarget::AllPermanents,
+            Modification::ChangeController(ctx.controller),
+            self.duration.clone(),
+        );
+
+        apply.target_spec = Some(self.target.clone());
+        let mut outcome = execute_effect(game, &Effect::new(apply), ctx)?;
+        // The shared derived-state owner only publishes actual transitions,
+        // including those induced on other permanents by this control change.
+        // Return those same receipts rather than manufacturing a second event.
+        outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
+            |event| event.kind() == crate::events::EventKind::ControlChanged));
+        return Ok(outcome);
+        }
+
         if !game
             .player(ctx.controller)
             .is_some_and(|player| player.is_in_game())
@@ -93,6 +123,8 @@ impl EffectExecutor for GainControlEffect {
             |event| event.kind() == crate::events::EventKind::ControlChanged));
         Ok(outcome)
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)

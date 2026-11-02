@@ -1,0 +1,2429 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "source_sha256": "ace692b92427156ca7b153706071365ffdde27c00303f8a52ac297ee2a4a84f1",
+    "scope": "Independent full frozen corpus lexical/action/consumer audit; original records retained exactly. Missing expansion is explicit and must be materialized by root, not inferred supported."
+  },
+  "mechanics": [
+    {
+      "id": "rev-reflect-whole-source",
+      "keyword": "Reflect",
+      "scope": "revolution",
+      "rule_text": {
+        "name": "702.207.",
+        "rule": "Reflect",
+        "subrules": [
+          {
+            "name": "702.207a",
+            "rule": "Reflect is an ability found on the front face of some transforming double-faced cards (see rule 712, “Double-Faced Cards”). “Reflect [cost]” means “You may cast this card transformed from your graveyard by paying [cost] rather than its mana cost.” See rule 712.4b.",
+            "custom": true
+          },
+          {
+            "name": "702.207b",
+            "rule": "A resolving transforming double-faced spell that was cast using its reflect ability enters the battlefield with its back face up.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Aunfolk Primalist//Aunfolk Priestess",
+          "Aunic Gorgon//Aunic Mesmerist",
+          "Cloud Coatl//Curious Coatl",
+          "Disturbing Spirit//Displacing Angel",
+          "Gemari Seeker//Gemari Keeper",
+          "Ice Warden//Magma Warden",
+          "Igneate Inciter//Igneate Emissary",
+          "Lightmare//Voidmare",
+          "Man of Faith//Man of Learning",
+          "Obsidian Elemental//Emerald Elemental",
+          "Obsidian Shaper//Magma Shaper",
+          "Overflow Hellkite//Overflight Scourge",
+          "Protective Guardian//Vengeful Guardian",
+          "Selfless Protector//Savage Hermit",
+          "Speaker of Dreams//Reaver of Nightmares",
+          "Stainwing Sprite//Glasswing Oracle",
+          "Stonekin Summoner//Glacian Guardian",
+          "Ukshu Reveler//Ukshu Nihilist",
+          "Umberdeep Slitherer//Overpass Tyrant",
+          "Wild Erupter//Wild Nurturer"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Reflect",
+          "template": "{Cost}",
+          "reminder": "You may cast this card transformed from your graveyard by paying {Cost} rather than paying its mana cost."
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Aunfolk Primalist//Aunfolk Priestess_KRS",
+          "name": "Aunfolk Primalist",
+          "original_text": "Type: Creature — Elf Druid \nMana cost: {2}{G}\nPower/Toughness: 2/1\n{T}: Untap target land.\nReflect {2}{W} *(You may cast this from your graveyard transformed for {2}{W}.)*",
+          "executable_text": "Type: Creature — Elf Druid \nMana cost: {2}{G}\nPower/Toughness: 2/1\n{T}: Untap target land.\nYou may cast this card transformed from your graveyard by paying {2}{W} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Aunfolk Primalist",
+              "original_text": "Type: Creature — Elf Druid \nMana cost: {2}{G}\nPower/Toughness: 2/1\n{T}: Untap target land.\nReflect {2}{W} *(You may cast this from your graveyard transformed for {2}{W}.)*"
+            },
+            {
+              "name": "Aunfolk Priestess",
+              "original_text": "Type: Creature — Elf Druid \nPower/Toughness: 1/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\n{1}, {T}: Tap target creature."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Aunfolk Primalist",
+              "executable_text": "Type: Creature — Elf Druid \nMana cost: {2}{G}\nPower/Toughness: 2/1\n{T}: Untap target land.\nYou may cast this card transformed from your graveyard by paying {2}{W} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Untap target land.\nReflect {2}{W}",
+              "original_printed_rules_text": "{T}: Untap target land.\nReflect {2}{W} (You may cast this from your graveyard transformed for {2}{W}.)"
+            },
+            {
+              "name": "Aunfolk Priestess",
+              "executable_text": "Type: Creature — Elf Druid \nPower/Toughness: 1/2\nReflected (If this creature would leave the battlefield, exile it instead.)\n{1}, {T}: Tap target creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\n{1}, {T}: Tap target creature.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\n{1}, {T}: Tap target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{T}: Untap target land.\nReflect {2}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Aunfolk Primalist//Aunfolk Priestess_KRS",
+          "original_source": {
+            "fullName": "Aunfolk Primalist//Aunfolk Priestess",
+            "cardName": "Aunfolk Primalist",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Elf Druid ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "{T}: Untap target land.\nReflect {2}{W} *(You may cast this from your graveyard transformed for {2}{W}.)*",
+            "flavorText": "*“All we need is here in the Aunglade... *\n",
+            "power": "2",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Aunfolk Priestess",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elf Druid ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\n{1}, {T}: Tap target creature.",
+            "flavorText2": "*...and all we could want will be provided by Karsi.”*\n",
+            "power2": "1",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{White} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "168",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "5k38.com book cover",
+            "artist2": "Veronica Kinch",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Aunfolk Primalist//Aunfolk Priestess_KRS",
+            "sdn": 2272,
+            "colorIdentity": [
+              "G",
+              "W"
+            ],
+            "spellbook": [],
+            "key": "Aunfolk Primalist//Aunfolk Priestess_KRS",
+            "printKeys": [
+              "Aunfolk Primalist//Aunfolk Priestess_KRS"
+            ]
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{T}: Untap target land.\nReflect {2}{W} (You may cast this from your graveyard transformed for {2}{W}.)"
+        },
+        {
+          "id": "rev:Aunic Gorgon//Aunic Mesmerist_KRS",
+          "name": "Aunic Gorgon",
+          "original_text": "Type: Creature — Gorgon \nMana cost: {2}{G}\nPower/Toughness: 4/1\nWhenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B} *(You may cast this from your graveyard transformed for {4}{B}.)*",
+          "executable_text": "Type: Creature — Gorgon \nMana cost: {2}{G}\nPower/Toughness: 4/1\nWhenever Aunic Gorgon attacks, target creature must block this turn.\nYou may cast this card transformed from your graveyard by paying {4}{B} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Aunic Gorgon",
+              "original_text": "Type: Creature — Gorgon \nMana cost: {2}{G}\nPower/Toughness: 4/1\nWhenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B} *(You may cast this from your graveyard transformed for {4}{B}.)*"
+            },
+            {
+              "name": "Aunic Mesmerist",
+              "original_text": "Type: Creature — Human Warlock \nPower/Toughness: 1/4\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nDeathtouch"
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Aunic Gorgon",
+              "executable_text": "Type: Creature — Gorgon \nMana cost: {2}{G}\nPower/Toughness: 4/1\nWhenever Aunic Gorgon attacks, target creature must block this turn.\nYou may cast this card transformed from your graveyard by paying {4}{B} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B}",
+              "original_printed_rules_text": "Whenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B} (You may cast this from your graveyard transformed for {4}{B}.)"
+            },
+            {
+              "name": "Aunic Mesmerist",
+              "executable_text": "Type: Creature — Human Warlock \nPower/Toughness: 1/4\nReflected (If this creature would leave the battlefield, exile it instead.)\nDeathtouch",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nDeathtouch",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nDeathtouch"
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Aunic Gorgon//Aunic Mesmerist_KRS",
+          "original_source": {
+            "fullName": "Aunic Gorgon//Aunic Mesmerist",
+            "cardName": "Aunic Gorgon",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Gorgon ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "Whenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B} *(You may cast this from your graveyard transformed for {4}{B}.)*",
+            "flavorText": "*“Look and see your end...*\n",
+            "power": "4",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Aunic Mesmerist",
+            "manaCost2": "",
+            "typeLine2": "Creature — Human Warlock ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nDeathtouch",
+            "flavorText2": "*...and now see that you must embrace it.”*\n",
+            "power2": "1",
+            "toughness2": "4",
+            "loyalty2": "",
+            "color2": "{Black} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "173",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Even Amundsen",
+            "artist2": "Anastasia Ilicheva",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Aunic Gorgon//Aunic Mesmerist_KRS",
+            "sdn": 2273,
+            "colorIdentity": [
+              "G",
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Aunic Gorgon//Aunic Mesmerist_KRS",
+            "printKeys": [
+              "Aunic Gorgon//Aunic Mesmerist_KRS"
+            ]
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Whenever Aunic Gorgon attacks, target creature must block this turn.\nReflect {4}{B} (You may cast this from your graveyard transformed for {4}{B}.)"
+        },
+        {
+          "id": "rev:Cloud Coatl//Curious Coatl_KRS",
+          "name": "Cloud Coatl",
+          "original_text": "Type: Creature — Snake \nMana cost: {1}{U}\nPower/Toughness: 1/3\nFlying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G} *(You may cast this from your graveyard transformed for {3}{G}.)*",
+          "executable_text": "Type: Creature — Snake \nMana cost: {1}{U}\nPower/Toughness: 1/3\nFlying\nWhenever Cloud Coatl attacks, target player mills two cards.\nYou may cast this card transformed from your graveyard by paying {3}{G} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Cloud Coatl",
+              "original_text": "Type: Creature — Snake \nMana cost: {1}{U}\nPower/Toughness: 1/3\nFlying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G} *(You may cast this from your graveyard transformed for {3}{G}.)*"
+            },
+            {
+              "name": "Curious Coatl",
+              "original_text": "Type: Creature — Snake \nPower/Toughness: 3/1\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nReach\nWhen Curious Coatl enters, you may put target card from your graveyard on top of your library."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Cloud Coatl",
+              "executable_text": "Type: Creature — Snake \nMana cost: {1}{U}\nPower/Toughness: 1/3\nFlying\nWhenever Cloud Coatl attacks, target player mills two cards.\nYou may cast this card transformed from your graveyard by paying {3}{G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G}",
+              "original_printed_rules_text": "Flying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G} (You may cast this from your graveyard transformed for {3}{G}.)"
+            },
+            {
+              "name": "Curious Coatl",
+              "executable_text": "Type: Creature — Snake \nPower/Toughness: 3/1\nReflected (If this creature would leave the battlefield, exile it instead.)\nReach\nWhen Curious Coatl enters, you may put target card from your graveyard on top of your library.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nReach\nWhen Curious Coatl enters, you may put target card from your graveyard on top of your library.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nReach\nWhen Curious Coatl enters, you may put target card from your graveyard on top of your library."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Cloud Coatl//Curious Coatl_KRS",
+          "original_source": {
+            "fullName": "Cloud Coatl//Curious Coatl",
+            "cardName": "Cloud Coatl",
+            "manaCost": "{1}{U}",
+            "typeLine": "Creature — Snake ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "Flying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G} *(You may cast this from your graveyard transformed for {3}{G}.)*",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "cardName2": "Curious Coatl",
+            "manaCost2": "",
+            "typeLine2": "Creature — Snake ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nReach\nWhen Curious Coatl enters, you may put target card from your graveyard on top of your library.",
+            "flavorText2": "",
+            "power2": "3",
+            "toughness2": "1",
+            "loyalty2": "",
+            "color2": "{Green} ",
+            "cmc2": 2,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "46",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Victor Garcia",
+            "artist2": "sandara",
+            "sdn": 2236,
+            "colorIdentity": [
+              "U",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Cloud Coatl//Curious Coatl_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Cloud Coatl//Curious Coatl_KRS",
+            "printKeys": [
+              "Cloud Coatl//Curious Coatl_KRS"
+            ],
+            "pr": 0,
+            "pm": 1.6628559551028892,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nWhenever Cloud Coatl attacks, target player mills two cards.\nReflect {3}{G} (You may cast this from your graveyard transformed for {3}{G}.)"
+        },
+        {
+          "id": "rev:Disturbing Spirit//Displacing Angel_KRS",
+          "name": "Disturbing Spirit",
+          "original_text": "Type: Creature — Spirit \nMana cost: {2}{U}{U}\nPower/Toughness: 2/2\nWhen Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W} *(You may cast this from your graveyard transformed for {1}{W}{W}.)*",
+          "executable_text": "Type: Creature — Spirit \nMana cost: {2}{U}{U}\nPower/Toughness: 2/2\nWhen Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nYou may cast this card transformed from your graveyard by paying {1}{W}{W} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Disturbing Spirit",
+              "original_text": "Type: Creature — Spirit \nMana cost: {2}{U}{U}\nPower/Toughness: 2/2\nWhen Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W} *(You may cast this from your graveyard transformed for {1}{W}{W}.)*"
+            },
+            {
+              "name": "Displacing Angel",
+              "original_text": "Type: Creature — Angel \nPower/Toughness: 3/4\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nWhen Displacing Angel enters, return a permanent you control to its owner's hand."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Disturbing Spirit",
+              "executable_text": "Type: Creature — Spirit \nMana cost: {2}{U}{U}\nPower/Toughness: 2/2\nWhen Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nYou may cast this card transformed from your graveyard by paying {1}{W}{W} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W}",
+              "original_printed_rules_text": "When Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W} (You may cast this from your graveyard transformed for {1}{W}{W}.)"
+            },
+            {
+              "name": "Displacing Angel",
+              "executable_text": "Type: Creature — Angel \nPower/Toughness: 3/4\nReflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nWhen Displacing Angel enters, return a permanent you control to its owner's hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nFlying\nWhen Displacing Angel enters, return a permanent you control to its owner's hand.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nWhen Displacing Angel enters, return a permanent you control to its owner's hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Disturbing Spirit//Displacing Angel_KRS",
+          "original_source": {
+            "fullName": "Disturbing Spirit//Displacing Angel",
+            "cardName": "Disturbing Spirit",
+            "manaCost": "{2}{U}{U}",
+            "typeLine": "Creature — Spirit ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "When Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W} *(You may cast this from your graveyard transformed for {1}{W}{W}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "cardName2": "Displacing Angel",
+            "manaCost2": "",
+            "typeLine2": "Creature — Angel ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nWhen Displacing Angel enters, return a permanent you control to its owner's hand.",
+            "flavorText2": "",
+            "power2": "3",
+            "toughness2": "4",
+            "loyalty2": "",
+            "color2": "{White} ",
+            "cmc2": 4,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "50",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "dleoblack",
+            "artist2": "WLOP",
+            "sdn": 2315,
+            "colorIdentity": [
+              "U",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Disturbing Spirit//Displacing Angel_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Disturbing Spirit//Displacing Angel_KRS",
+            "printKeys": [
+              "Disturbing Spirit//Displacing Angel_KRS"
+            ],
+            "pr": 0,
+            "pm": 2.909997921430056,
+            "psr": 0,
+            "psm": 0,
+            "pbr": 21.73913043478261,
+            "pbm": 42.5531914893617
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Disturbing Spirit enters, return up to one target nonland permanent an opponent controls to its owner's hand.\nReflect {1}{W}{W} (You may cast this from your graveyard transformed for {1}{W}{W}.)"
+        },
+        {
+          "id": "rev:Gemari Seeker//Gemari Keeper_KRS",
+          "name": "Gemari Seeker",
+          "original_text": "Type: Creature — Elemental Nomad \nMana cost: {2}{B}\nPower/Toughness: 2/1\nWhen Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W} *(You may cast this from your graveyard transformed for {4}{W}.)*",
+          "executable_text": "Type: Creature — Elemental Nomad \nMana cost: {2}{B}\nPower/Toughness: 2/1\nWhen Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nYou may cast this card transformed from your graveyard by paying {4}{W} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Gemari Seeker",
+              "original_text": "Type: Creature — Elemental Nomad \nMana cost: {2}{B}\nPower/Toughness: 2/1\nWhen Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W} *(You may cast this from your graveyard transformed for {4}{W}.)*"
+            },
+            {
+              "name": "Gemari Keeper",
+              "original_text": "Type: Creature — Elemental Nomad \nPower/Toughness: 1/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Gemari Keeper enters, exile target creature an opponent controls until Gemari Keeper leaves the battlefield."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Gemari Seeker",
+              "executable_text": "Type: Creature — Elemental Nomad \nMana cost: {2}{B}\nPower/Toughness: 2/1\nWhen Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nYou may cast this card transformed from your graveyard by paying {4}{W} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W}",
+              "original_printed_rules_text": "When Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W} (You may cast this from your graveyard transformed for {4}{W}.)"
+            },
+            {
+              "name": "Gemari Keeper",
+              "executable_text": "Type: Creature — Elemental Nomad \nPower/Toughness: 1/2\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhen Gemari Keeper enters, exile target creature an opponent controls until Gemari Keeper leaves the battlefield.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhen Gemari Keeper enters, exile target creature an opponent controls until Gemari Keeper leaves the battlefield.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhen Gemari Keeper enters, exile target creature an opponent controls until Gemari Keeper leaves the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Gemari Seeker//Gemari Keeper_KRS",
+          "original_source": {
+            "fullName": "Gemari Seeker//Gemari Keeper",
+            "cardName": "Gemari Seeker",
+            "manaCost": "{2}{B}",
+            "typeLine": "Creature — Elemental Nomad ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "When Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W} *(You may cast this from your graveyard transformed for {4}{W}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Gemari Keeper",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental Nomad ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Gemari Keeper enters, exile target creature an opponent controls until Gemari Keeper leaves the battlefield.",
+            "flavorText2": "",
+            "power2": "1",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{White} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "99",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "lerrno",
+            "artist2": "Dark-Fenrir",
+            "sdn": 2253,
+            "colorIdentity": [
+              "B",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Gemari Seeker//Gemari Keeper_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Gemari Seeker//Gemari Keeper_KRS",
+            "printKeys": [
+              "Gemari Seeker//Gemari Keeper_KRS"
+            ],
+            "ptags": [
+              "cube"
+            ],
+            "pr": 0,
+            "pm": 3.3257119102057784,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Gemari Seeker enters, target opponent reveals their hand. You choose a noncreature, nonland card from it. Exile that card until Gemari Seeker leaves the battlefield.\nReflect {4}{W} (You may cast this from your graveyard transformed for {4}{W}.)"
+        },
+        {
+          "id": "rev:Ice Warden//Magma Warden_KRS",
+          "name": "Ice Warden",
+          "original_text": "Type: Creature — Elemental \nMana cost: {1}{U}\nPower/Toughness: 2/3\nWhen Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R} *(You may cast this from your graveyard transformed for {2}{R}.)*",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {1}{U}\nPower/Toughness: 2/3\nWhen Ice Warden becomes the target of a spell, sacrifice it.\nYou may cast this card transformed from your graveyard by paying {2}{R} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Ice Warden",
+              "original_text": "Type: Creature — Elemental \nMana cost: {1}{U}\nPower/Toughness: 2/3\nWhen Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R} *(You may cast this from your graveyard transformed for {2}{R}.)*"
+            },
+            {
+              "name": "Magma Warden",
+              "original_text": "Type: Creature — Elemental \nPower/Toughness: 3/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhenever Magma Warden becomes the target of a spell, Magma Warden deals 2 damage to each opponent."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Ice Warden",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {1}{U}\nPower/Toughness: 2/3\nWhen Ice Warden becomes the target of a spell, sacrifice it.\nYou may cast this card transformed from your graveyard by paying {2}{R} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R}",
+              "original_printed_rules_text": "When Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R} (You may cast this from your graveyard transformed for {2}{R}.)"
+            },
+            {
+              "name": "Magma Warden",
+              "executable_text": "Type: Creature — Elemental \nPower/Toughness: 3/2\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhenever Magma Warden becomes the target of a spell, Magma Warden deals 2 damage to each opponent.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhenever Magma Warden becomes the target of a spell, Magma Warden deals 2 damage to each opponent.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhenever Magma Warden becomes the target of a spell, Magma Warden deals 2 damage to each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Ice Warden//Magma Warden_KRS",
+          "original_source": {
+            "fullName": "Ice Warden//Magma Warden",
+            "cardName": "Ice Warden",
+            "manaCost": "{1}{U}",
+            "typeLine": "Creature — Elemental ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "When Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R} *(You may cast this from your graveyard transformed for {2}{R}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "cardName2": "Magma Warden",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhenever Magma Warden becomes the target of a spell, Magma Warden deals 2 damage to each opponent.",
+            "flavorText2": "",
+            "power2": "3",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{Red} ",
+            "cmc2": 2,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "67",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "LotC",
+            "artist2": "Elder Scrolls Legends",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Ice Warden//Magma Warden_KRS",
+            "sdn": 2243,
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "key": "Ice Warden//Magma Warden_KRS",
+            "printKeys": [
+              "Ice Warden//Magma Warden_KRS"
+            ],
+            "pr": 0,
+            "pm": 12.88713365204739,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Ice Warden becomes the target of a spell, sacrifice it.\nReflect {2}{R} (You may cast this from your graveyard transformed for {2}{R}.)"
+        },
+        {
+          "id": "rev:Igneate Inciter//Igneate Emissary_KRS",
+          "name": "Igneate Inciter",
+          "original_text": "Type: Creature — Elemental \nMana cost: {2}{R}{R}\nPower/Toughness: 3/3\nWhenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W} *(You may cast this from your graveyard transformed for {1}{W}{W}.)*",
+          "source_card_key": "Igneate Inciter//Igneate Emissary_KRS",
+          "source_layout": "doubleface",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {2}{R}{R}\nPower/Toughness: 3/3\nWhenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nYou may cast this card transformed from your graveyard by paying {1}{W}{W} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Igneate Inciter",
+              "original_text": "Type: Creature — Elemental \nMana cost: {2}{R}{R}\nPower/Toughness: 3/3\nWhenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W} *(You may cast this from your graveyard transformed for {1}{W}{W}.)*"
+            },
+            {
+              "name": "Igneate Emissary",
+              "original_text": "Type: Creature — Elemental \nPower/Toughness: 2/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Igneate Emissary enters, target player skips their next combat step."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Igneate Inciter",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {2}{R}{R}\nPower/Toughness: 3/3\nWhenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nYou may cast this card transformed from your graveyard by paying {1}{W}{W} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W}",
+              "original_printed_rules_text": "Whenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W} (You may cast this from your graveyard transformed for {1}{W}{W}.)"
+            },
+            {
+              "name": "Igneate Emissary",
+              "executable_text": "Type: Creature — Elemental \nPower/Toughness: 2/2\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhen Igneate Emissary enters, target player skips their next combat step.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhen Igneate Emissary enters, target player skips their next combat step.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhen Igneate Emissary enters, target player skips their next combat step."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_source": {
+            "fullName": "Igneate Inciter//Igneate Emissary",
+            "cardName": "Igneate Inciter",
+            "manaCost": "{2}{R}{R}",
+            "typeLine": "Creature — Elemental ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "Whenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W} *(You may cast this from your graveyard transformed for {1}{W}{W}.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "cardName2": "Igneate Emissary",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Igneate Emissary enters, target player skips their next combat step.",
+            "flavorText2": "",
+            "power2": "2",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{White} ",
+            "cmc2": 4,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "142",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "cobaltplasma",
+            "artist2": "Lily Abdullina",
+            "sdn": 2345,
+            "colorIdentity": [
+              "R",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Igneate Inciter//Igneate Emissary_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Igneate Inciter//Igneate Emissary_KRS",
+            "printKeys": [
+              "Igneate Inciter//Igneate Emissary_KRS"
+            ],
+            "pr": 5.2493438320209975,
+            "pm": 5.819995842860112,
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 13.422818791946309
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Whenever Igneate Inciter attacks for the first time each turn, you may untap all other creatures you control. After this phase, there is an additional combat phase.\nReflect {1}{W}{W} (You may cast this from your graveyard transformed for {1}{W}{W}.)"
+        },
+        {
+          "id": "rev:Lightmare//Voidmare_KRS",
+          "name": "Lightmare",
+          "original_text": "Type: Creature — Unicorn \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nLifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B} *(You may cast this from your graveyard transformed for {1}{B}{B}.)*",
+          "executable_text": "Type: Creature — Unicorn \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nLifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nYou may cast this card transformed from your graveyard by paying {1}{B}{B} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Lightmare",
+              "original_text": "Type: Creature — Unicorn \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nLifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B} *(You may cast this from your graveyard transformed for {1}{B}{B}.)*"
+            },
+            {
+              "name": "Voidmare",
+              "original_text": "Type: Creature — Nightmare Unicorn \nPower/Toughness: 2/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nDeathtouch\nAs long as any player has 9 or less life, Voidmare gets +2/+2."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Lightmare",
+              "executable_text": "Type: Creature — Unicorn \nMana cost: {1}{W}{W}\nPower/Toughness: 2/2\nLifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nYou may cast this card transformed from your graveyard by paying {1}{B}{B} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B}",
+              "original_printed_rules_text": "Lifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B} (You may cast this from your graveyard transformed for {1}{B}{B}.)"
+            },
+            {
+              "name": "Voidmare",
+              "executable_text": "Type: Creature — Nightmare Unicorn \nPower/Toughness: 2/2\nReflected (If this creature would leave the battlefield, exile it instead.)\nDeathtouch\nAs long as any player has 9 or less life, Voidmare gets +2/+2.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nDeathtouch\nAs long as any player has 9 or less life, Voidmare gets +2/+2.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nDeathtouch\nAs long as any player has 9 or less life, Voidmare gets +2/+2."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Lightmare//Voidmare_KRS",
+          "original_source": {
+            "fullName": "Lightmare//Voidmare",
+            "cardName": "Lightmare",
+            "manaCost": "{1}{W}{W}",
+            "typeLine": "Creature — Unicorn ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "Lifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B} *(You may cast this from your graveyard transformed for {1}{B}{B}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Voidmare",
+            "manaCost2": "",
+            "typeLine2": "Creature — Nightmare Unicorn ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nDeathtouch\nAs long as any player has 9 or less life, Voidmare gets +2/+2.",
+            "flavorText2": "",
+            "power2": "2",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{Black} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "24",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "moonga",
+            "artist2": "LI HH",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Lightmare//Voidmare_KRS",
+            "sdn": 2310,
+            "colorIdentity": [
+              "W",
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Lightmare//Voidmare_KRS",
+            "printKeys": [
+              "Lightmare//Voidmare_KRS"
+            ],
+            "pr": 5.2493438320209975,
+            "pm": 10.80856370816878,
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 4.47427293064877
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Lifelink\nAs long as any player has 21 or more life, Lightmare gets +2/+2.\nReflect {1}{B}{B} (You may cast this from your graveyard transformed for {1}{B}{B}.)"
+        },
+        {
+          "id": "rev:Man of Faith//Man of Learning_KRS",
+          "name": "Man of Faith",
+          "original_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nDiscard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U} *(You may cast this from your graveyard transformed for {4}{U}.)*",
+          "executable_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nDiscard a card: Man of Faith gains first strike and lifelink until end of turn.\nYou may cast this card transformed from your graveyard by paying {4}{U} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Man of Faith",
+              "original_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nDiscard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U} *(You may cast this from your graveyard transformed for {4}{U}.)*"
+            },
+            {
+              "name": "Man of Learning",
+              "original_text": "Type: Creature — Human Advisor \nPower/Toughness: 1/3\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Man of Learning enters, you may return up to one target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Man of Faith",
+              "executable_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nDiscard a card: Man of Faith gains first strike and lifelink until end of turn.\nYou may cast this card transformed from your graveyard by paying {4}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Discard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U}",
+              "original_printed_rules_text": "Discard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U} (You may cast this from your graveyard transformed for {4}{U}.)"
+            },
+            {
+              "name": "Man of Learning",
+              "executable_text": "Type: Creature — Human Advisor \nPower/Toughness: 1/3\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhen Man of Learning enters, you may return up to one target instant or sorcery card from your graveyard to your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhen Man of Learning enters, you may return up to one target instant or sorcery card from your graveyard to your hand.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhen Man of Learning enters, you may return up to one target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Discard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Man of Faith//Man of Learning_KRS",
+          "original_source": {
+            "fullName": "Man of Faith//Man of Learning",
+            "cardName": "Man of Faith",
+            "manaCost": "{1}{W}",
+            "typeLine": "Creature — Human Soldier ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "Discard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U} *(You may cast this from your graveyard transformed for {4}{U}.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "cardName2": "Man of Learning",
+            "manaCost2": "",
+            "typeLine2": "Creature — Human Advisor ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Man of Learning enters, you may return up to one target instant or sorcery card from your graveyard to your hand.",
+            "flavorText2": "",
+            "power2": "1",
+            "toughness2": "3",
+            "loyalty2": "",
+            "color2": "{Blue} ",
+            "cmc2": 2,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "25",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Square Enix",
+            "artist2": "chazillah",
+            "sdn": 2230,
+            "colorIdentity": [
+              "W",
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Man of Faith//Man of Learning_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Man of Faith//Man of Learning_KRS",
+            "printKeys": [
+              "Man of Faith//Man of Learning_KRS"
+            ],
+            "pr": 5.2493438320209975,
+            "pm": 10.392849719393057,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Discard a card: Man of Faith gains first strike and lifelink until end of turn.\nReflect {4}{U} (You may cast this from your graveyard transformed for {4}{U}.)"
+        },
+        {
+          "id": "rev:Obsidian Elemental//Emerald Elemental_KRS",
+          "name": "Obsidian Elemental",
+          "original_text": "Type: Creature — Elemental \nMana cost: {1}{B}{B}\nPower/Toughness: 5/4\nWhen Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G} *(You may cast this from your graveyard transformed for {4}{G}{G}.)*",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {1}{B}{B}\nPower/Toughness: 5/4\nWhen Obsidian Elemental enters, you lose 4 life.\nYou may cast this card transformed from your graveyard by paying {4}{G}{G} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Obsidian Elemental",
+              "original_text": "Type: Creature — Elemental \nMana cost: {1}{B}{B}\nPower/Toughness: 5/4\nWhen Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G} *(You may cast this from your graveyard transformed for {4}{G}{G}.)*"
+            },
+            {
+              "name": "Emerald Elemental",
+              "original_text": "Type: Creature — Elemental \nPower/Toughness: 4/5\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Emerald Elemental enters, you gain 4 life."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Obsidian Elemental",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {1}{B}{B}\nPower/Toughness: 5/4\nWhen Obsidian Elemental enters, you lose 4 life.\nYou may cast this card transformed from your graveyard by paying {4}{G}{G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G}",
+              "original_printed_rules_text": "When Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G} (You may cast this from your graveyard transformed for {4}{G}{G}.)"
+            },
+            {
+              "name": "Emerald Elemental",
+              "executable_text": "Type: Creature — Elemental \nPower/Toughness: 4/5\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhen Emerald Elemental enters, you gain 4 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhen Emerald Elemental enters, you gain 4 life.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhen Emerald Elemental enters, you gain 4 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Obsidian Elemental//Emerald Elemental_KRS",
+          "original_source": {
+            "fullName": "Obsidian Elemental//Emerald Elemental",
+            "cardName": "Obsidian Elemental",
+            "manaCost": "{1}{B}{B}",
+            "typeLine": "Creature — Elemental ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "When Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G} *(You may cast this from your graveyard transformed for {4}{G}{G}.)*",
+            "flavorText": "",
+            "power": "5",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Emerald Elemental",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Emerald Elemental enters, you gain 4 life.",
+            "flavorText2": "",
+            "power2": "4",
+            "toughness2": "5",
+            "loyalty2": "",
+            "color2": "{Green} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "107",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "tnounsy",
+            "artist2": "mahons",
+            "sdn": 2332,
+            "colorIdentity": [
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Obsidian Elemental//Emerald Elemental_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Obsidian Elemental//Emerald Elemental_KRS",
+            "printKeys": [
+              "Obsidian Elemental//Emerald Elemental_KRS"
+            ]
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Obsidian Elemental enters, you lose 4 life.\nReflect {4}{G}{G} (You may cast this from your graveyard transformed for {4}{G}{G}.)"
+        },
+        {
+          "id": "rev:Obsidian Shaper//Magma Shaper_KRS",
+          "name": "Obsidian Shaper",
+          "original_text": "Type: Creature — Elemental Shaman \nMana cost: {B}{B}\nPower/Toughness: 1/2\nAt the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R} *(You may cast this from your graveyard transformed for {R}{R}.)*",
+          "executable_text": "Type: Creature — Elemental Shaman \nMana cost: {B}{B}\nPower/Toughness: 1/2\nAt the beginning of your upkeep, target player draws a card and loses 2 life.\nYou may cast this card transformed from your graveyard by paying {R}{R} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Obsidian Shaper",
+              "original_text": "Type: Creature — Elemental Shaman \nMana cost: {B}{B}\nPower/Toughness: 1/2\nAt the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R} *(You may cast this from your graveyard transformed for {R}{R}.)*"
+            },
+            {
+              "name": "Magma Shaper",
+              "original_text": "Type: Creature — Elemental Shaman \nPower/Toughness: 2/1\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nHaste\nWhen Magma Adept enters, discard your hand and draw two cards."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Obsidian Shaper",
+              "executable_text": "Type: Creature — Elemental Shaman \nMana cost: {B}{B}\nPower/Toughness: 1/2\nAt the beginning of your upkeep, target player draws a card and loses 2 life.\nYou may cast this card transformed from your graveyard by paying {R}{R} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R}",
+              "original_printed_rules_text": "At the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R} (You may cast this from your graveyard transformed for {R}{R}.)"
+            },
+            {
+              "name": "Magma Shaper",
+              "executable_text": "Type: Creature — Elemental Shaman \nPower/Toughness: 2/1\nReflected (If this creature would leave the battlefield, exile it instead.)\nHaste\nWhen Magma Adept enters, discard your hand and draw two cards.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nHaste\nWhen Magma Adept enters, discard your hand and draw two cards.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nHaste\nWhen Magma Adept enters, discard your hand and draw two cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "At the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Obsidian Shaper//Magma Shaper_KRS",
+          "original_source": {
+            "fullName": "Obsidian Shaper//Magma Shaper",
+            "cardName": "Obsidian Shaper",
+            "manaCost": "{B}{B}",
+            "typeLine": "Creature — Elemental Shaman ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "At the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R} *(You may cast this from your graveyard transformed for {R}{R}.)*",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "cardName2": "Magma Shaper",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental Shaman ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nHaste\nWhen Magma Adept enters, discard your hand and draw two cards.",
+            "flavorText2": "",
+            "power2": "2",
+            "toughness2": "1",
+            "loyalty2": "",
+            "color2": "{Red} ",
+            "cmc2": 2,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "108",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "James Zapata",
+            "sdn": 2333,
+            "colorIdentity": [
+              "B",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Obsidian Shaper//Magma Shaper_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Obsidian Shaper//Magma Shaper_KRS",
+            "printKeys": [
+              "Obsidian Shaper//Magma Shaper_KRS"
+            ],
+            "pr": 62.99212598425197,
+            "pm": 138.0170442735398,
+            "psr": 0,
+            "psm": 0,
+            "pbr": 43.47826086956522,
+            "pbm": 106.38297872340425,
+            "per": 0,
+            "pem": 71.58836689038031
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "At the beginning of your upkeep, target player draws a card and loses 2 life.\nReflect {R}{R} (You may cast this from your graveyard transformed for {R}{R}.)"
+        },
+        {
+          "id": "rev:Overflow Hellkite//Overflight Scourge_KRS",
+          "name": "Overflow Hellkite",
+          "original_text": "Type: Creature — Dragon \nMana cost: {2}{R}{R}\nPower/Toughness: 4/3\nFlying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U} *(You may cast this from your graveyard transformed for {4}{U}{U}.)*",
+          "executable_text": "Type: Creature — Dragon \nMana cost: {2}{R}{R}\nPower/Toughness: 4/3\nFlying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nYou may cast this card transformed from your graveyard by paying {4}{U}{U} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Overflow Hellkite",
+              "original_text": "Type: Creature — Dragon \nMana cost: {2}{R}{R}\nPower/Toughness: 4/3\nFlying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U} *(You may cast this from your graveyard transformed for {4}{U}{U}.)*"
+            },
+            {
+              "name": "Overflight Scourge",
+              "original_text": "Type: Creature — Dragon \nPower/Toughness: 3/4\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nWhenever Overflight Scourge attacks, you may cast target instant or sorcery card from your graveyard with mana value 3 or less without paying its mana cost. If that spell would be put into your graveyard this turn, exile it instead."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Overflow Hellkite",
+              "executable_text": "Type: Creature — Dragon \nMana cost: {2}{R}{R}\nPower/Toughness: 4/3\nFlying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nYou may cast this card transformed from your graveyard by paying {4}{U}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U}",
+              "original_printed_rules_text": "Flying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U} (You may cast this from your graveyard transformed for {4}{U}{U}.)"
+            },
+            {
+              "name": "Overflight Scourge",
+              "executable_text": "Type: Creature — Dragon \nPower/Toughness: 3/4\nReflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nWhenever Overflight Scourge attacks, you may cast target instant or sorcery card from your graveyard with mana value 3 or less without paying its mana cost. If that spell would be put into your graveyard this turn, exile it instead.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nFlying\nWhenever Overflight Scourge attacks, you may cast target instant or sorcery card from your graveyard with mana value 3 or less without paying its mana cost. If that spell would be put into your graveyard this turn, exile it instead.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nWhenever Overflight Scourge attacks, you may cast target instant or sorcery card from your graveyard with mana value 3 or less without paying its mana cost. If that spell would be put into your graveyard this turn, exile it instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Overflow Hellkite//Overflight Scourge_KRS",
+          "original_source": {
+            "fullName": "Overflow Hellkite//Overflight Scourge",
+            "cardName": "Overflow Hellkite",
+            "manaCost": "{2}{R}{R}",
+            "typeLine": "Creature — Dragon ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "Flying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U} *(You may cast this from your graveyard transformed for {4}{U}{U}.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "cardName2": "Overflight Scourge",
+            "manaCost2": "",
+            "typeLine2": "Creature — Dragon ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nWhenever Overflight Scourge attacks, you may cast target instant or sorcery card from your graveyard with mana value 3 or less without paying its mana cost. If that spell would be put into your graveyard this turn, exile it instead.",
+            "flavorText2": "",
+            "power2": "3",
+            "toughness2": "4",
+            "loyalty2": "",
+            "color2": "{Blue} ",
+            "cmc2": 4,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "149",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "clockbirds",
+            "artist2": "Heroes of Camelot",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Overflow Hellkite//Overflight Scourge_KRS",
+            "sdn": 2347,
+            "colorIdentity": [
+              "R",
+              "U"
+            ],
+            "spellbook": [],
+            "key": "Overflow Hellkite//Overflight Scourge_KRS",
+            "printKeys": [
+              "Overflow Hellkite//Overflight Scourge_KRS"
+            ],
+            "pr": 0,
+            "pm": 9.977135730617336,
+            "psr": 0,
+            "psm": 0,
+            "pbr": 21.73913043478261,
+            "pbm": 31.914893617021278
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nWhenever Overflow Hellkite attacks, exile the top card of your library. You may cast it if it's a noncreature spell.\nReflect {4}{U}{U} (You may cast this from your graveyard transformed for {4}{U}{U}.)"
+        },
+        {
+          "id": "rev:Protective Guardian//Vengeful Guardian_KRS",
+          "name": "Protective Guardian",
+          "original_text": "Type: Creature — Human Warrior \nMana cost: {2}{W}\nPower/Toughness: 2/3\nVigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R} *(You may cast this from your graveyard transformed for {1}{R}.)*",
+          "executable_text": "Type: Creature — Human Warrior \nMana cost: {2}{W}\nPower/Toughness: 2/3\nVigilance\nProtective Guardian blocks each turn if able.\nYou may cast this card transformed from your graveyard by paying {1}{R} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Protective Guardian",
+              "original_text": "Type: Creature — Human Warrior \nMana cost: {2}{W}\nPower/Toughness: 2/3\nVigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R} *(You may cast this from your graveyard transformed for {1}{R}.)*"
+            },
+            {
+              "name": "Vengeful Guardian",
+              "original_text": "Type: Creature — Human Warrior \nPower/Toughness: 3/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nHaste\nVengeful Guardian attacks each turn if able."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Protective Guardian",
+              "executable_text": "Type: Creature — Human Warrior \nMana cost: {2}{W}\nPower/Toughness: 2/3\nVigilance\nProtective Guardian blocks each turn if able.\nYou may cast this card transformed from your graveyard by paying {1}{R} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R}",
+              "original_printed_rules_text": "Vigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R} (You may cast this from your graveyard transformed for {1}{R}.)"
+            },
+            {
+              "name": "Vengeful Guardian",
+              "executable_text": "Type: Creature — Human Warrior \nPower/Toughness: 3/2\nReflected (If this creature would leave the battlefield, exile it instead.)\nHaste\nVengeful Guardian attacks each turn if able.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nHaste\nVengeful Guardian attacks each turn if able.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nHaste\nVengeful Guardian attacks each turn if able."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Protective Guardian//Vengeful Guardian_KRS",
+          "original_source": {
+            "fullName": "Protective Guardian//Vengeful Guardian",
+            "cardName": "Protective Guardian",
+            "manaCost": "{2}{W}",
+            "typeLine": "Creature — Human Warrior ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "Vigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R} *(You may cast this from your graveyard transformed for {1}{R}.)*",
+            "flavorText": "*“I will keep you safe, no matter what it takes.”*\n",
+            "power": "2",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Vengeful Guardian",
+            "manaCost2": "",
+            "typeLine2": "Creature — Human Warrior ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nHaste\nVengeful Guardian attacks each turn if able.",
+            "flavorText2": "*“No matter what it takes, I will avenge you.”*\n",
+            "power2": "3",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{Red} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "30",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Grafit-Art",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Protective Guardian//Vengeful Guardian_KRS",
+            "sdn": 2232,
+            "colorIdentity": [
+              "W",
+              "R"
+            ],
+            "spellbook": [],
+            "key": "Protective Guardian//Vengeful Guardian_KRS",
+            "printKeys": [
+              "Protective Guardian//Vengeful Guardian_KRS"
+            ]
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Vigilance\nProtective Guardian blocks each turn if able.\nReflect {1}{R} (You may cast this from your graveyard transformed for {1}{R}.)"
+        },
+        {
+          "id": "rev:Selfless Protector//Savage Hermit_KRS",
+          "name": "Selfless Protector",
+          "original_text": "Type: Creature — Human Knight \nMana cost: {W}{W}\nPower/Toughness: 2/2\n{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G} *(You may cast this from your graveyard transformed for {2}{G}{G}.)*",
+          "executable_text": "Type: Creature — Human Knight \nMana cost: {W}{W}\nPower/Toughness: 2/2\n{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nYou may cast this card transformed from your graveyard by paying {2}{G}{G} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Selfless Protector",
+              "original_text": "Type: Creature — Human Knight \nMana cost: {W}{W}\nPower/Toughness: 2/2\n{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G} *(You may cast this from your graveyard transformed for {2}{G}{G}.)*"
+            },
+            {
+              "name": "Savage Hermit",
+              "original_text": "Type: Creature — Human Berserker \nPower/Toughness: 2/2\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Savage Hermit enters, create a 2/2 green Wolf creature token. That token fights up to one target creature."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Selfless Protector",
+              "executable_text": "Type: Creature — Human Knight \nMana cost: {W}{W}\nPower/Toughness: 2/2\n{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nYou may cast this card transformed from your graveyard by paying {2}{G}{G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G}",
+              "original_printed_rules_text": "{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G} (You may cast this from your graveyard transformed for {2}{G}{G}.)"
+            },
+            {
+              "name": "Savage Hermit",
+              "executable_text": "Type: Creature — Human Berserker \nPower/Toughness: 2/2\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhen Savage Hermit enters, create a 2/2 green Wolf creature token. That token fights up to one target creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhen Savage Hermit enters, create a 2/2 green Wolf creature token. That token fights up to one target creature.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhen Savage Hermit enters, create a 2/2 green Wolf creature token. That token fights up to one target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Selfless Protector//Savage Hermit_KRS",
+          "original_source": {
+            "fullName": "Selfless Protector//Savage Hermit",
+            "cardName": "Selfless Protector",
+            "manaCost": "{W}{W}",
+            "typeLine": "Creature — Human Knight ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G} *(You may cast this from your graveyard transformed for {2}{G}{G}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "cardName2": "Savage Hermit",
+            "manaCost2": "",
+            "typeLine2": "Creature — Human Berserker ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Savage Hermit enters, create a 2/2 green Wolf creature token. That token fights up to one target creature.",
+            "flavorText2": "",
+            "power2": "2",
+            "toughness2": "2",
+            "loyalty2": "",
+            "color2": "{Green} ",
+            "cmc2": 2,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "36",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Concept Art House",
+            "artist2": "michalivan",
+            "sdn": 2313,
+            "colorIdentity": [
+              "W",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Selfless Protector//Savage Hermit_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Selfless Protector//Savage Hermit_KRS",
+            "printKeys": [
+              "Selfless Protector//Savage Hermit_KRS"
+            ],
+            "pr": 52.493438320209975,
+            "pm": 80.64851382249013,
+            "psr": 0,
+            "psm": 0,
+            "pbr": 108.69565217391305,
+            "pbm": 212.7659574468085
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{1}, Sacrifice Selfless Protector: Creatures you control gain indestructible until end of turn.\nReflect {2}{G}{G} (You may cast this from your graveyard transformed for {2}{G}{G}.)"
+        },
+        {
+          "id": "rev:Speaker of Dreams//Reaver of Nightmares_KRS",
+          "name": "Speaker of Dreams",
+          "original_text": "Type: Creature — Elemental \nMana cost: {2}{U}{U}\nPower/Toughness: ★/★\nSpeaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B} *(You may cast this from your graveyard transformed for {2}{B}{B}.)*",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {2}{U}{U}\nPower/Toughness: ★/★\nSpeaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nYou may cast this card transformed from your graveyard by paying {2}{B}{B} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Speaker of Dreams",
+              "original_text": "Type: Creature — Elemental \nMana cost: {2}{U}{U}\nPower/Toughness: ★/★\nSpeaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B} *(You may cast this from your graveyard transformed for {2}{B}{B}.)*"
+            },
+            {
+              "name": "Reaver of Nightmares",
+              "original_text": "Type: Creature — Horror \nPower/Toughness: ★/★\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nReaver of Nightmares's power and toughness are each equal to the number of cards in your graveyard."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Speaker of Dreams",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {2}{U}{U}\nPower/Toughness: ★/★\nSpeaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nYou may cast this card transformed from your graveyard by paying {2}{B}{B} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Speaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B}",
+              "original_printed_rules_text": "Speaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B} (You may cast this from your graveyard transformed for {2}{B}{B}.)"
+            },
+            {
+              "name": "Reaver of Nightmares",
+              "executable_text": "Type: Creature — Horror \nPower/Toughness: ★/★\nReflected (If this creature would leave the battlefield, exile it instead.)\nReaver of Nightmares's power and toughness are each equal to the number of cards in your graveyard.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nReaver of Nightmares's power and toughness are each equal to the number of cards in your graveyard.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nReaver of Nightmares's power and toughness are each equal to the number of cards in your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Speaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Speaker of Dreams//Reaver of Nightmares_KRS",
+          "original_source": {
+            "fullName": "Speaker of Dreams//Reaver of Nightmares",
+            "cardName": "Speaker of Dreams",
+            "manaCost": "{2}{U}{U}",
+            "typeLine": "Creature — Elemental ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "Speaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B} *(You may cast this from your graveyard transformed for {2}{B}{B}.)*",
+            "flavorText": "",
+            "power": "★",
+            "toughness": "★",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "cardName2": "Reaver of Nightmares",
+            "manaCost2": "",
+            "typeLine2": "Creature — Horror ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nReaver of Nightmares's power and toughness are each equal to the number of cards in your graveyard.",
+            "flavorText2": "",
+            "power2": "★",
+            "toughness2": "★",
+            "loyalty2": "",
+            "color2": "{Black} ",
+            "cmc2": 4,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "79",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Sergey Kondratovich",
+            "artist2": "Sa-Dui",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Speaker of Dreams//Reaver of Nightmares_KRS",
+            "sdn": 2323,
+            "colorIdentity": [
+              "U",
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Speaker of Dreams//Reaver of Nightmares_KRS",
+            "printKeys": [
+              "Speaker of Dreams//Reaver of Nightmares_KRS"
+            ]
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Speaker of Dreams's power and toughness are each equal to the number of cards in your hand.\nReflect {2}{B}{B} (You may cast this from your graveyard transformed for {2}{B}{B}.)"
+        },
+        {
+          "id": "rev:Stainwing Sprite//Glasswing Oracle_KRS",
+          "name": "Stainwing Sprite",
+          "original_text": "Type: Creature — Faerie \nMana cost: {1}{B}\nPower/Toughness: 1/1\nFlying, deathtouch\nReflect {U} *(You may cast this from your graveyard transformed for {U}.)*",
+          "executable_text": "Type: Creature — Faerie \nMana cost: {1}{B}\nPower/Toughness: 1/1\nFlying, deathtouch\nYou may cast this card transformed from your graveyard by paying {U} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Stainwing Sprite",
+              "original_text": "Type: Creature — Faerie \nMana cost: {1}{B}\nPower/Toughness: 1/1\nFlying, deathtouch\nReflect {U} *(You may cast this from your graveyard transformed for {U}.)*"
+            },
+            {
+              "name": "Glasswing Oracle",
+              "original_text": "Type: Creature — Faerie \nPower/Toughness: 1/1\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nWhen Glasswing Oracle enters, reveal the top card of each player's library. You may put any number of them into their owners' graveyards."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Stainwing Sprite",
+              "executable_text": "Type: Creature — Faerie \nMana cost: {1}{B}\nPower/Toughness: 1/1\nFlying, deathtouch\nYou may cast this card transformed from your graveyard by paying {U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, deathtouch\nReflect {U}",
+              "original_printed_rules_text": "Flying, deathtouch\nReflect {U} (You may cast this from your graveyard transformed for {U}.)"
+            },
+            {
+              "name": "Glasswing Oracle",
+              "executable_text": "Type: Creature — Faerie \nPower/Toughness: 1/1\nReflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nWhen Glasswing Oracle enters, reveal the top card of each player's library. You may put any number of them into their owners' graveyards.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nFlying\nWhen Glasswing Oracle enters, reveal the top card of each player's library. You may put any number of them into their owners' graveyards.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nWhen Glasswing Oracle enters, reveal the top card of each player's library. You may put any number of them into their owners' graveyards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying, deathtouch\nReflect {U}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Stainwing Sprite//Glasswing Oracle_KRS",
+          "original_source": {
+            "fullName": "Stainwing Sprite//Glasswing Oracle",
+            "cardName": "Stainwing Sprite",
+            "manaCost": "{1}{B}",
+            "typeLine": "Creature — Faerie ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "Flying, deathtouch\nReflect {U} *(You may cast this from your graveyard transformed for {U}.)*",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "cardName2": "Glasswing Oracle",
+            "manaCost2": "",
+            "typeLine2": "Creature — Faerie ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nWhen Glasswing Oracle enters, reveal the top card of each player's library. You may put any number of them into their owners' graveyards.",
+            "flavorText2": "",
+            "power2": "1",
+            "toughness2": "1",
+            "loyalty2": "",
+            "color2": "{Blue} ",
+            "cmc2": 2,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "115",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "TacoSauceNinja",
+            "artist2": "Anne Stokes",
+            "sdn": 2256,
+            "colorIdentity": [
+              "B",
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Stainwing Sprite//Glasswing Oracle_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Stainwing Sprite//Glasswing Oracle_KRS",
+            "printKeys": [
+              "Stainwing Sprite//Glasswing Oracle_KRS"
+            ],
+            "pr": 86.61417322834646,
+            "pm": 118.89420078985658,
+            "psr": 0,
+            "psm": 0,
+            "pbr": 21.73913043478261,
+            "pbm": 42.5531914893617,
+            "per": 17.191977077363898,
+            "pem": 93.95973154362416
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying, deathtouch\nReflect {U} (You may cast this from your graveyard transformed for {U}.)"
+        },
+        {
+          "id": "rev:Stonekin Summoner//Glacian Guardian_KRS",
+          "name": "Stonekin Summoner",
+          "original_text": "Type: Creature — Elemental \nMana cost: {2}{G}{G}\nPower/Toughness: 2/1\n{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U} *(You may cast this from your graveyard transformed for {5}{U}{U}.)*",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {2}{G}{G}\nPower/Toughness: 2/1\n{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nYou may cast this card transformed from your graveyard by paying {5}{U}{U} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Stonekin Summoner",
+              "original_text": "Type: Creature — Elemental \nMana cost: {2}{G}{G}\nPower/Toughness: 2/1\n{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U} *(You may cast this from your graveyard transformed for {5}{U}{U}.)*"
+            },
+            {
+              "name": "Glacian Guardian",
+              "original_text": "Type: Creature — Elemental \nPower/Toughness: 5/6\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Glacian Guardian enters, return all other creatures to their owners' hands."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Stonekin Summoner",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {2}{G}{G}\nPower/Toughness: 2/1\n{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nYou may cast this card transformed from your graveyard by paying {5}{U}{U} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U}",
+              "original_printed_rules_text": "{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U} (You may cast this from your graveyard transformed for {5}{U}{U}.)"
+            },
+            {
+              "name": "Glacian Guardian",
+              "executable_text": "Type: Creature — Elemental \nPower/Toughness: 5/6\nReflected (If this creature would leave the battlefield, exile it instead.)\nWhen Glacian Guardian enters, return all other creatures to their owners' hands.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nWhen Glacian Guardian enters, return all other creatures to their owners' hands.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nWhen Glacian Guardian enters, return all other creatures to their owners' hands."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Stonekin Summoner//Glacian Guardian_KRS",
+          "original_source": {
+            "fullName": "Stonekin Summoner//Glacian Guardian",
+            "cardName": "Stonekin Summoner",
+            "manaCost": "{2}{G}{G}",
+            "typeLine": "Creature — Elemental ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U} *(You may cast this from your graveyard transformed for {5}{U}{U}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "cardName2": "Glacian Guardian",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nWhen Glacian Guardian enters, return all other creatures to their owners' hands.",
+            "flavorText2": "",
+            "power2": "5",
+            "toughness2": "6",
+            "loyalty2": "",
+            "color2": "{Blue} ",
+            "cmc2": 4,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "197",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Yurii Nikolaiko",
+            "artist2": "Alisher Mirzoev",
+            "sdn": 2357,
+            "colorIdentity": [
+              "G",
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KRS"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Stonekin Summoner//Glacian Guardian_KRS",
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "key": "Stonekin Summoner//Glacian Guardian_KRS",
+            "printKeys": [
+              "Stonekin Summoner//Glacian Guardian_KRS"
+            ],
+            "psr": 0,
+            "psm": 0,
+            "pbr": 21.73913043478261,
+            "pbm": 53.191489361702125
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{1}{G}, {T}: You may put a creature card from your hand onto the battlefield.\nReflect {5}{U}{U} (You may cast this from your graveyard transformed for {5}{U}{U}.)"
+        },
+        {
+          "id": "rev:Ukshu Reveler//Ukshu Nihilist_KRS",
+          "name": "Ukshu Reveler",
+          "original_text": "Type: Creature — Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\nHaste\nReflect {1}{B} *(You may cast this from your graveyard transformed for {1}{B}.)*",
+          "executable_text": "Type: Creature — Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\nHaste\nYou may cast this card transformed from your graveyard by paying {1}{B} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Ukshu Reveler",
+              "original_text": "Type: Creature — Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\nHaste\nReflect {1}{B} *(You may cast this from your graveyard transformed for {1}{B}.)*"
+            },
+            {
+              "name": "Ukshu Nihilist",
+              "original_text": "Type: Creature — Human Wizard \nPower/Toughness: 0/4\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nDefender\n{1}, {T}: Each player loses 1 life."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Ukshu Reveler",
+              "executable_text": "Type: Creature — Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\nHaste\nYou may cast this card transformed from your graveyard by paying {1}{B} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nReflect {1}{B}",
+              "original_printed_rules_text": "Haste\nReflect {1}{B} (You may cast this from your graveyard transformed for {1}{B}.)"
+            },
+            {
+              "name": "Ukshu Nihilist",
+              "executable_text": "Type: Creature — Human Wizard \nPower/Toughness: 0/4\nReflected (If this creature would leave the battlefield, exile it instead.)\nDefender\n{1}, {T}: Each player loses 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nDefender\n{1}, {T}: Each player loses 1 life.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nDefender\n{1}, {T}: Each player loses 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Haste\nReflect {1}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Ukshu Reveler//Ukshu Nihilist_KRS",
+          "original_source": {
+            "fullName": "Ukshu Reveler//Ukshu Nihilist",
+            "cardName": "Ukshu Reveler",
+            "manaCost": "{R}",
+            "typeLine": "Creature — Human Berserker ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "Haste\nReflect {1}{B} *(You may cast this from your graveyard transformed for {1}{B}.)*",
+            "flavorText": "*Life is short...*\n",
+            "power": "1",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 1,
+            "cardType": "Creature",
+            "cardName2": "Ukshu Nihilist",
+            "manaCost2": "",
+            "typeLine2": "Creature — Human Wizard ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nDefender\n{1}, {T}: Each player loses 1 life.",
+            "flavorText2": "*...and all mortals share its end.*\n",
+            "power2": "0",
+            "toughness2": "4",
+            "loyalty2": "",
+            "color2": "{Black} ",
+            "cmc2": 1,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "161",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Jason Nguyen",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Ukshu Reveler//Ukshu Nihilist_KRS",
+            "sdn": 2268,
+            "colorIdentity": [
+              "R",
+              "B"
+            ],
+            "spellbook": [],
+            "key": "Ukshu Reveler//Ukshu Nihilist_KRS",
+            "printKeys": [
+              "Ukshu Reveler//Ukshu Nihilist_KRS"
+            ]
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Haste\nReflect {1}{B} (You may cast this from your graveyard transformed for {1}{B}.)"
+        },
+        {
+          "id": "rev:Umberdeep Slitherer//Overpass Tyrant_KRS",
+          "name": "Umberdeep Slitherer",
+          "original_text": "Type: Creature — Dragon \nMana cost: {1}{G}{G}\nPower/Toughness: 2/3\nDeathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R} *(You may cast this from your graveyard transformed for {4}{R}{R}.)*",
+          "executable_text": "Type: Creature — Dragon \nMana cost: {1}{G}{G}\nPower/Toughness: 2/3\nDeathtouch\nDiscard a card: You may play an additional land this turn.\nYou may cast this card transformed from your graveyard by paying {4}{R}{R} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Umberdeep Slitherer",
+              "original_text": "Type: Creature — Dragon \nMana cost: {1}{G}{G}\nPower/Toughness: 2/3\nDeathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R} *(You may cast this from your graveyard transformed for {4}{R}{R}.)*"
+            },
+            {
+              "name": "Overpass Tyrant",
+              "original_text": "Type: Creature — Dragon \nPower/Toughness: 4/3\nReflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nYou can't play lands.\nSacrifice a land: Draw two cards. Activate this ability only once per turn."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Umberdeep Slitherer",
+              "executable_text": "Type: Creature — Dragon \nMana cost: {1}{G}{G}\nPower/Toughness: 2/3\nDeathtouch\nDiscard a card: You may play an additional land this turn.\nYou may cast this card transformed from your graveyard by paying {4}{R}{R} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R}",
+              "original_printed_rules_text": "Deathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R} (You may cast this from your graveyard transformed for {4}{R}{R}.)"
+            },
+            {
+              "name": "Overpass Tyrant",
+              "executable_text": "Type: Creature — Dragon \nPower/Toughness: 4/3\nReflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nYou can't play lands.\nSacrifice a land: Draw two cards. Activate this ability only once per turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\nFlying\nYou can't play lands.\nSacrifice a land: Draw two cards. Activate this ability only once per turn.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\nFlying\nYou can't play lands.\nSacrifice a land: Draw two cards. Activate this ability only once per turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Umberdeep Slitherer//Overpass Tyrant_KRS",
+          "original_source": {
+            "fullName": "Umberdeep Slitherer//Overpass Tyrant",
+            "cardName": "Umberdeep Slitherer",
+            "manaCost": "{1}{G}{G}",
+            "typeLine": "Creature — Dragon ",
+            "rarityLine": "*KRS R*",
+            "rulesText": "Deathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R} *(You may cast this from your graveyard transformed for {4}{R}{R}.)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Overpass Tyrant",
+            "manaCost2": "",
+            "typeLine2": "Creature — Dragon ",
+            "rarityLine2": "*KRS R*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\nFlying\nYou can't play lands.\nSacrifice a land: Draw two cards. Activate this ability only once per turn.",
+            "flavorText2": "",
+            "power2": "4",
+            "toughness2": "3",
+            "loyalty2": "",
+            "color2": "{Red} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "rare",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "202",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Ben Guldemond",
+            "artist2": "Jeff Chen",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Umberdeep Slitherer//Overpass Tyrant_KRS",
+            "sdn": 2358,
+            "colorIdentity": [
+              "G",
+              "R"
+            ],
+            "spellbook": [],
+            "key": "Umberdeep Slitherer//Overpass Tyrant_KRS",
+            "printKeys": [
+              "Umberdeep Slitherer//Overpass Tyrant_KRS"
+            ],
+            "pr": 0,
+            "pm": 2.494283932654334,
+            "psr": 0,
+            "psm": 0
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Deathtouch\nDiscard a card: You may play an additional land this turn.\nReflect {4}{R}{R} (You may cast this from your graveyard transformed for {4}{R}{R}.)"
+        },
+        {
+          "id": "rev:Wild Erupter//Wild Nurturer_KRS",
+          "name": "Wild Erupter",
+          "original_text": "Type: Creature — Elemental \nMana cost: {2}{R}\nPower/Toughness: 3/2\n{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G} *(You may cast this from your graveyard transformed for {G}.)*",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {2}{R}\nPower/Toughness: 3/2\n{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nYou may cast this card transformed from your graveyard by paying {G} rather than paying its mana cost.",
+          "source_faces": [
+            {
+              "name": "Wild Erupter",
+              "original_text": "Type: Creature — Elemental \nMana cost: {2}{R}\nPower/Toughness: 3/2\n{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G} *(You may cast this from your graveyard transformed for {G}.)*"
+            },
+            {
+              "name": "Wild Nurturer",
+              "original_text": "Type: Creature — Elemental \nPower/Toughness: 1/1\nReflected *(If this creature would leave the battlefield, exile it instead.)*\n{T}: Add {G}."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Wild Erupter",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {2}{R}\nPower/Toughness: 3/2\n{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nYou may cast this card transformed from your graveyard by paying {G} rather than paying its mana cost.",
+              "custom_keyword_identities": [
+                "reflect"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G}",
+              "original_printed_rules_text": "{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G} (You may cast this from your graveyard transformed for {G}.)"
+            },
+            {
+              "name": "Wild Nurturer",
+              "executable_text": "Type: Creature — Elemental \nPower/Toughness: 1/1\nReflected (If this creature would leave the battlefield, exile it instead.)\n{T}: Add {G}.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reflected\n{T}: Add {G}.",
+              "original_printed_rules_text": "Reflected (If this creature would leave the battlefield, exile it instead.)\n{T}: Add {G}."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reflect"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Wild Erupter//Wild Nurturer_KRS",
+          "original_source": {
+            "fullName": "Wild Erupter//Wild Nurturer",
+            "cardName": "Wild Erupter",
+            "manaCost": "{2}{R}",
+            "typeLine": "Creature — Elemental ",
+            "rarityLine": "*KRS U*",
+            "rulesText": "{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G} *(You may cast this from your graveyard transformed for {G}.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "cardName2": "Wild Nurturer",
+            "manaCost2": "",
+            "typeLine2": "Creature — Elemental ",
+            "rarityLine2": "*KRS U*",
+            "rulesText2": "Reflected *(If this creature would leave the battlefield, exile it instead.)*\n{T}: Add {G}.",
+            "flavorText2": "",
+            "power2": "1",
+            "toughness2": "1",
+            "loyalty2": "",
+            "color2": "{Green} ",
+            "cmc2": 3,
+            "cardType2": "Creature",
+            "rarity": "uncommon",
+            "shape": "doubleface",
+            "setID": "KRS",
+            "cardID": "165",
+            "designer": "zarepath",
+            "script": "",
+            "notes": [],
+            "artist": "Gavin O'Donnell",
+            "artist2": "merillizaART",
+            "prints": [
+              "KRS"
+            ],
+            "formats": [
+              "reveternal",
+              "archaeologist"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Wild Erupter//Wild Nurturer_KRS",
+            "sdn": 2270,
+            "colorIdentity": [
+              "R",
+              "G"
+            ],
+            "spellbook": [],
+            "key": "Wild Erupter//Wild Nurturer_KRS",
+            "printKeys": [
+              "Wild Erupter//Wild Nurturer_KRS"
+            ],
+            "pr": 28.871391076115486,
+            "pm": 69.0085221367699,
+            "psr": 0,
+            "psm": 0,
+            "per": 0,
+            "pem": 4.47427293064877
+          },
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{T}, Sacrifice Wild Erupter: Destroy target nonbasic land.\nReflect {G} (You may cast this from your graveyard transformed for {G}.)"
+        }
+      ],
+      "support_status": "strict_whole_source_pending",
+      "test_status": {
+        "inputs_preserved": true,
+        "materialized": false,
+        "strict_compile": false,
+        "artifact_parity": false,
+        "gameplay_verified": false
+      }
+    }
+  ]
+}

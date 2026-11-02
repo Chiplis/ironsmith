@@ -1,0 +1,2390 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "scope": "Revolution late mechanic equivalent reminders",
+    "complete_source": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json"
+  },
+  "mechanics": [
+    {
+      "id": "rev-flow-234",
+      "keyword": "Flow",
+      "scope": "revolution",
+      "rule_reference": "702.220.",
+      "rule_text": {
+        "name": "702.220.",
+        "rule": "Flow",
+        "subrules": [
+          {
+            "name": "702.220a",
+            "rule": "A flow ability is a special kind of activated ability. \"Flow \u2014 [Cost]: [Effect]\" means \"[Cost]: [Effect]. For each generic mana in this ability's total cost, you may tap an untapped creature you control rather than pay that mana.\"",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Aether Dancer",
+          "Ascended Salamander",
+          "Crane Dancer",
+          "Elder Tattooist",
+          "Gongwielder Abbot",
+          "Maiden of the Waters",
+          "Master of the Peaks",
+          "Nerve-Strike Disciple",
+          "Sculptor's Replica",
+          "Staff of Balance",
+          "Suppressing-Fist Pupil",
+          "Uiki Initiate",
+          "Ukina, Aethersong Basker"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Each creature you tap while activating pays for {1}.",
+      "executable_reminder": "For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.220a admits controlled untapped creatures for generic mana in the total activation cost. Existing Heirloom Epic payment model computes the completed generic/X scope; colored pips remain mana obligations."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Aether Dancer_KDT",
+          "name": "Aether Dancer",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {1}{W}{U}\nPower/Toughness: 2/3\nWhenever you cast a noncreature spell, create a 1/1 blue Bird creature token with flying.\nFlow \u2014 {10}{W}{U}: Draw cards equal to half the number of cards in your library, rounded up. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {1}{W}{U}\nPower/Toughness: 2/3\nWhenever you cast a noncreature spell, create a 1/1 blue Bird creature token with flying.\n{10}{W}{U}: Draw cards equal to half the number of cards in your library, rounded up. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Aether Dancer",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {1}{W}{U}\nPower/Toughness: 2/3\nWhenever you cast a noncreature spell, create a 1/1 blue Bird creature token with flying.\n{10}{W}{U}: Draw cards equal to half the number of cards in your library, rounded up. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever you cast a noncreature spell, create a 1/1 blue Bird creature token with flying.\nFlow \u2014 {10}{W}{U}: Draw cards equal to half the number of cards in your library, rounded up."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever you cast a noncreature spell, create a 1/1 blue Bird creature token with flying.\nFlow \u2014 {10}{W}{U}: Draw cards equal to half the number of cards in your library, rounded up.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Ascended Salamander_KDT",
+          "source_card_key": "rev:Ascended Salamander_KDT",
+          "name": "Ascended Salamander",
+          "original_text": "Type: Creature \u2014 Salamander Monk\nMana cost: {U}\nPower/Toughness: 1/1\nFlying\nFlow \u2014 {3}{U}: Target player mills three cards. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Salamander Monk\nMana cost: {U}\nPower/Toughness: 1/1\nFlying\n{3}{U}: Target player mills three cards. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Ascended Salamander",
+              "executable_text": "Type: Creature \u2014 Salamander Monk\nMana cost: {U}\nPower/Toughness: 1/1\nFlying\n{3}{U}: Target player mills three cards. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nFlow \u2014 {3}{U}: Target player mills three cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nFlow \u2014 {3}{U}: Target player mills three cards.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Crane Dancer_KDT",
+          "source_card_key": "rev:Crane Dancer_KDT",
+          "name": "Crane Dancer",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{W/U}{W/U}\nPower/Toughness: 3/3\nFlying\nFlow \u2014 {2}{W/U}: Another target creature you control gains flying until end of turn. Activate only as a sorcery. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{W/U}{W/U}\nPower/Toughness: 3/3\nFlying\n{2}{W/U}: Another target creature you control gains flying until end of turn. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Crane Dancer",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{W/U}{W/U}\nPower/Toughness: 3/3\nFlying\n{2}{W/U}: Another target creature you control gains flying until end of turn. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nFlow \u2014 {2}{W/U}: Another target creature you control gains flying until end of turn. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nFlow \u2014 {2}{W/U}: Another target creature you control gains flying until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Elder Tattooist_KDT",
+          "source_card_key": "rev:Elder Tattooist_KDT",
+          "name": "Elder Tattooist",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{W}\nPower/Toughness: 3/3\nVigilance\nFlow \u2014 {4}{W}: Exile target permanent card with mana value 3 or less from your graveyard. Create a tapped token that's a copy of it. Activate only as a sorcery. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{W}\nPower/Toughness: 3/3\nVigilance\n{4}{W}: Exile target permanent card with mana value 3 or less from your graveyard. Create a tapped token that's a copy of it. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Elder Tattooist",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{W}\nPower/Toughness: 3/3\nVigilance\n{4}{W}: Exile target permanent card with mana value 3 or less from your graveyard. Create a tapped token that's a copy of it. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nFlow \u2014 {4}{W}: Exile target permanent card with mana value 3 or less from your graveyard. Create a tapped token that's a copy of it. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nFlow \u2014 {4}{W}: Exile target permanent card with mana value 3 or less from your graveyard. Create a tapped token that's a copy of it. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Gongwielder Abbot_KDT",
+          "source_card_key": "rev:Gongwielder Abbot_KDT",
+          "name": "Gongwielder Abbot",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {3}{W}\nPower/Toughness: 4/2\nFlow \u2014 {2}{W}: This creature gains indestructible until end of turn. Activate only as a sorcery. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {3}{W}\nPower/Toughness: 4/2\n{2}{W}: This creature gains indestructible until end of turn. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Gongwielder Abbot",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {3}{W}\nPower/Toughness: 4/2\n{2}{W}: This creature gains indestructible until end of turn. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flow \u2014 {2}{W}: This creature gains indestructible until end of turn. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flow \u2014 {2}{W}: This creature gains indestructible until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Maiden of the Waters_KDT",
+          "source_card_key": "rev:Maiden of the Waters_KDT",
+          "name": "Maiden of the Waters",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {1}{U}\nPower/Toughness: 1/4\nFlow \u2014 {3}{U}: Copy target triggered ability you control. You may choose new targets for the copy. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {1}{U}\nPower/Toughness: 1/4\n{3}{U}: Copy target triggered ability you control. You may choose new targets for the copy. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Maiden of the Waters",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {1}{U}\nPower/Toughness: 1/4\n{3}{U}: Copy target triggered ability you control. You may choose new targets for the copy. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flow \u2014 {3}{U}: Copy target triggered ability you control. You may choose new targets for the copy."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flow \u2014 {3}{U}: Copy target triggered ability you control. You may choose new targets for the copy.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Master of the Peaks_KDT",
+          "source_card_key": "rev:Master of the Peaks_KDT",
+          "name": "Master of the Peaks",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {4}{W}\nPower/Toughness: 4/4\nVigilance\nFlow \u2014 {7}{W}: Tap all creatures target player controls. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {4}{W}\nPower/Toughness: 4/4\nVigilance\n{7}{W}: Tap all creatures target player controls. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Master of the Peaks",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {4}{W}\nPower/Toughness: 4/4\nVigilance\n{7}{W}: Tap all creatures target player controls. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nFlow \u2014 {7}{W}: Tap all creatures target player controls."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nFlow \u2014 {7}{W}: Tap all creatures target player controls.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Nerve-Strike Disciple_KDT",
+          "source_card_key": "rev:Nerve-Strike Disciple_KDT",
+          "name": "Nerve-Strike Disciple",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {3}{U}\nPower/Toughness: 3/2\nWhen this creature enters, create a 1/1 white Monk creature token with vigilance.\nFlow \u2014 {3}{U}: This creature can't be blocked this turn. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {3}{U}\nPower/Toughness: 3/2\nWhen this creature enters, create a 1/1 white Monk creature token with vigilance.\n{3}{U}: This creature can't be blocked this turn. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Nerve-Strike Disciple",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {3}{U}\nPower/Toughness: 3/2\nWhen this creature enters, create a 1/1 white Monk creature token with vigilance.\n{3}{U}: This creature can't be blocked this turn. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When this creature enters, create a 1/1 white Monk creature token with vigilance.\nFlow \u2014 {3}{U}: This creature can't be blocked this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, create a 1/1 white Monk creature token with vigilance.\nFlow \u2014 {3}{U}: This creature can't be blocked this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Sculptor's Replica_KDT",
+          "source_card_key": "rev:Sculptor's Replica_KDT",
+          "name": "Sculptor's Replica",
+          "original_text": "Type: Artifact Creature \u2014 Golem Monk\nMana cost: {1}{W}\nPower/Toughness: 2/2\nFlow \u2014 {4}{W}: Create a tapped 0/0 colorless Golem artifact creature token with \u201cThis creature gets +1/+1 for each artifact you control.\u201d *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Artifact Creature \u2014 Golem Monk\nMana cost: {1}{W}\nPower/Toughness: 2/2\n{4}{W}: Create a tapped 0/0 colorless Golem artifact creature token with \u201cThis creature gets +1/+1 for each artifact you control.\u201d. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Sculptor's Replica",
+              "executable_text": "Type: Artifact Creature \u2014 Golem Monk\nMana cost: {1}{W}\nPower/Toughness: 2/2\n{4}{W}: Create a tapped 0/0 colorless Golem artifact creature token with \u201cThis creature gets +1/+1 for each artifact you control.\u201d. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flow \u2014 {4}{W}: Create a tapped 0/0 colorless Golem artifact creature token with \u201cThis creature gets +1/+1 for each artifact you control.\u201d"
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flow \u2014 {4}{W}: Create a tapped 0/0 colorless Golem artifact creature token with \u201cThis creature gets +1/+1 for each artifact you control.\u201d",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Staff of Balance_KDT",
+          "source_card_key": "rev:Staff of Balance_KDT",
+          "name": "Staff of Balance",
+          "original_text": "Type: Artifact\nMana cost: {1}{W}{U}\n{T}: Surveil 1. *(Look at the top card of your library. You may put it into your graveyard.)*\n{1}, {T}: Tap target creature.\n{2}, {T}: Draw a card.\nFlow \u2014 {3}: Untap this artifact. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Artifact\nMana cost: {1}{W}{U}\n{T}: Surveil 1.\n{1}, {T}: Tap target creature.\n{2}, {T}: Draw a card.\n{3}: Untap this artifact. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Staff of Balance",
+              "executable_text": "Type: Artifact\nMana cost: {1}{W}{U}\n{T}: Surveil 1.\n{1}, {T}: Tap target creature.\n{2}, {T}: Draw a card.\n{3}: Untap this artifact. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{T}: Surveil 1.\n{1}, {T}: Tap target creature.\n{2}, {T}: Draw a card.\nFlow \u2014 {3}: Untap this artifact."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{T}: Surveil 1.\n{1}, {T}: Tap target creature.\n{2}, {T}: Draw a card.\nFlow \u2014 {3}: Untap this artifact.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Suppressing-Fist Pupil_KDT",
+          "source_card_key": "rev:Suppressing-Fist Pupil_KDT",
+          "name": "Suppressing-Fist Pupil",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{U}\nPower/Toughness: 2/4\nWhen this creature enters, tap up to one target creature.\nFlow \u2014 {3}{U}: Tap target creature. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{U}\nPower/Toughness: 2/4\nWhen this creature enters, tap up to one target creature.\n{3}{U}: Tap target creature. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Suppressing-Fist Pupil",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {2}{U}\nPower/Toughness: 2/4\nWhen this creature enters, tap up to one target creature.\n{3}{U}: Tap target creature. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When this creature enters, tap up to one target creature.\nFlow \u2014 {3}{U}: Tap target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, tap up to one target creature.\nFlow \u2014 {3}{U}: Tap target creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Uiki Initiate_KDT",
+          "source_card_key": "rev:Uiki Initiate_KDT",
+          "name": "Uiki Initiate",
+          "original_text": "Type: Creature \u2014 Human Monk\nMana cost: {W}\nPower/Toughness: 1/2\nFlow \u2014 {2}{W}: This creature has base power and toughness 4/4 until end of turn. Activate only as a sorcery. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {W}\nPower/Toughness: 1/2\n{2}{W}: This creature has base power and toughness 4/4 until end of turn. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Uiki Initiate",
+              "executable_text": "Type: Creature \u2014 Human Monk\nMana cost: {W}\nPower/Toughness: 1/2\n{2}{W}: This creature has base power and toughness 4/4 until end of turn. Activate only as a sorcery. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flow \u2014 {2}{W}: This creature has base power and toughness 4/4 until end of turn. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flow \u2014 {2}{W}: This creature has base power and toughness 4/4 until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Ukina, Aethersong Basker_KDT",
+          "source_card_key": "rev:Ukina, Aethersong Basker_KDT",
+          "name": "Ukina, Aethersong Basker",
+          "original_text": "Type: Legendary Creature \u2014 Human Monk\nMana cost: {W}{U}\nPower/Toughness: 1/1\nWhen Ukina enters, create a 1/1 blue Bird creature token with flying.\nFlow \u2014 {5}{W/U}: Look at the top two cards of your library. Put one into your hand and the other on the bottom of your library. *(Each creature you tap while activating pays for {1}.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Monk\nMana cost: {W}{U}\nPower/Toughness: 1/1\nWhen Ukina enters, create a 1/1 blue Bird creature token with flying.\n{5}{W/U}: Look at the top two cards of your library. Put one into your hand and the other on the bottom of your library. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+          "executable_faces": [
+            {
+              "name": "Ukina, Aethersong Basker",
+              "executable_text": "Type: Legendary Creature \u2014 Human Monk\nMana cost: {W}{U}\nPower/Toughness: 1/1\nWhen Ukina enters, create a 1/1 blue Bird creature token with flying.\n{5}{W/U}: Look at the top two cards of your library. Put one into your hand and the other on the bottom of your library. For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana.",
+              "custom_keyword_identities": [
+                "flow"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Ukina enters, create a 1/1 blue Bird creature token with flying.\nFlow \u2014 {5}{W/U}: Look at the top two cards of your library. Put one into your hand and the other on the bottom of your library."
+            }
+          ],
+          "custom_keyword_identities": [
+            "flow"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Ukina enters, create a 1/1 blue Bird creature token with flying.\nFlow \u2014 {5}{W/U}: Look at the top two cards of your library. Put one into your hand and the other on the bottom of your library.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Aether Dancer",
+        "Ascended Salamander",
+        "Crane Dancer",
+        "Elder Tattooist",
+        "Gongwielder Abbot",
+        "Maiden of the Waters",
+        "Master of the Peaks",
+        "Nerve-Strike Disciple",
+        "Sculptor's Replica",
+        "Staff of Balance",
+        "Suppressing-Fist Pupil",
+        "Uiki Initiate",
+        "Ukina, Aethersong Basker"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "flow-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::flow_creature_taps_pay_only_generic_activation_mana",
+          "observable": "Creature taps can pay generic activation mana, never colored pips; artifacts, opponents creatures and tapped creatures cannot contribute."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Flow",
+          "reminder": "For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-revered-235",
+      "keyword": "Revered",
+      "scope": "revolution",
+      "rule_reference": "702.221.",
+      "rule_text": {
+        "name": "702.221.",
+        "rule": "Revered",
+        "subrules": [
+          {
+            "name": "702.221a",
+            "rule": "Revered is a static ability. \"Revered\" means \"Each other creature you control that has one or more counters on it has the abilities printed below this one.\" Cards with revered have one or more abilities printed after the revered ability. Some cards with revered also have abilities printed before the revered ability, which are not granted to other creatures.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Basking Kitsune",
+          "Blossoming Ocelot",
+          "Ethereal Blossom",
+          "Fablewoven Seishin",
+          "Frilled Seishin",
+          "Hakodate Regent",
+          "Infernal Kitsune//Run Riot",
+          "Kirin of Boons",
+          "Menreiki, the Resplendent",
+          "Noble Kitsune",
+          "Realmweft Kitsune",
+          "Titanic Behemoth",
+          "Uncoiling Realmspawn",
+          "Wandering Thrumhorn",
+          "Wisping Kirin"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "This creature shares the following abilities with other creatures you control that have counters on them.",
+      "executable_reminder": "Each other creature you control with counters on it has the following abilities.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.221a grants only abilities printed below the positional designation, to other controlled creatures with one or more counters of any kind; the source retains all its own abilities."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Basking Kitsune_KDT",
+          "name": "Basking Kitsune",
+          "original_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {2}{G}\nPower/Toughness: 3/3\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nTrample",
+          "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {2}{G}\nPower/Toughness: 3/3\nEach other creature you control with counters on it has \u201cTrample\u201d.\nTrample",
+          "executable_faces": [
+            {
+              "name": "Basking Kitsune",
+              "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {2}{G}\nPower/Toughness: 3/3\nEach other creature you control with counters on it has \u201cTrample\u201d.\nTrample",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nTrample"
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nTrample",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Blossoming Ocelot_KDT",
+          "source_card_key": "rev:Blossoming Ocelot_KDT",
+          "name": "Blossoming Ocelot",
+          "original_text": "Type: Creature \u2014 Cat Spirit\nMana cost: {1}{R}\nPower/Toughness: 1/3\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card.",
+          "executable_text": "Type: Creature \u2014 Cat Spirit\nMana cost: {1}{R}\nPower/Toughness: 1/3\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card\u201d.\nWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card.",
+          "executable_faces": [
+            {
+              "name": "Blossoming Ocelot",
+              "executable_text": "Type: Creature \u2014 Cat Spirit\nMana cost: {1}{R}\nPower/Toughness: 1/3\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card\u201d.\nWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature attacks, you may pay {2} and discard a card. If you do, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Ethereal Blossom_KDT",
+          "source_card_key": "rev:Ethereal Blossom_KDT",
+          "name": "Ethereal Blossom",
+          "original_text": "Type: Creature \u2014 Plant Spirit\nMana cost: {1}{G}\nPower/Toughness: 1/2\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\n{T}: Add {G}.",
+          "executable_text": "Type: Creature \u2014 Plant Spirit\nMana cost: {1}{G}\nPower/Toughness: 1/2\nEach other creature you control with counters on it has \u201c{T}: Add {G}\u201d.\n{T}: Add {G}.",
+          "executable_faces": [
+            {
+              "name": "Ethereal Blossom",
+              "executable_text": "Type: Creature \u2014 Plant Spirit\nMana cost: {1}{G}\nPower/Toughness: 1/2\nEach other creature you control with counters on it has \u201c{T}: Add {G}\u201d.\n{T}: Add {G}.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\n{T}: Add {G}."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\n{T}: Add {G}.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Fablewoven Seishin_KDT",
+          "source_card_key": "rev:Fablewoven Seishin_KDT",
+          "name": "Fablewoven Seishin",
+          "original_text": "Type: Creature \u2014 Wolf Shapeshifter\nMana cost: {R}{G}\nPower/Toughness: 2/2\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn.",
+          "executable_text": "Type: Creature \u2014 Wolf Shapeshifter\nMana cost: {R}{G}\nPower/Toughness: 2/2\nEach other creature you control with counters on it has \u201cLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn\u201d.\nLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Fablewoven Seishin",
+              "executable_text": "Type: Creature \u2014 Wolf Shapeshifter\nMana cost: {R}{G}\nPower/Toughness: 2/2\nEach other creature you control with counters on it has \u201cLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn\u201d.\nLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nLandfall \u2014 Whenever a land you control enters, put a +1/+1 counter on this creature. If this is the second time this ability has resolved this turn, this creature gains trample and haste until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Frilled Seishin_KDT",
+          "source_card_key": "rev:Frilled Seishin_KDT",
+          "name": "Frilled Seishin",
+          "original_text": "Type: Creature \u2014 Spirit Salamander\nMana cost: {2}{R}\nPower/Toughness: 3/2\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end.",
+          "executable_text": "Type: Creature \u2014 Spirit Salamander\nMana cost: {2}{R}\nPower/Toughness: 3/2\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end\u201d.\nWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end.",
+          "executable_faces": [
+            {
+              "name": "Frilled Seishin",
+              "executable_text": "Type: Creature \u2014 Spirit Salamander\nMana cost: {2}{R}\nPower/Toughness: 3/2\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end\u201d.\nWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature attacks, add {R}. Until end of turn, you don't lose this mana as steps and phases end.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Hakodate Regent_KDT",
+          "source_card_key": "rev:Hakodate Regent_KDT",
+          "name": "Hakodate Regent",
+          "original_text": "Type: Creature \u2014 Phoenix Spirit\nMana cost: {4}{R}{R}\nPower/Toughness: 3/6\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nFlying\nIf this creature would deal damage to a permanent or player, it deals double that damage instead.",
+          "executable_text": "Type: Creature \u2014 Phoenix Spirit\nMana cost: {4}{R}{R}\nPower/Toughness: 3/6\nEach other creature you control with counters on it has \u201cFlying\u201d and \u201cIf this creature would deal damage to a permanent or player, it deals double that damage instead\u201d.\nFlying\nIf this creature would deal damage to a permanent or player, it deals double that damage instead.",
+          "executable_faces": [
+            {
+              "name": "Hakodate Regent",
+              "executable_text": "Type: Creature \u2014 Phoenix Spirit\nMana cost: {4}{R}{R}\nPower/Toughness: 3/6\nEach other creature you control with counters on it has \u201cFlying\u201d and \u201cIf this creature would deal damage to a permanent or player, it deals double that damage instead\u201d.\nFlying\nIf this creature would deal damage to a permanent or player, it deals double that damage instead.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nFlying\nIf this creature would deal damage to a permanent or player, it deals double that damage instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nFlying\nIf this creature would deal damage to a permanent or player, it deals double that damage instead.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Infernal Kitsune//Run Riot_KDT",
+          "source_card_key": "rev:Infernal Kitsune//Run Riot_KDT",
+          "name": "Infernal Kitsune",
+          "original_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {5}{R}\nPower/Toughness: 5/5\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature attacks, creatures you control get +1/+0 until end of turn.",
+          "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {5}{R}\nPower/Toughness: 5/5\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, creatures you control get +1/+0 until end of turn\u201d.\nWhenever this creature attacks, creatures you control get +1/+0 until end of turn.",
+          "source_layout": "adventure",
+          "source_faces": [
+            {
+              "name": "Infernal Kitsune",
+              "original_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {5}{R}\nPower/Toughness: 5/5\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature attacks, creatures you control get +1/+0 until end of turn."
+            },
+            {
+              "name": "Run Riot",
+              "original_text": "Type: Instant \u2014 Adventure\nMana cost: {2}{G}\nPut a +1/+1 counter on target creature you control, then double the number of +1/+1 counters on it. *(Then exile this card. You may cast the creature later.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Infernal Kitsune",
+              "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {5}{R}\nPower/Toughness: 5/5\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, creatures you control get +1/+0 until end of turn\u201d.\nWhenever this creature attacks, creatures you control get +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature attacks, creatures you control get +1/+0 until end of turn."
+            },
+            {
+              "name": "Run Riot",
+              "executable_text": "Type: Instant \u2014 Adventure\nMana cost: {2}{G}\nPut a +1/+1 counter on target creature you control, then double the number of +1/+1 counters on it. (Then exile this card. You may cast the creature later.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature attacks, creatures you control get +1/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Kirin of Boons_KDT",
+          "source_card_key": "rev:Kirin of Boons_KDT",
+          "name": "Kirin of Boons",
+          "original_text": "Type: Creature \u2014 Kirin Spirit\nMana cost: {1}{R}\nPower/Toughness: 2/2\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power.",
+          "executable_text": "Type: Creature \u2014 Kirin Spirit\nMana cost: {1}{R}\nPower/Toughness: 2/2\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power\u201d.\nWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power.",
+          "executable_faces": [
+            {
+              "name": "Kirin of Boons",
+              "executable_text": "Type: Creature \u2014 Kirin Spirit\nMana cost: {1}{R}\nPower/Toughness: 2/2\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power\u201d.\nWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature attacks, target creature defending player controls can't block this turn if its power is less than this creature's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Menreiki, the Resplendent_KDT",
+          "source_card_key": "rev:Menreiki, the Resplendent_KDT",
+          "name": "Menreiki, the Resplendent",
+          "original_text": "Type: Legendary Creature \u2014 Kirin Spirit\nMana cost: {1}{R}{G}\nPower/Toughness: 3/3\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token.",
+          "executable_text": "Type: Legendary Creature \u2014 Kirin Spirit\nMana cost: {1}{R}{G}\nPower/Toughness: 3/3\nEach other creature you control with counters on it has \u201cWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token\u201d.\nWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token.",
+          "executable_faces": [
+            {
+              "name": "Menreiki, the Resplendent",
+              "executable_text": "Type: Legendary Creature \u2014 Kirin Spirit\nMana cost: {1}{R}{G}\nPower/Toughness: 3/3\nEach other creature you control with counters on it has \u201cWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token\u201d.\nWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature deals combat damage to a player, create a 1/1 green Spirit creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Noble Kitsune_KDT",
+          "source_card_key": "rev:Noble Kitsune_KDT",
+          "name": "Noble Kitsune",
+          "original_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {2}{R}\nPower/Toughness: 3/2\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nHaste",
+          "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {2}{R}\nPower/Toughness: 3/2\nEach other creature you control with counters on it has \u201cHaste\u201d.\nHaste",
+          "executable_faces": [
+            {
+              "name": "Noble Kitsune",
+              "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {2}{R}\nPower/Toughness: 3/2\nEach other creature you control with counters on it has \u201cHaste\u201d.\nHaste",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nHaste"
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nHaste",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Realmweft Kitsune_KDT",
+          "source_card_key": "rev:Realmweft Kitsune_KDT",
+          "name": "Realmweft Kitsune",
+          "original_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {3}{G}\nPower/Toughness: 4/3\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature deals combat damage to a player, draw a card.",
+          "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {3}{G}\nPower/Toughness: 4/3\nEach other creature you control with counters on it has \u201cWhenever this creature deals combat damage to a player, draw a card\u201d.\nWhenever this creature deals combat damage to a player, draw a card.",
+          "executable_faces": [
+            {
+              "name": "Realmweft Kitsune",
+              "executable_text": "Type: Creature \u2014 Fox Shapeshifter\nMana cost: {3}{G}\nPower/Toughness: 4/3\nEach other creature you control with counters on it has \u201cWhenever this creature deals combat damage to a player, draw a card\u201d.\nWhenever this creature deals combat damage to a player, draw a card.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature deals combat damage to a player, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature deals combat damage to a player, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Titanic Behemoth_KDT",
+          "source_card_key": "rev:Titanic Behemoth_KDT",
+          "name": "Titanic Behemoth",
+          "original_text": "Type: Creature \u2014 Spirit\nMana cost: {4}{R}{G}\nPower/Toughness: 5/5\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nThis creature can't be blocked by creatures with power 2 or less.",
+          "executable_text": "Type: Creature \u2014 Spirit\nMana cost: {4}{R}{G}\nPower/Toughness: 5/5\nEach other creature you control with counters on it has \u201cThis creature can't be blocked by creatures with power 2 or less\u201d.\nThis creature can't be blocked by creatures with power 2 or less.",
+          "executable_faces": [
+            {
+              "name": "Titanic Behemoth",
+              "executable_text": "Type: Creature \u2014 Spirit\nMana cost: {4}{R}{G}\nPower/Toughness: 5/5\nEach other creature you control with counters on it has \u201cThis creature can't be blocked by creatures with power 2 or less\u201d.\nThis creature can't be blocked by creatures with power 2 or less.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nThis creature can't be blocked by creatures with power 2 or less."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nThis creature can't be blocked by creatures with power 2 or less.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Uncoiling Realmspawn_KDT",
+          "source_card_key": "rev:Uncoiling Realmspawn_KDT",
+          "name": "Uncoiling Realmspawn",
+          "original_text": "Type: Creature \u2014 Spirit Hydra\nMana cost: {1}{G}\nPower/Toughness: 2/2\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nTrample \nWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature.",
+          "executable_text": "Type: Creature \u2014 Spirit Hydra\nMana cost: {1}{G}\nPower/Toughness: 2/2\nEach other creature you control with counters on it has \u201cTrample\u201d and \u201cWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature\u201d.\nTrample\nWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature.",
+          "executable_faces": [
+            {
+              "name": "Uncoiling Realmspawn",
+              "executable_text": "Type: Creature \u2014 Spirit Hydra\nMana cost: {1}{G}\nPower/Toughness: 2/2\nEach other creature you control with counters on it has \u201cTrample\u201d and \u201cWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature\u201d.\nTrample\nWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nTrample\nWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nTrample\nWhenever you cast a spell with mana value 4 or greater, put a +1/+1 counter on this creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Wandering Thrumhorn_KDT",
+          "source_card_key": "rev:Wandering Thrumhorn_KDT",
+          "name": "Wandering Thrumhorn",
+          "original_text": "Type: Creature \u2014 Rhino Spirit\nMana cost: {4}{G}\nPower/Toughness: 5/5\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhen this creature dies, create a 1/1 green Spirit creature token.",
+          "executable_text": "Type: Creature \u2014 Rhino Spirit\nMana cost: {4}{G}\nPower/Toughness: 5/5\nEach other creature you control with counters on it has \u201cWhen this creature dies, create a 1/1 green Spirit creature token\u201d.\nWhen this creature dies, create a 1/1 green Spirit creature token.",
+          "executable_faces": [
+            {
+              "name": "Wandering Thrumhorn",
+              "executable_text": "Type: Creature \u2014 Rhino Spirit\nMana cost: {4}{G}\nPower/Toughness: 5/5\nEach other creature you control with counters on it has \u201cWhen this creature dies, create a 1/1 green Spirit creature token\u201d.\nWhen this creature dies, create a 1/1 green Spirit creature token.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhen this creature dies, create a 1/1 green Spirit creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhen this creature dies, create a 1/1 green Spirit creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Wisping Kirin_KDT",
+          "source_card_key": "rev:Wisping Kirin_KDT",
+          "name": "Wisping Kirin",
+          "original_text": "Type: Creature \u2014 Kirin Spirit\nMana cost: {3}{R}{R}\nPower/Toughness: 4/3\nRevered *(This creature shares the following abilities with other creatures you control that have counters on them.)*\nWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat.",
+          "executable_text": "Type: Creature \u2014 Kirin Spirit\nMana cost: {3}{R}{R}\nPower/Toughness: 4/3\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat\u201d.\nWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat.",
+          "executable_faces": [
+            {
+              "name": "Wisping Kirin",
+              "executable_text": "Type: Creature \u2014 Kirin Spirit\nMana cost: {3}{R}{R}\nPower/Toughness: 4/3\nEach other creature you control with counters on it has \u201cWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat\u201d.\nWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat.",
+              "custom_keyword_identities": [
+                "revered"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Revered\nWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat."
+            }
+          ],
+          "custom_keyword_identities": [
+            "revered"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Revered\nWhenever this creature attacks, create a tapped and attacking token that's a copy of it. For each counter on this creature, put a counter of that kind on that token. Sacrifice the token at the end of combat.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Basking Kitsune",
+        "Blossoming Ocelot",
+        "Ethereal Blossom",
+        "Fablewoven Seishin",
+        "Frilled Seishin",
+        "Hakodate Regent",
+        "Infernal Kitsune",
+        "Kirin of Boons",
+        "Menreiki, the Resplendent",
+        "Noble Kitsune",
+        "Realmweft Kitsune",
+        "Titanic Behemoth",
+        "Uncoiling Realmspawn",
+        "Wandering Thrumhorn",
+        "Wisping Kirin"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "revered-filter",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::revered_grants_only_to_other_controlled_counter_bearers",
+          "observable": "Subsequent ability applies to other controlled creatures with a counter, ends when last counter removed; preceding ability not shared."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Revered",
+          "reminder": "Each other creature you control with counters on it has the following abilities."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-time-loop-237",
+      "keyword": "Time loop",
+      "scope": "revolution",
+      "rule_reference": "702.222.",
+      "rule_text": {
+        "name": "702.222.",
+        "rule": "Time loop",
+        "subrules": [
+          {
+            "name": "702.222a",
+            "rule": "Time loop is a keyword found on some Saga cards. \"Time loop\" means \"As this Saga's final chapter ability resolves, remove all lore counters from it.\" If lore counters are removed this way, the Saga will not be sacrificed as it normally would be (see rule 714.4).",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Ayeshi, Time's Jailer",
+          "Confronting Time's Jailer",
+          "Portal to the Spirit Realm",
+          "Revolt at the Palace",
+          "Shigane Manor Burns",
+          "The Inferno Gate Opens",
+          "Saga"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "As this Saga enters and after your draw step, add a lore counter. Remove them all after III.",
+      "executable_reminder": "As this Saga's final chapter ability resolves, remove all lore counters from it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.222a removes counters during successful final chapter resolution before state based actions. A live current-source static instruction is queried at resolution, so losing that static ability while chapter is stacked prevents removal. The instruction is not captured unconditionally in chapter effects."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Confronting Time's Jailer_KDT",
+          "name": "Confronting Time's Jailer",
+          "original_text": "Type: Enchantment \u2014 Saga\nMana cost: {2}{U}\nTime loop *(As this Saga enters and after your draw step, add a lore counter. Remove them all after III.)*\nI \u2014 Up to one other target nonland permanent phases out.\nII \u2014 Draw two cards.\nIII \u2014 Create a blue enchantment token named Time Bubble with \u201cSpells you cast cost {1} more to cast.\u201d",
+          "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {2}{U}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI \u2014 Up to one other target nonland permanent phases out.\nII \u2014 Draw two cards.\nIII \u2014 Create a blue enchantment token named Time Bubble with \u201cSpells you cast cost {1} more to cast.\u201d",
+          "executable_faces": [
+            {
+              "name": "Confronting Time's Jailer",
+              "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {2}{U}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI \u2014 Up to one other target nonland permanent phases out.\nII \u2014 Draw two cards.\nIII \u2014 Create a blue enchantment token named Time Bubble with \u201cSpells you cast cost {1} more to cast.\u201d",
+              "custom_keyword_identities": [
+                "time loop"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Time loop\nI \u2014 Up to one other target nonland permanent phases out.\nII \u2014 Draw two cards.\nIII \u2014 Create a blue enchantment token named Time Bubble with \u201cSpells you cast cost {1} more to cast.\u201d"
+            }
+          ],
+          "custom_keyword_identities": [
+            "time loop"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Time loop\nI \u2014 Up to one other target nonland permanent phases out.\nII \u2014 Draw two cards.\nIII \u2014 Create a blue enchantment token named Time Bubble with \u201cSpells you cast cost {1} more to cast.\u201d",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Portal to the Spirit Realm_KDT",
+          "source_card_key": "rev:Portal to the Spirit Realm_KDT",
+          "name": "Portal to the Spirit Realm",
+          "original_text": "Type: Enchantment \u2014 Saga\nMana cost: {3}{G}\nTime loop *(As this Saga enters and after your draw step, add a lore counter. Remove them all after III.)*\nI, II \u2014 You may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\nIII \u2014 Until end of turn, double up to one target creature's power and toughness and it gains trample.\n\u200b",
+          "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {3}{G}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI, II \u2014 You may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\nIII \u2014 Until end of turn, double up to one target creature's power and toughness and it gains trample.\n\u200b",
+          "executable_faces": [
+            {
+              "name": "Portal to the Spirit Realm",
+              "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {3}{G}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI, II \u2014 You may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\nIII \u2014 Until end of turn, double up to one target creature's power and toughness and it gains trample.\n\u200b",
+              "custom_keyword_identities": [
+                "time loop"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Time loop\nI, II \u2014 You may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\nIII \u2014 Until end of turn, double up to one target creature's power and toughness and it gains trample.\n\u200b"
+            }
+          ],
+          "custom_keyword_identities": [
+            "time loop"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Time loop\nI, II \u2014 You may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\nIII \u2014 Until end of turn, double up to one target creature's power and toughness and it gains trample.\n\u200b",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Revolt at the Palace_KDT",
+          "source_card_key": "rev:Revolt at the Palace_KDT",
+          "name": "Revolt at the Palace",
+          "original_text": "Type: Enchantment \u2014 Saga\nMana cost: {4}{W}\nTime loop *(As this Saga enters and after your draw step, add a lore counter. Remove them all after III.)*\nI, II \u2014 Look at the top six cards of your library. Put up to one nonland permanent card with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.\nIII \u2014 Creatures you control gain double strike until end of turn.",
+          "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {4}{W}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI, II \u2014 Look at the top six cards of your library. Put up to one nonland permanent card with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.\nIII \u2014 Creatures you control gain double strike until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Revolt at the Palace",
+              "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {4}{W}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI, II \u2014 Look at the top six cards of your library. Put up to one nonland permanent card with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.\nIII \u2014 Creatures you control gain double strike until end of turn.",
+              "custom_keyword_identities": [
+                "time loop"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Time loop\nI, II \u2014 Look at the top six cards of your library. Put up to one nonland permanent card with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.\nIII \u2014 Creatures you control gain double strike until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "time loop"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Time loop\nI, II \u2014 Look at the top six cards of your library. Put up to one nonland permanent card with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.\nIII \u2014 Creatures you control gain double strike until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Shigane Manor Burns_KDT",
+          "source_card_key": "rev:Shigane Manor Burns_KDT",
+          "name": "Shigane Manor Burns",
+          "original_text": "Type: Enchantment \u2014 Saga\nMana cost: {1}{R}\nTime loop *(As this Saga enters and after your draw step, add a lore counter. Remove them all after III.)*\nI \u2014 Create a tapped Treasure token.\nII \u2014 You may discard a card. If you do, exile the top two cards of your library. You may play one of those cards this turn.\nIII \u2014 This Saga deals 2 damage to each opponent.",
+          "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {1}{R}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI \u2014 Create a tapped Treasure token.\nII \u2014 You may discard a card. If you do, exile the top two cards of your library. You may play one of those cards this turn.\nIII \u2014 This Saga deals 2 damage to each opponent.",
+          "executable_faces": [
+            {
+              "name": "Shigane Manor Burns",
+              "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {1}{R}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI \u2014 Create a tapped Treasure token.\nII \u2014 You may discard a card. If you do, exile the top two cards of your library. You may play one of those cards this turn.\nIII \u2014 This Saga deals 2 damage to each opponent.",
+              "custom_keyword_identities": [
+                "time loop"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Time loop\nI \u2014 Create a tapped Treasure token.\nII \u2014 You may discard a card. If you do, exile the top two cards of your library. You may play one of those cards this turn.\nIII \u2014 This Saga deals 2 damage to each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "time loop"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Time loop\nI \u2014 Create a tapped Treasure token.\nII \u2014 You may discard a card. If you do, exile the top two cards of your library. You may play one of those cards this turn.\nIII \u2014 This Saga deals 2 damage to each opponent.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:The Inferno Gate Opens_KDT",
+          "source_card_key": "rev:The Inferno Gate Opens_KDT",
+          "name": "The Inferno Gate Opens",
+          "original_text": "Type: Enchantment \u2014 Saga\nMana cost: {4}{B}\nTime loop *(As this Saga enters and after your draw step, add a lore counter. Remove them all after III.)*\nI \u2014 Pay any amount of life. Create an X/X black Demon creature token, where X is the amount of life paid.\nII \u2014 You draw a card and you lose 1 life.\nIII \u2014 Target creature you control gains lifelink until end of turn.",
+          "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {4}{B}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI \u2014 Pay any amount of life. Create an X/X black Demon creature token, where X is the amount of life paid.\nII \u2014 You draw a card and you lose 1 life.\nIII \u2014 Target creature you control gains lifelink until end of turn.",
+          "executable_faces": [
+            {
+              "name": "The Inferno Gate Opens",
+              "executable_text": "Type: Enchantment \u2014 Saga\nMana cost: {4}{B}\nAs this Saga's final chapter ability resolves, remove all lore counters from it\nI \u2014 Pay any amount of life. Create an X/X black Demon creature token, where X is the amount of life paid.\nII \u2014 You draw a card and you lose 1 life.\nIII \u2014 Target creature you control gains lifelink until end of turn.",
+              "custom_keyword_identities": [
+                "time loop"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Time loop\nI \u2014 Pay any amount of life. Create an X/X black Demon creature token, where X is the amount of life paid.\nII \u2014 You draw a card and you lose 1 life.\nIII \u2014 Target creature you control gains lifelink until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "time loop"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Time loop\nI \u2014 Pay any amount of life. Create an X/X black Demon creature token, where X is the amount of life paid.\nII \u2014 You draw a card and you lose 1 life.\nIII \u2014 Target creature you control gains lifelink until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Confronting Time's Jailer",
+        "Portal to the Spirit Realm",
+        "Revolt at the Palace",
+        "Shigane Manor Burns",
+        "The Inferno Gate Opens"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "chapter-removal",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::final_chapter_removes_lore_before_state_based_actions",
+          "observable": "Normal final resolution removes lore and retains Saga; countered chapter does not remove lore."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Time loop",
+          "reminder": "As this Saga's final chapter ability resolves, remove all lore counters from it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-200",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{7}{W}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Alcadia, Cardinal Judge//The Omnithority_CYB",
+          "name": "Alcadia, Cardinal Judge",
+          "original_text": "Type: Legendary Creature \u2014 Human Cleric \nMana cost: {1}{W}{B}\nPower/Toughness: 3/3\nWhenever a player attacks with two or more creatures, create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {7}{W}{B} *({7}{W}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Cleric \nMana cost: {1}{W}{B}\nPower/Toughness: 3/3\nWhenever a player attacks with two or more creatures, create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token.\n{7}{W}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Alcadia, Cardinal Judge",
+              "original_text": "Type: Legendary Creature \u2014 Human Cleric \nMana cost: {1}{W}{B}\nPower/Toughness: 3/3\nWhenever a player attacks with two or more creatures, create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {7}{W}{B} *({7}{W}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "The Omnithority",
+              "original_text": "Type: Legendary Artifact\nIndestructible\nWhenever a player attacks with two or more creatures, you draw a card and you create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token, then put a +1/+1 counter on each Cyborg you control."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Alcadia, Cardinal Judge",
+              "executable_text": "Type: Legendary Creature \u2014 Human Cleric \nMana cost: {1}{W}{B}\nPower/Toughness: 3/3\nWhenever a player attacks with two or more creatures, create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token.\n{7}{W}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever a player attacks with two or more creatures, create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {7}{W}{B}"
+            },
+            {
+              "name": "The Omnithority",
+              "executable_text": "Type: Legendary Artifact\nIndestructible\nWhenever a player attacks with two or more creatures, you draw a card and you create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token, then put a +1/+1 counter on each Cyborg you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever a player attacks with two or more creatures, create a Treasure token.\nWhenever a player casts their second spell each turn, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {7}{W}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Alcadia, Cardinal Judge//The Omnithority"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-201",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Blackout Grifter//Lone Switchblade_CYB",
+          "name": "Blackout Grifter",
+          "original_text": "Type: Creature \u2014 Elf Pirate \nMana cost: {1}{B}\nPower/Toughness: 2/1\nWhen Blackout Grifter enters, each opponent loses 1 life and you gain 1 life.\nCybersoul {3}{B} *({3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Elf Pirate \nMana cost: {1}{B}\nPower/Toughness: 2/1\nWhen Blackout Grifter enters, each opponent loses 1 life and you gain 1 life.\n{3}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Blackout Grifter",
+              "original_text": "Type: Creature \u2014 Elf Pirate \nMana cost: {1}{B}\nPower/Toughness: 2/1\nWhen Blackout Grifter enters, each opponent loses 1 life and you gain 1 life.\nCybersoul {3}{B} *({3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Lone Switchblade",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Pirate \nPower/Toughness: 4/3\nWhenever this creature transforms into Lone Switchblade or another permanent you control transforms, each opponent loses 1 life and you gain 1 life."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Blackout Grifter",
+              "executable_text": "Type: Creature \u2014 Elf Pirate \nMana cost: {1}{B}\nPower/Toughness: 2/1\nWhen Blackout Grifter enters, each opponent loses 1 life and you gain 1 life.\n{3}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Blackout Grifter enters, each opponent loses 1 life and you gain 1 life.\nCybersoul {3}{B}"
+            },
+            {
+              "name": "Lone Switchblade",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Pirate \nPower/Toughness: 4/3\nWhenever this creature transforms into Lone Switchblade or another permanent you control transforms, each opponent loses 1 life and you gain 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Blackout Grifter enters, each opponent loses 1 life and you gain 1 life.\nCybersoul {3}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Rooftop Slink//Synthetic Specter_CYB",
+          "source_card_key": "rev:Rooftop Slink//Synthetic Specter_CYB",
+          "name": "Rooftop Slink",
+          "original_text": "Type: Creature \u2014 Human Rogue \nMana cost: {B}\nPower/Toughness: 1/1\nWhenever Rooftop Slink deals combat damage to a player, you may have each player discard a card.\nCybersoul {3}{B} *({3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Rooftop Slink",
+              "original_text": "Type: Creature \u2014 Human Rogue \nMana cost: {B}\nPower/Toughness: 1/1\nWhenever Rooftop Slink deals combat damage to a player, you may have each player discard a card.\nCybersoul {3}{B} *({3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Synthetic Specter",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Specter \nPower/Toughness: 2/2\nFlying\nWhenever Synthetic Specter deals combat damage to a player, that player discards a card. Then if they have no cards in hand, put a +1/+1 counter on Synthetic Specter."
+            }
+          ],
+          "executable_text": "Type: Creature \u2014 Human Rogue \nMana cost: {B}\nPower/Toughness: 1/1\nWhenever Rooftop Slink deals combat damage to a player, you may have each player discard a card.\n{3}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Rooftop Slink",
+              "executable_text": "Type: Creature \u2014 Human Rogue \nMana cost: {B}\nPower/Toughness: 1/1\nWhenever Rooftop Slink deals combat damage to a player, you may have each player discard a card.\n{3}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever Rooftop Slink deals combat damage to a player, you may have each player discard a card.\nCybersoul {3}{B}"
+            },
+            {
+              "name": "Synthetic Specter",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Specter \nPower/Toughness: 2/2\nFlying\nWhenever Synthetic Specter deals combat damage to a player, that player discards a card. Then if they have no cards in hand, put a +1/+1 counter on Synthetic Specter.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Rooftop Slink deals combat damage to a player, you may have each player discard a card.\nCybersoul {3}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Withered Survivor//Silvereye Scout_CYB",
+          "source_card_key": "rev:Withered Survivor//Silvereye Scout_CYB",
+          "name": "Withered Survivor",
+          "original_text": "Type: Creature \u2014 Human Scout \nMana cost: {3}{B}\nPower/Toughness: 3/3\nMenace\nCybersoul {3}{B} *({3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Withered Survivor",
+              "original_text": "Type: Creature \u2014 Human Scout \nMana cost: {3}{B}\nPower/Toughness: 3/3\nMenace\nCybersoul {3}{B} *({3}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Silvereye Scout",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Scout \nPower/Toughness: 4/4\nSilvereye Scout can't be blocked except by three or more creatures."
+            }
+          ],
+          "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {3}{B}\nPower/Toughness: 3/3\nMenace\n{3}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Withered Survivor",
+              "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {3}{B}\nPower/Toughness: 3/3\nMenace\n{3}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Menace\nCybersoul {3}{B}"
+            },
+            {
+              "name": "Silvereye Scout",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Scout \nPower/Toughness: 4/4\nSilvereye Scout can't be blocked except by three or more creatures.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Menace\nCybersoul {3}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Blackout Grifter",
+        "Rooftop Slink",
+        "Withered Survivor"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-202",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{5}{W/B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Eleanor, Royal Captain//Eleanor, Kingslayer_CYB",
+          "name": "Eleanor, Royal Captain",
+          "original_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W/B}{W/B}\nPower/Toughness: 2/2\nFlash\nWhen Eleanor, Royal Captain enters, target legendary creature gains indestructible until end of turn.\nCybersoul {5}{W/B} *({5}{W/B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W/B}{W/B}\nPower/Toughness: 2/2\nFlash\nWhen Eleanor, Royal Captain enters, target legendary creature gains indestructible until end of turn.\n{5}{W/B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Eleanor, Royal Captain",
+              "original_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W/B}{W/B}\nPower/Toughness: 2/2\nFlash\nWhen Eleanor, Royal Captain enters, target legendary creature gains indestructible until end of turn.\nCybersoul {5}{W/B} *({5}{W/B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Eleanor, Kingslayer",
+              "original_text": "Type: Legendary Artifact Creature \u2014 Cyborg Knight \nPower/Toughness: 3/3\nFirst strike, lifelink\nWhen this creature transforms into Eleanor, Kingslayer, exile up to one target creature. If that creature was legendary, put two +1/+1 counters on Eleanor."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Eleanor, Royal Captain",
+              "executable_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W/B}{W/B}\nPower/Toughness: 2/2\nFlash\nWhen Eleanor, Royal Captain enters, target legendary creature gains indestructible until end of turn.\n{5}{W/B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flash\nWhen Eleanor, Royal Captain enters, target legendary creature gains indestructible until end of turn.\nCybersoul {5}{W/B}"
+            },
+            {
+              "name": "Eleanor, Kingslayer",
+              "executable_text": "Type: Legendary Artifact Creature \u2014 Cyborg Knight \nPower/Toughness: 3/3\nFirst strike, lifelink\nWhen this creature transforms into Eleanor, Kingslayer, exile up to one target creature. If that creature was legendary, put two +1/+1 counters on Eleanor.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flash\nWhen Eleanor, Royal Captain enters, target legendary creature gains indestructible until end of turn.\nCybersoul {5}{W/B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Eleanor, Royal Captain//Eleanor, Kingslayer"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-203",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{4}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Iris Agent//Iris Flayer_CYB",
+          "name": "Iris Agent",
+          "original_text": "Type: Creature \u2014 Human Rogue \nMana cost: {1}{B}\nPower/Toughness: 1/2\nDeathtouch\nCybersoul {4}{B} *({4}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Human Rogue \nMana cost: {1}{B}\nPower/Toughness: 1/2\nDeathtouch\n{4}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Iris Agent",
+              "original_text": "Type: Creature \u2014 Human Rogue \nMana cost: {1}{B}\nPower/Toughness: 1/2\nDeathtouch\nCybersoul {4}{B} *({4}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Iris Flayer",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Rogue \nPower/Toughness: 3/4\nDeathtouch\nWhen this creature transforms into Iris Flayer, target player draws a card and loses 1 life."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Iris Agent",
+              "executable_text": "Type: Creature \u2014 Human Rogue \nMana cost: {1}{B}\nPower/Toughness: 1/2\nDeathtouch\n{4}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deathtouch\nCybersoul {4}{B}"
+            },
+            {
+              "name": "Iris Flayer",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Rogue \nPower/Toughness: 3/4\nDeathtouch\nWhen this creature transforms into Iris Flayer, target player draws a card and loses 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Deathtouch\nCybersoul {4}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Iris Cultist//Reborn Apostle_CYB",
+          "source_card_key": "rev:Iris Cultist//Reborn Apostle_CYB",
+          "name": "Iris Cultist",
+          "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 3/3\nWhen Iris Cultist enters, you lose 1 life.\nCybersoul {4}{B} *({4}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Iris Cultist",
+              "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 3/3\nWhen Iris Cultist enters, you lose 1 life.\nCybersoul {4}{B} *({4}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Reborn Apostle",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Cleric \nPower/Toughness: 5/5\nWhenever Reborn Apostle attacks, each player loses 1 life."
+            }
+          ],
+          "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 3/3\nWhen Iris Cultist enters, you lose 1 life.\n{4}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Iris Cultist",
+              "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{B}\nPower/Toughness: 3/3\nWhen Iris Cultist enters, you lose 1 life.\n{4}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Iris Cultist enters, you lose 1 life.\nCybersoul {4}{B}"
+            },
+            {
+              "name": "Reborn Apostle",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Cleric \nPower/Toughness: 5/5\nWhenever Reborn Apostle attacks, each player loses 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Iris Cultist enters, you lose 1 life.\nCybersoul {4}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Iris Agent",
+        "Iris Cultist"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-204",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{X}{X}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Lost Resistor//Splintered Soul_CYB",
+          "name": "Lost Resistor",
+          "original_text": "Type: Creature \u2014 Elf Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nWhen Lost Resistor dies, you gain 1 life.\nCybersoul {X}{X}{W} *({X}{X}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Elf Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nWhen Lost Resistor dies, you gain 1 life.\n{X}{X}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Lost Resistor",
+              "original_text": "Type: Creature \u2014 Elf Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nWhen Lost Resistor dies, you gain 1 life.\nCybersoul {X}{X}{W} *({X}{X}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Splintered Soul",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Soldier \nPower/Toughness: 3/1\nWhen this creature transforms into Splintered Soul, create X 3/1 colorless Cyborg Soldier artifact creature tokens.\nWhenever Splintered Soul or another Cyborg you control dies, you gain 1 life."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Lost Resistor",
+              "executable_text": "Type: Creature \u2014 Elf Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nWhen Lost Resistor dies, you gain 1 life.\n{X}{X}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Lost Resistor dies, you gain 1 life.\nCybersoul {X}{X}{W}"
+            },
+            {
+              "name": "Splintered Soul",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Soldier \nPower/Toughness: 3/1\nWhen this creature transforms into Splintered Soul, create X 3/1 colorless Cyborg Soldier artifact creature tokens.\nWhenever Splintered Soul or another Cyborg you control dies, you gain 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Lost Resistor dies, you gain 1 life.\nCybersoul {X}{X}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Lost Resistor//Splintered Soul"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-205",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{7}{B}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Malicious Skycleaver//Silverscale Despot_CYB",
+          "name": "Malicious Skycleaver",
+          "original_text": "Type: Creature \u2014 Dragon \nMana cost: {4}{B}{B}\nPower/Toughness: 4/4\nFlying\nWhen Malicious Skycleaver enters, pay any amount of life. It deals that much damage to each other creature.\nCybersoul {7}{B}{B} *({7}{B}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Dragon \nMana cost: {4}{B}{B}\nPower/Toughness: 4/4\nFlying\nWhen Malicious Skycleaver enters, pay any amount of life. It deals that much damage to each other creature.\n{7}{B}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Malicious Skycleaver",
+              "original_text": "Type: Creature \u2014 Dragon \nMana cost: {4}{B}{B}\nPower/Toughness: 4/4\nFlying\nWhen Malicious Skycleaver enters, pay any amount of life. It deals that much damage to each other creature.\nCybersoul {7}{B}{B} *({7}{B}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Silverscale Despot",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Dragon \nPower/Toughness: 7/7\nFlying, trample, lifelink\nWard\u2014Pay 7 life."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Malicious Skycleaver",
+              "executable_text": "Type: Creature \u2014 Dragon \nMana cost: {4}{B}{B}\nPower/Toughness: 4/4\nFlying\nWhen Malicious Skycleaver enters, pay any amount of life. It deals that much damage to each other creature.\n{7}{B}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhen Malicious Skycleaver enters, pay any amount of life. It deals that much damage to each other creature.\nCybersoul {7}{B}{B}"
+            },
+            {
+              "name": "Silverscale Despot",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Dragon \nPower/Toughness: 7/7\nFlying, trample, lifelink\nWard\u2014Pay 7 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhen Malicious Skycleaver enters, pay any amount of life. It deals that much damage to each other creature.\nCybersoul {7}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Malicious Skycleaver//Silverscale Despot"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-206",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{3}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Priestess of Chains//Winged Subjugator_CYB",
+          "name": "Priestess of Chains",
+          "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {W}\nPower/Toughness: 1/1\nVigilance\n{W}, {T}: Tap target creature with power 2 or less.\nCybersoul {3}{W} *({3}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {W}\nPower/Toughness: 1/1\nVigilance\n{W}, {T}: Tap target creature with power 2 or less.\n{3}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Priestess of Chains",
+              "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {W}\nPower/Toughness: 1/1\nVigilance\n{W}, {T}: Tap target creature with power 2 or less.\nCybersoul {3}{W} *({3}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Winged Subjugator",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Angel \nPower/Toughness: 2/1\nFlying, vigilance\n{W}, {T}: Tap target creature."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Priestess of Chains",
+              "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {W}\nPower/Toughness: 1/1\nVigilance\n{W}, {T}: Tap target creature with power 2 or less.\n{3}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\n{W}, {T}: Tap target creature with power 2 or less.\nCybersoul {3}{W}"
+            },
+            {
+              "name": "Winged Subjugator",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Angel \nPower/Toughness: 2/1\nFlying, vigilance\n{W}, {T}: Tap target creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\n{W}, {T}: Tap target creature with power 2 or less.\nCybersoul {3}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Royal Templar//Crown Betrayer_CYB",
+          "source_card_key": "rev:Royal Templar//Crown Betrayer_CYB",
+          "name": "Royal Templar",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {3}{W}\nPower/Toughness: 3/3\nVigilance\nWhen Royal Templar enters, target creature gets +2/+0 and gains vigilance and indestructible until end of turn.\nCybersoul {3}{W} *({3}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Royal Templar",
+              "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {3}{W}\nPower/Toughness: 3/3\nVigilance\nWhen Royal Templar enters, target creature gets +2/+0 and gains vigilance and indestructible until end of turn.\nCybersoul {3}{W} *({3}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Crown Betrayer",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Knight \nPower/Toughness: 4/4\nVigilance\nWhenever this creature transforms into Crown Betrayer or another permanent you control transforms, Crown Betrayer gets +2/+0 and gains indestructible until end of turn."
+            }
+          ],
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {3}{W}\nPower/Toughness: 3/3\nVigilance\nWhen Royal Templar enters, target creature gets +2/+0 and gains vigilance and indestructible until end of turn.\n{3}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Royal Templar",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {3}{W}\nPower/Toughness: 3/3\nVigilance\nWhen Royal Templar enters, target creature gets +2/+0 and gains vigilance and indestructible until end of turn.\n{3}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nWhen Royal Templar enters, target creature gets +2/+0 and gains vigilance and indestructible until end of turn.\nCybersoul {3}{W}"
+            },
+            {
+              "name": "Crown Betrayer",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Knight \nPower/Toughness: 4/4\nVigilance\nWhenever this creature transforms into Crown Betrayer or another permanent you control transforms, Crown Betrayer gets +2/+0 and gains indestructible until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nWhen Royal Templar enters, target creature gets +2/+0 and gains vigilance and indestructible until end of turn.\nCybersoul {3}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Priestess of Chains",
+        "Royal Templar"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-207",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{4}{W}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Pursuer of Divinity//Abandoner of Flesh_CYB",
+          "name": "Pursuer of Divinity",
+          "original_text": "Type: Creature \u2014 Human Artificer \nMana cost: {2}{W}{B}\nPower/Toughness: 2/4\nWhen Pursuer of Divinity enters, you may search your library for a double-faced card, reveal it, put it into your hand, then shuffle.\nCybersoul {4}{W}{B} *({4}{W}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Human Artificer \nMana cost: {2}{W}{B}\nPower/Toughness: 2/4\nWhen Pursuer of Divinity enters, you may search your library for a double-faced card, reveal it, put it into your hand, then shuffle.\n{4}{W}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Pursuer of Divinity",
+              "original_text": "Type: Creature \u2014 Human Artificer \nMana cost: {2}{W}{B}\nPower/Toughness: 2/4\nWhen Pursuer of Divinity enters, you may search your library for a double-faced card, reveal it, put it into your hand, then shuffle.\nCybersoul {4}{W}{B} *({4}{W}{B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Abandoner of Flesh",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Demigod \nPower/Toughness: 4/4\nFlying, vigilance, deathtouch\nWhenever Abandoner of Flesh or another transformed permanent you control dies, return that card to the battlefield. *(It returns untransformed.)*"
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Pursuer of Divinity",
+              "executable_text": "Type: Creature \u2014 Human Artificer \nMana cost: {2}{W}{B}\nPower/Toughness: 2/4\nWhen Pursuer of Divinity enters, you may search your library for a double-faced card, reveal it, put it into your hand, then shuffle.\n{4}{W}{B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Pursuer of Divinity enters, you may search your library for a double-faced card, reveal it, put it into your hand, then shuffle.\nCybersoul {4}{W}{B}"
+            },
+            {
+              "name": "Abandoner of Flesh",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Demigod \nPower/Toughness: 4/4\nFlying, vigilance, deathtouch\nWhenever Abandoner of Flesh or another transformed permanent you control dies, return that card to the battlefield. (It returns untransformed.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Pursuer of Divinity enters, you may search your library for a double-faced card, reveal it, put it into your hand, then shuffle.\nCybersoul {4}{W}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Pursuer of Divinity//Abandoner of Flesh"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-208",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{4}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Stehlian Reverend//Reborn Follower_CYB",
+          "name": "Stehlian Reverend",
+          "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{W}\nPower/Toughness: 1/2\nWhen Stehlian Reverend enters, put a +1/+1 counter on target creature.\nCybersoul {4}{W} *({4}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{W}\nPower/Toughness: 1/2\nWhen Stehlian Reverend enters, put a +1/+1 counter on target creature.\n{4}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Stehlian Reverend",
+              "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{W}\nPower/Toughness: 1/2\nWhen Stehlian Reverend enters, put a +1/+1 counter on target creature.\nCybersoul {4}{W} *({4}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Reborn Follower",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Cleric \nPower/Toughness: 2/3\nLifelink\nWhen this creature transforms into Reborn Follower, put a +1/+1 counter on target creature."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Stehlian Reverend",
+              "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {2}{W}\nPower/Toughness: 1/2\nWhen Stehlian Reverend enters, put a +1/+1 counter on target creature.\n{4}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Stehlian Reverend enters, put a +1/+1 counter on target creature.\nCybersoul {4}{W}"
+            },
+            {
+              "name": "Reborn Follower",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Cleric \nPower/Toughness: 2/3\nLifelink\nWhen this creature transforms into Reborn Follower, put a +1/+1 counter on target creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Stehlian Reverend enters, put a +1/+1 counter on target creature.\nCybersoul {4}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Sworn Loyalist//Silver Swiftspear_CYB",
+          "source_card_key": "rev:Sworn Loyalist//Silver Swiftspear_CYB",
+          "name": "Sworn Loyalist",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 2/1\nFirst strike\nCybersoul {4}{W} *({4}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Sworn Loyalist",
+              "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 2/1\nFirst strike\nCybersoul {4}{W} *({4}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Silver Swiftspear",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Knight \nPower/Toughness: 2/4\nDouble strike"
+            }
+          ],
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 2/1\nFirst strike\n{4}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Sworn Loyalist",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 2/1\nFirst strike\n{4}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "First strike\nCybersoul {4}{W}"
+            },
+            {
+              "name": "Silver Swiftspear",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Knight \nPower/Toughness: 2/4\nDouble strike",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "First strike\nCybersoul {4}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Stehlian Reverend",
+        "Sworn Loyalist"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-209",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{2}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Twilight Vagabond//Traveler of Dawn_CYB",
+          "name": "Twilight Vagabond",
+          "original_text": "Type: Creature \u2014 Human Monk \nMana cost: {2}{W}\nPower/Toughness: 2/2\nWhenever Twilight Vagabond attacks, put a +1/+1 counter on it.\nCybersoul {2}{W} *({2}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Human Monk \nMana cost: {2}{W}\nPower/Toughness: 2/2\nWhenever Twilight Vagabond attacks, put a +1/+1 counter on it.\n{2}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Twilight Vagabond",
+              "original_text": "Type: Creature \u2014 Human Monk \nMana cost: {2}{W}\nPower/Toughness: 2/2\nWhenever Twilight Vagabond attacks, put a +1/+1 counter on it.\nCybersoul {2}{W} *({2}{W}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Traveler of Dawn",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Monk \nPower/Toughness: 4/4\n{1}, Remove a +1/+1 counter from Traveler of Dawn: Exile target creature. Return that card to the battlefield under its owner's control at the beginning of the next end step."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Twilight Vagabond",
+              "executable_text": "Type: Creature \u2014 Human Monk \nMana cost: {2}{W}\nPower/Toughness: 2/2\nWhenever Twilight Vagabond attacks, put a +1/+1 counter on it.\n{2}{W}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever Twilight Vagabond attacks, put a +1/+1 counter on it.\nCybersoul {2}{W}"
+            },
+            {
+              "name": "Traveler of Dawn",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Monk \nPower/Toughness: 4/4\n{1}, Remove a +1/+1 counter from Traveler of Dawn: Exile target creature. Return that card to the battlefield under its owner's control at the beginning of the next end step.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Twilight Vagabond attacks, put a +1/+1 counter on it.\nCybersoul {2}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Twilight Vagabond//Traveler of Dawn"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-cybersoul-210",
+      "keyword": "Cybersoul",
+      "scope": "revolution",
+      "rule_reference": "702.216.",
+      "rule_text": {
+        "name": "702.216.",
+        "rule": "Cybersoul",
+        "subrules": [
+          {
+            "name": "702.216a",
+            "rule": "Cybersoul is an activated ability. \u201cCybersoul [Cost]\u201d means \u201c[Cost]: Transform this permanent. For each generic mana in this ability's total cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.\u201d",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alcadia, Cardinal Judge//The Omnithority",
+          "Blackout Grifter//Lone Switchblade",
+          "Eleanor, Royal Captain//Eleanor, Kingslayer",
+          "Iris Agent//Iris Flayer",
+          "Iris Cultist//Reborn Apostle",
+          "Lost Resistor//Splintered Soul",
+          "Malicious Skycleaver//Silverscale Despot",
+          "Priestess of Chains//Winged Subjugator",
+          "Pursuer of Divinity//Abandoner of Flesh",
+          "Rooftop Slink//Synthetic Specter",
+          "Royal Templar//Crown Betrayer",
+          "Stehlian Reverend//Reborn Follower",
+          "Sworn Loyalist//Silver Swiftspear",
+          "Twilight Vagabond//Traveler of Dawn",
+          "Wayward Drek//Reborn Herald",
+          "Withered Survivor//Silvereye Scout"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "{3}{W/B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.",
+      "executable_reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "702.216a transformation and sorcery timing preserved; artifact-only typed tap-payment pays generic/X from adjusted total activation cost, never colored symbols."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Wayward Drek//Reborn Herald_CYB",
+          "name": "Wayward Drek",
+          "original_text": "Type: Creature \u2014 Human Rogue \nMana cost: {W}{B}\nPower/Toughness: 1/1\nWhen Wayward Drek enters, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {3}{W/B} *({3}{W/B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*",
+          "executable_text": "Type: Creature \u2014 Human Rogue \nMana cost: {W}{B}\nPower/Toughness: 1/1\nWhen Wayward Drek enters, create a 1/1 colorless Cyborg artifact creature token.\n{3}{W/B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "name": "Wayward Drek",
+              "original_text": "Type: Creature \u2014 Human Rogue \nMana cost: {W}{B}\nPower/Toughness: 1/1\nWhen Wayward Drek enters, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {3}{W/B} *({3}{W/B}: Transform this. Each artifact you tap while activating pays for {1}. Activate only as a sorcery.)*"
+            },
+            {
+              "name": "Reborn Herald",
+              "original_text": "Type: Artifact Creature \u2014 Cyborg Rogue \nPower/Toughness: 1/1\nWhenever this creatures transforms into Reborn Herald or another permanent you control transforms, create a 1/1 colorless Cyborg artifact creature token.\nReborn Herald gets +1/+1 for each other artifact you control."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Wayward Drek",
+              "executable_text": "Type: Creature \u2014 Human Rogue \nMana cost: {W}{B}\nPower/Toughness: 1/1\nWhen Wayward Drek enters, create a 1/1 colorless Cyborg artifact creature token.\n{3}{W/B}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "cybersoul"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Wayward Drek enters, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {3}{W/B}"
+            },
+            {
+              "name": "Reborn Herald",
+              "executable_text": "Type: Artifact Creature \u2014 Cyborg Rogue \nPower/Toughness: 1/1\nWhenever this creatures transforms into Reborn Herald or another permanent you control transforms, create a 1/1 colorless Cyborg artifact creature token.\nReborn Herald gets +1/+1 for each other artifact you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "cybersoul"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Wayward Drek enters, create a 1/1 colorless Cyborg artifact creature token.\nCybersoul {3}{W/B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Wayward Drek//Reborn Herald"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "artifact-tap-payment",
+          "status": "pending",
+          "test_reference": "custom_revolution_late::artifact_tap_payment_excludes_nonartifact_creatures",
+          "observable": "Untapped controlled artifacts pay generic cost; nonartifact creatures, opposing/tapped artifacts do not; colored symbols remain mana."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cybersoul",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Transform this permanent. For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    }
+  ]
+}

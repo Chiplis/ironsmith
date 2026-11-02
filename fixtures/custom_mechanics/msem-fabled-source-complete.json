@@ -1,0 +1,2634 @@
+{
+  "version": 1,
+  "scope": "msem",
+  "source_fixture": "fixtures/custom_mechanics/msem-casting-early.json",
+  "mechanics": [
+    {
+      "id": "msem-413",
+      "keyword": "Fabled",
+      "original_reminder": "Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+      "source_cards": [
+        "Arrogant Training//Imperious Hero",
+        "Dance of Grace//Paragon of Virtue",
+        "Death's Door//Immortal Butcher",
+        "Drunken Night//Drunkard Knight",
+        "Lone Heroics//Exalted Charge",
+        "Moment of Glory//Legacy of Victory",
+        "Surge of Duty//Undeterred Valiance",
+        "Youthful Dreams//Touch of Destiny",
+        "Demand Submission//Command Respect",
+        "Dire Betrayal//Betrayer's Mantle",
+        "Ephemeral Visions//Eternal Blindness",
+        "Light a Fire//Brimr, Forged in the Flames",
+        "Mortal Resurrection//Immortal Ascension",
+        "Student's Pilgrimage//Master's Honor",
+        "Tear Loose//Heartstrings",
+        "Thoughtless Malice//Malicious Thoughts",
+        "Touch of Shadow//Taste of Light",
+        "Warring Ways//Glory Days",
+        "Deal with the Devil//The Devil's Fair Share"
+      ],
+      "rule_reference": "702.199.",
+      "rule_text": [
+        {
+          "name": "702.199a",
+          "rule": "Fabled appears on some instants and sorceries with a single target. It represents a static ability while the spell with fabled is on the stack and a spell ability. “Fabled (cost)” means “You may pay (cost) rather than pay this spell's mana cost as you cast this spell.” and “If this spell's fabled cost was paid, and this spell is a double-faced card with an Aura that can enchant that permanent or player as its back face, put this card onto the battlefield transformed and attached to it.”",
+          "custom": true
+        },
+        {
+          "name": "702.199b",
+          "rule": "The fabled ability is linked to an ability printed on its front face that targets one or more objects that can be legally enchanted by its back face. If there are multiple possible targets, one is chosen as the spell with Fable resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.199c",
+          "rule": "If the targeted permanent or player is an illegal target for the Aura side of a card with fabled, such as a creature with protection from enchantments, the card with fabled will not enter the battlefield and instead be put directly into its owner's graveyard from the stack.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Arrogant Training//Imperious Hero_TWR",
+          "name": "Arrogant Training",
+          "original_text": "Mana cost: {W}\nType: Instant\nTarget creature gets +1/+1 until end of turn. Untap that creature.\nFabled {2}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nTarget creature gets +1/+1 until end of turn. Untap that creature.\nYou may cast this spell for {2}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Arrogant Training//Imperious Hero_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Arrogant Training",
+              "original_text": "Mana cost: {W}\nType: Instant\nTarget creature gets +1/+1 until end of turn. Untap that creature.\nFabled {2}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Imperious Hero",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature can block any number of creatures each combat.",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Arrogant Training",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nTarget creature gets +1/+1 until end of turn. Untap that creature.\nYou may cast this spell for {2}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +1/+1 until end of turn. Untap that creature.\nFabled {2}{W}",
+              "original_printed_rules_text": "Target creature gets +1/+1 until end of turn. Untap that creature.\nFabled {2}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Imperious Hero",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant creature\nEnchanted creature can block any number of creatures each combat.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature can block any number of creatures each combat.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature can block any number of creatures each combat."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +1/+1 until end of turn. Untap that creature.\nFabled {2}{W}",
+          "original_printed_rules_text": "Target creature gets +1/+1 until end of turn. Untap that creature.\nFabled {2}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Dance of Grace//Paragon of Virtue_TWR",
+          "name": "Dance of Grace",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature gains indestructible until end of turn. Scry 1.\nFabled {3}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nColor indicator: White\nTarget creature gains indestructible until end of turn. Scry 1.\nYou may cast this spell for {3}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Dance of Grace//Paragon of Virtue_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dance of Grace",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature gains indestructible until end of turn. Scry 1.\nFabled {3}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Paragon of Virtue",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+1 and has “At the beginning of each end step, you gain 1 life.”",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Dance of Grace",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nColor indicator: White\nTarget creature gains indestructible until end of turn. Scry 1.\nYou may cast this spell for {3}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gains indestructible until end of turn. Scry 1.\nFabled {3}{W}",
+              "original_printed_rules_text": "Target creature gains indestructible until end of turn. Scry 1.\nFabled {3}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Paragon of Virtue",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant creature\nEnchanted creature gets +1/+1 and has “At the beginning of each end step, you gain 1 life.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +1/+1 and has “At the beginning of each end step, you gain 1 life.”",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +1/+1 and has “At the beginning of each end step, you gain 1 life.”"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gains indestructible until end of turn. Scry 1.\nFabled {3}{W}",
+          "original_printed_rules_text": "Target creature gains indestructible until end of turn. Scry 1.\nFabled {3}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Death's Door//Immortal Butcher_TWR",
+          "name": "Death's Door",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nChoose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nFabled {3}{B}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Instant\nColor indicator: Black\nChoose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Death's Door//Immortal Butcher_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Death's Door",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nChoose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nFabled {3}{B}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Immortal Butcher",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2 and has trample and indestructible.",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "mana_cost": "{1}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Death's Door",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {1}{B}\nType: Instant\nColor indicator: Black\nChoose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nFabled {3}{B}{B}",
+              "original_printed_rules_text": "Choose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nFabled {3}{B}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Immortal Butcher",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Black\nEnchant creature\nEnchanted creature gets +2/+2 and has trample and indestructible.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +2/+2 and has trample and indestructible.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +2/+2 and has trample and indestructible."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Black"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nFabled {3}{B}{B}",
+          "original_printed_rules_text": "Choose target creature card in your graveyard that was put there from the battlefield this turn. Return that card to the battlefield tapped.\nFabled {3}{B}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Drunken Night//Drunkard Knight_TWR",
+          "name": "Drunken Night",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nTap target creature.\nFabled {3}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nTap target creature.\nYou may cast this spell for {3}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Drunken Night//Drunkard Knight_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Drunken Night",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nTap target creature.\nFabled {3}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Drunkard Knight",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature doesn't untap during its controller's untap step.",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Drunken Night",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nTap target creature.\nYou may cast this spell for {3}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Tap target creature.\nFabled {3}{U}",
+              "original_printed_rules_text": "Tap target creature.\nFabled {3}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Drunkard Knight",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Blue\nEnchant creature\nEnchanted creature doesn't untap during its controller's untap step.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature doesn't untap during its controller's untap step.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature doesn't untap during its controller's untap step."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Blue"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Tap target creature.\nFabled {3}{U}",
+          "original_printed_rules_text": "Tap target creature.\nFabled {3}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Lone Heroics//Exalted Charge_TWR",
+          "name": "Lone Heroics",
+          "original_text": "Mana cost: {G}\nType: Sorcery\nTarget creature gets +2/+2 until end of turn.\nFabled {3}{G}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {G}\nType: Sorcery\nColor indicator: Green\nTarget creature gets +2/+2 until end of turn.\nYou may cast this spell for {3}{G}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Lone Heroics//Exalted Charge_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lone Heroics",
+              "original_text": "Mana cost: {G}\nType: Sorcery\nTarget creature gets +2/+2 until end of turn.\nFabled {3}{G}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Exalted Charge",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2.\nWhenever enchanted creature attacks, create a 2/2 white Knight creature token that's tapped and attacking.",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "mana_cost": "{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Lone Heroics",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {G}\nType: Sorcery\nColor indicator: Green\nTarget creature gets +2/+2 until end of turn.\nYou may cast this spell for {3}{G}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +2/+2 until end of turn.\nFabled {3}{G}{G}",
+              "original_printed_rules_text": "Target creature gets +2/+2 until end of turn.\nFabled {3}{G}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Exalted Charge",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Green\nEnchant creature\nEnchanted creature gets +2/+2.\nWhenever enchanted creature attacks, create a 2/2 white Knight creature token that's tapped and attacking.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +2/+2.\nWhenever enchanted creature attacks, create a 2/2 white Knight creature token that's tapped and attacking.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +2/+2.\nWhenever enchanted creature attacks, create a 2/2 white Knight creature token that's tapped and attacking."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Green"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +2/+2 until end of turn.\nFabled {3}{G}{G}",
+          "original_printed_rules_text": "Target creature gets +2/+2 until end of turn.\nFabled {3}{G}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Moment of Glory//Legacy of Victory_TWR",
+          "name": "Moment of Glory",
+          "original_text": "Mana cost: {R/W}\nType: Sorcery\nTarget creature gets +1/+1 until end of turn.\nFabled {2}{R/W}{R/W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {R/W}\nType: Sorcery\nTarget creature gets +1/+1 until end of turn.\nYou may cast this spell for {2}{R/W}{R/W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Moment of Glory//Legacy of Victory_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Moment of Glory",
+              "original_text": "Mana cost: {R/W}\nType: Sorcery\nTarget creature gets +1/+1 until end of turn.\nFabled {2}{R/W}{R/W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red/White} ",
+              "color_indicator": []
+            },
+            {
+              "face": "back",
+              "name": "Legacy of Victory",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature has “Whenever this creature attacks, attacking creatures you control get +1/+1 until end of turn.”",
+              "source_color": "{Red/White} ",
+              "color_indicator": []
+            }
+          ],
+          "mana_cost": "{R/W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Moment of Glory",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {R/W}\nType: Sorcery\nTarget creature gets +1/+1 until end of turn.\nYou may cast this spell for {2}{R/W}{R/W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +1/+1 until end of turn.\nFabled {2}{R/W}{R/W}",
+              "original_printed_rules_text": "Target creature gets +1/+1 until end of turn.\nFabled {2}{R/W}{R/W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Legacy of Victory",
+              "color_indicator": [],
+              "executable_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature has “Whenever this creature attacks, attacking creatures you control get +1/+1 until end of turn.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has “Whenever this creature attacks, attacking creatures you control get +1/+1 until end of turn.”",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has “Whenever this creature attacks, attacking creatures you control get +1/+1 until end of turn.”"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +1/+1 until end of turn.\nFabled {2}{R/W}{R/W}",
+          "original_printed_rules_text": "Target creature gets +1/+1 until end of turn.\nFabled {2}{R/W}{R/W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Surge of Duty//Undeterred Valiance_TWR",
+          "name": "Surge of Duty",
+          "original_text": "Mana cost: {X}{R}\nType: Instant\nTarget creature gets +X/+X until end of turn.\nFabled {X}{R}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {X}{R}\nType: Instant\nColor indicator: Red\nTarget creature gets +X/+X until end of turn.\nYou may cast this spell for {X}{R}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Surge of Duty//Undeterred Valiance_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Surge of Duty",
+              "original_text": "Mana cost: {X}{R}\nType: Instant\nTarget creature gets +X/+X until end of turn.\nFabled {X}{R}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Undeterred Valiance",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature has first strike. *(That creature deals combat damage before creatures without first strike.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "mana_cost": "{X}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Surge of Duty",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Mana cost: {X}{R}\nType: Instant\nColor indicator: Red\nTarget creature gets +X/+X until end of turn.\nYou may cast this spell for {X}{R}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +X/+X until end of turn.\nFabled {X}{R}{R}",
+              "original_printed_rules_text": "Target creature gets +X/+X until end of turn.\nFabled {X}{R}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Undeterred Valiance",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Red\nEnchant creature\nEnchanted creature has first strike. (That creature deals combat damage before creatures without first strike.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has first strike.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has first strike. (That creature deals combat damage before creatures without first strike.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Red"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +X/+X until end of turn.\nFabled {X}{R}{R}",
+          "original_printed_rules_text": "Target creature gets +X/+X until end of turn.\nFabled {X}{R}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Youthful Dreams//Touch of Destiny_TWR",
+          "name": "Youthful Dreams",
+          "original_text": "Mana cost: {R/G}\nType: Sorcery\nTarget creature gains haste and trample until end of turn.\nFabled {3}{R/G}{R/G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {R/G}\nType: Sorcery\nTarget creature gains haste and trample until end of turn.\nYou may cast this spell for {3}{R/G}{R/G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Youthful Dreams//Touch of Destiny_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Youthful Dreams",
+              "original_text": "Mana cost: {R/G}\nType: Sorcery\nTarget creature gains haste and trample until end of turn.\nFabled {3}{R/G}{R/G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red/Green} ",
+              "color_indicator": []
+            },
+            {
+              "face": "back",
+              "name": "Touch of Destiny",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +3/+3 and has trample.",
+              "source_color": "{Red/Green} ",
+              "color_indicator": []
+            }
+          ],
+          "mana_cost": "{R/G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Youthful Dreams",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {R/G}\nType: Sorcery\nTarget creature gains haste and trample until end of turn.\nYou may cast this spell for {3}{R/G}{R/G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gains haste and trample until end of turn.\nFabled {3}{R/G}{R/G}",
+              "original_printed_rules_text": "Target creature gains haste and trample until end of turn.\nFabled {3}{R/G}{R/G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Touch of Destiny",
+              "color_indicator": [],
+              "executable_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +3/+3 and has trample.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +3/+3 and has trample.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +3/+3 and has trample."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gains haste and trample until end of turn.\nFabled {3}{R/G}{R/G}",
+          "original_printed_rules_text": "Target creature gains haste and trample until end of turn.\nFabled {3}{R/G}{R/G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Demand Submission//Command Respect_GHQ",
+          "name": "Demand Submission",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature gets +5/+5 until end of turn.\nFabled {4}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nColor indicator: Green\nTarget creature gets +5/+5 until end of turn.\nYou may cast this spell for {4}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Demand Submission//Command Respect_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Demand Submission",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature gets +5/+5 until end of turn.\nFabled {4}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Command Respect",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature must be blocked if able.",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Demand Submission",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nColor indicator: Green\nTarget creature gets +5/+5 until end of turn.\nYou may cast this spell for {4}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +5/+5 until end of turn.\nFabled {4}{G}",
+              "original_printed_rules_text": "Target creature gets +5/+5 until end of turn.\nFabled {4}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Command Respect",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Green\nEnchant creature\nEnchanted creature must be blocked if able.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature must be blocked if able.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature must be blocked if able."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Green"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +5/+5 until end of turn.\nFabled {4}{G}",
+          "original_printed_rules_text": "Target creature gets +5/+5 until end of turn.\nFabled {4}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Dire Betrayal//Betrayer's Mantle_GHQ",
+          "name": "Dire Betrayal",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {3}{R}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nColor indicator: Red\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nYou may cast this spell for {3}{R}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Dire Betrayal//Betrayer's Mantle_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dire Betrayal",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {3}{R}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Betrayer's Mantle",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nAt the beginning of the upkeep of enchanted creature's controller, Betrayer's Mantle deals 3 damage to that player.",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "mana_cost": "{1}{R}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Dire Betrayal",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Sorcery\nColor indicator: Red\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nYou may cast this spell for {3}{R}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {3}{R}{R}",
+              "original_printed_rules_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {3}{R}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Betrayer's Mantle",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Red\nEnchant creature\nAt the beginning of the upkeep of enchanted creature's controller, Betrayer's Mantle deals 3 damage to that player.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nAt the beginning of the upkeep of enchanted creature's controller, Betrayer's Mantle deals 3 damage to that player.",
+              "original_printed_rules_text": "Enchant creature\nAt the beginning of the upkeep of enchanted creature's controller, Betrayer's Mantle deals 3 damage to that player."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Red"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {3}{R}{R}",
+          "original_printed_rules_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {3}{R}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Ephemeral Visions//Eternal Blindness_GHQ",
+          "name": "Ephemeral Visions",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nScry X, where X is target creature's power.\nFabled {5}{U}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nScry X, where X is target creature's power.\nYou may cast this spell for {5}{U}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Ephemeral Visions//Eternal Blindness_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ephemeral Visions",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nScry X, where X is target creature's power.\nFabled {5}{U}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Eternal Blindness",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nYou control enchanted creature.",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Ephemeral Visions",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nScry X, where X is target creature's power.\nYou may cast this spell for {5}{U}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Scry X, where X is target creature's power.\nFabled {5}{U}{U}",
+              "original_printed_rules_text": "Scry X, where X is target creature's power.\nFabled {5}{U}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Eternal Blindness",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Blue\nEnchant creature\nYou control enchanted creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nYou control enchanted creature.",
+              "original_printed_rules_text": "Enchant creature\nYou control enchanted creature."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Blue"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Scry X, where X is target creature's power.\nFabled {5}{U}{U}",
+          "original_printed_rules_text": "Scry X, where X is target creature's power.\nFabled {5}{U}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Light a Fire//Brimr, Forged in the Flames_GHQ",
+          "name": "Light a Fire",
+          "original_text": "Mana cost: {R}{G}\nType: Sorcery\nTarget creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nFabled {4}{R}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {R}{G}\nType: Sorcery\nTarget creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nYou may cast this spell for {4}{R}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Light a Fire//Brimr, Forged in the Flames_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Light a Fire",
+              "original_text": "Mana cost: {R}{G}\nType: Sorcery\nTarget creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nFabled {4}{R}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red/Green} ",
+              "color_indicator": []
+            },
+            {
+              "face": "back",
+              "name": "Brimr, Forged in the Flames",
+              "original_text": "Type: Legendary Artifact — Equipment\nEquipped creature has indestructible as long as it's your turn.\nWhenever equipped creature attacks, it gets +X/+0 until end of turn, where X is its power.\nEquip {6}",
+              "source_color": "",
+              "color_indicator": []
+            }
+          ],
+          "mana_cost": "{R}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Light a Fire",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {R}{G}\nType: Sorcery\nTarget creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nYou may cast this spell for {4}{R}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nFabled {4}{R}{G}",
+              "original_printed_rules_text": "Target creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nFabled {4}{R}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Brimr, Forged in the Flames",
+              "color_indicator": [],
+              "executable_text": "Type: Legendary Artifact — Equipment\nEquipped creature has indestructible as long as it's your turn.\nWhenever equipped creature attacks, it gets +X/+0 until end of turn, where X is its power.\nEquip {6}",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Equipped creature has indestructible as long as it's your turn.\nWhenever equipped creature attacks, it gets +X/+0 until end of turn, where X is its power.\nEquip {6}",
+              "original_printed_rules_text": "Equipped creature has indestructible as long as it's your turn.\nWhenever equipped creature attacks, it gets +X/+0 until end of turn, where X is its power.\nEquip {6}"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nFabled {4}{R}{G}",
+          "original_printed_rules_text": "Target creature gets +X/+X and gains trample until end of turn, where X is the number of lands you control.\nFabled {4}{R}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Mortal Resurrection//Immortal Ascension_GHQ",
+          "name": "Mortal Resurrection",
+          "original_text": "Mana cost: {2}{W}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nFabled {4}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nColor indicator: White\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nYou may cast this spell for {4}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Mortal Resurrection//Immortal Ascension_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mortal Resurrection",
+              "original_text": "Mana cost: {2}{W}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nFabled {4}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Immortal Ascension",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +3/+3 and has flying.",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "mana_cost": "{2}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Mortal Resurrection",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nColor indicator: White\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nYou may cast this spell for {4}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nFabled {4}{W}{W}",
+              "original_printed_rules_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nFabled {4}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Immortal Ascension",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant creature\nEnchanted creature gets +3/+3 and has flying.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +3/+3 and has flying.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +3/+3 and has flying."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nFabled {4}{W}{W}",
+          "original_printed_rules_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nFabled {4}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Student's Pilgrimage//Master's Honor_GHQ",
+          "name": "Student's Pilgrimage",
+          "original_text": "Mana cost: {W}\nType: Sorcery\nUntil your next turn, target creature can't attack or block.\nFabled {1}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {W}\nType: Sorcery\nColor indicator: White\nUntil your next turn, target creature can't attack or block.\nYou may cast this spell for {1}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Student's Pilgrimage//Master's Honor_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Student's Pilgrimage",
+              "original_text": "Mana cost: {W}\nType: Sorcery\nUntil your next turn, target creature can't attack or block.\nFabled {1}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Master's Honor",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature has defender.",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Student's Pilgrimage",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {W}\nType: Sorcery\nColor indicator: White\nUntil your next turn, target creature can't attack or block.\nYou may cast this spell for {1}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Until your next turn, target creature can't attack or block.\nFabled {1}{W}",
+              "original_printed_rules_text": "Until your next turn, target creature can't attack or block.\nFabled {1}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Master's Honor",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant creature\nEnchanted creature has defender.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has defender.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has defender."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Until your next turn, target creature can't attack or block.\nFabled {1}{W}",
+          "original_printed_rules_text": "Until your next turn, target creature can't attack or block.\nFabled {1}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Tear Loose//Heartstrings_GHQ",
+          "name": "Tear Loose",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield.\nFabled {2}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nColor indicator: Black\nReturn target creature card from your graveyard to the battlefield.\nYou may cast this spell for {2}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Tear Loose//Heartstrings_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tear Loose",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield.\nFabled {2}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Heartstrings",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nWhen Heartstrings leaves the battlefield, exile enchanted creature.\nWhenever enchanted creature attacks or blocks, exile it at end of combat.",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Tear Loose",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nColor indicator: Black\nReturn target creature card from your graveyard to the battlefield.\nYou may cast this spell for {2}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card from your graveyard to the battlefield.\nFabled {2}{B}",
+              "original_printed_rules_text": "Return target creature card from your graveyard to the battlefield.\nFabled {2}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Heartstrings",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Black\nEnchant creature\nWhen Heartstrings leaves the battlefield, exile enchanted creature.\nWhenever enchanted creature attacks or blocks, exile it at end of combat.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nWhen Heartstrings leaves the battlefield, exile enchanted creature.\nWhenever enchanted creature attacks or blocks, exile it at end of combat.",
+              "original_printed_rules_text": "Enchant creature\nWhen Heartstrings leaves the battlefield, exile enchanted creature.\nWhenever enchanted creature attacks or blocks, exile it at end of combat."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Black"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card from your graveyard to the battlefield.\nFabled {2}{B}",
+          "original_printed_rules_text": "Return target creature card from your graveyard to the battlefield.\nFabled {2}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Thoughtless Malice//Malicious Thoughts_GHQ",
+          "name": "Thoughtless Malice",
+          "original_text": "Mana cost: {R}\nType: Sorcery\nTarget creature gets +2/+0 and gains haste until end of turn.\nFabled {2}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {R}\nType: Sorcery\nColor indicator: Red\nTarget creature gets +2/+0 and gains haste until end of turn.\nYou may cast this spell for {2}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Thoughtless Malice//Malicious Thoughts_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Thoughtless Malice",
+              "original_text": "Mana cost: {R}\nType: Sorcery\nTarget creature gets +2/+0 and gains haste until end of turn.\nFabled {2}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Malicious Thoughts",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature has first strike and trample.",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "mana_cost": "{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Thoughtless Malice",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Mana cost: {R}\nType: Sorcery\nColor indicator: Red\nTarget creature gets +2/+0 and gains haste until end of turn.\nYou may cast this spell for {2}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +2/+0 and gains haste until end of turn.\nFabled {2}{R}",
+              "original_printed_rules_text": "Target creature gets +2/+0 and gains haste until end of turn.\nFabled {2}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Malicious Thoughts",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Red\nEnchant creature\nEnchanted creature has first strike and trample.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has first strike and trample.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has first strike and trample."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Red"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +2/+0 and gains haste until end of turn.\nFabled {2}{R}",
+          "original_printed_rules_text": "Target creature gets +2/+0 and gains haste until end of turn.\nFabled {2}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Touch of Shadow//Taste of Light_GHQ",
+          "name": "Touch of Shadow",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nTarget creature can't be blocked this turn. Scry 1.\nFabled {2}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nTarget creature can't be blocked this turn. Scry 1.\nYou may cast this spell for {2}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Touch of Shadow//Taste of Light_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Touch of Shadow",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nTarget creature can't be blocked this turn. Scry 1.\nFabled {2}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Taste of Light",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nWhenever enchanted creature deals combat damage to a player, draw a card.",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Touch of Shadow",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nTarget creature can't be blocked this turn. Scry 1.\nYou may cast this spell for {2}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature can't be blocked this turn. Scry 1.\nFabled {2}{U}",
+              "original_printed_rules_text": "Target creature can't be blocked this turn. Scry 1.\nFabled {2}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Taste of Light",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Blue\nEnchant creature\nWhenever enchanted creature deals combat damage to a player, draw a card.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nWhenever enchanted creature deals combat damage to a player, draw a card.",
+              "original_printed_rules_text": "Enchant creature\nWhenever enchanted creature deals combat damage to a player, draw a card."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Blue"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature can't be blocked this turn. Scry 1.\nFabled {2}{U}",
+          "original_printed_rules_text": "Target creature can't be blocked this turn. Scry 1.\nFabled {2}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Warring Ways//Glory Days_GHQ",
+          "name": "Warring Ways",
+          "original_text": "Mana cost: {W}\nType: Instant\nTarget creature you control gets +1/+1 and gains indestructible until end of turn.\nFabled {3}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nTarget creature you control gets +1/+1 and gains indestructible until end of turn.\nYou may cast this spell for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Warring Ways//Glory Days_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Warring Ways",
+              "original_text": "Mana cost: {W}\nType: Instant\nTarget creature you control gets +1/+1 and gains indestructible until end of turn.\nFabled {3}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Glory Days",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nEnchanted creature has “You can't lose the game and your opponents can't win the game.”",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Warring Ways",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nTarget creature you control gets +1/+1 and gains indestructible until end of turn.\nYou may cast this spell for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control gets +1/+1 and gains indestructible until end of turn.\nFabled {3}{W}{W}",
+              "original_printed_rules_text": "Target creature you control gets +1/+1 and gains indestructible until end of turn.\nFabled {3}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "Glory Days",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant creature\nEnchanted creature has “You can't lose the game and your opponents can't win the game.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has “You can't lose the game and your opponents can't win the game.”",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has “You can't lose the game and your opponents can't win the game.”"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control gets +1/+1 and gains indestructible until end of turn.\nFabled {3}{W}{W}",
+          "original_printed_rules_text": "Target creature you control gets +1/+1 and gains indestructible until end of turn.\nFabled {3}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        },
+        {
+          "id": "Deal with the Devil//The Devil's Fair Share_HQZ",
+          "name": "Deal with the Devil",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nGain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {2}{R}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nColor indicator: Red\nGain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nYou may cast this spell for {2}{R}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Deal with the Devil//The Devil's Fair Share_HQZ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Deal with the Devil",
+              "original_text": "Mana cost: {1}{R}\nType: Sorcery\nGain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {2}{R}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "The Devil's Fair Share",
+              "original_text": "Type: Enchantment — Aura\nEnchant creature\nDuring your turn, enchanted creature gets +2/+1 and you control enchanted creature. *(It will be unaffected by summoning sickness.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "mana_cost": "{1}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Deal with the Devil",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nColor indicator: Red\nGain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nYou may cast this spell for {2}{R}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Gain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {2}{R}{R}",
+              "original_printed_rules_text": "Gain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {2}{R}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+            },
+            {
+              "name": "The Devil's Fair Share",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Red\nEnchant creature\nDuring your turn, enchanted creature gets +2/+1 and you control enchanted creature. (It will be unaffected by summoning sickness.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nDuring your turn, enchanted creature gets +2/+1 and you control enchanted creature.",
+              "original_printed_rules_text": "Enchant creature\nDuring your turn, enchanted creature gets +2/+1 and you control enchanted creature. (It will be unaffected by summoning sickness.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Red"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Gain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {2}{R}{R}",
+          "original_printed_rules_text": "Gain control of target creature with mana value 3 or less until end of turn. Untap that creature. It gains haste until end of turn.\nFabled {2}{R}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that creature.)"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_native_verification",
+      "pending_generic_plumbing": "Alternative payment receipt plus resolving-card transformed battlefield attachment to original legal target; both source faces required.",
+      "required_behavioral_assertions": [
+        "normal and alternative prices",
+        "all legal original target kinds",
+        "single-target legality on resolution",
+        "transforming actual spell object",
+        "attachment restrictions",
+        "resolve into exile under replacement",
+        "both source faces compiled",
+        "fabled payment identity"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Fabled {Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield."
+        }
+      ]
+    },
+    {
+      "id": "msem-414",
+      "keyword": "Fabled",
+      "original_reminder": "Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+      "source_cards": [
+        "Hasty Intervention//Setting Up Camp",
+        "Hermit's Travels//Ascetic's Journey",
+        "Publicly Disgraced//Kept Under Watch",
+        "Sage's Foresight//Sage's Tales",
+        "Twilight Raid//Outlaw's Woods",
+        "Brain Feeding//Mind Bleeding",
+        "Howl of the Hunted//Hall of the Haunted",
+        "Starlit Raze//Scarlet Haze"
+      ],
+      "rule_reference": "702.199.",
+      "rule_text": [
+        {
+          "name": "702.199a",
+          "rule": "Fabled appears on some instants and sorceries with a single target. It represents a static ability while the spell with fabled is on the stack and a spell ability. “Fabled (cost)” means “You may pay (cost) rather than pay this spell's mana cost as you cast this spell.” and “If this spell's fabled cost was paid, and this spell is a double-faced card with an Aura that can enchant that permanent or player as its back face, put this card onto the battlefield transformed and attached to it.”",
+          "custom": true
+        },
+        {
+          "name": "702.199b",
+          "rule": "The fabled ability is linked to an ability printed on its front face that targets one or more objects that can be legally enchanted by its back face. If there are multiple possible targets, one is chosen as the spell with Fable resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.199c",
+          "rule": "If the targeted permanent or player is an illegal target for the Aura side of a card with fabled, such as a creature with protection from enchantments, the card with fabled will not enter the battlefield and instead be put directly into its owner's graveyard from the stack.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hasty Intervention//Setting Up Camp_TWR",
+          "name": "Hasty Intervention",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nPrevent all damage that would be dealt to target player this turn.\nFabled {1}{W}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nColor indicator: White\nPrevent all damage that would be dealt to target player this turn.\nYou may cast this spell for {1}{W}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Hasty Intervention//Setting Up Camp_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hasty Intervention",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nPrevent all damage that would be dealt to target player this turn.\nFabled {1}{W}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Setting Up Camp",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nAt the beginning of enchanted player's upkeep, that player creates a 1/1 white Soldier creature token.",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Hasty Intervention",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nColor indicator: White\nPrevent all damage that would be dealt to target player this turn.\nYou may cast this spell for {1}{W}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prevent all damage that would be dealt to target player this turn.\nFabled {1}{W}{W}{W}",
+              "original_printed_rules_text": "Prevent all damage that would be dealt to target player this turn.\nFabled {1}{W}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Setting Up Camp",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant player\nAt the beginning of enchanted player's upkeep, that player creates a 1/1 white Soldier creature token.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player creates a 1/1 white Soldier creature token.",
+              "original_printed_rules_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player creates a 1/1 white Soldier creature token."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prevent all damage that would be dealt to target player this turn.\nFabled {1}{W}{W}{W}",
+          "original_printed_rules_text": "Prevent all damage that would be dealt to target player this turn.\nFabled {1}{W}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Hermit's Travels//Ascetic's Journey_TWR",
+          "name": "Hermit's Travels",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nTarget player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nFabled {5}{G}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nColor indicator: Green\nTarget player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nYou may cast this spell for {5}{G}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Hermit's Travels//Ascetic's Journey_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hermit's Travels",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nTarget player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nFabled {5}{G}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Ascetic's Journey",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nEnchanted player may play an additional land on each of their turns.\nEnchanted player may play lands from their graveyard.",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Hermit's Travels",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nColor indicator: Green\nTarget player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nYou may cast this spell for {5}{G}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nFabled {5}{G}{G}",
+              "original_printed_rules_text": "Target player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nFabled {5}{G}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Ascetic's Journey",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Green\nEnchant player\nEnchanted player may play an additional land on each of their turns.\nEnchanted player may play lands from their graveyard.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nEnchanted player may play an additional land on each of their turns.\nEnchanted player may play lands from their graveyard.",
+              "original_printed_rules_text": "Enchant player\nEnchanted player may play an additional land on each of their turns.\nEnchanted player may play lands from their graveyard."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Green"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nFabled {5}{G}{G}",
+          "original_printed_rules_text": "Target player sacrifices any number of lands. That player searches their library for up to that many land cards, puts them onto the battlefield tapped, then shuffles.\nFabled {5}{G}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Publicly Disgraced//Kept Under Watch_TWR",
+          "name": "Publicly Disgraced",
+          "original_text": "Mana cost: {W}\nType: Instant\nTarget player can't cast spells this turn.\nFabled {2}{W}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nTarget player can't cast spells this turn.\nYou may cast this spell for {2}{W}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Publicly Disgraced//Kept Under Watch_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Publicly Disgraced",
+              "original_text": "Mana cost: {W}\nType: Instant\nTarget player can't cast spells this turn.\nFabled {2}{W}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Kept Under Watch",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nAt the beginning of enchanted player's upkeep, that player chooses draw step, main phase, or combat phase. They skip each instance of the chosen step or phase this turn.",
+              "source_color": "{White/Blue} ",
+              "color_indicator": []
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Publicly Disgraced",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nTarget player can't cast spells this turn.\nYou may cast this spell for {2}{W}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player can't cast spells this turn.\nFabled {2}{W}{U}",
+              "original_printed_rules_text": "Target player can't cast spells this turn.\nFabled {2}{W}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Kept Under Watch",
+              "color_indicator": [],
+              "executable_text": "Type: Enchantment — Aura\nEnchant player\nAt the beginning of enchanted player's upkeep, that player chooses draw step, main phase, or combat phase. They skip each instance of the chosen step or phase this turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player chooses draw step, main phase, or combat phase. They skip each instance of the chosen step or phase this turn.",
+              "original_printed_rules_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player chooses draw step, main phase, or combat phase. They skip each instance of the chosen step or phase this turn."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player can't cast spells this turn.\nFabled {2}{W}{U}",
+          "original_printed_rules_text": "Target player can't cast spells this turn.\nFabled {2}{W}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Sage's Foresight//Sage's Tales_TWR",
+          "name": "Sage's Foresight",
+          "original_text": "Mana cost: {W}\nType: Instant\nThis spell can't be countered.\nTarget player gains hexproof until end of turn.\nFabled {2}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nThis spell can't be countered.\nTarget player gains hexproof until end of turn.\nYou may cast this spell for {2}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Sage's Foresight//Sage's Tales_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sage's Foresight",
+              "original_text": "Mana cost: {W}\nType: Instant\nThis spell can't be countered.\nTarget player gains hexproof until end of turn.\nFabled {2}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Sage's Tales",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nCreatures enchanted player controls get +0/+1.",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Sage's Foresight",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {W}\nType: Instant\nColor indicator: White\nThis spell can't be countered.\nTarget player gains hexproof until end of turn.\nYou may cast this spell for {2}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "This spell can't be countered.\nTarget player gains hexproof until end of turn.\nFabled {2}{W}{W}",
+              "original_printed_rules_text": "This spell can't be countered.\nTarget player gains hexproof until end of turn.\nFabled {2}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Sage's Tales",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant player\nCreatures enchanted player controls get +0/+1.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nCreatures enchanted player controls get +0/+1.",
+              "original_printed_rules_text": "Enchant player\nCreatures enchanted player controls get +0/+1."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "This spell can't be countered.\nTarget player gains hexproof until end of turn.\nFabled {2}{W}{W}",
+          "original_printed_rules_text": "This spell can't be countered.\nTarget player gains hexproof until end of turn.\nFabled {2}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Twilight Raid//Outlaw's Woods_TWR",
+          "name": "Twilight Raid",
+          "original_text": "Mana cost: {B}\nType: Instant\nTarget player loses 1 life. Scry 1.\nFabled {2}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {B}\nType: Instant\nColor indicator: Black\nTarget player loses 1 life. Scry 1.\nYou may cast this spell for {2}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Twilight Raid//Outlaw's Woods_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Twilight Raid",
+              "original_text": "Mana cost: {B}\nType: Instant\nTarget player loses 1 life. Scry 1.\nFabled {2}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Outlaw's Woods",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nAt the beginning of your upkeep, enchanted player loses 1 life.",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "mana_cost": "{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Twilight Raid",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {B}\nType: Instant\nColor indicator: Black\nTarget player loses 1 life. Scry 1.\nYou may cast this spell for {2}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player loses 1 life. Scry 1.\nFabled {2}{B}",
+              "original_printed_rules_text": "Target player loses 1 life. Scry 1.\nFabled {2}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Outlaw's Woods",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Black\nEnchant player\nAt the beginning of your upkeep, enchanted player loses 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nAt the beginning of your upkeep, enchanted player loses 1 life.",
+              "original_printed_rules_text": "Enchant player\nAt the beginning of your upkeep, enchanted player loses 1 life."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Black"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player loses 1 life. Scry 1.\nFabled {2}{B}",
+          "original_printed_rules_text": "Target player loses 1 life. Scry 1.\nFabled {2}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Brain Feeding//Mind Bleeding_GHQ",
+          "name": "Brain Feeding",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player discards two cards.\nFabled {3}{B}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nColor indicator: Black\nTarget player discards two cards.\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Brain Feeding//Mind Bleeding_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Brain Feeding",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player discards two cards.\nFabled {3}{B}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Mind Bleeding",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nEnchanted player's maximum hand size is reduced by two.",
+              "source_color": "{Black} ",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Brain Feeding",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nColor indicator: Black\nTarget player discards two cards.\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player discards two cards.\nFabled {3}{B}{B}",
+              "original_printed_rules_text": "Target player discards two cards.\nFabled {3}{B}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Mind Bleeding",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Black\nEnchant player\nEnchanted player's maximum hand size is reduced by two.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nEnchanted player's maximum hand size is reduced by two.",
+              "original_printed_rules_text": "Enchant player\nEnchanted player's maximum hand size is reduced by two."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Black"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player discards two cards.\nFabled {3}{B}{B}",
+          "original_printed_rules_text": "Target player discards two cards.\nFabled {3}{B}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Howl of the Hunted//Hall of the Haunted_GHQ",
+          "name": "Howl of the Hunted",
+          "original_text": "Mana cost: {2}{W}\nType: Sorcery\nTarget player creates two 1/1 white Spirit creature tokens with flying.\nFabled {3}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nColor indicator: White\nTarget player creates two 1/1 white Spirit creature tokens with flying.\nYou may cast this spell for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Howl of the Hunted//Hall of the Haunted_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Howl of the Hunted",
+              "original_text": "Mana cost: {2}{W}\nType: Sorcery\nTarget player creates two 1/1 white Spirit creature tokens with flying.\nFabled {3}{W}{W} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Hall of the Haunted",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nCreature tokens enchanted player controls get +1/+1.",
+              "source_color": "{White} ",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "mana_cost": "{2}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Howl of the Hunted",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nColor indicator: White\nTarget player creates two 1/1 white Spirit creature tokens with flying.\nYou may cast this spell for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player creates two 1/1 white Spirit creature tokens with flying.\nFabled {3}{W}{W}",
+              "original_printed_rules_text": "Target player creates two 1/1 white Spirit creature tokens with flying.\nFabled {3}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Hall of the Haunted",
+              "color_indicator": [
+                "White"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: White\nEnchant player\nCreature tokens enchanted player controls get +1/+1.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nCreature tokens enchanted player controls get +1/+1.",
+              "original_printed_rules_text": "Enchant player\nCreature tokens enchanted player controls get +1/+1."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "White"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player creates two 1/1 white Spirit creature tokens with flying.\nFabled {3}{W}{W}",
+          "original_printed_rules_text": "Target player creates two 1/1 white Spirit creature tokens with flying.\nFabled {3}{W}{W} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        },
+        {
+          "id": "Starlit Raze//Scarlet Haze_GHQ",
+          "name": "Starlit Raze",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nNonbasic lands target player controls don't untap during that player's next untap step.\nFabled {3}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nColor indicator: Red\nNonbasic lands target player controls don't untap during that player's next untap step.\nYou may cast this spell for {3}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "source_card_key": "Starlit Raze//Scarlet Haze_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Starlit Raze",
+              "original_text": "Mana cost: {1}{R}\nType: Sorcery\nNonbasic lands target player controls don't untap during that player's next untap step.\nFabled {3}{R} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Scarlet Haze",
+              "original_text": "Type: Enchantment — Aura\nEnchant player\nWhenever enchanted player taps a nonbasic land they control, that land doesn't untap during its controller's next untap step.",
+              "source_color": "{Red} ",
+              "color_indicator": [
+                "Red"
+              ]
+            }
+          ],
+          "mana_cost": "{1}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Starlit Raze",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nColor indicator: Red\nNonbasic lands target player controls don't untap during that player's next untap step.\nYou may cast this spell for {3}{R} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Nonbasic lands target player controls don't untap during that player's next untap step.\nFabled {3}{R}",
+              "original_printed_rules_text": "Nonbasic lands target player controls don't untap during that player's next untap step.\nFabled {3}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Scarlet Haze",
+              "color_indicator": [
+                "Red"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Red\nEnchant player\nWhenever enchanted player taps a nonbasic land they control, that land doesn't untap during its controller's next untap step.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nWhenever enchanted player taps a nonbasic land they control, that land doesn't untap during its controller's next untap step.",
+              "original_printed_rules_text": "Enchant player\nWhenever enchanted player taps a nonbasic land they control, that land doesn't untap during its controller's next untap step."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Red"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Nonbasic lands target player controls don't untap during that player's next untap step.\nFabled {3}{R}",
+          "original_printed_rules_text": "Nonbasic lands target player controls don't untap during that player's next untap step.\nFabled {3}{R} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_native_verification",
+      "pending_generic_plumbing": "Alternative payment receipt plus resolving-card transformed battlefield attachment to original legal target; both source faces required.",
+      "required_behavioral_assertions": [
+        "normal and alternative prices",
+        "all legal original target kinds",
+        "single-target legality on resolution",
+        "transforming actual spell object",
+        "attachment restrictions",
+        "resolve into exile under replacement",
+        "both source faces compiled",
+        "fabled payment identity"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Fabled {Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield."
+        }
+      ]
+    },
+    {
+      "id": "msem-415",
+      "keyword": "Fabled",
+      "original_reminder": "Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that land.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+      "source_cards": [
+        "Till the Fields//Blessed Growth"
+      ],
+      "rule_reference": "702.199.",
+      "rule_text": [
+        {
+          "name": "702.199a",
+          "rule": "Fabled appears on some instants and sorceries with a single target. It represents a static ability while the spell with fabled is on the stack and a spell ability. “Fabled (cost)” means “You may pay (cost) rather than pay this spell's mana cost as you cast this spell.” and “If this spell's fabled cost was paid, and this spell is a double-faced card with an Aura that can enchant that permanent or player as its back face, put this card onto the battlefield transformed and attached to it.”",
+          "custom": true
+        },
+        {
+          "name": "702.199b",
+          "rule": "The fabled ability is linked to an ability printed on its front face that targets one or more objects that can be legally enchanted by its back face. If there are multiple possible targets, one is chosen as the spell with Fable resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.199c",
+          "rule": "If the targeted permanent or player is an illegal target for the Aura side of a card with fabled, such as a creature with protection from enchantments, the card with fabled will not enter the battlefield and instead be put directly into its owner's graveyard from the stack.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Till the Fields//Blessed Growth_TWR",
+          "name": "Till the Fields",
+          "original_text": "Mana cost: {G}\nType: Sorcery\nUntap target land. Scry 1.\nFabled {3}{G}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that land.)*",
+          "executable_text": "Mana cost: {G}\nType: Sorcery\nColor indicator: Green\nUntap target land. Scry 1.\nYou may cast this spell for {3}{G}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "mana_cost": "{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Till the Fields//Blessed Growth_TWR",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Till the Fields",
+              "original_text": "Mana cost: {G}\nType: Sorcery\nUntap target land. Scry 1.\nFabled {3}{G}{G} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that land.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Blessed Growth",
+              "original_text": "Type: Enchantment — Aura\nEnchant land\nWhenever enchanted land is tapped for mana, its controller adds two mana in any combination of colors *(in addition to the mana the land produces.)*",
+              "source_color": "{Green} ",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Till the Fields",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {G}\nType: Sorcery\nColor indicator: Green\nUntap target land. Scry 1.\nYou may cast this spell for {3}{G}{G} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Untap target land. Scry 1.\nFabled {3}{G}{G}",
+              "original_printed_rules_text": "Untap target land. Scry 1.\nFabled {3}{G}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that land.)"
+            },
+            {
+              "name": "Blessed Growth",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Green\nEnchant land\nWhenever enchanted land is tapped for mana, its controller adds two mana in any combination of colors (in addition to the mana the land produces.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant land\nWhenever enchanted land is tapped for mana, its controller adds two mana in any combination of colors",
+              "original_printed_rules_text": "Enchant land\nWhenever enchanted land is tapped for mana, its controller adds two mana in any combination of colors (in addition to the mana the land produces.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Green"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Untap target land. Scry 1.\nFabled {3}{G}{G}",
+          "original_printed_rules_text": "Untap target land. Scry 1.\nFabled {3}{G}{G} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that land.)"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_native_verification",
+      "pending_generic_plumbing": "Alternative payment receipt plus resolving-card transformed battlefield attachment to original legal target; both source faces required.",
+      "required_behavioral_assertions": [
+        "normal and alternative prices",
+        "all legal original target kinds",
+        "single-target legality on resolution",
+        "transforming actual spell object",
+        "attachment restrictions",
+        "resolve into exile under replacement",
+        "both source faces compiled",
+        "fabled payment identity"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Fabled {Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield."
+        }
+      ]
+    },
+    {
+      "id": "msem-416",
+      "keyword": "Fabled",
+      "original_reminder": "Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that planeswalker.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+      "source_cards": [
+        "Hat Trick//Okus Pokus"
+      ],
+      "rule_reference": "702.199.",
+      "rule_text": [
+        {
+          "name": "702.199a",
+          "rule": "Fabled appears on some instants and sorceries with a single target. It represents a static ability while the spell with fabled is on the stack and a spell ability. “Fabled (cost)” means “You may pay (cost) rather than pay this spell's mana cost as you cast this spell.” and “If this spell's fabled cost was paid, and this spell is a double-faced card with an Aura that can enchant that permanent or player as its back face, put this card onto the battlefield transformed and attached to it.”",
+          "custom": true
+        },
+        {
+          "name": "702.199b",
+          "rule": "The fabled ability is linked to an ability printed on its front face that targets one or more objects that can be legally enchanted by its back face. If there are multiple possible targets, one is chosen as the spell with Fable resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.199c",
+          "rule": "If the targeted permanent or player is an illegal target for the Aura side of a card with fabled, such as a creature with protection from enchantments, the card with fabled will not enter the battlefield and instead be put directly into its owner's graveyard from the stack.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hat Trick//Okus Pokus_GHQ",
+          "name": "Hat Trick",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nYou may activate loyalty abilities of target planeswalker you control an additional time this turn.\nFabled {1}{U}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that planeswalker.)*",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nYou may activate loyalty abilities of target planeswalker you control an additional time this turn.\nYou may cast this spell for {1}{U}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+          "mana_cost": "{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Hat Trick//Okus Pokus_GHQ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hat Trick",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nYou may activate loyalty abilities of target planeswalker you control an additional time this turn.\nFabled {1}{U}{U} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that planeswalker.)*",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            },
+            {
+              "face": "back",
+              "name": "Okus Pokus",
+              "original_text": "Type: Enchantment — Aura\nEnchant planeswalker\nEnchanted planeswalker has “+2: Draw two cards, then put a card from your hand on the bottom of your library.”",
+              "source_color": "{Blue} ",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Hat Trick",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nYou may activate loyalty abilities of target planeswalker you control an additional time this turn.\nYou may cast this spell for {1}{U}{U} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may activate loyalty abilities of target planeswalker you control an additional time this turn.\nFabled {1}{U}{U}",
+              "original_printed_rules_text": "You may activate loyalty abilities of target planeswalker you control an additional time this turn.\nFabled {1}{U}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that planeswalker.)"
+            },
+            {
+              "name": "Okus Pokus",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Type: Enchantment — Aura\nColor indicator: Blue\nEnchant planeswalker\nEnchanted planeswalker has “+2: Draw two cards, then put a card from your hand on the bottom of your library.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant planeswalker\nEnchanted planeswalker has “+2: Draw two cards, then put a card from your hand on the bottom of your library.”",
+              "original_printed_rules_text": "Enchant planeswalker\nEnchanted planeswalker has “+2: Draw two cards, then put a card from your hand on the bottom of your library.”"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "color_indicator": [
+            "Blue"
+          ],
+          "custom_keyword_identities": [
+            "fabled"
+          ],
+          "custom_keyword_payments": [
+            "fabled"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "You may activate loyalty abilities of target planeswalker you control an additional time this turn.\nFabled {1}{U}{U}",
+          "original_printed_rules_text": "You may activate loyalty abilities of target planeswalker you control an additional time this turn.\nFabled {1}{U}{U} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that planeswalker.)"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_native_verification",
+      "pending_generic_plumbing": "Alternative payment receipt plus resolving-card transformed battlefield attachment to original legal target; both source faces required.",
+      "required_behavioral_assertions": [
+        "normal and alternative prices",
+        "all legal original target kinds",
+        "single-target legality on resolution",
+        "transforming actual spell object",
+        "attachment restrictions",
+        "resolve into exile under replacement",
+        "both source faces compiled",
+        "fabled payment identity"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Fabled {Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield."
+        }
+      ]
+    }
+  ]
+}

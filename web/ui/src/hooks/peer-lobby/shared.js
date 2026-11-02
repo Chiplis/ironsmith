@@ -1129,7 +1129,7 @@ export function collectCommandObjectIds(command, output = new Set(), uiState = n
   // reveal it, see isFaceDownCastCommand). Foretell likewise exiles a
   // hand card face down without disclosing its identity.
   if (command?.type === "priority_action" && command.action_ref?.kind === "cast_exiled_card_face_down") return output;
-  if (isFaceDownCastCommand(command) || isForetellCommand(command)) return output;
+  if (isFaceDownCastCommand(command) || isForetellCommand(command) || isPrivateCostReservationCommand(command)) return output;
   if (command.type === "priority_action" && command.action_ref) {
     const objectId = actionRefObjectId(command.action_ref);
     const numeric = Number(objectId);
@@ -3301,4 +3301,17 @@ export function summarizeMatchValidationIssues(issues) {
       ...lines,
     ].join("\n"),
   };
+}
+
+// A reservation is an untrusted price recipe. Only the final native public
+// move preview may request its source opening; merely choosing it must not.
+export function isPrivateCostReservationCommand(command) {
+  if (command?.type !== "priority_action") return false;
+  const ref = command.action_ref || command.actionRef;
+  if (ref?.kind !== "special_action") return false;
+  const action = ref.action;
+  if (!["prepare_exile", "prepare_granted_exile", "perform_intrinsic_action"].includes(action?.kind)) return false;
+  // Missing or forged prices must reach native rejection without opening
+  // the source first. Public battlefield intrinsic sources need no opening.
+  return true;
 }

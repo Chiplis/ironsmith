@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Complete linked Unveil source completion watcher",
+  "notes": [
+    "Source identities and original texts are immutable. Frontend materialization and native behavior remain separate verification obligations.",
+    "Named action watchers, dynamic grants, mana source name restrictions, selected sacrifice reductions and linked exile must retain their exact structured semantics."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-773",
+      "keyword": "Unveil",
+      "original_reminder": "{3}{U}{R}: Transform this. Unveil only as a sorcery.",
+      "executable_reminder": "{Cost}: This is the unveil activated ability. Transform this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Garish Gillian//Tempest Termagant"
+      ],
+      "rule_reference": "702.263.",
+      "rule_text": [
+        {
+          "name": "702.263a",
+          "rule": "Unveil is an activated ability of some permanents. “Unveil [cost]” means “[cost]: Transform this permanent. Activate only as a sorcery.” Transforming a permanent this way causes its controller to “unveil” it.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Garish Gillian//Tempest Termagant_FNV",
+          "name": "Garish Gillian",
+          "original_text": "Mana cost: {1}{U/R}{U/R}\nType: Creature — Human Merfolk\nPower/Toughness: 2/2\nWhen Garish Gillian enters, tap target land an opponent controls. That land doesn't untap during its controller's next untap step.\nUnveil {3}{U}{R} *({3}{U}{R}: Transform this. Unveil only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{U/R}{U/R}\nType: Creature — Human Merfolk\nPower/Toughness: 2/2\nWhen Garish Gillian enters, tap target land an opponent controls. That land doesn't untap during its controller's next untap step.\n{3}{U}{R}: This is the unveil activated ability. Transform this permanent. Activate only as a sorcery.",
+          "mana_cost": "{1}{U/R}{U/R}",
+          "type_line": "Creature — Human Merfolk",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Garish Gillian//Tempest Termagant_FNV",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Garish Gillian",
+              "original_text": "Mana cost: {1}{U/R}{U/R}\nType: Creature — Human Merfolk\nPower/Toughness: 2/2\nWhen Garish Gillian enters, tap target land an opponent controls. That land doesn't untap during its controller's next untap step.\nUnveil {3}{U}{R} *({3}{U}{R}: Transform this. Unveil only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Tempest Termagant",
+              "original_text": "Type: Creature — Merfolk Wizard\nPower/Toughness: 3/3\nWhen you unveil Tempest Termagant, you may put target land on top of its owner's library."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Garish Gillian",
+              "executable_text": "Mana cost: {1}{U/R}{U/R}\nType: Creature — Human Merfolk\nPower/Toughness: 2/2\nWhen Garish Gillian enters, tap target land an opponent controls. That land doesn't untap during its controller's next untap step.\n{3}{U}{R}: This is the unveil activated ability. Transform this permanent. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "unveil"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Garish Gillian enters, tap target land an opponent controls. That land doesn't untap during its controller's next untap step.\nUnveil {3}{U}{R}"
+            },
+            {
+              "name": "Tempest Termagant",
+              "executable_text": "Type: Creature — Merfolk Wizard\nPower/Toughness: 3/3\nWhen this permanent transforms caused by a unveil activated ability, you may put target land on top of its owner's library.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "original_display_text": "When you unveil Tempest Termagant, you may put target land on top of its owner's library."
+            }
+          ],
+          "custom_keyword_identities": [
+            "unveil"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Garish Gillian enters, tap target land an opponent controls. That land doesn't untap during its controller's next untap step.\nUnveil {3}{U}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Transform/cost/timing operation covered by custom_unveil; named unveil action provenance and controller event remain required for watchers."
+    }
+  ]
+}

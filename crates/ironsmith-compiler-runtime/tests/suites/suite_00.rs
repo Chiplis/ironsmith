@@ -14,6 +14,15 @@ mod r#blocker_landwalk_permission;
 #[path = "../conditional_life_gain.rs"]
 mod r#conditional_life_gain;
 
+#[path = "../custom_death_knell_full_sources.rs"]
+mod r#custom_death_knell_full_sources;
+
+#[path = "../custom_judgment_choices.rs"]
+mod r#custom_judgment_choices;
+
+#[path = "../custom_revolution_late_results.rs"]
+mod r#custom_revolution_late_results;
+
 #[path = "../dynamic_control_bounds.rs"]
 mod r#dynamic_control_bounds;
 

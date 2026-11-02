@@ -5,6 +5,7 @@ pub(crate) mod effect_cast_prices;
 #[path = "permission_helpers/filtered_zone_permissions.rs"]
 mod filtered_zone_permissions;
 mod shared_zone_permissions;
+mod top_source_color;
 #[path = "permission_helpers/graveyard_turn_permissions.rs"]
 mod graveyard_turn_permissions;
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
@@ -26,7 +27,7 @@ use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
 };
 use crate::host::{
-    CardTextError, ConditionalEffectAst, EffectAst, PermissionEffectAst, PlayerAst, PredicateAst,
+    CardTextError, ConditionalEffectAst, EffectAst, PermissionEffectAst, PlayerAst, PredicateAst, PlayerPredicateAst,
     TagKey, TargetAst,
 };
 use crate::model::CompilerStaticAbilityCore as StaticAbility;
@@ -677,6 +678,7 @@ fn parse_permission_lead_tokens(
     let player = match fact.actor {
         permission_tagged_facts::PermissionActor::You => PlayerAst::You,
         permission_tagged_facts::PermissionActor::AnyPlayer => PlayerAst::Any,
+        permission_tagged_facts::PermissionActor::ThatPlayer => PlayerAst::That,
         permission_tagged_facts::PermissionActor::ItsOwner => PlayerAst::ItsOwner,
         permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
         permission_tagged_facts::PermissionActor::TriggeringCreatureController => {
@@ -695,6 +697,18 @@ fn parse_permission_lead_tokens(
 fn parse_tagged_cast_or_play_target_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(TaggedPermissionTarget, &[OwnedLexToken])> {
+    // A source entry receipt is not the latest local object or another
+    // linked-exile pair. Consume only this complete target prefix.
+    for end in 1..=tokens.len() {
+        if let Some(tag)=crate::util::entry_exiled_reference_tag_for_tokens(&tokens[..end])
+            && !tokens.get(end).is_some_and(|token|token.is_word("by")) {
+            crate::word_claims::claim_tokens(&tokens[..end]);
+            return Some((TaggedPermissionTarget {
+                tag, as_copy: false,
+                max_plays: None, surface: Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard),
+            }, &tokens[end..]));
+        }
+    }
     let fact = permission_tagged_facts::parse_tagged_permission_target_tokens(tokens)?;
     let tag = match fact.reference {
         permission_tagged_facts::TaggedPermissionReference::LastTagged => {
@@ -708,6 +722,9 @@ fn parse_tagged_cast_or_play_target_tokens(
         }
         permission_tagged_facts::TaggedPermissionReference::PriorExiledCard => {
             crate::tag::CompilerReferenceTag::PriorExiledCard.bind()
+        }
+        permission_tagged_facts::TaggedPermissionReference::CurrentIteratedObject => {
+            crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
@@ -759,6 +776,7 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         permission_tagged_facts::PermissionActor::You => PlayerAst::You,
         permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
         permission_tagged_facts::PermissionActor::AnyPlayer
+        | permission_tagged_facts::PermissionActor::ThatPlayer
         | permission_tagged_facts::PermissionActor::ItsOwner
         | permission_tagged_facts::PermissionActor::TriggeringCreatureController => return None,
     };
@@ -774,6 +792,9 @@ fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Opt
         }
         permission_tagged_facts::TaggedPermissionReference::PriorExiledCard => {
             crate::tag::CompilerReferenceTag::PriorExiledCard.bind()
+        }
+        permission_tagged_facts::TaggedPermissionReference::CurrentIteratedObject => {
+            crate::tag::CompilerReferenceTag::CurrentIteratedObject.bind()
         }
         permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
             crate::tag::CompilerReferenceTag::LastRevealed.bind()
@@ -1382,6 +1403,7 @@ pub fn parse_permission_clause_spec_lexed(
     if clause_refs.is_empty() {
         return Ok(None);
     }
+    if let Some(spec) = top_source_color::parse(tokens) { return Ok(Some(spec)); }
     if let Some(spec) = parse_this_turn_hand_free_cast(tokens)? { return Ok(Some(spec)); }
     if let Some(spec) = parse_this_turn_exiled_counter_card_play(tokens) { return Ok(Some(spec)); }
 
@@ -1876,6 +1898,23 @@ pub fn parse_permission_clause_spec_lexed(
         }));
     }
 
+    if !allow_land {
+        let suffix=["from","the","top","of","your","library"];
+        let view=crate::lexer::TokenWordView::new(rest_tokens);
+        let words=view.word_refs();
+        if words.ends_with(&suffix) && words.len()>suffix.len() {
+            let split=view.token_start_indices()[words.len()-suffix.len()];
+            if let Some(mut filter)=permission_subject_facts::parse_permission_subject_filter_tokens(&rest_tokens[..split])? {
+                exclude_lands_from_spell_filter(&mut filter);
+                crate::word_claims::claim_tokens(&rest_tokens[split..]);
+                return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                    player,
+                    spec:crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::play_from(),filter,Zone::Library).with_top_card_only(),
+                    lifetime:prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
+                }));
+            }
+        }
+    }
     if allow_land && parse_lands_from_top_library_permission_rest_tokens(rest_tokens) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
@@ -2800,6 +2839,104 @@ pub fn parse_cast_or_play_tagged_clause_keeping_may(
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A second permission describing the same card's timing augments the
+    // retained permission; it does not instruct a second immediate cast.
+    let bounded = crate::util::trim_edge_punctuation_tokens(tokens);
+    let rider = ["and", "you", "may", "cast", "it", "as", "though", "it", "had", "flash"];
+    if bounded.len() > rider.len() {
+        let split = bounded.len() - rider.len();
+        if bounded[split..].iter().zip(rider).all(|(token, word)| token.is_word(word)) {
+            let permission = trim_lexed_commas(&bounded[..split]);
+            if let Some(effect) = parse_cast_or_play_tagged_clause(permission)? {
+                if let EffectAst::SubjectVerb(subject) = &effect
+                    && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        tag, player, until_source_exiles_another: false,
+                        while_on_top_of_library: false, ..
+                    }) = &subject.action
+                {
+                    let mut filter = ObjectFilter::nonland();
+                    filter.tagged_constraints.push(TaggedObjectConstraint {
+                        tag: tag.key().clone(), relation: TaggedOpbjectRelation::IsTaggedObject,
+                    });
+                    let timing = EffectAst::subject_verb_grant_by_spec(
+                        crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(filter),
+                        player.clone(), crate::grant::GrantDuration::UntilEndOfTurn);
+                    crate::word_claims::claim_tokens(&bounded[split..]);
+                    return Ok(Some(EffectAst::Sequence { effects: vec![effect, timing] }));
+                }
+            }
+            return Ok(None);
+        }
+    }
+    // A complete collection instruction owns both the authored selection
+    // cardinality and the per-selected-card casts. The broader tagged-card
+    // permission can otherwise capture its plural pool but cast only its
+    // first member. Lasting permissions and scalar pronouns do not match
+    // this complete bounded collection reader and keep their normal owner.
+    if let Some(effect) = collection_casts::parse_collection_cast_clause(tokens)? {
+        return Ok(Some(effect));
+    }
+    let words = crate::lexer::TokenWordView::new(tokens).word_refs();
+    if words == ["after", "the", "current", "turn", "has", "ended", "you", "may", "cast", "this", "card", "from", "exile"] {
+        let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            crate::tag::CompilerReferenceTag::SourceExiledSelf.bind(), PlayerAst::You, false, false, false, None);
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { starts_after_current_turn, .. }) = &mut subject.action
+        { *starts_after_current_turn = true; }
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(effect));
+    }
+
+    // In a resolving permission, "as long as you control ..." supplies
+    // its duration. This differs from "... if you control ...", which gates
+    // each use of a permission retained for an independently stated duration.
+    if let Some(as_long) = tokens.windows(3).position(|part| part[0].is_word("as") && part[1].is_word("long") && part[2].is_word("as"))
+        && as_long > 0
+    {
+        let start = as_long + 3;
+        let end = tokens[start..].iter().position(|token| token.is_comma() || token.kind == crate::lexer::TokenKind::Period)
+            .map_or(tokens.len(), |end| start + end);
+        if let Ok(PredicateAst::YouControl(filter) | PredicateAst::Player(PlayerPredicateAst::PlayerControls { player: PlayerAst::You, filter })) = crate::grammar::filters::parse_condition_predicate_lexed(&tokens[start..end]) {
+            // Source-control duration belongs to the effect controller, even
+            // when the permission holder is another player. Leave that exact
+            // lifetime to its dedicated reader below.
+            if !filter.source {
+                let prefix_end = if tokens[as_long - 1].is_word("for") { as_long - 1 } else { as_long };
+                let mut permission = tokens[..prefix_end].to_vec();
+                permission.extend(["for", "as", "long", "as", "it", "remains", "exiled"].into_iter().map(crate::lexer::OwnedLexToken::synthetic_word));
+                permission.extend_from_slice(&tokens[end..]);
+                if let Some(EffectAst::SubjectVerb(mut grant)) = parse_cast_or_play_tagged_clause(&permission)? {
+                    if let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { control_duration, .. }) = &mut grant.action {
+                        *control_duration = Some(filter);
+                        crate::word_claims::claim_tokens(&tokens[prefix_end..start]);
+                        return Ok(Some(EffectAst::SubjectVerb(grant)));
+                    }
+                }
+            }
+        }
+    }
+    // A required alternative price belongs to the persistent permission,
+    // not to an immediate cast or a global printed exile-zone permission.
+    let priced_tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let priced_words = crate::lexer::TokenWordView::new(priced_tokens);
+    let refs = priced_words.to_word_refs();
+    let suffix = ["rather", "than", "paying", "its", "mana", "cost"];
+    if refs.ends_with(&suffix) {
+        let end = refs.len() - suffix.len();
+        if let Some(by) = refs[..end].windows(2).rposition(|pair| pair == ["by", "paying"]) {
+            if let (Some(base), Some(price)) = (priced_words.token_span_for_words(0, by), priced_words.token_span_for_words(by + 2, end)) {
+                if let Some(mut permission) = parse_cast_or_play_tagged_clause(&priced_tokens[base])? {
+                    if matches!(&permission, EffectAst::SubjectVerb(subject) if matches!(&subject.action, SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. }))) {
+                        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&priced_tokens[price])?;
+                        if let Some(frame) = priced_words.token_span_for_words(by, by + 2) { crate::word_claims::claim_tokens(&priced_tokens[frame]); }
+                        if let Some(frame) = priced_words.token_span_for_words(end, refs.len()) { crate::word_claims::claim_tokens(&priced_tokens[frame]); }
+                        permission = permission.with_casting_alternative_cost(cost);
+                        return Ok(Some(permission));
+                    }
+                }
+            }
+        }
+    }
     // "For as long as they remain exiled, you may play them if you control a
     // Wizard." (Flameshape): a lasting permission over the exiled cards
     // gated on a trailing control condition.
@@ -3318,7 +3455,7 @@ pub fn parse_cast_or_play_tagged_clause(
             ..
         }) if matches!(
             player,
-            PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
+            PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner | PlayerAst::That
         ) =>
         {
             let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -3522,7 +3659,10 @@ mod source_exile_duration_tests {
 
     #[test]
     fn source_control_duration_preserves_authored_source_noun() {
-        let text = "You may play that card for as long as you control this creature";
+        for text in [
+            "You may play that card for as long as you control this creature",
+            "Its owner may play it for as long as you control this creature",
+        ] {
         let tokens = lex_line(text, 0).expect("permission should lex");
         let effect = parse_cast_or_play_tagged_clause(&tokens)
             .expect("permission parsing should not error")
@@ -3534,6 +3674,8 @@ mod source_exile_duration_tests {
         );
         assert!(debug.contains("control_source"), "{debug}");
         assert!(debug.contains("this creature"), "{debug}");
+        assert!(!debug.contains("GrantPlayTaggedForAsLongAsExiled"), "{debug}");
+        }
     }
 }
 
@@ -3731,6 +3873,51 @@ mod referenced_copy_cast_tests {
         for suffix in ["{R}","except draw a card"] {
             let text=format!("You may cast a copy of the exiled card without paying its mana cost {suffix}.");
             assert!(!matches!(parse_cast_or_play_tagged_clause(&crate::lexer::lex_line(&text,0).unwrap()),Ok(Some(_))), "unread cast-copy suffix accepted: {text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod collection_instruction_owner_tests {
+    use super::*;
+    #[test]
+    fn counted_collection_keeps_selection_and_iteration_on_public_permission_route() {
+        for text in [
+            "You may cast any number of spells from among cards exiled this way without paying their mana costs.",
+            "You may cast up to two spells from among cards exiled this way without paying their mana costs.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let exact=collection_casts::parse_collection_cast_clause(&tokens).unwrap().unwrap();
+            assert_eq!(parse_cast_or_play_tagged_clause(&tokens).unwrap().unwrap(),exact);
+            let EffectAst::Sequence { effects }=exact else {panic!("collection sequence")};
+            assert!(matches!(effects.as_slice(),[EffectAst::ObjectChoices(_),EffectAst::ForEach(_)]));
+        }
+        let lasting=crate::lexer::lex_line("Until end of turn, you may play the card exiled this way.",0).unwrap();
+        assert!(collection_casts::parse_collection_cast_clause(&lasting).unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod tagged_permission_flash_rider_tests {
+    use super::*;
+    #[test]
+    fn retained_card_permission_and_timing_share_exact_tag_player_and_expiry() {
+        let tokens = crate::lexer::lex_line("You may cast it this turn, and you may cast it as though it had flash.", 0).unwrap();
+        let EffectAst::Sequence { effects } = parse_cast_or_play_tagged_clause(&tokens).unwrap().unwrap() else { panic!("retained permission plus timing") };
+        assert_eq!(effects.len(), 2);
+        let EffectAst::SubjectVerb(permission) = &effects[0] else { panic!("card permission") };
+        let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {tag,player,..}) = &permission.action else { panic!("turn duration") };
+        let EffectAst::SubjectVerb(timing) = &effects[1] else { panic!("timing permission") };
+        let SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec {spec,player: timing_player,duration}) = &timing.action else { panic!("flash timing") };
+        assert_eq!(player,timing_player);assert_eq!(*duration,crate::grant::GrantDuration::UntilEndOfTurn);
+        assert!(grant_spec_grants_flash_timing(spec));
+        let debug = format!("{spec:?}");assert!(debug.contains(tag.key().as_str()), "{debug}");
+    }
+    #[test]
+    fn flash_rider_requires_a_complete_retained_permission_and_exact_timing_words() {
+        for text in ["You may cast it, and you may cast it as though it had flash.", "You may cast it this turn, and you may cast it as though it had {R} flash.", "You may cast it this turn, and you may cast it as though it had flash tomorrow."] {
+            let tokens = crate::lexer::lex_line(text,0).unwrap();
+            assert!(parse_cast_or_play_tagged_clause(&tokens).unwrap().is_none(), "{text}");
         }
     }
 }

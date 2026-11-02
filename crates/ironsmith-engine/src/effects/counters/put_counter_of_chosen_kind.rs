@@ -60,30 +60,53 @@ impl EffectExecutor for PutCounterOfRandomKindEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let recipients = resolve_objects_for_effect(game, ctx, &self.recipient)?;
-        let Some(&recipient) = recipients.first() else {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        };
-        // The eligible kinds are read when the choice is made; a kind the
-        // recipient already has a counter of is not eligible.
-        let present = kinds_on(game, &[recipient]);
-        let mut candidates = self
-            .kinds
-            .iter()
-            .copied()
-            .filter(|kind| !self.only_absent_kinds || !present.contains(kind))
-            .collect::<Vec<CounterType>>();
-        candidates.dedup();
-        if candidates.is_empty() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::resolved(),
-            ));
-        }
-        game.shuffle_slice(&mut candidates);
-        let kind = candidates[0];
-        put_kind_on_recipients(game, ctx, kind, &[recipient], None, false)
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+            let recipients = resolve_objects_for_effect(game, ctx, &self.recipient)?;
+            let Some(&recipient) = recipients.first() else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            };
+            // The eligible kinds are read when the choice is made; a kind the
+            // recipient already has a counter of is not eligible.
+            let present = kinds_on(game, &[recipient]);
+            let mut candidates = self
+                .kinds
+                .iter()
+                .copied()
+                .filter(|kind| !self.only_absent_kinds || !present.contains(kind))
+                .collect::<Vec<CounterType>>();
+            candidates.dedup();
+            if candidates.is_empty() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::resolved().with_execution_fact(crate::effect::ExecutionFact::ChoiceAvailability { available: false }),
+                ));
+            }
+            let kind = if self.player_choice {
+                let chooser = self.chooser.as_ref().map(|filter|
+                    crate::effects::helpers::resolve_player_filter_as_chooser(game, filter, ctx))
+                    .transpose()?.unwrap_or(ctx.controller);
+                let options = candidates.iter().map(|kind|
+                    (*kind, format!("Choose {} counter", super::kind_selection::counter_label(*kind))))
+                    .collect::<Vec<_>>();
+                let Some(kind) = super::kind_selection::choose_binding_for_player(
+                    game, ctx, chooser, "Choose a counter kind", &options, false) else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::ChoiceAvailability { available: true })));
+                };
+                kind
+            } else {
+                game.shuffle_slice(&mut candidates);
+                candidates[0]
+            };
+            let mut outputs = put_kind_on_recipients(game, ctx, kind, &[recipient], None, false)?;
+            outputs.outcome = outputs.outcome.with_execution_fact(crate::effect::ExecutionFact::ChoiceAvailability { available: true });
+            Ok(outputs)
+            },
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -176,5 +199,37 @@ impl EffectExecutor for PutCounterOfKindChosenFromEffect {
 
     fn target_description(&self) -> &'static str {
         "target permanent"
+    }
+}
+
+#[cfg(test)]
+mod choice_availability_receipt_tests {
+    use super::*;
+    use crate::effect::{EffectPredicate, EffectPredicateRuntimeExt, ExecutionFact};
+    use crate::ids::{CardId, PlayerId};
+    use crate::zone::Zone;
+    #[test]
+    fn original_menu_receipt_records_eligibility_before_placement() {
+        let player=PlayerId(0);
+        for exhausted in [false,true] {
+            let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            let source=game.create_object_from_card(&crate::card::CardBuilder::new(CardId::new(),"Menu recipient").build(),player,Zone::Battlefield);
+            if exhausted { game.add_counters(source,CounterType::Charge,1).unwrap(); }
+            let effect=PutCounterOfRandomKindEffect::new(vec![CounterType::Charge],ChooseSpec::Source,true).with_player_choice(true);
+            let result=effect.execute(&mut game,&mut crate::effects::EffectContext::new_default(source,player)).unwrap();
+            assert_eq!(EffectPredicate::ChoiceUnavailable.evaluate_outcome(&result),exhausted);
+            assert!(result.instruction_result().has_execution_fact(|fact|matches!(fact,ExecutionFact::ChoiceAvailability {available} if *available==!exhausted)));
+        }
+    }
+    #[test]
+    fn unavailable_choice_never_means_decline_zero_output_prevention_or_auxiliary_failure() {
+        let gate=EffectPredicate::ChoiceUnavailable;
+        for result in [EffectOutcome::resolved(),EffectOutcome::count(0),EffectOutcome::declined(),EffectOutcome::prevented(),EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChoiceAvailability{available:true})] {
+            assert!(!gate.evaluate_outcome(&result));
+        }
+        let available=EffectOutcome::prevented().with_execution_fact(ExecutionFact::ChoiceAvailability{available:true});
+        let unavailable=EffectOutcome::resolved().with_execution_fact(ExecutionFact::ChoiceAvailability{available:false});
+        assert!(!gate.evaluate_outcome(&EffectOutcome::aggregate_replacement_outcomes(available.clone(),[unavailable.clone()])));
+        assert!(gate.evaluate_outcome(&EffectOutcome::aggregate_replacement_outcomes(unavailable,[available])));
     }
 }

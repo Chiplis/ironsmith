@@ -62,6 +62,8 @@ pub(super) fn priority_action_ref_for_game(
     action: &LegalAction,
 ) -> PriorityActionRef {
     let mut action_ref = priority_action_ref(action);
+    attach_private_cost_reservation(game, action, &mut action_ref);
+
     if let PriorityActionRef::CastSpell {
         spell_id,
         casting_method,
@@ -84,6 +86,8 @@ pub(super) fn priority_action_ref_for_game(
 /// legal actions never carry.
 fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef {
     let mut normalized = action_ref.clone();
+    clear_private_cost_reservation(&mut normalized);
+
     if let PriorityActionRef::CastSpell {
         casting_method,
         ..
@@ -380,7 +384,7 @@ fn activation_mana_payment_available(
         *source,
         &activated.mana_cost,
         &[],
-        Some(ironsmith::decision::ActivationCostAbility::of(
+        Some(&ironsmith::decision::ActivationCostAbility::of(
             game,
             payer,
             *source,
@@ -587,6 +591,8 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::Battlefield)),
             ),
             ironsmith::special_actions::SpecialAction::Suspend { card_id }
+            | ironsmith::special_actions::SpecialAction::PrepareExile { card_id, .. }
+            | ironsmith::special_actions::SpecialAction::PrepareGrantedExile { card_id, .. }
             | ironsmith::special_actions::SpecialAction::Foretell { card_id }
             | ironsmith::special_actions::SpecialAction::Plot { card_id } => (
                 "special_action",
@@ -643,6 +649,8 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::Battlefield)),
                 None,
             ),
+            ironsmith::special_actions::SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+                ("special_action", Some(source_id.0), Some(*ability_index), None, None),
             ironsmith::special_actions::SpecialAction::PayDelayedTrigger { .. }
             | ironsmith::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
                 ..
@@ -725,6 +733,8 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             Some(ironsmith::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_)) => {
                 format!("Reveal {}", object_name(game, *card_id))
             }
+            Some(ironsmith::static_abilities::PregameActionKind::SourceSetup { .. }) => format!("Set up {}", object_name(game, *card_id)),
+            Some(ironsmith::static_abilities::PregameActionKind::ChosenOutsideGame(spec)) => format!("Use chosen {}", spec.designation),
             None => format!("Use {}", object_name(game, *card_id)),
         },
         LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".into(),
@@ -948,6 +958,8 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
                     object_name(game, *card_id)
                 )
             }
+            ironsmith::special_actions::SpecialAction::PrepareGrantedExile {card_id,grant,..}=>format!("Prepare {} (source {})",object_name(game,*card_id),grant.source.0),
+            ironsmith::special_actions::SpecialAction::PrepareExile { card_id, method_index, .. } => format!("Prepare {} (ability {})",object_name(game,*card_id),method_index+1),
             ironsmith::special_actions::SpecialAction::Foretell { card_id } => {
                 format!("Foretell {}", object_name(game, *card_id))
             }
@@ -1020,6 +1032,10 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             ironsmith::special_actions::SpecialAction::PayDelayedTrigger { .. } => {
                 "Pay the pending delayed-trigger cost".to_string()
             }
+            ironsmith::special_actions::SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+                ironsmith::special_actions::intrinsic_action_cost_display(game, *source_id, *ability_index)
+                    .map(|cost| format!("{cost}: {}", ironsmith::special_actions::intrinsic_action_label(game, *source_id, *ability_index).unwrap_or_else(|| "Take special action".into())))
+                    .unwrap_or_else(|| "Take special action".into()),
             ironsmith::special_actions::SpecialAction::DiscardFromHand { card_id } => {
                 format!("Discard {}", object_name(game, *card_id))
             }
@@ -1119,7 +1135,7 @@ fn effective_equip_action_text(
         source,
         &activated.mana_cost,
         &[],
-        facts,
+        facts.as_ref(),
     );
     let Some(mana) = effective.mana_cost() else {
         return text;
@@ -1431,6 +1447,8 @@ pub(super) fn special_action_ref(
         ironsmith::special_actions::SpecialAction::Suspend { card_id } => {
             SpecialActionRef::Suspend { card_id: card_id.0 }
         }
+        ironsmith::special_actions::SpecialAction::PrepareGrantedExile {card_id,grant,preparation}=>SpecialActionRef::PrepareGrantedExile {card_id:card_id.0,grant:GrantSelectionRef {source:grant.source.0,index:grant.index},preparation:preparation.clone(),cost_reservation:None},
+        ironsmith::special_actions::SpecialAction::PrepareExile { card_id, method_index, preparation } => SpecialActionRef::PrepareExile { card_id:card_id.0,method_index:*method_index,preparation:preparation.clone(),cost_reservation:None },
         ironsmith::special_actions::SpecialAction::Foretell { card_id } => {
             SpecialActionRef::Foretell { card_id: card_id.0 }
         }
@@ -1476,6 +1494,8 @@ pub(super) fn special_action_ref(
             source_id: source_id.0,
             ability_index: *ability_index,
         },
+        ironsmith::special_actions::SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+            SpecialActionRef::PerformIntrinsicAction { source_id: source_id.0, ability_index: *ability_index, cost_reservation: None },
         ironsmith::special_actions::SpecialAction::PayDelayedTrigger {
             delayed_trigger_index,
         } => SpecialActionRef::PayDelayedTrigger {
@@ -1618,6 +1638,13 @@ pub(super) fn resolve_priority_action(
                 }) {
                     return Ok(Some(LegalAction::SpecialAction(action)));
                 }
+            }
+        }
+        if let PriorityActionRef::SpecialAction { action: SpecialActionRef::PrepareExile { card_id, method_index, preparation, .. } }=action_ref {
+            let card_id=ObjectId::from_raw(*card_id);
+            if game.is_hidden_card_placeholder(card_id) {
+                let action=ironsmith::special_actions::SpecialAction::PrepareExile {card_id,method_index:*method_index,preparation:preparation.clone()};
+                if game.priority_team_players().into_iter().any(|player|ironsmith::special_actions::can_perform_check(&action,game,player).is_ok()) {return Ok(Some(LegalAction::SpecialAction(action)));}
             }
         }
         // A face-down cast of a hidden card: peers holding a placeholder
@@ -2428,5 +2455,27 @@ mod text_replacement_reason_tests {
             ));
             assert_eq!(decision_reason(&context).as_deref(), expected, "{description}");
         }
+    }
+}
+
+
+#[cfg(test)]
+mod intrinsic_action_reference_tests {
+    use super::*;
+    #[test]
+    fn intrinsic_action_reference_roundtrips_as_a_special_action_with_exact_source_and_occurrence() {
+        let action = ironsmith::special_actions::SpecialAction::PerformIntrinsicAction {
+            source_id: ObjectId::from_raw(42), ability_index: 3,
+        };
+        let reference = special_action_ref(&action);
+        let json = serde_json::to_value(&reference).unwrap();
+        assert_eq!(json["kind"], "perform_intrinsic_action");
+        assert_eq!(json["source_id"], 42);
+        assert_eq!(json["ability_index"], 3);
+        let restored: SpecialActionRef = serde_json::from_value(json).unwrap();
+        assert_eq!(restored, reference);
+        let metadata = action_drag_metadata(&LegalAction::SpecialAction(action));
+        assert_eq!(metadata.0, "special_action");
+        assert_eq!((metadata.1, metadata.2), (Some(42), Some(3)));
     }
 }

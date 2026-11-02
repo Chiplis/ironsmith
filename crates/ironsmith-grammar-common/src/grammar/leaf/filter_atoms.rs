@@ -302,6 +302,9 @@ pub fn classify_token_definition_subtype_in_family(raw: &str, family: SubtypeFam
 /// Return only ambiguous printed vocabulary. Internal identities never expand,
 /// so a filter can parse each alternative exactly once without recursion.
 pub fn ambiguous_subtype_spellings(raw: &str) -> Vec<Subtype> {
+    // A scoped declaration has one identity with explicit family metadata.
+    // Legacy same-spelling variants must not broaden its filter semantics.
+    if ironsmith_core::custom_subtypes::lookup(raw).is_some() { return Vec::new(); }
     static AMBIGUOUS: OnceLock<HashMap<String, Vec<Subtype>>> = OnceLock::new();
     let values = AMBIGUOUS.get_or_init(|| {
         let mut values: HashMap<String, Vec<Subtype>> = HashMap::new();

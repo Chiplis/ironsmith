@@ -3391,7 +3391,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                 "as long as that player is the monarch".to_string()
             }
-            crate::target::PlayerFilter::ControlsMost { .. } | crate::target::PlayerFilter::ControlsFewestTied { .. } | crate::target::PlayerFilter::OwnsMatchingObject { .. } | crate::target::PlayerFilter::ControlsMatchingObject { .. } | crate::target::PlayerFilter::MostLifeTiedAmong { .. } | crate::target::PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+            crate::target::PlayerFilter::ControlsMost { .. } | crate::target::PlayerFilter::ControlsFewestTied { .. } | crate::target::PlayerFilter::OwnsMatchingObject { .. } | crate::target::PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | crate::target::PlayerFilter::MostLifeTiedAmong { .. } | crate::target::PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::OpponentOf(_)
@@ -3464,6 +3464,18 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as you have the city's blessing".to_string()
             }
             _ => "as long as that player has the city's blessing".to_string(),
+        },
+        crate::ConditionExpr::PlayerNamedActionHistory { player, label, window, minimum, minimum_amount } => {
+            let is_you = matches!(player, crate::target::PlayerFilter::You);
+            let subject = if is_you { "you have" } else { "that player has" };
+            let window = if is_you { window.surface().to_string() } else { window.surface().replace("your", "their") };
+            let suffix = if *minimum == 1 { String::new() } else { format!(" at least {minimum} times") };
+            let amount = if *minimum_amount == 0 { String::new() } else { format!(" with an amount of {minimum_amount} or more") };
+            format!("as long as {subject} performed the {label} action{amount} {window}{suffix}")
+        },
+        crate::ConditionExpr::PlayerHasDesignation { player, designation } => match player {
+            crate::target::PlayerFilter::You => format!("as long as you are in your {designation}"),
+            _ => format!("as long as that player is in their {designation}"),
         },
         crate::ConditionExpr::PlayerHasEnduringStory { player } => match player {
             crate::target::PlayerFilter::You => {
@@ -3971,18 +3983,18 @@ fn entered_battlefield_this_turn_count(
                                 }
                             }
                             Modification::RemoveCardTypes(card_types) => {
-                                crate::continuous::remove_card_types_and_prune_subtypes(
+                                crate::continuous::remove_card_types_and_prune_subtypes_in_game(
                                     &mut adjusted.card_types,
                                     &mut adjusted.subtypes,
                                     card_types,
-                                );
+                                 game);
                             }
                             Modification::SetCardTypes(card_types) => {
-                                crate::continuous::replace_card_types_and_prune_subtypes(
+                                crate::continuous::replace_card_types_and_prune_subtypes_in_game(
                                     &mut adjusted.card_types,
                                     &mut adjusted.subtypes,
                                     card_types,
-                                );
+                                 game);
                             }
                             _ => {}
                         }
@@ -6179,6 +6191,7 @@ impl StaticAbilityKind for SetBasePowerToughnessValueForFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyActivatedAbilities {
     pub filter: ObjectFilter,
+    pub excluded_ability_designations: Vec<String>,
     pub counter: Option<CounterType>,
     pub include_mana: bool,
     pub only_loyalty: bool,
@@ -6194,6 +6207,7 @@ pub struct CopyActivatedAbilities {
 impl CopyActivatedAbilities {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
+            excluded_ability_designations: Vec::new(),
             filter,
             counter: None,
             include_mana: true,
@@ -6268,6 +6282,7 @@ impl StaticAbilityKind for CopyActivatedAbilities {
                 controller,
                 EffectTarget::Source,
                 Modification::CopyActivatedAbilities {
+                    excluded_ability_designations: self.excluded_ability_designations.clone(),
                     filter: self.filter.clone(),
                     counter: self.counter,
                     include_mana: self.include_mana,
@@ -6299,6 +6314,8 @@ impl StaticAbilityKind for CopyActivatedAbilities {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyStaticAbilityVariants {
     pub filter: ObjectFilter,
+    pub excluded_ability_designations: Vec<String>,
+    pub copy_all: bool,
     pub selectors: Vec<ironsmith_core::StaticAbilityVariantSelector>,
     pub exclude_source_id: bool,
     pub condition: Option<crate::ConditionExpr>,
@@ -6312,6 +6329,8 @@ impl CopyStaticAbilityVariants {
         display: String,
     ) -> Self {
         Self {
+            excluded_ability_designations: Vec::new(),
+            copy_all: false,
             filter,
             selectors,
             exclude_source_id: true,
@@ -6356,6 +6375,8 @@ impl StaticAbilityKind for CopyStaticAbilityVariants {
                 controller,
                 EffectTarget::Source,
                 Modification::CopyStaticAbilityVariants {
+                    excluded_ability_designations: self.excluded_ability_designations.clone(),
+                    copy_all: self.copy_all,
                     filter: self.filter.clone(),
                     selectors: self.selectors.clone(),
                     exclude_source_id: self.exclude_source_id,
@@ -6381,6 +6402,7 @@ impl StaticAbilityKind for CopyStaticAbilityVariants {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopyTriggeredAbilities {
     pub filter: ObjectFilter,
+    pub excluded_ability_designations: Vec<String>,
     pub exclude_source_name: bool,
     pub exclude_source_id: bool,
     pub condition: Option<crate::ConditionExpr>,
@@ -6390,6 +6412,7 @@ pub struct CopyTriggeredAbilities {
 impl CopyTriggeredAbilities {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
+            excluded_ability_designations: Vec::new(),
             filter,
             exclude_source_name: false,
             exclude_source_id: true,
@@ -6439,6 +6462,7 @@ impl StaticAbilityKind for CopyTriggeredAbilities {
                 controller,
                 EffectTarget::Source,
                 Modification::CopyTriggeredAbilities {
+                    excluded_ability_designations: self.excluded_ability_designations.clone(),
                     filter: self.filter.clone(),
                     exclude_source_name: self.exclude_source_name,
                     exclude_source_id: self.exclude_source_id,
@@ -7716,6 +7740,7 @@ impl StaticAbilityKind for SourceHasFullTextOfTopGraveyardCard {
                 controller,
                 EffectTarget::Source,
                 Modification::CopyOf {
+retain_original_types: false,
                     retain_original_name: false,
                     target_id: top,
                     copiable_values: Box::new(values),

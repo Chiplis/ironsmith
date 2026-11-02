@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact originals preserved. Candidates do not certify gameplay support."
+  },
+  "mechanics": [
+    {
+      "id": "msem-603",
+      "keyword": "Puzzlebox",
+      "original_reminder": "Begin the game with this and another card you own from outside the game in the command zone, locked. That card is face down until you unlock this.",
+      "executable_reminder": "Before the game begins, while this card is in the command zone, Put another card you own from outside the game into the command zone. Turn it face down. Give it the locked status in the command zone. Give this card the locked status in the command zone. Remember the moved card as the chosen card.",
+      "source_cards": [
+        "Ancient Maze"
+      ],
+      "rule_reference": "702.226.",
+      "rule_text": [
+        {
+          "name": "702.226a",
+          "rule": "Puzzlebox represents two abilities, a static ability that functions as a conspiracy card with puzzlebox is put into the command zone, and a static ability that functions while the conspiracy is face up in the command zone. “Puzzlebox” means “As you put this conspiracy card into the command zone, put a card you own from outside the game into the command zone face down and locked” and “As this puzzlebox becomes unlocked, turn the locked card face up.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ancient Maze_UNR",
+          "name": "Ancient Maze",
+          "original_text": "Type: Conspiracy\nPuzzlebox *(Begin the game with this and another card you own from outside the game in the command zone, locked. That card is face down until you unlock this.)*\n{6}: Unlock Ancient Maze. If the revealed card is green, put it into your hand. Otherwise, put it on top of your library.",
+          "executable_text": "Type: Conspiracy\nBefore the game begins, while this card is in the command zone, Put another card you own from outside the game into the command zone. Turn it face down. Give it the locked status in the command zone. Give this card the locked status in the command zone. Remember the moved card as the chosen card\n{6}: If Ancient Maze has the locked status, remove the locked status from Ancient Maze in the command zone, then give Ancient Maze the unlocked status in the command zone, then remove the locked status from the card chosen for this source in the command zone, then turn the card chosen for this source face up. If it is green, put it into your hand. Otherwise, put it on top of your library.",
+          "mana_cost": "",
+          "type_line": "Conspiracy",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ancient Maze_UNR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ancient Maze",
+              "original_text": "Type: Conspiracy\nPuzzlebox *(Begin the game with this and another card you own from outside the game in the command zone, locked. That card is face down until you unlock this.)*\n{6}: Unlock Ancient Maze. If the revealed card is green, put it into your hand. Otherwise, put it on top of your library."
+            }
+          ]
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Puzzlebox",
+          "reminder": "Before the game begins, while this card is in the command zone, Put another card you own from outside the game into the command zone. Turn it face down. Give it the locked status in the command zone. Give this card the locked status in the command zone. Remember the moved card as the chosen card."
+        },
+        {
+          "keyword": "Unlock",
+          "template": "{Object}",
+          "reminder": "If {Object} has the locked status, remove the locked status from {Object} in the command zone, then give {Object} the unlocked status in the command zone, then remove the locked status from the card chosen for this source in the command zone, then turn the card chosen for this source face up.",
+          "resultReference": "the revealed card"
+        }
+      ]
+    }
+  ]
+}

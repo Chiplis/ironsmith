@@ -816,6 +816,7 @@ impl EffectExecutor for ManifestObjectsEffect {
                         let Some(object) = game.object(object_id) else {
                             continue;
                         };
+                        let preparation_owner = object.owner;
                         let memory = Clone::clone(&ObjectSnapshot::from_object(object, game));
                         let Some(preparation) = prepare_manifest_card(game, object_id, self.cloak)
                         else {
@@ -825,7 +826,10 @@ impl EffectExecutor for ManifestObjectsEffect {
                             game,
                             ctx,
                             object_id,
-                            BattlefieldEntryOptions::specific(controller, self.tapped),
+                            BattlefieldEntryOptions::specific(
+                                if self.under_owner_control { preparation_owner } else { controller },
+                                self.tapped,
+                            ),
                         )?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -840,7 +844,8 @@ impl EffectExecutor for ManifestObjectsEffect {
                         match &receipt.outcome {
                             BattlefieldEntryOutcome::Moved(new_id) => {
                                 if self.descriptive {
-                                    game.set_described_face_down(*new_id);
+                                    if !self.no_turn_up_permission { game.set_described_face_down(*new_id); }
+                                    if let Some(permission) = &self.exile_cast_permission { let player = game.controller_of_id(*new_id).unwrap(); crate::special_actions::register_face_down_exile_cast_action(game, *new_id, player, permission); }
                                 } else if self.cloak {
                                     game.set_cloaked(*new_id);
                                 } else {
@@ -924,7 +929,10 @@ impl EffectExecutor for ManifestObjectsEffect {
                     .map(|(preparation, _)| {
                         (
                             preparation.object_id,
-                            BattlefieldEntryOptions::specific(controller, self.tapped),
+                            BattlefieldEntryOptions::specific(
+                                if self.under_owner_control { game.object(preparation.object_id).map(|o| o.owner).unwrap_or(controller) } else { controller },
+                                self.tapped,
+                            ),
                         )
                     })
                     .collect();
@@ -942,7 +950,8 @@ impl EffectExecutor for ManifestObjectsEffect {
                                 BattlefieldEntryOutcome::Moved(id) => {
                                     entered_count += 1;
                                     if self.descriptive {
-                                        game.set_described_face_down(*id);
+                                        if !self.no_turn_up_permission { game.set_described_face_down(*id); }
+                                        if let Some(permission) = &self.exile_cast_permission { let player = game.controller_of_id(*id).unwrap(); crate::special_actions::register_face_down_exile_cast_action(game, *id, player, permission); }
                                     } else if self.cloak {
                                         game.set_cloaked(*id);
                                     } else {

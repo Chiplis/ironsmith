@@ -111,8 +111,8 @@ pub use combat::{
 };
 pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent, CoinFlippedEvent,
-    ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
-    KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
+    CharacteristicGainedEvent, ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
+    NamedActionEvent, KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
     CardMilledEvent, MutatedEvent, ObjectBecameAttachedEvent, ObjectBecameUnattachedEvent, PermanentPhasedInEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
     PermanentUntappedEvent, PlayerLosesGameEvent, PlayerVote, PlayersFinishedVotingEvent,
     SearchLibraryEvent, ShuffleLibraryEvent, SpellCounteredEvent, StateTriggerEvent,
@@ -128,7 +128,7 @@ pub use phase::{
 pub use raw_event::RawEvent;
 pub use spells::{
     AbilityActivatedEvent, AbilityTriggerZoneChangeCause, AbilityTriggeredEvent,
-    BecomesTargetedEvent, SpellCastEvent, SpellCopiedEvent,
+    BecomesTargetedEvent, SpellCastEvent, SpellCopiedEvent, SpellResolvedEvent,
 };
 
 // Re-export matchers
@@ -336,8 +336,10 @@ impl Event {
                 object,
             completed_snapshot: None,
                 emerge_sacrifice: None,
-                from,
+                from: Some(from),
+                creation: None,
                 enters_tapped,
+                enters_face_down:false,
                 enters_with_counters,
                 linked_exile_with_entering: Vec::new(),
                 enters_as_copy_of: None,
@@ -568,3 +570,6 @@ mod tests {
 }
 
 pub use other::MonarchChangedEvent;
+
+pub use other::{CopyCardSourceEvent,CopySourceOperation,WouldSelectCopySourceMatcher};
+pub use other::{CreateCardsEvent, WouldCreateCardsMatcher};

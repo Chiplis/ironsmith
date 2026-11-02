@@ -9,7 +9,7 @@ pub type ChooseModeEffect = ironsmith_core::ChooseModeEffect<crate::effect::Effe
 
 impl EffectExecutor for ChooseModeEffect {
     fn supports_prepared_action_program(&self) -> bool {
-        self.common_prefix_effects
+        !self.has_resolution_mana_costs() && self.common_prefix_effects
             .iter()
             .chain(self.modes.iter().flat_map(|mode| mode.effects.iter()))
             .all(super::action_program::action_program_child_is_prepared)
@@ -20,6 +20,7 @@ impl EffectExecutor for ChooseModeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if self.has_resolution_mana_costs() { return Ok(None); }
         Ok(
             super::choose_mode_runtime::select_mode_program(self, game, ctx, crate::effects::EffectExecutionPurpose::Action)?.map(|program| {
                 super::choose_mode_runtime::selected_mode_cursor(self, program, ctx)
@@ -28,7 +29,7 @@ impl EffectExecutor for ChooseModeEffect {
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        true
+        !self.has_resolution_mana_costs()
     }
 
     fn prepare_simultaneous_player_action(

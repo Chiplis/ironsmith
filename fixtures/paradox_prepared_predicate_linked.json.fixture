@@ -1,0 +1,187 @@
+{
+  "name": "Paradox Shaper // Omit Variables",
+  "source_card_key": "oracle:511951ed-fbff-4e44-9429-27f237496672",
+  "oracle_id": "511951ed-fbff-4e44-9429-27f237496672",
+  "source_layout": "prepare",
+  "source_faces": [
+    {
+      "face": "front",
+      "name": "Paradox Shaper",
+      "original_text": "Mana cost: {1}{U/B}\nType: Creature \u2014 Octopus Wizard\nPower/Toughness: 1/3\nAt the beginning of your upkeep, if this creature isn't prepared, it becomes prepared.\n{2}: Put target card from your graveyard on the bottom of your library."
+    },
+    {
+      "face": "back",
+      "name": "Omit Variables",
+      "original_text": "Mana cost: {U/B}\nType: Sorcery\nMill three cards. (Put the top three cards of your library into your graveyard.)"
+    }
+  ],
+  "executable_faces": [
+    {
+      "name": "Paradox Shaper",
+      "executable_text": "Mana cost: {1}{U/B}\nType: Creature \u2014 Octopus Wizard\nPower/Toughness: 1/3\nAt the beginning of your upkeep, if this creature isn't prepared, it becomes prepared.\n{2}: Put target card from your graveyard on the bottom of your library."
+    },
+    {
+      "name": "Omit Variables",
+      "executable_text": "Mana cost: {U/B}\nType: Sorcery\nMill three cards. (Put the top three cards of your library into your graveyard.)"
+    }
+  ],
+  "source_raw_record": {
+    "object": "card",
+    "id": "e61b9d48-0ace-4453-afe0-a1024444bac0",
+    "oracle_id": "511951ed-fbff-4e44-9429-27f237496672",
+    "multiverse_ids": [],
+    "resource_id": "318E9D743F7836D8F5CFA927EC7F7312DF88013E72A61B2655702AE397389665",
+    "mtgo_id": 155992,
+    "tcgplayer_id": 706987,
+    "cardmarket_id": 905789,
+    "name": "Paradox Shaper // Omit Variables",
+    "lang": "en",
+    "released_at": "2026-10-02",
+    "uri": "https://api.scryfall.com/cards/e61b9d48-0ace-4453-afe0-a1024444bac0",
+    "scryfall_uri": "https://scryfall.com/card/fra/143/paradox-shaper-omit-variables?utm_source=api",
+    "layout": "prepare",
+    "highres_image": true,
+    "image_status": "highres_scan",
+    "image_updated_at": "2026-09-02T06:09:50Z",
+    "image_uris": {
+      "small": "https://cards.scryfall.io/small/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.jpg?1788329390",
+      "normal": "https://cards.scryfall.io/normal/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.jpg?1788329390",
+      "large": "https://cards.scryfall.io/large/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.jpg?1788329390",
+      "png": "https://cards.scryfall.io/png/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.png?1788329390",
+      "art_crop": "https://cards.scryfall.io/art_crop/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.jpg?1788329390",
+      "border_crop": "https://cards.scryfall.io/border_crop/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.jpg?1788329390",
+      "thumb": "https://cards.scryfall.io/thumb/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.webp?1788329390",
+      "grid": "https://cards.scryfall.io/grid/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.webp?1788329390",
+      "display": "https://cards.scryfall.io/display/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.webp?1788329390",
+      "art": "https://cards.scryfall.io/art/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.webp?1788329390",
+      "crop": "https://cards.scryfall.io/crop/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.webp?1788329390",
+      "jpeg": "https://cards.scryfall.io/normal/front/e/6/e61b9d48-0ace-4453-afe0-a1024444bac0.jpg?1788329390"
+    },
+    "mana_cost": "{1}{U/B} // {U/B}",
+    "cmc": 2.0,
+    "type_line": "Creature \u2014 Octopus Wizard // Sorcery",
+    "power": "1",
+    "toughness": "3",
+    "colors": [
+      "B",
+      "U"
+    ],
+    "color_identity": [
+      "B",
+      "U"
+    ],
+    "keywords": [
+      "Prepared",
+      "Mill"
+    ],
+    "card_faces": [
+      {
+        "object": "card_face",
+        "name": "Paradox Shaper",
+        "mana_cost": "{1}{U/B}",
+        "type_line": "Creature \u2014 Octopus Wizard",
+        "oracle_text": "At the beginning of your upkeep, if this creature isn't prepared, it becomes prepared.\n{2}: Put target card from your graveyard on the bottom of your library.",
+        "power": "1",
+        "toughness": "3",
+        "artist": "Mark Zug",
+        "artist_id": "48e2b98c-5467-4671-bd42-4c3746115117",
+        "illustration_id": "89526997-dbc5-487a-a665-6538c985c3b3"
+      },
+      {
+        "object": "card_face",
+        "name": "Omit Variables",
+        "mana_cost": "{U/B}",
+        "type_line": "Sorcery",
+        "oracle_text": "Mill three cards. (Put the top three cards of your library into your graveyard.)",
+        "artist": "Mark Zug",
+        "artist_id": "48e2b98c-5467-4671-bd42-4c3746115117"
+      }
+    ],
+    "legalities": {
+      "standard": "legal",
+      "future": "legal",
+      "historic": "legal",
+      "timeless": "legal",
+      "gladiator": "legal",
+      "pioneer": "legal",
+      "modern": "legal",
+      "legacy": "legal",
+      "pauper": "not_legal",
+      "vintage": "legal",
+      "penny": "legal",
+      "commander": "legal",
+      "oathbreaker": "legal",
+      "standardbrawl": "legal",
+      "brawl": "legal",
+      "competitivebrawl": "legal",
+      "alchemy": "legal",
+      "paupercommander": "not_legal",
+      "duel": "legal",
+      "oldschool": "not_legal",
+      "premodern": "not_legal",
+      "predh": "not_legal",
+      "tlr": "legal"
+    },
+    "games": [
+      "paper",
+      "mtgo",
+      "arena"
+    ],
+    "reserved": false,
+    "game_changer": false,
+    "foil": true,
+    "nonfoil": true,
+    "finishes": [
+      "nonfoil",
+      "foil"
+    ],
+    "oversized": false,
+    "promo": false,
+    "reprint": false,
+    "variation": false,
+    "set_id": "6595985e-39cf-4ca3-b43d-dd3e64749fdc",
+    "set": "fra",
+    "set_name": "Reality Fracture",
+    "set_type": "expansion",
+    "set_uri": "https://api.scryfall.com/sets/6595985e-39cf-4ca3-b43d-dd3e64749fdc",
+    "set_search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Afra&unique=prints",
+    "scryfall_set_uri": "https://scryfall.com/sets/fra?utm_source=api",
+    "rulings_uri": "https://api.scryfall.com/cards/e61b9d48-0ace-4453-afe0-a1024444bac0/rulings",
+    "prints_search_uri": "https://api.scryfall.com/cards/search?order=released&q=oracleid%3A511951ed-fbff-4e44-9429-27f237496672&unique=prints",
+    "collector_number": "143",
+    "digital": false,
+    "rarity": "uncommon",
+    "card_back_id": "0aeebaf5-8c7d-4636-9e82-8c27447861f7",
+    "artist": "Mark Zug",
+    "artist_ids": [
+      "48e2b98c-5467-4671-bd42-4c3746115117"
+    ],
+    "illustration_id": "89526997-dbc5-487a-a665-6538c985c3b3",
+    "border_color": "black",
+    "frame": "2015",
+    "full_art": false,
+    "textless": false,
+    "booster": false,
+    "story_spotlight": false,
+    "edhrec_rank": 21256,
+    "prices": {
+      "usd": "0.20",
+      "usd_foil": "0.20",
+      "usd_etched": null,
+      "eur": "0.08",
+      "eur_foil": "0.16",
+      "tix": "0.01"
+    },
+    "related_uris": {
+      "tcgplayer_infinite_articles": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Farticles&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Farticles%3FproductLineName%3Dmagic%26q%3DParadox%2BShaper%2B%252F%252F%2BOmit%2BVariables",
+      "tcgplayer_infinite_decks": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&trafcat=tcgplayer.com%2Fsearch%2Fdecks&u=https%3A%2F%2Fwww.tcgplayer.com%2Fsearch%2Fdecks%3FproductLineName%3Dmagic%26q%3DParadox%2BShaper%2B%252F%252F%2BOmit%2BVariables",
+      "edhrec": "https://edhrec.com/route/?cc=Paradox+Shaper"
+    },
+    "purchase_uris": {
+      "tcgplayer": "https://partner.tcgplayer.com/c/4931599/1830156/21018?subId1=api&u=https%3A%2F%2Fwww.tcgplayer.com%2Fproduct%2F706987%3Fpage%3D1",
+      "cardmarket": "https://www.cardmarket.com/en/Magic/Products?idProduct=905789&referrer=scryfall&utm_campaign=card_prices&utm_medium=text&utm_source=scryfall",
+      "cardhoarder": "https://www.cardhoarder.com/cards/155992?affiliate_id=scryfall&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
+    },
+    "first_printed_set_name": "Reality Fracture"
+  }
+}

@@ -105,6 +105,14 @@ fn parse_possessive_stat_rhs(words: &[&str], is_power: bool) -> Option<Value> {
 }
 
 fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
+    for (prefix, power) in [(&["the", "power", "of"][..], true), (&["the", "toughness", "of"][..], false)] {
+        if let Some(reference) = words.strip_prefix(prefix)
+            && crate::util::is_entry_exiled_reference_words(reference) {
+            let filter = crate::util::entry_exiled_reference_filter();
+            return Some(if power { Value::TotalPower(filter) } else { Value::TotalToughness(filter) });
+        }
+    }
+
     if common::phrase_exact(
         words,
         &["the", "total", "power", "of", "those", "creatures"],
@@ -278,8 +286,33 @@ pub fn parse_named_source_counter_dynamic_power_toughness_tokens(
 pub fn parse_token_dynamic_power_toughness_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(Value, Value)> {
+    if let Some(values)=parse_entry_reference_stats_tokens(tokens){return Some(values);}
     let raw_words = parser_token_word_refs(tokens);
     let words = normalized_reminder_words(&raw_words);
     parse_dynamic_power_toughness(&words)
         .or_else(|| parse_named_source_counter_dynamic_power_toughness(tokens, &words))
+}
+
+fn parse_entry_reference_stats_tokens(tokens:&[OwnedLexToken])->Option<(Value,Value)> {
+    let power=["with","power","equal","to","the","power","of"];
+    let toughness=["and","toughness","equal","to","the","toughness","of"];
+    let mut outer_quoted=false;
+    for start in 0..tokens.len() {
+        if tokens[start].is_quote(){outer_quoted=!outer_quoted;continue;}
+        if outer_quoted {continue;}
+        if !tokens.get(start..start+power.len()).is_some_and(|part|
+            part.iter().zip(power).all(|(token,word)|token.is_word(word))) {continue;}
+        let begin=start+power.len();let mut quoted=false;
+        for middle in begin..tokens.len() {
+            if tokens[middle].is_quote(){quoted=!quoted;continue;}
+            if quoted || !tokens.get(middle..middle+toughness.len()).is_some_and(|part|
+                part.iter().zip(toughness).all(|(token,word)|token.is_word(word))) {continue;}
+            let left=crate::util::entry_exiled_reference_tag_for_tokens(&tokens[begin..middle])?;
+            let right=crate::util::entry_exiled_reference_tag_for_tokens(&tokens[middle+toughness.len()..])?;
+            crate::word_claims::claim_tokens(&tokens[start..]);
+            return Some((Value::TotalPower(crate::util::entry_exiled_filter_for_tag(left)),
+                Value::TotalToughness(crate::util::entry_exiled_filter_for_tag(right))));
+        }
+    }
+    None
 }

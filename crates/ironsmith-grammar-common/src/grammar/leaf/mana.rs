@@ -225,6 +225,12 @@ pub fn parse_leaf_pawprint_label_count_complete(raw: &str) -> Result<u32, CardTe
 }
 
 pub fn parse_leaf_pawprint_label_count_token(token: &OwnedLexToken) -> Option<u32> {
+    // A modal budget label is independent of the glyph used to print a point.
+    // Keep its source spelling, while reusing the weighted mode representation.
+    let raw = token.parser_text();
+    if !raw.is_empty() && raw.chars().all(|glyph| matches!(glyph, '★' | '⭐')) {
+        return u32::try_from(raw.chars().count()).ok();
+    }
     match token.kind {
         TokenKind::ManaGroup => super::super::primitives::probe_shape(
             parse_leaf_pawprint_label_count_complete(token.parser_text()),
@@ -475,5 +481,10 @@ mod tests {
         let plain = lex_line("p", 0).unwrap();
         assert_eq!(parse_leaf_pawprint_label_count_token(&plain[0]), Some(1));
         assert!(parse_leaf_pawprint_label_count_complete("{p}{w}").is_err());
+        for (raw, count) in [("★", 1), ("⭐⭐", 2), ("★★★★★", 5)] {
+            let tokens = lex_line(raw, 0).unwrap();
+            assert_eq!(tokens.len(), 1);
+            assert_eq!(parse_leaf_pawprint_label_count_token(&tokens[0]), Some(count));
+        }
     }
 }

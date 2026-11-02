@@ -193,7 +193,17 @@ fn parse_color_only_hexproof_filter_word_slice(
 pub fn parse_protection_chain_tokens(tokens: &[OwnedLexToken]) -> Option<ProtectionChain<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    let from_words = parse_protection_from_words(&words)?;
+    let mut from_words = parse_protection_from_words(&words)?;
+    // A quality's object population can itself contain `from`, for example
+    // cards from a source-owned collection. Only a list separator starts a
+    // second protection quality; the complete filter reader owns nested words.
+    let first_from = *from_words.first()?;
+    from_words.retain(|word| {
+        *word == first_from || view.token_start_indices().get(*word)
+            .and_then(|token| token.checked_sub(1))
+            .and_then(|token| tokens.get(token))
+            .is_some_and(|token| token.is_any_word(&["and", "or"]) || token.is_comma())
+    });
     let mut targets = Vec::with_capacity(from_words.len());
     for (index, from_word) in from_words.iter().copied().enumerate() {
         let target_word = from_word + 1;

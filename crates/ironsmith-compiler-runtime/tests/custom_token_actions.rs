@@ -31,6 +31,174 @@ fn definitions(name: &str, text: &str) -> [CardDefinition; 2] {
     assert_eq!(decoded, artifact);
     [direct, ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap()]
 }
+
+#[test]
+fn variable_recruit_repeats_complete_process_and_keeps_life_loss_outside() {
+    let text = "Mana cost: {X}{B}{B}\nType: Instant\nRepeat the following process X times: Create a 0/0 white Soldier Army creature token; then put a +1/+1 counter on each Army you control. You lose X life.";
+    for definition in definitions("Variable army", text) {
+        for x in [0, 1, 3] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let army = ironsmith_compiler_runtime::compile_to_runtime_definition("Existing army", "Type: Creature — Army\nPower/Toughness: 2/2", false).unwrap();
+            let allied = game.create_object_from_definition(&army, A, Zone::Battlefield);
+            let enemy = game.create_object_from_definition(&army, B, Zone::Battlefield);
+            let source = game.create_object_from_definition(&definition, A, Zone::Stack);
+            let mut context = EffectContext::new_default(source, A).with_x(x);
+            for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
+                execute_effect(&mut game, effect, &mut context).unwrap();
+            }
+            assert_eq!(game.player(A).unwrap().life, 20 - x as i32);
+            assert_eq!(game.counter_count(allied, CounterType::PlusOnePlusOne), x);
+            assert_eq!(game.counter_count(enemy, CounterType::PlusOnePlusOne), 0);
+            let mut counters: Vec<_> = game.battlefield.iter().copied()
+                .filter(|id| *id != allied && *id != enemy)
+                .map(|id| game.counter_count(id, CounterType::PlusOnePlusOne)).collect();
+            counters.sort();
+            assert_eq!(counters, (1..=x).collect::<Vec<_>>());
+        }
+    }
+}
+
+#[test]
+fn reappropriate_cost_selects_exactly_two_owned_matching_cards_across_zones() {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    let text = "Type: Artifact\nExile exactly two blue cards from your hand and/or graveyard: You gain 1 life.";
+    for definition in definitions("Reusable mixed-zone price", text) {
+        for distribution in [0, 1, 2] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            game.turn.priority_player = Some(A);
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            let blue = ironsmith_compiler_runtime::compile_to_runtime_definition("Blue material", "Mana cost: {U}\nType: Sorcery", false).unwrap();
+            let red = ironsmith_compiler_runtime::compile_to_runtime_definition("Red material", "Mana cost: {R}\nType: Sorcery", false).unwrap();
+            let wrong_color = game.create_object_from_definition(&red, A, Zone::Graveyard);
+            let enemy = game.create_object_from_definition(&blue, B, Zone::Graveyard);
+            let offered = |game: &GameState| compute_legal_actions(game, A).unwrap().iter().any(|a| matches!(a, LegalAction::ActivateAbility { source: id, .. } if *id == source));
+            assert!(!offered(&game), "other owner's cards and wrong colors cannot pay");
+            let mut materials = Vec::new();
+            for index in 0..2 {
+                let zone = if index < distribution { Zone::Hand } else { Zone::Graveyard };
+                let id = game.create_object_from_definition(&blue, A, zone);
+                materials.push(game.object(id).unwrap().stable_id);
+                assert_eq!(offered(&game), index == 1, "one card cannot pay an exact two-card price");
+            }
+            activate(&mut game, source);
+            for stable in materials {
+                assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Exile);
+            }
+            assert_eq!(game.object(wrong_color).unwrap().zone, Zone::Graveyard);
+            assert_eq!(game.object(enemy).unwrap().zone, Zone::Graveyard);
+            assert_eq!(game.player(A).unwrap().life, 20, "price is paid before the effect resolves");
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut Accept(true)).unwrap();
+            assert_eq!(game.player(A).unwrap().life, 21);
+        }
+    }
+}
+
+#[test]
+fn multi_target_arm_creates_one_equipment_per_announced_legal_creature() {
+    let text = "Type: Sorcery\nFor each of up to two target creatures you control, create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to that creature.";
+    for definition in definitions("Distributed equipment", text) {
+        for count in [0, 1, 2] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let targets: Vec<_> = (0..count).map(|_| game.create_object_from_definition(&body(), A, Zone::Battlefield)).collect();
+            let unrelated = game.create_object_from_definition(&body(), A, Zone::Battlefield);
+            let source = game.create_object_from_definition(&definition, A, Zone::Stack);
+            let effects = definition.spell_effect.as_ref().unwrap().all_effects_owned();
+            apply(&mut game, source, &effects, true, targets.iter().copied().map(ResolvedTarget::Object).collect());
+            let equipment: Vec<_> = game.battlefield.iter().filter_map(|id| game.object(*id))
+                .filter(|object| object.subtypes.contains(&Subtype::Equipment)).collect();
+            assert_eq!(equipment.len(), count);
+            for target in targets {
+                assert_eq!(equipment.iter().filter(|object| object.attached_to == Some(AttachmentTarget::Object(target))).count(), 1);
+            }
+            assert!(!equipment.iter().any(|object| object.attached_to == Some(AttachmentTarget::Object(unrelated))));
+        }
+    }
+}
+
+#[test]
+fn optional_exact_cross_zone_operation_cannot_partially_exile_one_card() {
+    let text = "Type: Artifact\n{0}: You may exile exactly two cards from your hand and/or graveyard. If you do, you gain 3 life. Otherwise, you gain 1 life.";
+    for definition in definitions("Optional exact selection", text) {
+        for count in [0, 1, 2] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            let mut materials = Vec::new();
+            for index in 0..count {
+                let zone = if index == 0 { Zone::Hand } else { Zone::Graveyard };
+                let id = game.create_object_from_definition(&body(), A, zone);
+                materials.push((game.object(id).unwrap().stable_id, zone));
+            }
+            apply(&mut game, source, &activated(&definition), true, vec![]);
+            assert_eq!(game.player(A).unwrap().life, if count == 2 { 23 } else { 21 });
+            for (stable, original) in materials {
+                let zone = game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone;
+                assert_eq!(zone, if count == 2 { Zone::Exile } else { original });
+            }
+        }
+    }
+}
+
+#[test]
+fn required_exact_exile_is_indivisible_but_ordinary_count_exiles_what_is_available() {
+    for exact in [false, true] {
+        let text = format!("Type: Sorcery\nExile {}two cards from your hand and/or graveyard.", if exact { "exactly " } else { "" });
+        for definition in definitions("Exact operation", &text) {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let material = game.create_object_from_definition(&body(), A, Zone::Hand);
+            let stable = game.object(material).unwrap().stable_id;
+            let source = game.create_object_from_definition(&definition, A, Zone::Stack);
+            apply(&mut game, source, &definition.spell_effect.as_ref().unwrap().all_effects_owned(), true, vec![]);
+            assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, if exact { Zone::Hand } else { Zone::Exile });
+        }
+    }
+}
+
+#[test]
+fn scaled_exile_additional_cost_announces_x_and_pays_two_cards_per_unit() {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm, apply_decision_context_with_dm};
+    struct XChoice(u32);
+    impl DecisionMaker for XChoice {
+        fn decide_number(&mut self, _: &GameState, context: &ironsmith::decisions::context::NumberContext) -> u32 {
+            assert!(context.is_x_value);
+            assert_eq!(context.max, 2, "four eligible cards support at most two repetitions");
+            self.0
+        }
+        fn decide_objects(&mut self, _: &GameState, context: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            assert_eq!(context.min, (2 * self.0) as usize);
+            context.candidates.iter().filter(|object| object.legal).take(context.min).map(|object| object.id).collect()
+        }
+    }
+    let text = "Mana cost: {0}\nType: Sorcery\nAs an additional cost to cast this spell, exile exactly two times X cards from your hand and/or graveyard.\nYou gain X life.";
+    for definition in definitions("Repeated exile price", text) {
+        for x in [0, 1, 2] {
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            game.turn.active_player = A;
+            game.turn.priority_player = Some(A);
+            game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            game.turn.step = None;
+            let materials: Vec<_> = (0..4).map(|index| {
+                let id = game.create_object_from_definition(&body(), A, if index < 2 { Zone::Hand } else { Zone::Graveyard });
+                game.object(id).unwrap().stable_id
+            }).collect();
+            let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
+            let action = compute_legal_actions(&game, A).unwrap().into_iter().find(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)).expect("legal repeated price");
+            let mut dm = XChoice(x);
+            let mut state = PriorityLoopState::new(2);
+            let mut queue = ironsmith::triggers::TriggerQueue::new();
+            let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+            for _ in 0..64 {
+                if !state.has_pending_action() { break; }
+                let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else { panic!("{progress:?}"); };
+                progress = apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &context, &mut dm).unwrap();
+            }
+            assert!(!state.has_pending_action());
+            assert_eq!(materials.iter().filter(|stable| game.object(game.find_object_by_stable_id(**stable).unwrap()).unwrap().zone == Zone::Exile).count(), (2 * x) as usize);
+            ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+            assert_eq!(game.player(A).unwrap().life, 20 + x as i32);
+        }
+    }
+}
 fn body() -> CardDefinition {
     ironsmith_compiler_runtime::compile_to_runtime_definition("Body", "Type: Creature\nPower/Toughness: 2/2", false).unwrap()
 }

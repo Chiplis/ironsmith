@@ -42,6 +42,7 @@ pub enum ReturnTimingShape {
     /// (Noctis, Heir Apparent): the next declare attackers step of that
     /// player's turns, this turn's when it is still ahead.
     UpcomingDeclareAttackersStep(PlayerFilter),
+    NextMainPhase(PlayerFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,8 +309,9 @@ fn parse_return_timing_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ReturnTim
     ))).parse_next(input)?.unwrap_or((PlayerFilter::Any, PlayerAst::Any));
     primitives::kw("next").parse_next(input)?;
     let timing = alt((
-        primitives::phrase(&["end", "step"]).value(ReturnTimingShape::NextEndStep(participant.0)),
+        primitives::phrase(&["end", "step"]).value(ReturnTimingShape::NextEndStep(participant.0.clone())),
         primitives::kw("upkeep").value(ReturnTimingShape::NextUpkeep(participant.1)),
+        primitives::phrase(&["main", "phase"]).value(ReturnTimingShape::NextMainPhase(participant.0)),
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -684,3 +686,33 @@ pub use zone_programs::parse_return_clause_shape;
 #[path = "return_shapes/reference.rs"]
 mod reference_programs;
 use reference_programs::classify_target;
+
+#[cfg(test)]
+mod delayed_main_phase_return_regressions {
+    #[test]
+    fn transformed_return_keeps_next_main_phase_as_a_typed_schedule() {
+        let tokens=crate::lexer::lex_line("this creature to the battlefield transformed at the beginning of your next main phase",0).unwrap();
+        let shape=super::parse_return_clause_shape(&tokens).expect("complete scheduled transformed return");
+        assert!(!shape.destination.has_unparsed_timing_words);
+        assert!(matches!(shape.destination.timing,Some(super::ReturnTimingShape::NextMainPhase(crate::target::PlayerFilter::You))));
+        let mut statement=vec![crate::lexer::OwnedLexToken::synthetic_word("return")];statement.extend(tokens);
+        let program=crate::clause_support::parse_effect_sentences_lexed(&statement).unwrap();
+        let [crate::cards::builders::EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedUntilNextMainPhase{player,effects})]=program.as_slice() else{panic!("typed delayed main phase wrapper");};
+        assert_eq!(*player,crate::target::PlayerFilter::You);
+        assert_eq!(effects.len(),1);
+        assert!(format!("{effects:?}").contains("transformed: true"),"{effects:?}");
+    }
+}
+
+#[cfg(test)]
+mod validated_main_phase_player_filters {
+ use super::*;
+ #[test]fn return_schedule_keeps_each_complete_validated_participant(){
+  for (words,expected) in [
+   (vec!["your","next","main","phase"],PlayerFilter::You),
+   (vec!["that","player's","next","main","phase"],PlayerFilter::IteratedPlayer),
+   (vec!["next","main","phase"],PlayerFilter::Any),
+  ] {let complete=[vec!["at","the","beginning","of"],words].concat();assert_eq!(parse_return_timing_words_shape(&complete),Some(ReturnTimingShape::NextMainPhase(expected)));}
+  assert!(parse_return_timing_words_shape(&["at","the","beginning","of","target","player's","next","main","phase"]).is_none(),"unsupported participant cannot broaden to any player");
+ }
+}

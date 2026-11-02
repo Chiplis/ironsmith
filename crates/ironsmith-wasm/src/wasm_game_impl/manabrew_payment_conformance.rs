@@ -975,6 +975,7 @@ fn payment_contract_matrix() {
                     vec![ManaSymbol::Blue],
                 ),
             ),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     let mut r = request(&mut g, ManaCost::new().add_generic(2));

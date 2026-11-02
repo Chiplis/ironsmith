@@ -76,6 +76,8 @@ fn queued_upkeep_trigger(
 
 fn delayed_upkeep_trigger(source: ObjectId, controller: PlayerId) -> DelayedTrigger {
     DelayedTrigger {
+        persistent_player_rule: None,
+        intervening_if: None,
         linked_exile_owner: None,
         source_number_owner: None,
         trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
@@ -89,6 +91,7 @@ fn delayed_upkeep_trigger(source: ObjectId, controller: PlayerId) -> DelayedTrig
         expires_at_end_of_combat: false,
         bound_extra_turn_index: None,
         while_any_tagged_object_in_zone: None,
+                            source_collection_scope: None,
         while_source_tapped: None,
         target_objects: Vec::new(),
         ability_source: Some(source),

@@ -1599,6 +1599,20 @@ fn boundary_continues_shuffle_zone_list(
     if !matches!(operator, CoordinationOperatorAst::And) {
         return false;
     }
+    // A qualified card subset shares the same shuffle destination just as
+    // a whole zone does: "their hand and each noncreature card from their
+    // graveyard into their library". Prove the complete filter operand;
+    // an independently executable right clause must keep its boundary.
+    let before_words = crate::lexer::parser_token_word_refs(before);
+    if before_words.iter().any(|word| matches!(*word, "shuffle" | "shuffles"))
+        && before_words.last().is_some_and(|word| matches!(*word, "hand" | "graveyard"))
+        && after.first().is_some_and(|token| token.is_any_word(&["each", "all"]))
+        && let Some(into) = after.iter().position(|token| token.is_word("into"))
+        && into > 0
+        && crate::object_filters::parse_object_filter(&after[..into], false).is_ok()
+    {
+        return true;
+    }
     let after_words = crate::lexer::parser_token_word_refs(after);
     if !matches!(
         after_words.first(),

@@ -208,7 +208,7 @@ impl ChooseSpec {
                 && query.action == Some(crate::PriorEffectAction::Removed) && query.filter.is_none() && query.player.is_none(),
             _ => false,
         };
-        quantity && filter.any_of.is_empty() && filter.toughness.is_none() && filter.mana_value.is_none()
+        quantity && filter.named_tap_payment.is_none() && filter.any_of.is_empty() && filter.toughness.is_none() && filter.mana_value.is_none()
             && filter.color_count.is_none() && filter.card_type_count.is_none() && filter.tagged_constraints.is_empty()
             && filter.target_set_aggregate_constraint.is_none() && filter.attached_to_object.is_none() && filter.blocked_or_was_blocked_by_this_turn.is_none()
     }

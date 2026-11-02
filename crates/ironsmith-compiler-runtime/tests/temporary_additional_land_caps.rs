@@ -64,7 +64,8 @@ fn exact_full_bodies_survive_direct_and_artifact_routes_without_resolution_may()
             assert!(!all.iter().any(|effect| effect.downcast_ref::<MayEffect>().is_some()));
             let grants: Vec<_> = all.iter().filter_map(|effect| effect.downcast_ref::<AdditionalLandPlaysEffect>()).collect();
             assert_eq!(grants.len(), 1);
-            assert_eq!(grants[0].count, Value::Fixed(count));
+            assert_eq!(grants[0].count.unhinted(), &Value::Fixed(count));
+            assert!(grants[0].count.surface_hints().iter().all(|hint|*hint==ironsmith_core::ValueSurfaceHint::UpTo),"any preserved up-to hint must leave the semantic land-play cap unchanged");
             assert_eq!(grants[0].player, PlayerFilter::You);
             assert_eq!(grants[0].duration, Until::EndOfTurn);
             if count == 3 {

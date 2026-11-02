@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'keyword_static::conditional_copy_characteristics::tests::complete_exception_keeps_the_entering_token_condition_and_both_changes' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/conditional_copy_characteristics.rs:53:9:
+unread sibling cannot disappear into the exception
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::conditional_copy_characteristics::tests::complete_exception_keeps_the_entering_token_condition_and_both_changes ... FAILED
+
+failures:
+
+failures:
+    keyword_static::conditional_copy_characteristics::tests::complete_exception_keeps_the_entering_token_condition_and_both_changes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.03s
+

@@ -112,6 +112,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
         }
         return encoded("MayEffect", ironsmith_core::MayEffect {
             effects: children(&model.effects)?, decider: model.decider.clone(), pay_as_cost: model.pay_as_cost,
+            payment_receipt:model.payment_receipt.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<UnlessPaysEffect>() {
@@ -200,6 +201,16 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             effects: children(&model.effects)?, condition: model.condition, predicate: model.predicate.clone(),
             choice_history: model.choice_history.clone(),
             max_iterations: model.max_iterations,
+        });
+    }
+    if let Some(model) = effect.downcast_ref::<crate::effects::FirstResolutionEachTurnEffect>() {
+        return encoded("FirstResolutionEachTurnEffect", ironsmith_core::FirstResolutionEachTurnEffect {
+            label: model.label.clone(), effects: children(&model.effects)?,
+        });
+    }
+    if let Some(model) = effect.downcast_ref::<crate::effects::NamedActionProgramEffect>() {
+        return encoded("NamedActionProgramEffect", ironsmith_core::NamedActionProgramEffect {
+            label: model.label.clone(), player: model.player.clone(), completion: model.completion, objects: model.objects.clone(), effects: children(&model.effects)?,
         });
     }
     if let Some(model) = effect.downcast_ref::<RepeatEffectsEffect>() {
@@ -292,7 +303,7 @@ mod tests {
                 PlayerFilter::ControlsMost { filter: Box::new(black()) }, "black-player")
                 .at_random().excluding_tags(vec!["black-excluded".into()]).remember_as_chosen_player()),
             Effect::new(WithIdEffect::new(EffectId(43), child())),
-            Effect::new(TaggedEffect { tag: "black-tag".into(), effect: Box::new(child()), outcome_only: true }),
+            Effect::new(TaggedEffect { tag: "black-tag".into(), effect: Box::new(child()), outcome_only: true, action:None }),
             Effect::new(ExecuteWithSourceEffect::new(ChooseSpec::All(black()), child())),
             Effect::new(MayEffect::new_for_player(vec![child()], PlayerFilter::You).with_pay_as_cost(true)),
             Effect::new(unless),
@@ -416,6 +427,7 @@ mod tests {
         let mut token = elf_token_template();
         token.count = count.clone();
         token.link_source_exiled_this_resolution = true;
+        token.link_only_last_source_exiled = true;
         token.enters_tapped = true;
         let id = token.token.card.id;
         let source = Effect::new(token);
@@ -431,7 +443,7 @@ mod tests {
         assert_eq!(actual.token.card.id, id);
         assert_eq!(actual.token.card.name, "Zombie Token");
         assert_eq!(actual.text_roles, changed.text_roles);
-        assert!(actual.link_source_exiled_this_resolution && actual.enters_tapped);
+        assert!(actual.link_source_exiled_this_resolution && actual.link_only_last_source_exiled && actual.enters_tapped);
         assert_eq!(source.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap().token.card.name, "Elf Token");
     }
 }

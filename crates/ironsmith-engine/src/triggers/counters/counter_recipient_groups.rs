@@ -81,9 +81,9 @@ mod tests {
     #[test]
     fn typed_capture_rejects_counter_group_overflow_before_publishing_any_entry() {
         let (mut game, source, mut events) = large_producer_group();
-        let context = ExecutionContext::new_default(source, PlayerId(0));
+        let mut context = ExecutionContext::new_default(source, PlayerId(0));
         let result = crate::effects::capture_triggers_before_added_program(
-            &mut game, &context, None, events.iter_mut(),
+            &mut game, &mut context, None, events.iter_mut(),
         );
         assert_eq!(result, Err(expected_error()));
         assert!(game.take_pending_trigger_entries().is_empty());
@@ -186,6 +186,7 @@ mod tests {
         game.turn.priority_player = Some(PlayerId(0));
         let expires = game.turn.turn_number;
         game.effect_store.repeatable_mana_payment_actions.push(crate::game_state::RepeatableManaPaymentAction {
+                restrictions: Default::default(),
             player: PlayerId(0), source, controller: PlayerId(0),
             cost: crate::mana::ManaCost::from_pips(Vec::new()),
             effects: vec![crate::effect::Effect::new(ProliferateEffect::new(0))],

@@ -4676,3 +4676,11 @@ fn singular_counter_placement_receipt_keeps_the_referenced_recipient() {
             "the recipient must be an identity reference, not a broad creature filter: {filter:?}");
     }
 }
+
+#[test]
+fn custom_identity_had_reads_historical_evidence_without_performing_a_program() -> Result<(), CardTextError> {
+    let tokens=lex_line("If it had custom keyword \"growwise\"",0)?;
+    let PredicateAst::ItMatchedLastKnown(filter)=parse_predicate(&predicate_tokens_after_if(&tokens))? else {panic!("expected historical membership");};
+    assert_eq!(filter.ability_markers,vec!["growwise"]);
+    Ok(())
+}

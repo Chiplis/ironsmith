@@ -402,6 +402,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![Effect::gain_life(1)],
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                     crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
@@ -467,6 +468,7 @@ mod tests {
         let source = ObjectId::from_raw(99_004);
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![Effect::draw(1)],
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                     crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
@@ -510,9 +512,9 @@ pub fn visit_static_owned_effects(
     ability: &crate::static_abilities::StaticAbility,
     visitor: &mut dyn FnMut(&crate::effect::Effect),
 ) {
-    if let Some(model) = ability.compiled_model() {
+    if let Some(model) = ability.canonical_model() {
         let visitor = std::cell::RefCell::new(visitor);
-        let result = model.clone().try_map(
+        let result = model.try_map(
             Ok::<_, std::convert::Infallible>,
             |effect| {
                 visitor.borrow_mut()(&effect);
@@ -583,6 +585,7 @@ pub fn visit_activated_owned_effects(
 ) {
     let ability = Ability {
         kind: AbilityKind::Activated(activated.clone()),
+        designations: Default::default(),
         functional_zones: Vec::new(),
     };
     visit_owned_effects(&ability, visitor);
@@ -732,6 +735,7 @@ mod library_movement_tests {
     #[test]
     fn library_movement_in_self_replacement_counts_but_separate_trigger_does_not() {
         let program = ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![Effect::add_mana(vec![ManaSymbol::Green])],
             self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                 crate::effect::Condition::YouControl(crate::ObjectFilter::creature()),

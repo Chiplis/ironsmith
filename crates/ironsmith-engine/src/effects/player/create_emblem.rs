@@ -61,8 +61,8 @@ impl EffectExecutor for CreateEmblemEffect {
             .emblem
             .abilities
             .iter()
-            .map(|ab| ab.clone().in_zones(vec![Zone::Command]))
-            .collect();
+            .map(|ab|ctx.bind_definition_scope_ability(ab.clone().in_zones(vec![Zone::Command])))
+            .collect::<Result<_,_>>()?;
 
         // Create emblem using the proper constructor
         let owner = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
@@ -159,6 +159,7 @@ mod tests {
         // Create an emblem with a static ability
         let ability = Ability {
             kind: AbilityKind::Static(StaticAbility::hexproof()),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield], // Will be converted to Command
         };
         let emblem =

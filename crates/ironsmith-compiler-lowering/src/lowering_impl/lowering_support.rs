@@ -2838,7 +2838,13 @@ fn stage_effects_from_normalized(
         }
     }
 
-    if imports.last_player_filter.is_none() {
+    // Both complete typed-trigger programs and legacy triggered staging enter
+    // here. A discourse placeholder is not stronger evidence than the exact
+    // player role exported by this trigger; retain genuine loop imports.
+    if imports.last_player_filter.is_none()
+        || (imports.last_player_filter == Some(PlayerFilter::IteratedPlayer)
+            && inferred_last_player_filter.as_ref().is_some_and(|player| !player.mentions_iterated_player()))
+    {
         imports.last_player_filter = inferred_last_player_filter;
     }
 
@@ -3002,7 +3008,7 @@ fn source_sentence_boundary_continues_repeat_process(
                 if_true.iter().chain(if_false).any(contains_marker),
             EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })
             | EffectAst::Permissions(PermissionEffectAst::May { effects })
-            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. })
             | EffectAst::SourceSentence { effects, .. }
             | EffectAst::Sequence { effects }
             | EffectAst::CommaThen { effects }
@@ -3504,7 +3510,7 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { effects, .. }) => effects
             .last()
@@ -3634,6 +3640,24 @@ fn trigger_has_source_attack_antecedent(trigger: &TriggerSpec) -> bool {
     }
 }
 
+fn import_named_action_object_roles(imports: &mut ReferenceImports, trigger: &TriggerSpec) {
+    let trigger = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => return import_named_action_object_roles(imports, trigger),
+        trigger => trigger,
+    };
+    let (performer,participants)=match trigger {
+        TriggerSpec::NamedAction {source_filter,object_filter,..} if source_filter!=&ObjectFilter::default()=>(source_filter.clone(),object_filter.clone().unwrap_or_default()),
+        TriggerSpec::NamedActionParticipant {performer_filter,participant_filter,..}=>(performer_filter.clone().unwrap_or_default(),participant_filter.clone()),
+        _=>return,
+    };
+    let bindings = std::sync::Arc::make_mut(&mut imports.recent_object_target_bindings);
+    for (tag, filter) in [("__named_action_source", performer), ("__named_action_objects", participants)] {
+        if !bindings.iter().any(|binding| binding.tag.as_str() == tag) {
+            bindings.push(crate::model::reference_state::ObjectTargetBinding::new(TagKey::from(tag), &filter));
+        }
+    }
+}
+
 pub fn stage_effects_with_trigger_context_for_lowering(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
@@ -3643,6 +3667,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
     imports.source_object_antecedent |= trigger.is_some_and(trigger_has_source_attack_antecedent);
     if let Some(trigger) = trigger {
         import_triggering_stack_targets_alias(&mut imports, trigger);
+        import_named_action_object_roles(&mut imports, trigger);
     }
     let mut normalized = normalize_effects_ast(effects);
     if let Some(trigger) = trigger {
@@ -4107,9 +4132,19 @@ pub fn stage_owned_triggered_effects_for_lowering(
     }
 
     let mut imports = imports.into();
+    // A recognizer's unbound discourse placeholder must not override an exact
+    // player role exported by this trigger (for example its defending player).
+    if imports.last_player_filter == Some(PlayerFilter::IteratedPlayer)
+        && !trigger_binds_player_reference_context(&trigger)
+        && let Some(player) = inferred_trigger_player_filter(&trigger)
+        && !player.mentions_iterated_player()
+    {
+        imports.last_player_filter = Some(player);
+    }
     imports.source_object_antecedent |= trigger_has_source_attack_antecedent(&trigger);
     let mut trigger = trigger;
     ensure_concrete_trigger_spec(&trigger)?;
+    import_named_action_object_roles(&mut imports, &trigger);
 
     // A singular creature event supplies a typed antecedent independently of
     // subsequent object choices (for example, returning a land). Keep that
@@ -4739,7 +4774,13 @@ fn lower_parsed_ability_internal(
         false,
         "activated ability effects",
     )?;
+    let activation_label = activated.effects.activation_label.take();
+    let activation_designations = std::mem::take(&mut activated.effects.activation_designations);
+    let activation_sorcery_exceptions = std::mem::take(&mut activated.effects.activation_sorcery_exceptions);
     activated.effects = lowered.effects;
+    activated.effects.activation_label = activation_label;
+    activated.effects.activation_designations = activation_designations;
+    activated.effects.activation_sorcery_exceptions = activation_sorcery_exceptions;
     activated.choices = lowered.choices;
     validate_counter_cost_target_program(activated)?;
     mark_activated_mana_output_if_needed(activated);
@@ -5754,6 +5795,13 @@ fn lower_pregame_reveal_from_opening_hand(
 
 pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbility, CardTextError> {
     match ability {
+        StaticAbilityAst::CopySourceSelectionReplacement {player,definition_name,display} => {
+            let definition=crate::supplied_card_definitions::supplied_card_definition_named(&definition_name)
+                .map_err(CardTextError::ParseError)?.ok_or_else(||CardTextError::ParseError(format!("missing supplied copy-source definition {definition_name}")))?;
+            Ok(StaticAbility::copy_source_selection_replacement(player,Effect::new(ironsmith_core::CopyFromDefinitionEffect {
+                definition,count:Value::Fixed(1),player:PlayerFilter::You,
+            }),display))
+        }
         StaticAbilityAst::Static(ability) => lower_compiler_static_ability_core(ability),
         StaticAbilityAst::KeywordAction(action) => {
             if executable_object_abilities_for_keyword_action(&action).is_some()
@@ -5773,6 +5821,37 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
                 lower_keyword_action_or_err(action)
             }
         }
+        StaticAbilityAst::SourceSetupProgram { source_zone, effects, remember_moved_card, display } => {
+            let (mut effects, _) = compile_trigger_effects(None, &effects)?;
+            if remember_moved_card {
+                fn stamp(effect: &mut Effect) -> usize {
+                    if let Some(movement) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+                        let mut movement = movement.clone(); movement.remember_as_chosen_object = true;
+                        *effect = Effect::new(movement); return 1;
+                    }
+                    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+                        let mut sequence = sequence.clone();
+                        let count = sequence.effects.iter_mut().map(stamp).sum();
+                        *effect = Effect::new(sequence); return count;
+                    }
+                    if let Some(wrapper) = effect.as_with_id() {
+                        let mut wrapper = wrapper.clone(); let count = stamp(&mut wrapper.effect);
+                        *effect = Effect::new(wrapper); return count;
+                    }
+                    if let Some(wrapper) = effect.as_tagged() {
+                        let mut child = (*wrapper.effect).clone(); let count = stamp(&mut child);
+                        *effect = Effect::new(wrapper.with_effect(child)); return count;
+                    }
+                    0
+                }
+                if effects.iter_mut().map(stamp).sum::<usize>() != 1 {
+                    return Err(CardTextError::InvariantViolation("remembered setup arrival requires one explicit move instruction".into()));
+                }
+            }
+            Ok(StaticAbility::pregame_action_with_effects(
+                crate::static_abilities::PregameActionKind::SourceSetup { source_zone }, display,
+                crate::lower::finalize_effect_list_references(effects)))
+        }
         StaticAbilityAst::PregameRevealFromOpeningHand {
             trigger,
             effects,
@@ -5788,6 +5867,10 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
             effect_before_timing,
             display,
         ),
+        StaticAbilityAst::NamedActionTokenAbilityGrant { label, player, abilities, display } => {
+            let abilities = crate::runtime_static_ability_helpers::lower_granted_abilities_ast_to_object_abilities(&abilities)?;
+            Ok(StaticAbility::named_action_token_ability_grant(label, player, abilities, display))
+        }
         StaticAbilityAst::TokenCreationTemplates {
             controller,
             token_filter,
@@ -6111,6 +6194,22 @@ pub(crate) fn lower_compiler_static_ability_core(
 ) -> Result<StaticAbility, CardTextError> {
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
+        // An entry program owns the antecedents between its instructions.
+        // The generic static mapper lowers each child in a fresh context,
+        // which loses a local "that many" after a sacrifice/choice.
+        crate::model::CompilerStaticAbilityPayloadCore::AsEntersEffectProgram {
+            program, subject, also_turns_face_up, turns_face_up_only,
+            uses_enters_with_counter_surface, transforms_into, transform_characteristics,
+            presentation_label, entry_instead_surface,
+        } => Ok(StaticAbility {
+            id, label,
+            payload: crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
+                program: lower_compiler_owned_entry_program(program)?,
+                subject, also_turns_face_up, turns_face_up_only,
+                uses_enters_with_counter_surface, transforms_into, transform_characteristics,
+                presentation_label, entry_instead_surface,
+            },
+        }),
         // A granted triggered/activated ability that announces its own
         // choices ("When this Equipment enters, attach it to target creature
         // you control", Galea's cast-this-way rider) cannot lower its effects
@@ -6200,6 +6299,39 @@ pub(crate) fn lower_compiler_static_ability_core(
                     .collect::<Result<Vec<_>, _>>()?,
             },
         }),
+        crate::model::CompilerStaticAbilityPayloadCore::GrantOptionalSpellCost { filter, price, reference, effects, timing, generic_reduction, local_object_references, display } => {
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            let (effects, choices) = crate::compile_support::compile_effects(&effects, &mut ctx)?;
+            if !choices.is_empty() { return Err(CardTextError::InvariantViolation("an optional casting payment instruction cannot announce targets".into())); }
+            let price = match price {
+                ironsmith_core::static_ability_model::GrantedOptionalCostPrice::Fixed(cost) =>
+                    ironsmith_core::static_ability_model::GrantedOptionalCostPrice::Fixed(cost.try_map(lower_compiler_cost_component)?),
+                ironsmith_core::static_ability_model::GrantedOptionalCostPrice::GenericManaValue =>
+                    ironsmith_core::static_ability_model::GrantedOptionalCostPrice::GenericManaValue,
+            };
+            Ok(StaticAbility { id, label, payload: crate::static_abilities::StaticAbilityPayload::GrantOptionalSpellCost {
+                filter, price, reference, effects, timing, generic_reduction, local_object_references, display,
+            } })
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::NamedActionPaymentAlternative { label: action_label, player, effects, display } => {
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            let (effects, choices) = crate::compile_support::compile_effects(&effects, &mut ctx)?;
+            if !choices.is_empty() { return Err(CardTextError::InvariantViolation("an operation price cannot announce targets".into())); }
+            Ok(StaticAbility { id, label, payload: crate::static_abilities::StaticAbilityPayload::NamedActionPaymentAlternative { label: action_label, player, effects, display } })
+        }
+        crate::model::CompilerStaticAbilityPayloadCore::NamedActionReplacement { label: action_label, source_filter, performer_filter, object_requirement, replacement_effects, optional, display } => {
+            let mut ctx = crate::model::facts::EffectLoweringContext::new();
+            ctx.last_object_tag = Some(if object_requirement.is_some() {
+                "__proposed_action_objects".into()
+            } else {
+                crate::tag::CompilerReferenceTag::It.key()
+            });
+            let (replacement_effects, choices) = crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
+            if !choices.is_empty() { return Err(CardTextError::InvariantViolation("named action replacement cannot announce targets".into())); }
+            Ok(StaticAbility { id, label, payload: crate::static_abilities::StaticAbilityPayload::NamedActionReplacement {
+                label: action_label, source_filter, performer_filter, object_requirement, replacement_effects, optional, display,
+            } })
+        }
         crate::model::CompilerStaticAbilityPayloadCore::KeywordActionReplacement {
             action,
             source_filter,
@@ -6343,6 +6475,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                 event,
                 ironsmith_core::ReplacedEventSpec::Destroy { .. }
                     | ironsmith_core::ReplacedEventSpec::ZoneChange { .. }
+                    | ironsmith_core::ReplacedEventSpec::ZoneChangeExcluding { .. }
                     | ironsmith_core::ReplacedEventSpec::Untap { .. }
             ) {
                 ctx.last_object_tag = Some(crate::tag::CompilerReferenceTag::It.key());
@@ -6554,6 +6687,27 @@ pub(crate) fn lower_compiler_static_ability_core(
             |predicate| resolve_intervening_if_without_trigger(&predicate),
         ),
     }
+}
+
+/// Preserve the entry program's segment and replacement metadata, but
+/// annotate each complete instruction sequence before materializing children.
+/// The sequence owner supplies one local result/tag scope; no enclosing
+/// spell result or runtime keyword identity is used as its antecedent.
+fn lower_compiler_owned_entry_program(
+    mut program: ironsmith_core::ResolutionProgram<EffectAst>,
+) -> Result<ironsmith_core::ResolutionProgram<Effect>, CardTextError> {
+    fn group(effects: &mut Vec<EffectAst>) {
+        if effects.is_empty() { return; }
+        let body = std::mem::take(effects);
+        effects.push(EffectAst::Sequence { effects: body });
+    }
+    for segment in &mut program.segments {
+        group(&mut segment.default_effects);
+        for replacement in &mut segment.self_replacements {
+            group(&mut replacement.replacement_effects);
+        }
+    }
+    program.try_map_effects(lower_compiler_child_effect)
 }
 
 fn lower_compiler_resolution_program(
@@ -6847,6 +7001,7 @@ pub(crate) fn lower_compiler_ability_core(
     };
     Ok(Ability {
         kind,
+        designations: Default::default(),
         functional_zones,
     })
 }
@@ -7683,6 +7838,33 @@ mod tests {
                 ..
             }) if filter.cast_by == Some(PlayerFilter::Opponent)
         ));
+    }
+
+
+    #[test]
+    fn typed_trigger_program_replaces_unbound_player_import_at_shared_staging_boundary() {
+        let tokens = lex_line("Exile the top card of that player's library.", 0).unwrap();
+        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let mut imports = ReferenceImports::default();
+        imports.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+        let prepared = stage_effects_with_trigger_context_for_lowering(Some(&TriggerSpec::ThisAttacks), &effects, imports).unwrap();
+        let lowered = materialize_prepared_effects_with_trigger_context(&prepared).unwrap();
+        let effects = lowered.effects.flattened_default_effects();
+        let exile = effects.iter().find_map(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()).unwrap();
+        assert_eq!(exile.player, PlayerFilter::Defending);
+    }
+
+    #[test]
+    fn concrete_attack_player_role_replaces_unbound_import_placeholder() {
+        let tokens = lex_line("Exile the top card of that player's library.", 0).unwrap();
+        let effects = ironsmith_compiler::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let mut imports = ReferenceImports::default();
+        imports.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+        let (_, prepared) = stage_triggered_effects_for_lowering(TriggerSpec::ThisAttacks, &effects, imports).unwrap();
+        let (lowered, _) = materialize_prepared_triggered_effects(&prepared).unwrap();
+        let effects = lowered.effects.flattened_default_effects();
+        let exile = effects.iter().find_map(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()).unwrap();
+        assert_eq!(exile.player, PlayerFilter::Defending);
     }
 
     #[test]

@@ -698,7 +698,24 @@ pub enum TriggerKind {
     PermanentTransforms {
         filter: ObjectFilter,
     },
+    PermanentTransformsFromNamedActivation { filter: ObjectFilter, label: String },
     YouCastThisSpell,
+    /// A completed custom-labelled operation, independent of keyword identity.
+    NamedAction {
+        label: String,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_filter: Option<ObjectFilter>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        minimum_amount: u32,
+    },
+    NamedActionParticipant {
+        label: String,
+        player: PlayerFilter,
+        participant_filter: ObjectFilter,
+        performer_filter: Option<ObjectFilter>,
+        one_or_more: bool,
+    },
     KeywordActionMatchingObject {
         action: KeywordActionKind,
         player: PlayerFilter,
@@ -847,6 +864,12 @@ pub enum TriggerKind {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    /// Appended: a player recipient has no object snapshot.
+    AttachmentChangedToPlayer { attachment: ObjectFilter, recipient: PlayerFilter, attached: bool },
+    PermanentTransformsFromOwnNamedActivation { filter: ObjectFilter, label: String, activator: Option<PlayerFilter> },
+    /// Append-only: a continuing permanent acquires an actual characteristic.
+    CharacteristicGained(CharacteristicGainTrigger),
+    SpellResolves { controller: PlayerFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1355,6 +1378,9 @@ impl Trigger {
     }
     pub fn control_changed(trigger: ControlChangeTrigger) -> Self {
         Self::typed("control_changed", TriggerKind::ControlChanged(trigger))
+    }
+    pub fn attachment_changed_to_player(attachment: ObjectFilter, recipient: PlayerFilter, attached: bool) -> Self {
+        Self::typed("attachment_changed_to_player", TriggerKind::AttachmentChangedToPlayer { attachment, recipient, attached })
     }
     pub fn attachment_changed(attachment: ObjectFilter, recipient: ObjectFilter, attached: bool) -> Self {
         Self::typed("attachment_changed", TriggerKind::AttachmentChanged { attachment, recipient, attached })
@@ -2453,6 +2479,9 @@ impl Trigger {
             },
         )
     }
+    pub fn spell_resolves(controller: PlayerFilter) -> Self {
+        Self::typed("spell_resolves", TriggerKind::SpellResolves {controller})
+    }
     pub fn spell_copied(filter: Option<ObjectFilter>, copier: PlayerFilter) -> Self {
         Self::typed("spell_copied", TriggerKind::SpellCopied { filter, copier })
     }
@@ -2713,6 +2742,16 @@ impl Trigger {
             },
         )
     }
+    pub fn named_action_participant(label: String, player: PlayerFilter, participant_filter: ObjectFilter, performer_filter: Option<ObjectFilter>, one_or_more: bool) -> Self {
+        Self::typed("named_action_participant", TriggerKind::NamedActionParticipant { label, player, participant_filter, performer_filter, one_or_more })
+    }
+    pub fn named_action(label: String, player: PlayerFilter, source_filter: ObjectFilter, object_filter: Option<ObjectFilter>) -> Self {
+        Self::named_action_with_minimum_amount(label, player, source_filter, object_filter, 0)
+    }
+    pub fn named_action_with_minimum_amount(label: String, player: PlayerFilter, source_filter: ObjectFilter, object_filter: Option<ObjectFilter>, minimum_amount: u32) -> Self {
+        Self::typed("named_action", TriggerKind::NamedAction { label, player, source_filter, object_filter, minimum_amount })
+    }
+
     pub fn keyword_action(action: KeywordActionKind, player: PlayerFilter) -> Self {
         Self::typed(
             "keyword_action",
@@ -3154,6 +3193,12 @@ pub struct CounterPutOnTrigger {
     /// matching objects are one trigger event (CR 603.2c).
     #[cfg_attr(feature = "serde", serde(default))]
     pub one_or_more_objects: bool,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_label: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_definition: Option<crate::LinkedExileDefinition>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cause_designation: Option<String>,
 }
 
 impl CounterPutOnTrigger {
@@ -3165,6 +3210,9 @@ impl CounterPutOnTrigger {
             count: CountMode::One,
             include_players: false,
             one_or_more_objects: false,
+            activation_label: None,
+            activation_definition: None,
+            cause_designation: None,
         }
     }
 
@@ -3271,4 +3319,28 @@ impl CompilerTriggerMatcher for CounterRemovedFromTrigger {
 #[cfg(feature = "serde")]
 fn spell_or_ability_stack_kind() -> crate::filter_model::StackObjectKind {
     crate::filter_model::StackObjectKind::SpellOrAbility
+}
+
+/// Typed characteristic identity. This is an authored predicate on a gain,
+/// not a keyword action identity or a string used for presentation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum GainedCharacteristic {
+    CardType(crate::CardType),
+    Subtype(crate::Subtype),
+    Supertype(crate::Supertype),
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CharacteristicGainTrigger {
+    pub filter: ObjectFilter,
+    pub characteristic: GainedCharacteristic,
+}
+impl CompilerTriggerMatcher for CharacteristicGainTrigger {
+    fn into_trigger(self) -> Trigger { Trigger::characteristic_gained(self) }
+}
+impl Trigger {
+    pub fn characteristic_gained(trigger: CharacteristicGainTrigger) -> Self {
+        Self::typed("characteristic_gained", TriggerKind::CharacteristicGained(trigger))
+    }
 }

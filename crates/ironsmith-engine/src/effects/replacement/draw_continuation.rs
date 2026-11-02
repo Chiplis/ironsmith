@@ -1293,7 +1293,7 @@ impl SimultaneousEffectCompletion for DrawContinuation {
                 let mut outputs = resume_replacement_child_with_outputs(game, &mut child, resume)?;
                 crate::effects::runtime::capture_triggers_before_added_program(
                     game,
-                    &child,
+                    &mut child,
                     None,
                     outputs.outcome.events.iter_mut(),
                 )?;

@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'grammar::modal_results::tests::created_result_descriptor_keeps_the_complete_ordinary_object_filter' panicked at crates/ironsmith-compiler-grammar/src/grammar/modal_results_inline_tests.rs:365:128:
+you created any Role tokens this way
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test grammar::modal_results::tests::created_result_descriptor_keeps_the_complete_ordinary_object_filter ... FAILED
+
+failures:
+
+failures:
+    grammar::modal_results::tests::created_result_descriptor_keeps_the_complete_ordinary_object_filter
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.03s
+

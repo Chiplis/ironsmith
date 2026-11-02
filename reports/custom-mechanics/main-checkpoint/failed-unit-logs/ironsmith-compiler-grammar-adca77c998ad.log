@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'keyword_static::distributive_player_keyword_tests::chosen_quality_grants_keep_both_player_and_source_and_each_is_only_distributive' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs:7077:9:
+assertion failed: !matches!(parse_granted_keyword_static_line(&unsupported), Ok(Some(_)))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::distributive_player_keyword_tests::chosen_quality_grants_keep_both_player_and_source_and_each_is_only_distributive ... FAILED
+
+failures:
+
+failures:
+    keyword_static::distributive_player_keyword_tests::chosen_quality_grants_keep_both_player_and_source_and_each_is_only_distributive
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.04s
+

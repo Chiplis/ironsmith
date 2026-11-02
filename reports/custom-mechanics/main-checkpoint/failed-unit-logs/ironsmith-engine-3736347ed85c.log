@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effects::cards::create_cards::tests::definition_substitution_preserves_actor_count_destination_and_library_position' panicked at crates/ironsmith-engine/src/effects/cards/create_cards.rs:669:55:
+called `Result::unwrap()` on an `Err` value: IncompleteEvidence("replacement source 1 has no captured supplied definition named Replacement identity")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::cards::create_cards::tests::definition_substitution_preserves_actor_count_destination_and_library_position ... FAILED
+
+failures:
+
+failures:
+    effects::cards::create_cards::tests::definition_substitution_preserves_actor_count_destination_and_library_position
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.05s
+

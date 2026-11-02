@@ -6,6 +6,7 @@ use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
+use crate::filter::ObjectFilterExt as _;
 use crate::static_abilities::StaticAbility;
 use crate::target::ChooseSpec;
 
@@ -13,8 +14,11 @@ use crate::target::ChooseSpec;
 pub type GrantAbilitiesTargetEffect = ironsmith_core::GrantAbilitiesTargetEffect<StaticAbility>;
 
 impl EffectExecutor for GrantAbilitiesTargetEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
+
     fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
-        std::iter::once(self.target.clone()).chain(self.activated_from.iter().cloned()).collect()
+        std::iter::once(self.target.clone()).chain(self.activated_from.iter().cloned())
+            .chain(self.keyword_from.iter().filter(|source|!source.last_known).map(|source|source.source.clone())).collect()
     }
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         for ability in &self.abilities {
@@ -28,19 +32,25 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         if spec_names_player(&self.target) {
+            if let Some(source)=&self.keyword_from {
+                let mut expanded=self.clone();
+                expanded.abilities.extend(keyword_abilities_from(game,ctx,source)?);
+                expanded.keyword_from=None;
+                return grant_player_protections(&expanded,game,ctx);
+            }
             return grant_player_protections(self, game, ctx);
         }
         // "Each Horror you control gains all activated abilities of target
         // artifact" (Grell Philosopher): every recipient in the set fixed at
         // resolution (CR 611.2c) receives the same frozen copies.
-        let recipients = if self.activated_from.is_some()
-            && matches!(self.target.base(), ChooseSpec::All(_))
+        let recipients = if self.target.is_target() || ((self.activated_from.is_some() || self.keyword_from.is_some())
+            && matches!(self.target.base(), ChooseSpec::All(_)))
         {
             crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?
         } else {
             vec![resolve_single_object_for_effect(game, ctx, &self.target)?]
         };
-        if self.abilities.is_empty() && self.activated_from.is_none() {
+        if self.abilities.is_empty() && self.activated_from.is_none() && self.keyword_from.is_none() {
             return Ok(EffectOutcome::resolved());
         }
 
@@ -60,14 +70,17 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
                 .collect::<Vec<_>>();
             modifications.extend(copied.into_iter().map(Modification::AddAbilityGeneric));
         }
-        modifications.extend(abilities.into_iter().map(Modification::AddAbility));
-        let mut outcome = EffectOutcome::resolved();
-        for target_id in recipients {
-            outcome = crate::effects::continuous::apply_captured_modifications(
-                game, ctx, EffectTarget::Specific(target_id), None, modifications.clone(), self.duration.clone(),
-            )?;
+        if let Some(source)=&self.keyword_from {
+            modifications.extend(keyword_abilities_from(game,ctx,source)?.into_iter().map(Modification::AddAbility));
         }
-        Ok(outcome)
+        modifications.extend(abilities.into_iter().map(Modification::AddAbility));
+        if recipients.is_empty() {return Ok(if self.target.is_target(){EffectOutcome::target_invalid()}else{EffectOutcome::resolved()});}
+        let mut modifications=modifications.into_iter();
+        let Some(first)=modifications.next() else {return Ok(EffectOutcome::resolved());};
+        let mut apply=crate::effects::continuous::ApplyContinuousEffect::new(EffectTarget::AllPermanents,first,self.duration.clone());
+        apply.target_spec=Some(self.target.clone());
+        apply.additional_modifications=modifications.collect();
+        apply.execute(game,ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -214,4 +227,43 @@ fn grant_player_protections(
         return Ok(EffectOutcome::target_invalid());
     }
     Ok(EffectOutcome::aggregate(outcomes))
+}
+
+/// Snapshot operands are reference-local. A later live incarnation or a
+/// different alias of the same physical card cannot replace this evidence.
+fn keyword_abilities_from(game:&mut GameState,ctx:&mut ExecutionContext,source:&ironsmith_core::KeywordAbilitySource)->Result<Vec<StaticAbility>,ExecutionError>{
+    let abilities=if source.last_known {
+        let snapshots:Vec<&crate::snapshot::ObjectSnapshot>=match source.source.base() {
+            ChooseSpec::Tagged(tag)=>ctx.get_tagged_all(tag).ok_or_else(||ExecutionError::IncompleteEvidence("keyword donor snapshot is missing".into()))?.iter().collect(),
+            ChooseSpec::Source=>vec![ctx.source_snapshot.as_ref().filter(|snapshot|snapshot.object_id==ctx.source)
+                .ok_or_else(||ExecutionError::IncompleteEvidence("source keyword donor snapshot is missing".into()))?],
+            ChooseSpec::Object(filter)|ChooseSpec::All(filter) if filter.any_of.is_empty()=>{
+                let mut anchors=filter.tagged_constraints.iter().filter(|constraint|constraint.relation==crate::target::TaggedOpbjectRelation::IsTaggedObject);
+                let anchor=anchors.next().filter(|_|anchors.next().is_none()).ok_or_else(||ExecutionError::IncompleteEvidence("qualified keyword donor requires one retained reference".into()))?;
+                let packet=ctx.get_tagged_all(&anchor.tag).ok_or_else(||ExecutionError::IncompleteEvidence("qualified keyword donor snapshot is missing".into()))?;
+                // Qualification itself may inspect abilities. Missing native
+                // evidence must not become a false nonmatch/empty donor set.
+                if packet.iter().any(|snapshot|snapshot.ability_origins.as_ref().is_none_or(|origins|origins.len()!=snapshot.abilities.len())) {
+                    return Err(ExecutionError::IncompleteEvidence("qualified keyword donor executable evidence is unavailable".into()));
+                }
+                let filter_ctx=ctx.filter_context(game);
+                packet.iter().filter(|snapshot|filter.matches_snapshot(snapshot,&filter_ctx,game)).collect()
+            }
+            _=>return Err(ExecutionError::IncompleteEvidence("historical keyword donor requires an explicit retained reference".into())),
+        };
+        if snapshots.iter().any(|snapshot|snapshot.ability_origins.as_ref().is_none_or(|origins|origins.len()!=snapshot.abilities.len())) {
+            return Err(ExecutionError::IncompleteEvidence("keyword donor executable ability evidence is unavailable".into()));
+        }
+        snapshots.into_iter().flat_map(|snapshot|snapshot.abilities.iter().cloned()).collect::<Vec<_>>()
+    }else{
+        let source_id=resolve_single_object_for_effect(game,ctx,&source.source)?;
+        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+        game.current_abilities(source_id).unwrap_or_default()
+    };
+    Ok(abilities.into_iter().filter_map(|ability|match ability.kind {
+        crate::ability::AbilityKind::Static(keyword) if keyword.id().is_keyword()
+            && (source.keywords.contains(&keyword.id())
+                || keyword.id()==crate::static_abilities::StaticAbilityId::HexproofFrom && source.keywords.contains(&crate::static_abilities::StaticAbilityId::Hexproof))=>Some(keyword),
+        _=>None,
+    }).collect())
 }

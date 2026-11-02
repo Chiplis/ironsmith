@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "scope": "msem",
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "source_sha256": "3c7102b6cce3627279de1539379b39bb17c528605c748519ce2f55795217ec0e",
+    "policy": "Complete source equations preserved. Unauthored missing operations remain explicit pending rows, never certified by representative seed tests."
+  },
+  "mechanics": [
+    {
+      "id": "msem-audition-original-menu-modifier",
+      "keyword": "Audition",
+      "scope": "msem",
+      "equation_family": "audition",
+      "rule_reference": "701.101.",
+      "source_cards": [
+        "Verdant Curtain Prodigy"
+      ],
+      "representative_cards": [
+        {
+          "id": "Verdant Curtain Prodigy_ACT",
+          "source_card_key": "Verdant Curtain Prodigy_ACT",
+          "name": "Verdant Curtain Prodigy",
+          "source_layout": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Construct Actor\nPower/Toughness: 3/2\nAuditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Verdant Curtain Prodigy",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Construct Actor\nPower/Toughness: 3/2\nAuditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens.",
+              "original_rules_text": "Auditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens."
+            }
+          ],
+          "source_record": {
+            "fullName": "Verdant Curtain Prodigy",
+            "cardName": "Verdant Curtain Prodigy",
+            "manaCost": "{1}{G}",
+            "typeLine": "Creature — Construct Actor",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Auditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens.",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "168",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Lin Chang",
+            "sdn": 17243,
+            "key": "Verdant Curtain Prodigy_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Verdant Curtain Prodigy_ACT",
+            "printKeys": [
+              "Verdant Curtain Prodigy_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Construct Actor\nPower/Toughness: 3/2\nIf you would perform the audition action, perform its mode numbered 1, then choose one of its other modes instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Construct Actor",
+          "power": "3",
+          "toughness": "2",
+          "executable_faces": [
+            {
+              "name": "Verdant Curtain Prodigy",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Construct Actor\nPower/Toughness: 3/2\nIf you would perform the audition action, perform its mode numbered 1, then choose one of its other modes instead.",
+              "custom_keyword_identities": [
+                "auditioning for a color"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Auditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens.",
+              "original_printed_rules_text": "Auditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens."
+            }
+          ],
+          "custom_keyword_identities": [
+            "auditioning for a color"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Auditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens.",
+          "original_printed_rules_text": "Auditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens."
+        }
+      ],
+      "support_status": "candidate-generic-original-menu-modification",
+      "test_status": "pending_whole_source_candidate_and_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for white",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Cleric Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has lifelink, and is a Cleric in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Scout Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/3, has vigilance, and is a Scout in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        },
+        {
+          "keyword": "Auditioning for a color",
+          "template": "causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens",
+          "reminder": "If you would perform the audition action, perform its mode numbered 1, then choose one of its other modes instead."
+        }
+      ]
+    }
+  ]
+}

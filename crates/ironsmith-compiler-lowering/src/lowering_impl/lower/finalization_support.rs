@@ -368,6 +368,7 @@ fn apply_pending_cipher_effect(
         program.push(cipher);
     } else {
         program.push_segment(crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![cipher],
             self_replacements: Vec::new(),
             starts_new_source_line: true,
@@ -2897,6 +2898,7 @@ mod alternative_ability_reference_tests {
             crate::triggers::Trigger::this_enters_battlefield(), vec![body("that")]));
         builder.spell_effect = Some(crate::resolution::ResolutionProgram::new(vec![
             crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![body("Prowl")],
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(condition("Sneak"), vec![body("that")])],
                 starts_new_source_line: true,

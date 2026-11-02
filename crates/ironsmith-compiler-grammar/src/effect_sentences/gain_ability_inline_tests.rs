@@ -1702,3 +1702,83 @@ fn grant_recipient_demonstrative_preserves_noun_without_new_current_type_constra
         assert!(tagged_subject_target(&lex_line(malformed,0).unwrap()).is_err(), "{malformed}");
     }
 }
+
+
+
+#[test]
+fn custom_keyword_identity_component_is_bounded_and_composes_with_real_activation() {
+    for name in ["improve","steady craft"] {
+        let text=format!("custom keyword \"{name}\", and \"{{1}}: Put a +1/+1 counter on this creature.\"");
+        let tokens=lex_line(&text,0).unwrap();let (abilities,choice)=parse_granted_abilities_for_gain_clause(&tokens,&crate::lexer::token_word_refs(&tokens),false).unwrap();
+        assert!(!choice);assert_eq!(abilities.len(),2);
+        let debug=format!("{abilities:?}");assert!(debug.contains("CustomKeywordIdentity")&&debug.contains(name)&&debug.contains("Activated"),"{debug}");
+    }
+    for text in ["custom keyword \"improve\" {R}","custom keyword \"improve\" and \"{1}: Draw a card.\"","custom keyword \"improve"] {
+        assert!(parse_custom_keyword_identity_grant_component(&lex_line(text,0).unwrap()).is_err(),"component cannot swallow a following grant/list item: {text}");
+    }
+}
+
+#[test]
+fn historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand() {
+    let text="This creature gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.";
+    let document=crate::preprocess::preprocess_document(
+        ironsmith_core::card::CardBuilder::new(crate::CardId::new(), "Independent family-copy source"),text).unwrap();
+    let mut effects=Vec::new();
+    for item in document.items {
+        if let crate::preprocess::PreprocessedItem::Line(line)=item {
+            effects.extend(crate::effect_sentences::parse_effect_sentences_lexed(&line.tokens).unwrap());
+        }
+    }
+    fn collect(effect:&EffectAst, grants:&mut Vec<Vec<crate::static_abilities::StaticAbilityId>>) {
+        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst{action:crate::cards::builders::SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantKeywordAbilitiesFrom{keywords,last_known:true,..}),..})=effect {
+            grants.push(keywords.clone());
+        }
+        crate::effect_ast_traversal::for_each_nested_effects(effect,true,|children|for child in children {collect(child,grants)});
+    }
+    let mut grants=Vec::new();for effect in &effects {collect(effect,&mut grants);}
+    assert_eq!(grants.len(),9,"the preprocessor expands the full same-true list into independent historical family copies");
+    let ids=grants.into_iter().flatten().collect::<Vec<_>>();
+    assert_eq!(ids.len(),9);assert!(ids.contains(&crate::static_abilities::StaticAbilityId::Protection));
+    assert!(!ids.contains(&crate::static_abilities::StaticAbilityId::Flying));
+}
+
+#[test]
+fn historical_keyword_copy_does_not_consume_a_combined_family_condition() {
+    let tokens=crate::lexer::lex_line("Target creature gains flying and trample until end of turn if that creature had flying and trample.",0).unwrap();
+    assert!(parse_conditional_keyword_snapshot_grant(&tokens).unwrap().is_none(),"independent family copying cannot replace a combined conjunction");
+    let tokens=crate::lexer::lex_line("Target creature gains protection until end of turn if that creature had protection.",0).unwrap();
+    assert!(parse_conditional_keyword_snapshot_grant(&tokens).unwrap().is_some(),"one protection family retains every parameterized instance");
+}
+
+#[test]
+fn historical_keyword_copy_does_not_read_quoted_name_or_rule_operands_as_keyword_clauses() {
+    for text in [
+        "Search for a card named \"A gains flying until end of turn if that creature had flying\".",
+        "Target creature gains \"flying\" until end of turn if that creature had \"flying\".",
+    ] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        assert!(parse_conditional_keyword_snapshot_grant(&tokens).unwrap().is_none());
+    }
+}
+
+#[test]
+fn retained_keyword_list_requires_real_items_around_connectives() {
+    for text in ["and flying","flying and and trample","flying and"] {
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert!(snapshot_keyword_ids(&tokens).is_none(),"{text}");
+    }
+    let tokens=crate::lexer::lex_line("flying, trample, and protection",0).unwrap();assert_eq!(snapshot_keyword_ids(&tokens).unwrap().len(),3);
+}
+
+#[test]
+fn quoted_identity_operand_and_labeled_trigger_remain_two_complete_grants() {
+    for separator in [", and ", " and "] {
+        let text = format!("custom keyword \"experience\"{separator}\"experience — Whenever this creature attacks, you gain 1 life.\"");
+        let tokens = lex_line(&text, 0).unwrap();
+        let (abilities, choice) = parse_granted_abilities_for_gain_clause(
+            &tokens, &crate::lexer::token_word_refs(&tokens), false).unwrap();
+        assert!(!choice); assert_eq!(abilities.len(), 2, "{abilities:?}");
+        let debug = format!("{abilities:?}");
+        assert!(debug.contains("CustomKeywordIdentity") && debug.contains("Triggered")
+            && debug.contains("GainLife") && debug.contains("AbilityWord"), "{debug}");
+    }
+}

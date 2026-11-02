@@ -157,12 +157,17 @@ fn effect_chooses_new_targets_for_copy(effect: &Effect) -> bool {
 /// Returns whether this was a matching point (so `reported` is now matched).
 pub(crate) fn match_triggers_at_instruction_boundary<'a>(
     game: &mut GameState,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
 ) -> Result<bool, ExecutionError> {
+    let reported:Vec<_>=reported.into_iter().collect();
+    if game.action_observations_suppressed() {return game.token_resource_failure().map_or(Ok(false),Err);}
+    let has_choices=!game.effect_store.pending_trigger_class_choices.is_empty()
+        || (!game.effect_store.per_event_trigger_matching && crate::triggers::class_event_choice::has_event_choice_rules(
+            game,reported.iter().copied().chain(game.effect_store.pending_trigger_events.iter()))?);
     if game.action_observations_suppressed()
-        || !game.effect_store.per_event_trigger_matching
+        || (!game.effect_store.per_event_trigger_matching && !has_choices)
         || game.has_open_simultaneous_action()
         || game.effect_store.trigger_matching_holds > 0
         || ctx.decision_maker.awaiting_choice()
@@ -186,7 +191,7 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
 
 fn match_triggers_at_instruction_boundary_inner<'a>(
     game: &mut GameState,
-    _ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     _next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
 ) -> bool {
@@ -196,13 +201,23 @@ fn match_triggers_at_instruction_boundary_inner<'a>(
         .filter(|event| !game.event_is_pending_for_trigger_matching(event))
         .cloned()
         .collect::<Vec<_>>();
-    if fresh.is_empty() && game.effect_store.pending_trigger_events.is_empty() {
+    if fresh.is_empty() && game.effect_store.pending_trigger_events.is_empty()
+        && game.effect_store.pending_hand_reveal_windows.is_empty()
+        && game.effect_store.pending_trigger_class_choices.is_empty() {
         return true;
     }
     let mut matched = crate::triggers::TriggerQueue::new();
     crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
+    if let Err(error)=crate::effects::answer_hand_reveal_windows(game,ctx) {
+        game.record_token_resource_failure(&error);return false;
+    }
+    if ctx.decision_maker.awaiting_choice() {return false;}
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
-    game.defer_trigger_entries(matched.take_all());
+    match crate::game_loop::complete_trigger_class_choices_before_continuation(game,&mut matched,ctx.decision_maker) {
+        Ok(true)=>{},Ok(false)=>{matched.defer_into_game(game);return false;},
+        Err(error)=>{game.record_token_resource_failure(&error);return false;},
+    }
+    matched.defer_into_game(game);
     true
 }
 
@@ -212,10 +227,11 @@ fn match_triggers_at_instruction_boundary_inner<'a>(
 /// Simultaneous owners call this once for every original before any addition.
 pub(crate) fn capture_triggers_before_added_program<'a>(
     game: &mut GameState,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
 ) -> Result<bool, ExecutionError> {
+    let checkpoint=game.clone();
     let mut reported: Vec<_> = reported.into_iter().collect();
     let event_checkpoint: Vec<_> = reported.iter().map(|event| (**event).clone()).collect();
     let (root, meter) = game.begin_token_resource_scope();
@@ -234,7 +250,10 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
         }
         result
     });
-    if result.is_err() {
+    if ctx.decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint,true);
+    }
+    if result.is_err() || ctx.decision_maker.awaiting_choice() {
         for (event, previous) in reported.iter_mut().zip(event_checkpoint) {
             **event = previous;
         }
@@ -245,7 +264,7 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
 
 fn capture_triggers_before_added_program_inner<'a>(
     game: &mut GameState,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
 ) -> Result<bool, ExecutionError> {
@@ -270,11 +289,16 @@ fn capture_triggers_before_added_program_inner<'a>(
     crate::events::damage::validate_damage_history_amounts(game, fresh.iter())?;
     let mut matched = crate::triggers::TriggerQueue::new();
     crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
+    crate::effects::answer_hand_reveal_windows(game,ctx)?;
+    if ctx.decision_maker.awaiting_choice() {return Ok(false);}
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     if let Some(error) = game.token_resource_failure() {
         return Err(error);
     }
-    game.defer_trigger_entries(matched.take_all());
+    if !crate::game_loop::complete_trigger_class_choices_before_continuation(game,&mut matched,ctx.decision_maker)? {
+        matched.defer_into_game(game);return Ok(false);
+    }
+    matched.defer_into_game(game);
     for event in &mut reported {
         event.mark_triggers_captured();
         // Completed receipts in history retain the matching proof too, so an
@@ -559,7 +583,87 @@ fn execute_owned_instruction(
         EffectExecutionPurpose::Action => None,
     };
     let Some(cost) = cost else {
-        return effect.0.execute_with_outputs(game, ctx);
+        let roles = effect.0.scalar_target_resolution_specs();
+        // A retained empty role is authoritative. This instruction does
+        // nothing and leaves unrelated legal-target instructions/siblings live.
+        if roles.len()==1 && roles[0].count_value().is_none() && roles[0].count().max==Some(1) {
+            let assigned=ctx.target_assignments.iter().filter(|assignment|assignment.spec.is_target() && assignment.spec.base()==roles[0].base()).collect::<Vec<_>>();
+            if !assigned.is_empty() && assigned.iter().all(|assignment|assignment.range.is_empty()) {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::target_invalid()));
+            }
+        }
+        let widened: Vec<_> = ctx.target_assignments.iter().enumerate()
+            .filter(|(_, assignment)| assignment.spec.is_target() && roles.iter().any(|role| role.count_value().is_none() && role.count().max==Some(1) && role.base() == assignment.spec.base())
+                && assignment.spec.count_value().is_none()
+                && assignment.spec.count().max == Some(1)
+                && assignment.range.len() > 1)
+            .map(|(index, assignment)| (index, assignment.range.clone())).collect();
+        if widened.is_empty() {
+            return effect.0.execute_with_outputs(game, ctx);
+        }
+        if widened.len() != 1 || !effect.0.supports_simultaneous_player_action() {
+            return Err(ExecutionError::IncompleteEvidence(
+                "expanded scalar recipient has no simultaneous action contract".into()));
+        }
+        return crate::effects::composition::execute_transaction(
+            game,ctx,||crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game,ctx| {
+        let (assignment_index, range) = &widened[0];
+        // Prepare all quantities and replacement choices in the same world.
+        // Only the atomic leaf is projected; outer instruction IDs and siblings
+        // observe one aggregate completion.
+        let mut proposals = Vec::new();
+        let mut target_indices=range.clone().collect::<Vec<_>>();
+        // Simultaneous player choices use APNAP even when the announcement
+        // listed those recipients in a different order. Object roles retain
+        // their authored order; their native owner chooses the decision actor.
+        let selected_players=target_indices.iter().filter_map(|index|match ctx.targets.get(*index){Some(crate::effects::ResolvedTarget::Player(player))=>Some(*player),_=>None}).collect();
+        let player_order=crate::effects::composition::player_order::selected_players_from(game,selected_players,game.turn.active_player);
+        target_indices.sort_by_key(|index|match ctx.targets.get(*index){
+            Some(crate::effects::ResolvedTarget::Player(player))=>player_order.iter().position(|candidate|candidate==player).unwrap_or(usize::MAX),
+            _=>usize::MAX,
+        });
+        for target_index in target_indices {
+            let mut assignments = ctx.target_assignments.clone();
+            assignments[*assignment_index].range = target_index..target_index + 1;
+            let proposal = ctx.with_temp_target_assignments(assignments.clone(), |ctx| {
+                effect.0.prepare_simultaneous_player_action(game, ctx)
+            })?;
+            if ctx.decision_maker.awaiting_choice() {return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));}
+            proposals.push(crate::effects::composition::scope_prepared_target_assignments(proposal, assignments));
+        }
+        for proposal in &mut proposals {
+            proposal.prepare_selection(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));}
+        }
+        let claims=proposals.iter().flat_map(|proposal|proposal.declared_payment_resources()).collect::<Vec<_>>();
+        if !crate::effects::can_pay_declared_resources(game,&claims){return Err(ExecutionError::Impossible("simultaneous scalar payments exceed available shared resources".into()));}
+        for proposal in &mut proposals {
+            proposal.prepare_original(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));}
+        }
+        let claims=proposals.iter().flat_map(|proposal|proposal.declared_payment_resources()).collect::<Vec<_>>();
+        if !crate::effects::can_pay_declared_resources(game,&claims){return Err(ExecutionError::Impossible("simultaneous scalar payments exceed available shared resources".into()));}
+        for proposal in &mut proposals {
+            proposal.seal_original(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));}
+        }
+        let claims=proposals.iter().flat_map(|proposal|proposal.declared_payment_resources()).collect::<Vec<_>>();
+        if !crate::effects::can_pay_declared_resources(game,&claims){return Err(ExecutionError::Impossible("simultaneous scalar payments exceed available shared resources".into()));}
+        let children = crate::effects::composition::execute_simultaneous_originals_with_default_outputs(
+            game, ctx, true, |game, ctx| {
+                let mut children=Vec::new();
+                for proposal in proposals {
+                    children.push(proposal.commit_original_with_outputs(game,ctx)?);
+                    if ctx.decision_maker.awaiting_choice(){break;}
+                }
+                Ok(children)
+            },
+        )?;
+        Ok(crate::effects::CompletedEffectOutputs::from_children(
+            children, |outcomes| EffectOutcome::aggregate(outcomes)))
+            },
+        );
     };
     if !cost.supports_prepared_payment() {
         return cost.execute_payment_with_outputs(game, ctx);
@@ -643,6 +747,13 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
         ExecutionError::is_incomplete_execution,
         |game, ctx| {
             let mut body = |game: &mut GameState, ctx: &mut ExecutionContext<'a>| {
+            // Derive only this exact source's producer-qualified entry domains.
+            // This occurs inside the resource meter and world/context checkpoint.
+            ctx.tagged_objects.retain(|tag,_|!tag.as_str().starts_with("__entry_reference_exiled"));
+            ctx.exact_object_reference_tags.retain(|tag|!tag.as_str().starts_with("__entry_reference_exiled"));
+            for (tag,objects) in crate::filter::entry_exiled_reference_domains(game,ctx.source,ctx.source_snapshot.as_ref()) {
+                ctx.tagged_objects.insert(tag.clone(),objects);ctx.exact_object_reference_tags.insert(tag);
+            }
             let (mut result, recorded) =
                 crate::effects::outcome_recording::capture_instruction_records(game, |game| {
                     match game.token_resource_failure() {
@@ -677,7 +788,7 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
                         crate::game_loop::drain_pending_trigger_events_with_dm(
                             game, &mut queue, &mut *ctx.decision_maker,
                         )?;
-                        game.defer_trigger_entries(queue.take_all());
+                        queue.defer_into_game(game);
                     }
                 }
             }
@@ -991,4 +1102,110 @@ fn execute_effect_with_resource_scope_using<'a>(
 
     outputs.synchronize_observations();
     Ok(outputs)
+}
+
+#[cfg(test)]
+mod expanded_scalar_recipient_contract_tests {
+    use super::*;
+    use crate::game_state::TargetAssignment;
+    use crate::ids::PlayerId;
+    use crate::target::ChooseSpec;
+    use crate::effects::ResolvedTarget;
+
+    #[test]
+    fn expanded_life_recipient_group_affects_each_player_and_untargeted_sibling_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let spec = ChooseSpec::target_player();
+        ctx.targets = vec![ResolvedTarget::Player(alice), ResolvedTarget::Player(bob)];
+        ctx.target_assignments = vec![TargetAssignment { spec: spec.clone(), range: 0..2 }];
+        execute_effect(&mut game, &Effect::gain_life_player(3, spec), &mut ctx).unwrap();
+        execute_effect(&mut game, &Effect::gain_life(1), &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 24);
+        assert_eq!(game.player(bob).unwrap().life, 23);
+        assert_eq!(ctx.target_assignments[0].range, 0..2, "retained spell receipt is immutable");
+    }
+
+    #[test]
+    fn empty_retained_player_role_does_not_take_another_roles_player() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let spec = ChooseSpec::target_player();
+        ctx.targets = vec![ResolvedTarget::Player(bob)];
+        ctx.target_assignments = vec![TargetAssignment { spec: spec.clone(), range: 0..0 }];
+        execute_effect(&mut game, &Effect::gain_life_player(3, spec), &mut ctx).unwrap();
+        execute_effect(&mut game, &Effect::gain_life(1), &mut ctx).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 21);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+    }
+
+    #[test]
+    fn unprojected_scalar_accessor_fails_closed_on_widened_receipt() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let spec = ChooseSpec::target_player();
+        ctx.targets = vec![ResolvedTarget::Player(alice), ResolvedTarget::Player(bob)];
+        ctx.target_assignments = vec![TargetAssignment { spec: spec.clone(), range: 0..2 }];
+        assert!(matches!(crate::effects::helpers::resolve_player_from_spec(&game, &spec, &ctx),
+            Err(ExecutionError::IncompleteEvidence(_))));
+    }
+}
+
+#[cfg(test)]
+mod projected_draw_quantity_tests {
+    use super::*;
+    use crate::filter::ObjectFilterExt as _;
+    #[test]
+    fn projected_draws_freeze_dynamic_quantity_before_any_recipient_draws(){
+        let a=crate::PlayerId(0);let b=crate::PlayerId(1);
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Draw resource").card_types(vec![crate::CardType::Artifact]).build();
+        for player in [a,b] {for _ in 0..2{game.create_object_from_card(&card,player,crate::Zone::Hand);}for _ in 0..6{game.create_object_from_card(&card,player,crate::Zone::Library);}}
+        let source=game.create_object_from_card(&card,a,crate::Zone::Stack);
+        let spec=crate::target::ChooseSpec::target_player();
+        let mut ctx=ExecutionContext::new_default(source,a);
+        ctx.targets=vec![crate::effects::ResolvedTarget::Player(a),crate::effects::ResolvedTarget::Player(b)];
+        ctx.target_assignments=vec![crate::game_state::TargetAssignment{spec:spec.clone(),range:0..2}];
+        let count=crate::effect::Value::Count(crate::target::ObjectFilter::default().in_zone(crate::Zone::Hand).owned_by(crate::target::PlayerFilter::You));
+        execute_effect(&mut game,&Effect::new(crate::effects::DrawCardsEffect::new(count,crate::target::PlayerFilter::Target(Box::new(crate::target::PlayerFilter::Any)))),&mut ctx).unwrap();
+        execute_effect(&mut game,&Effect::gain_life(1),&mut ctx).unwrap();
+        assert_eq!(game.player(a).unwrap().hand.len(),4);assert_eq!(game.player(b).unwrap().hand.len(),4,"B keeps the original two-card quantity after A's hand grows");
+        assert_eq!(game.player(a).unwrap().life,21);assert_eq!(game.player(b).unwrap().life,20);assert_eq!(ctx.target_assignments[0].range,0..2);
+    }
+}
+
+#[cfg(test)]
+mod projected_discard_suspension_tests {
+ use super::*;
+ use crate::decision::DecisionMaker;
+ struct Choices{pause:bool,pending:bool,players:Vec<crate::PlayerId>}
+ impl DecisionMaker for Choices{
+  fn decide_objects(&mut self,g:&GameState,c:&crate::decisions::context::SelectObjectsContext)->Vec<crate::ObjectId>{
+   self.players.push(c.player);let selected=crate::decision::SelectFirstDecisionMaker.decide_objects(g,c);self.pending=self.pause;selected
+  }
+  fn awaiting_choice(&self)->bool{self.pending}
+ }
+ #[test]
+ fn a_pending_player_selection_stops_the_group_and_replays_without_partial_discards(){
+  let a=crate::PlayerId(0);let b=crate::PlayerId(1);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+  let card=crate::card::CardBuilder::new(crate::CardId::new(),"Discard resource").card_types(vec![crate::CardType::Artifact]).build();
+  for player in [a,b]{for _ in 0..2{game.create_object_from_card(&card,player,crate::Zone::Hand);}}
+  let source=game.create_object_from_card(&card,a,crate::Zone::Stack);let spec=crate::target::ChooseSpec::target_player();
+  let effect=Effect::new(crate::effects::DiscardEffect::new(1,crate::target::PlayerFilter::Target(Box::new(crate::target::PlayerFilter::Any)),false));
+  let mut dm=Choices{pause:true,pending:false,players:vec![]};
+  {let mut ctx=ExecutionContext::new(source,a,&mut dm);ctx.targets=vec![crate::effects::ResolvedTarget::Player(b),crate::effects::ResolvedTarget::Player(a)];ctx.target_assignments=vec![crate::game_state::TargetAssignment{spec:spec.clone(),range:0..2}];execute_effect(&mut game,&effect,&mut ctx).unwrap();assert_eq!(ctx.target_assignments[0].range,0..2);}
+  assert_eq!(dm.players,vec![a],"APNAP selection stops before querying B while A is pending");assert_eq!(game.player(a).unwrap().hand.len(),2);assert_eq!(game.player(b).unwrap().hand.len(),2);
+  dm.pause=false;dm.pending=false;dm.players.clear();
+  {let mut ctx=ExecutionContext::new(source,a,&mut dm);ctx.targets=vec![crate::effects::ResolvedTarget::Player(b),crate::effects::ResolvedTarget::Player(a)];ctx.target_assignments=vec![crate::game_state::TargetAssignment{spec,range:0..2}];execute_effect(&mut game,&effect,&mut ctx).unwrap();assert_eq!(ctx.target_assignments[0].range,0..2);}
+  assert_eq!(dm.players,vec![a,b]);assert_eq!(game.player(a).unwrap().hand.len(),1);assert_eq!(game.player(b).unwrap().hand.len(),1);
+ }
 }

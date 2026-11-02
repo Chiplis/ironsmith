@@ -35,6 +35,15 @@ mod r#compound_characteristic_transitions;
 #[path = "../counter_removal_followups.rs"]
 mod r#counter_removal_followups;
 
+#[path = "../custom_mirage.rs"]
+mod r#custom_mirage;
+
+#[path = "../custom_preparation_grants.rs"]
+mod r#custom_preparation_grants;
+
+#[path = "../custom_token_attachment_prevention.rs"]
+mod r#custom_token_attachment_prevention;
+
 #[path = "../divided_prevention_triggers.rs"]
 mod r#divided_prevention_triggers;
 
@@ -85,9 +94,6 @@ mod r#reference_and_result_bindings;
 
 #[path = "../repeat_process_cumulative.rs"]
 mod r#repeat_process_cumulative;
-
-#[path = "../scoped_action_prohibitions.rs"]
-mod r#scoped_action_prohibitions;
 
 #[path = "../source_must_be_blocked_lowering.rs"]
 mod r#source_must_be_blocked_lowering;

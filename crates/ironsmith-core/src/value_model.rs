@@ -12,6 +12,28 @@ use crate::{
     SourceReferenceSurface, SubtypeFamily,
 };
 
+/// A numeric ability parameter sampled by a copy-creation exception. Fixed
+/// parameters retain their historical numeric wire representation. An unresolved
+/// recipe is never permission to read the host's later characteristics.
+#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CreationNumericProperty { ManaValue }
+#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature="serde", serde(untagged))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum FrozenNumericParameter { Fixed(u32), Creation(CreationNumericProperty) }
+impl FrozenNumericParameter {
+    pub fn fixed(self) -> Option<u32> { match self { Self::Fixed(value)=>Some(value), Self::Creation(_)=>None } }
+    pub fn bind_copy_creation(self, mana_value:u32)->Self { match self {
+        Self::Creation(CreationNumericProperty::ManaValue)=>Self::Fixed(mana_value), value=>value,
+    } }
+}
+impl std::fmt::Display for FrozenNumericParameter {
+ fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result { match self {
+  Self::Fixed(value)=>write!(f,"{value}"), Self::Creation(CreationNumericProperty::ManaValue)=>write!(f,"the mana value of this permanent as it was created"),
+ } }
+}
+
 /// A characteristic whose distinct values a history-backed aggregate counts
 /// ("colors among spells you've cast this turn", "mana values among
 /// permanents you've sacrificed this turn"). Card types keep their dedicated
@@ -198,6 +220,8 @@ pub enum PriorEffectAction {
     /// ("the amount of mana that player lost this way", Pygmy Hippo).
     /// Converted mana (CR 106.4) was not lost. Appended.
     ManaLost,
+    /// Exact objects actually affected by the referenced completed instruction.
+    Affected,
 }
 
 /// A metric over the last-known-information memory emitted by one exact
@@ -742,6 +766,13 @@ pub enum TurnHistoryCount {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    /// Exact completed zone changes across the entire game, with no implicit
+    /// turn window. Appended to preserve legacy serialized ordinals.
+    MovedZonesEver {
+        filter: ObjectFilter,
+        from: Option<Zone>,
+        to: Option<Zone>,
+    },
 }
 
 impl TurnHistoryCount {
@@ -1049,6 +1080,7 @@ pub enum Value {
     PlayerCounters(PlayerFilter, CounterType),
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
+    NamedActionCount {object:Box<ChooseSpec>, label:String, this_turn:bool},
     /// Counters (of one kind, or of every kind) on the candidate an enclosing
     /// object filter is currently evaluating ("destroy each artifact with
     /// mana value less than or equal to the number of rust counters on it").
@@ -1214,6 +1246,8 @@ pub enum Value {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    /// Count a named optional payment on the exact referenced object receipt.
+    TimesPaidLabelOf { object: Box<ChooseSpec>, reference: OptionalCostRef },
 }
 
 impl Value {
@@ -1729,6 +1763,17 @@ pub enum Restriction {
         attackers: ObjectFilter,
         player: PlayerFilter,
     },
+    /// A resolving/static rule prohibits actual zone movement, not replacement.
+    /// Initial state is immutable physical-card evidence, independent of its
+    /// current face state, status, controller or object incarnation.
+    MoveBetweenZones {
+        from: crate::zone::Zone,
+        to: Option<crate::zone::Zone>,
+        initial_state: Option<(crate::zone::Zone, bool)>,
+        /// Copies/tokens are not cards (CR108.2/707.12). False retains the general object rule.
+        #[cfg_attr(feature = "serde", serde(default))]
+        cards_only: bool,
+    },
 }
 
 /// A rules modification applied to the objects of a
@@ -1754,6 +1799,12 @@ pub enum ObjectRule {
     /// Cannot be returned to pay a beam me up alternative casting cost.
     /// Other return-to-hand effects and costs remain legal.
     CantBeBeamedUp,
+    /// Prohibit attacking matching players directly, while leaving their
+    /// planeswalkers and battles attackable. Appended for wire stability.
+    CantAttackPlayersWithLife {
+        comparison: crate::ValueComparisonOperator,
+        threshold: i32,
+    },
 }
 
 impl ObjectRule {
@@ -1858,6 +1909,18 @@ impl ObjectRule {
                 format!("{who} may look at {subject} any time")
             }
             Self::CantBeBeamedUp => format!("{subject} can't be beamed up"),
+            Self::CantAttackPlayersWithLife { comparison, threshold } => {
+                use crate::ValueComparisonOperator as Op;
+                let amount=match comparison {
+                    Op::GreaterThan=>format!("more than {threshold}"),
+                    Op::GreaterThanOrEqual=>format!("{threshold} or more"),
+                    Op::Equal=>format!("exactly {threshold}"),
+                    Op::LessThan=>format!("less than {threshold}"),
+                    Op::LessThanOrEqual=>format!("{threshold} or less"),
+                    Op::NotEqual=>format!("a life total other than {threshold}"),
+                };
+                format!("{subject} can't attack players with {amount} life")
+            }
         }
     }
 }
@@ -1990,6 +2053,11 @@ pub struct ManaSpendPermission {
     /// Appended for wire stability.
     #[cfg_attr(feature = "serde", serde(default))]
     pub mana_symbol_as: Option<(ManaSymbol, ManaSymbol)>,
+    /// Ignore only an activation's minimum actual-color spending rule, and
+    /// only when its frozen original program has this explicit designation.
+    /// This permission does not convert mana or change colored pips.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub ignore_minimum_colors_for_designation: Option<String>,
 }
 
 impl ManaSpendPermission {
@@ -2001,6 +2069,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2017,6 +2086,7 @@ impl ManaSpendPermission {
             any_color_mana_symbol: Some(symbol),
             other_mana_only_as_colorless: true,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
         }
     }
 
@@ -2029,6 +2099,7 @@ impl ManaSpendPermission {
             any_color_mana_symbol: None,
             other_mana_only_as_colorless: false,
             mana_symbol_as: Some((symbol, as_symbol)),
+            ignore_minimum_colors_for_designation: None,
         }
     }
 
@@ -2052,6 +2123,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2067,6 +2139,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2079,6 +2152,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2095,6 +2169,7 @@ impl ManaSpendPermission {
             mana_source_filter: Some(mana_source_filter),
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2115,6 +2190,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2127,6 +2203,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2139,6 +2216,7 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -2869,9 +2947,12 @@ pub enum Condition {
     PlayerHasEnduringStory {
         player: PlayerFilter,
     },
+    PlayerHasDesignation { player: PlayerFilter, designation: String },
     SourceIsRingBearer {
         player: PlayerFilter,
     },
+    /// Actual mana paid to cast spells this turn; excludes mana spent on abilities.
+    PlayerSpentManaToCastSpellsThisTurnAtLeast { player: PlayerFilter, amount: FrozenNumericParameter },
     PlayerRingTemptedThisGameOrMore {
         player: PlayerFilter,
         count: u32,
@@ -3019,6 +3100,8 @@ pub enum Condition {
     TargetPaidLabel(OptionalCostRef),
     ThisSpellWasKicked,
     ThisSpellPaidLabel(OptionalCostRef),
+    /// One named optional payment completed for this exact source incarnation.
+    NamedPaymentOutcome {label:String,paid:bool,payer:Option<PlayerFilter>},
     YouHaveFullParty,
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
@@ -3347,6 +3430,7 @@ pub enum Condition {
     /// umbrella `Sticker` matches every sticker kind). Appended for wire
     /// stability.
     TriggeringKeywordActionIs(crate::event_model::KeywordActionKind),
+    TriggeringNamedActionPaidMana {label:String,required:Vec<ManaSymbol>},
     /// "if a player was dealt 6 or more combat damage this turn" (Sidequest:
     /// Play Blitzball): some single player has been dealt at least `count`
     /// combat damage this turn. Appended for wire stability.
@@ -3381,6 +3465,29 @@ pub enum Condition {
     },
     /// The source spell was the Nth spell cast by this controller this game.
     ThisSpellCastOrderThisGame(u32),
+    /// The turn's first actual main phase, excluding additional main phases.
+    FirstMainPhaseOfTurn,
+    /// Completed player operations, independent of the source's incarnation.
+    PlayerNamedActionHistory {
+        player: PlayerFilter, label: String, window: PlayerActionWindow, minimum: u32,
+        /// Filter completed operations by their actual receipt amount; zero
+        /// retains the unqualified completion latch used by existing sources.
+        #[cfg_attr(feature = "serde", serde(default))]
+        minimum_amount: u32,
+    },
+    /// Every CURRENT activated ability bearing this designation was activated
+    /// by the evaluating controller on this exact object/acquisition/definition.
+    /// Vacuously true when there are no such abilities.
+    EachCurrentDesignatedAbilityActivatedByYou { designation: String },
+    /// Any player's whole ending phase, including its cleanup step.
+    InEndingPhase,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum PlayerActionWindow { ThisTurn, ThisCombat, LastOwnTurn }
+impl PlayerActionWindow {
+    pub fn surface(self) -> &'static str { match self { Self::ThisTurn => "this turn", Self::ThisCombat => "this combat", Self::LastOwnTurn => "during your last turn" } }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3459,6 +3566,18 @@ mod tests {
 /// cast payment is frozen by the event; source P/T is evaluated both when
 /// triggering and on resolution, as required by its intervening "if".
 impl Condition {
+    pub fn bind_copy_creation_parameters(mut self, mana_value:u32)->Self {
+        match &mut self {
+            Self::PlayerSpentManaToCastSpellsThisTurnAtLeast{amount,..}=>*amount=amount.bind_copy_creation(mana_value),
+            Self::And(left,right)|Self::Or(left,right)=> {
+                **left=left.as_ref().clone().bind_copy_creation_parameters(mana_value);
+                **right=right.as_ref().clone().bind_copy_creation_parameters(mana_value);
+            }
+            Self::Not(inner)|Self::TriggerEventOnly(inner)=>**inner=inner.as_ref().clone().bind_copy_creation_parameters(mana_value),
+            _=>{},
+        }
+        self
+    }
     pub fn increment() -> Self {
         Self::Or(
             Box::new(Self::ValueComparison {

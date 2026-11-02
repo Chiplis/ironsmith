@@ -699,7 +699,8 @@ fn choose_land_of_each_basic_land_type(
     }
     let mut base = filter.clone();
     base.has_basic_land_type = false;
-    let chosen = crate::tag::CompilerReferenceTag::It.bind();
+    // A per-type set accumulates all slots; implicit `it` is singular.
+    let chosen = crate::util::helper_tag_for_tokens(tokens, "chosen");
     let mut effects = [
         crate::types::Subtype::Plains,
         crate::types::Subtype::Island,
@@ -801,10 +802,50 @@ fn choose_one_object_of_each_color(tokens: &[OwnedLexToken]) -> Option<Vec<Effec
             .collect(),
     )
 }
+// The same chosen pool can span explicit zones. The ordinary choice
+// reader still owns the count, object filter, ownership and chooser; only the
+// additional zone phrase is factored out, rather than becoming a filter OR.
+fn choose_from_explicit_zone_union(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let starts = view.token_start_indices();
+    for (index, word) in words.iter().enumerate().rev() {
+        if *word != "or" { continue; }
+        let mut tail = &words[index + 1..];
+        if tail.first() == Some(&"from") { tail = &tail[1..]; }
+        let (zone, required_owner) = match tail {
+            ["outside", "the", "game"] | ["outside", "game"] => (Zone::OutsideGame, None),
+            ["your", "graveyard"] => (Zone::Graveyard, Some(PlayerFilter::You)),
+            ["your", "hand"] => (Zone::Hand, Some(PlayerFilter::You)),
+            ["your", "library"] => (Zone::Library, Some(PlayerFilter::You)),
+            ["exile"] => (Zone::Exile, None),
+            ["the", "battlefield"] => (Zone::Battlefield, None),
+            ["the", "command", "zone"] => (Zone::Command, None),
+            _ => continue,
+        };
+        let head = &tokens[..starts[index]];
+        let Some((chooser, mut filter, count, count_value)) =
+            parse_you_choose_objects_clause_with_count_value(head)? else { continue; };
+        let Some(first_zone) = filter.zone.take() else { continue; };
+        // A global filter cannot encode different owners per zone. Keep such
+        // wording available for the branch-specific union reader instead.
+        if required_owner.as_ref().is_some_and(|owner| filter.owner.as_ref() != Some(owner)) { continue; }
+        if first_zone == zone { continue; }
+        crate::word_claims::claim_tokens(&tokens[starts[index]..]);
+        return Ok(Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            filter, count, count_value, player: chooser,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            zones: vec![first_zone, zone], search_mode: None, optional_search_zones: false,
+        })));
+    }
+    Ok(None)
+}
+
 pub(super) fn read_you_choose_objects_with_count(
     input: &Clause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(choice) = choose_from_explicit_zone_union(tokens)? { return Ok(Some(choice)); }
     let restriction_duration_shape = if find_negation_span(tokens).is_some() {
         effect_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
     } else {

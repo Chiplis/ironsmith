@@ -1,5 +1,6 @@
 //! UNRUN source scenarios for exact frozen activation-kind cost modifier cards.
 //! Authored during the source-only campaign; no execution or coverage is claimed.
+#[path="unfunded_activation_support.rs"] mod unfunded_activation_support;
 use ironsmith::ability::AbilityKind;
 use ironsmith::cards::CardDefinition;
 use ironsmith::combat_state::{AttackTarget, AttackerInfo, CombatState};
@@ -107,7 +108,7 @@ fn price(game: &GameState, player: PlayerId, source: ObjectId, ability_index: us
     let ability = game.current_ability(source, ability_index).unwrap();
     let AbilityKind::Activated(activated) = &ability.kind else { panic!("activated ability"); };
     calculate_effective_activation_total_cost_for_ability(game, player, source,
-        &activated.mana_cost, &[], ActivationCostAbility::at(game, player, source, ability_index))
+        &activated.mana_cost, &[], (ActivationCostAbility::at(game, player, source, ability_index)).as_ref())
 }
 fn assert_price(game: &GameState, player: PlayerId, source: ObjectId, ability_index: usize, symbols: Vec<ManaSymbol>) {
     let actual = price(game, player, source, ability_index);
@@ -124,6 +125,7 @@ struct Choices {
     target: Option<Target>,
     cancel: bool,
     saw_cancel: bool,
+    expect_unpayable_mana: bool,
     activate_mana_first: Option<(ObjectId, usize)>,
     mana_requests: Vec<(PlayerId, ManaCost)>,
     x: Option<u32>,
@@ -158,6 +160,7 @@ impl DecisionMaker for Choices {
         } else { SelectFirstDecisionMaker.decide_targets(game, ctx) }
     }
     fn decide_mana_payment(&mut self, game: &GameState, ctx: &ManaPaymentContext) -> ManaPaymentResponse {
+        if self.expect_unpayable_mana {assert!(!ctx.plan.payable,"the original discounted X price must still be fully funded");}
         self.mana_requests.push((ctx.player, ctx.request.cost.clone()));
         if let Some((source, ability_index)) = self.activate_mana_first.take() {
             return ManaPaymentResponse::Activate { source, ability_index };
@@ -923,7 +926,7 @@ fn announced_x_uses_the_original_cost_and_one_mana_floor_after_a_slot_change() {
             let GameProgress::NeedsDecisionCtx(DecisionContext::Number(context)) = progress else {
                 panic!("X must be announced before the discounted total is paid");
             };
-            assert_eq!(context.max, 3);
+            assert_eq!(context.max, u32::MAX, "mana is checked after the X announcement");
             let replacement = compile_to_runtime_definition("Changed X slot",
                 "Type: Artifact\n{0}: You gain 20 life.", false).unwrap();
             game.object_mut(source).unwrap().abilities = replacement.abilities.into();
@@ -1003,7 +1006,7 @@ fn hulk_power_up_dynamic_x_preserves_intrinsic_entry_reduction_and_announced_cou
             let n = keyword_index(&game, source, Keyword::PowerUp);
             let mut choices = Choices { x: Some(chosen), ..Default::default() };
             activate(&mut game, A, source, n, &mut choices);
-            assert_eq!(choices.x_bounds, vec![(0, chosen)]);
+            assert_eq!(choices.x_bounds, vec![(0, u32::MAX)], "no nonmana cost bounds this X announcement");
             assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
             resolve(&mut game, &mut choices);
             assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), chosen);
@@ -1040,4 +1043,33 @@ fn exhaust_mana_alternatives_select_one_original_branch_before_flattening_and_pa
             }
         }
     }
+}
+
+#[test]
+fn unfunded_exhaust_x_keeps_original_price_and_once_limit_unspent() {
+ for zirda in definitions("Zirda, the Dawnwaker") {for host in definitions_text("Unfunded exhaust witness","Type: Artifact\nExhaust — {X}: You gain X life."){
+  let mut game=game();game.create_object_from_definition(&zirda,A,Zone::Battlefield);
+  let source=game.create_object_from_definition(&host,A,Zone::Battlefield);let n=keyword_index(&game,source,Keyword::Exhaust);
+  mana(&mut game,A,ManaSymbol::Colorless,1);let next=action(&game,A,source,n).unwrap();
+  let mut choices=Choices{x:Some(4),cancel:true,expect_unpayable_mana:true,..Default::default()};
+  let rejected=unfunded_activation_support::reject_or_cancel(&mut game,next,&mut choices);
+  assert_eq!(choices.x_bounds,vec![(0,u32::MAX)]);assert!(rejected||choices.saw_cancel);
+  assert_eq!(game.player(A).unwrap().mana_pool.total(),1);assert_eq!(game.player(A).unwrap().life,20);
+  assert!(!game.is_tapped(source));assert!(action(&game,A,source,n).is_some(),"cancellation cannot consume exhaust's once limit");
+ }}
+}
+#[test]
+fn unfunded_power_up_x_restores_entry_reduced_price_and_no_counters() {
+ for hulk in definitions("Hulk, Gamma Goliath") {for entered_this_turn in [false,true]{
+  let mut game=game();game.create_object_from_definition(&hulk,A,Zone::Battlefield);
+  let source=printed(&mut game,"Unfunded power-up witness","Mana cost: {2}\nType: Creature — Human\nPower/Toughness: 1/1\nPower-up — {X}: Put X +1/+1 counters on this creature.",A,Zone::Hand);
+  let receipt=game.move_object_with_etb_processing_with_dm(source,Zone::Battlefield,&mut Choices::default()).unwrap();let source=receipt.original.into_result().unwrap().new_id;
+  if !entered_this_turn {game.next_turn();main_phase(&mut game,A);}
+  mana(&mut game,A,ManaSymbol::Colorless,1);let n=keyword_index(&game,source,Keyword::PowerUp);let next=action(&game,A,source,n).unwrap();
+  let mut choices=Choices{x:Some(if entered_this_turn {7}else{5}),cancel:true,expect_unpayable_mana:true,..Default::default()};
+  let rejected=unfunded_activation_support::reject_or_cancel(&mut game,next,&mut choices);
+  assert_eq!(choices.x_bounds,vec![(0,u32::MAX)]);assert!(rejected||choices.saw_cancel);
+  assert_eq!(game.player(A).unwrap().mana_pool.total(),1);assert_eq!(game.player(A).unwrap().life,20);
+  assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),0);assert!(action(&game,A,source,n).is_some());
+ }}
 }

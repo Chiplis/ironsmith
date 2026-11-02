@@ -338,7 +338,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::OpponentOf(_)
@@ -453,7 +453,7 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             filter.description()
         }
         PlayerFilter::OpponentOf(base) => {
@@ -821,6 +821,9 @@ fn object_has_ability_marker_in_view(
 ) -> bool {
     let abilities = chars.map(|chars| chars.abilities.as_slice())
         .unwrap_or(object.abilities.as_slice());
+    if let Some(name)=marker.trim().strip_prefix("custom keyword:"){
+        return abilities.iter().any(|ability|matches!(&ability.kind,crate::ability::AbilityKind::Static(static_ability) if static_ability.custom_keyword_name().is_some_and(|identity|identity.eq_ignore_ascii_case(name.trim()))));
+    }
     let labels = chars.map(|chars| chars.ability_labels.as_slice())
         .unwrap_or(object.ability_labels.as_slice());
     let enchant_filter = chars.map(|chars| chars.aura_attach_filter.as_ref())
@@ -836,6 +839,13 @@ fn object_has_ability_marker_in_view(
             .is_some_and(program_offers_modes);
     }
     // "a spell using blink": a payment attributed to that custom keyword.
+    if let Some(keyword) = marker.trim().strip_prefix("cast using ") {
+        // Actual casts record Some(0) even when no mana was spent. A spell
+        // copy inherits optional-cost choices but deliberately clears this
+        // noncopiable completion receipt (CR 707.10).
+        return object.caster_mana_spent_to_cast.is_some()
+            && object.optional_costs_paid.paid_custom_keyword(keyword.trim());
+    }
     if let Some(keyword) = custom_keyword_payment_marker(marker) {
         return object.optional_costs_paid.paid_custom_keyword(keyword);
     }
@@ -1111,6 +1121,9 @@ pub(super) fn snapshot_has_ability_marker(
 ) -> bool {
     use crate::ability::AbilityKind;
 
+    if let Some(name)=marker.trim().strip_prefix("custom keyword:"){
+        return snapshot.abilities.iter().any(|ability|matches!(&ability.kind,AbilityKind::Static(static_ability) if static_ability.custom_keyword_name().is_some_and(|identity|identity.eq_ignore_ascii_case(name.trim()))));
+    }
     let normalized_marker = marker.trim().to_ascii_lowercase();
     if normalized_marker == ironsmith_core::keyword_forms::KICKED {
         return snapshot.optional_costs_paid.was_kicked();
@@ -1118,6 +1131,10 @@ pub(super) fn snapshot_has_ability_marker(
     if normalized_marker == "modal" {
         return matches!(&snapshot.copiable_values.spell_effect,
             crate::snapshot::SpellProgramState::Present(program) if program_offers_modes(program));
+    }
+    if let Some(keyword) = marker.trim().strip_prefix("cast using ") {
+        return snapshot.caster_mana_spent_to_cast.is_some()
+            && snapshot.optional_costs_paid.paid_custom_keyword(keyword.trim());
     }
     if let Some(keyword) = custom_keyword_payment_marker(marker) {
         return snapshot.optional_costs_paid.paid_custom_keyword(keyword);
@@ -1767,5 +1784,18 @@ mod unearth_marker_contract_tests {
         for ability in [wrong_zone, wrong_timing, extra_effects] {
             assert!(!abilities_have_marker(&[ability], "unearth"));
         }
+    }
+}
+
+#[cfg(test)]
+mod custom_identity_predicate_tests {
+    use super::*;
+    #[test]
+    fn custom_identity_predicate_does_not_alias_official_keyword_or_display_text(){
+        let player=crate::PlayerId(0);let mut game=crate::GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Identity witness").card_types(vec![crate::CardType::Creature]).build();let id=game.create_object_from_card(&card,player,crate::Zone::Exile);
+        game.object_mut(id).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::from_model(crate::static_abilities::CompiledStaticAbility::custom_keyword_identity("Witness"))));
+        let object=game.object(id).unwrap();assert!(object_has_ability_marker(object,"custom keyword:Witness"));assert!(!object_has_ability_marker(object,"custom keyword:Flying"));
+        let snapshot=crate::snapshot::ObjectSnapshot::from_object(object,&game);assert!(snapshot_has_ability_marker(&snapshot,"custom keyword:Witness"));assert!(!snapshot_has_ability_marker(&snapshot,"custom keyword:Flying"));
     }
 }

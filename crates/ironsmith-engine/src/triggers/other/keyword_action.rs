@@ -222,7 +222,11 @@ impl TriggerMatcher for KeywordActionTrigger {
                 && source_filter.custom_statuses.last() != e.custom_status.as_ref() {
                 return false;
             }
-            let matches = if let Some(snapshot) = e.snapshot.as_ref() {
+            let matches = if *source_filter == ObjectFilter::default() {
+                // An unconstrained actor does not require a still-live object;
+                // the tagged participant receipt supplies the entire predicate.
+                true
+            } else if let Some(snapshot) = e.snapshot.as_ref() {
                 source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
             } else if let Some(source_object) = ctx.game.object(e.source) {
                 source_filter.matches(source_object, &ctx.filter_ctx, ctx.game)
@@ -517,6 +521,18 @@ impl TriggerMatcher for KeywordActionTrigger {
                 })
                 .unwrap_or_else(|| "a creature".to_string());
             return format!("Whenever {subject} exploits {object}");
+        }
+
+        if self.action == KeywordActionKind::Planeswalk
+            && let Some((tag, filter)) = &self.tagged_object_filter
+            && filter.source
+        {
+            let direction = if tag.as_str() == crate::tag::PLANESWALK_DESTINATION_TAG { Some("to") }
+                else if tag.as_str() == crate::tag::PLANESWALK_ORIGINS_TAG { Some("away from") } else { None };
+            if let Some(direction) = direction {
+                let actor = if self.player == PlayerFilter::You { "you planeswalk" } else { "a player planeswalks" };
+                return format!("Whenever {actor} {direction} this plane");
+            }
         }
 
         // Oracle names the cycled object: "Whenever a player cycles a card".

@@ -676,6 +676,7 @@ fn lower_materialization_costs_with(
                     "tap_cost_{tap_tag_id}"
                 ));
                 tap_tag_id += 1;
+                let named_payment = filter.named_tap_payment.clone();
                 let aggregate_constraint = filter.target_set_aggregate_constraint.take();
                 let mut choice = crate::effects::ChooseObjectsEffect::new(
                     filter,
@@ -687,9 +688,17 @@ fn lower_materialization_costs_with(
                     choice = choice.with_aggregate_constraint(*constraint);
                 }
                 costs.push(Cost::validated_effect(Effect::new(choice)));
-                costs.push(Cost::validated_effect(Effect::tap(
+                let tap = Effect::new(crate::effects::TapEffect::with_spec(
                     crate::target::ChooseSpec::tagged(tag),
-                )));
+                ).with_named_payment(named_payment.clone()));
+                if let Some(label) = named_payment {
+                    let id = crate::effect::EffectId::NAMED_TAP_PAYMENT;
+                    costs.push(Cost::validated_effect(Effect::with_id(id.0, tap)));
+                    costs.push(Cost::validated_effect(Effect::new(crate::effects::PerformNamedActionEffect {
+                        label, performer: None, objects: None,
+                        prior_objects: Some((id, ironsmith_core::PriorEffectAction::Tapped)),
+                    })));
+                } else { costs.push(Cost::validated_effect(tap)); }
             }
             MaterializationCost::UntapChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

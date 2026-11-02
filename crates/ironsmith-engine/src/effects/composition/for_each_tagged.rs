@@ -295,6 +295,7 @@ fn prepare_tagged_iteration_proposal(
 ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
     let it_tag = TagKey::from("__it__");
     let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);
+    let domain_exact=ctx.exact_object_reference_tags.contains(&effect.tag);
     super::with_iteration_tags(
         ctx,
         vec![(it_tag.clone(), None), (previous_tag.clone(), None)],
@@ -311,7 +312,7 @@ fn prepare_tagged_iteration_proposal(
                     ctx,
                     snapshot.object_id,
                     iterated_player,
-                    Vec::new(),
+                    if domain_exact{vec![(TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG),vec![snapshot.clone()])]}else{Vec::new()},
                     |ctx| {
                         effect
                             .effects
@@ -322,16 +323,13 @@ fn prepare_tagged_iteration_proposal(
                                 }
                                 Some(child.prepare_simultaneous_player_action(game, ctx).map(
                                     |inner| {
-                                        super::scope_prepared_iteration(
-                                            inner,
-                                            snapshot.object_id,
-                                            iterated_player,
-                                            vec![
-                                                (effect.tag.clone(), snapshots.clone()),
-                                                (it_tag.clone(), vec![snapshot.clone()]),
-                                                (previous_tag.clone(), snapshots[..index].to_vec()),
-                                            ],
-                                        )
+                                        let mut tags=vec![
+                                            (effect.tag.clone(), snapshots.clone()),
+                                            (it_tag.clone(), vec![snapshot.clone()]),
+                                            (previous_tag.clone(), snapshots[..index].to_vec()),
+                                        ];
+                                        if domain_exact{tags.push((TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG),vec![snapshot.clone()]));}
+                                        super::scope_prepared_iteration(inner,snapshot.object_id,iterated_player,tags)
                                     },
                                 ))
                             })
@@ -627,6 +625,7 @@ impl EffectExecutor for ForEachTaggedPlayerEffect {
 struct TaggedObjectPlan {
     effect: ForEachTaggedEffect,
     snapshots: Vec<ObjectSnapshot>,
+    domain_exact: bool,
 }
 impl super::iteration_program::SelectedIterationPlan for TaggedObjectPlan {
     fn len(&self) -> usize {
@@ -658,11 +657,9 @@ impl super::iteration_program::SelectedIterationPlan for TaggedObjectPlan {
             TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG),
             self.snapshots[..index].to_vec(),
         );
-        Ok(super::iteration_program::IterationInput {
-            object: Some(snapshot.object_id),
-            player,
-            tags: vec![(TagKey::from("__it__"), vec![snapshot.clone()])],
-        })
+        let mut tags=vec![(TagKey::from("__it__"),vec![snapshot.clone()])];
+        if self.domain_exact{tags.push((TagKey::from(ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG),vec![snapshot.clone()]));}
+        Ok(super::iteration_program::IterationInput{object:Some(snapshot.object_id),player,tags})
     }
     fn project(
         &self,
@@ -694,6 +691,7 @@ fn tagged_object_cursor(
         Box::new(TaggedObjectPlan {
             effect: effect.clone(),
             snapshots,
+            domain_exact:ctx.exact_object_reference_tags.contains(&effect.tag),
         }),
         ctx,
     ))

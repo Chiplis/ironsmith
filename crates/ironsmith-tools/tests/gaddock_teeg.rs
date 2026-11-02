@@ -184,6 +184,7 @@ fn teeg_checks_flashback_escape_and_exile_against_printed_cost() {
                     "flashback" => builder.flashback(alt_cost),
                     "escape" => builder.escape(alt_cost, 1),
                     _ => builder.alternative_cast(AlternativeCastingMethod::FromZone {
+        preparation_total_cost: None,
                         name: "Exile permission".into(),
                         zone: origin,
                         total_cost: ironsmith::cost::TotalCost::mana(alt_cost),

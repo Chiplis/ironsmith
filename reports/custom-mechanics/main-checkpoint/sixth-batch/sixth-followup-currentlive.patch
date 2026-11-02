@@ -1,0 +1,813 @@
+--- a/crates/ironsmith-compiler-grammar/src/activation_and_restrictions/activated_sentence_parsers.rs
++++ b/crates/ironsmith-compiler-grammar/src/activation_and_restrictions/activated_sentence_parsers.rs
+@@ -130,10 +130,11 @@
+ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+     let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
+ 
+-    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
++    Some(EffectAst::subject_verb_reduce_next_spell_cost_window(
+         PlayerAst::You,
+         parsed.spell_filter,
+         parsed.reduction,
++        parsed.starts_during_next_turn,
+     ))
+ }
+ 
+--- a/crates/ironsmith-compiler-grammar/src/activation_and_restrictions/semantic/semantic_trigger.rs
++++ b/crates/ironsmith-compiler-grammar/src/activation_and_restrictions/semantic/semantic_trigger.rs
+@@ -1236,6 +1236,9 @@
+             .ok_or_else(|| CardTextError::ParseError("unknown removed counter type".into()))?;
+         let filter = source_reference_surface_for_trigger_subject(&tokens[source..])
+             .map(ObjectFilter::source_with_surface).unwrap_or_else(ObjectFilter::source);
++        // The singular article specifies one removal event; the descriptor
++        // reader starts after it, so this event reader owns that token.
++        crate::word_claims::claim_words(&words[2..3]);
+         // "... counter from <this source>": the noun, preposition and source.
+         crate::word_claims::claim_words(&words[counter_idx..counter_idx + 2]);
+         crate::word_claims::claim_tokens(&tokens[source..]);
+--- a/crates/ironsmith-compiler-grammar/src/effect_sentences/clause_pattern_helpers.rs
++++ b/crates/ironsmith-compiler-grammar/src/effect_sentences/clause_pattern_helpers.rs
+@@ -3110,6 +3110,7 @@
+             until_source_leaves,
+             until_visit_roll_at_most,
+             until_controller_casts_nth_spell,
++            until_end_of_turn,
+         } => {
+           let apply_duration = |mut effect: EffectAst| {
+             if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+@@ -3117,7 +3118,9 @@
+                     crate::cards::builders::PermanentStateActionAst::PhaseOut { duration, .. }
+                     | crate::cards::builders::PermanentStateActionAst::PhaseOutAll { duration, .. }), ..
+             }) = &mut effect {
+-                if let Some(nth) = until_controller_casts_nth_spell {
++                if until_end_of_turn {
++                    *duration = crate::effects::PhaseOutDuration::UntilEndOfTurn;
++                } else if let Some(nth) = until_controller_casts_nth_spell {
+                     *duration = crate::effects::PhaseOutDuration::UntilControllerCastsNthSpellInTurn(nth);
+                 } else if let Some(maximum) = until_visit_roll_at_most {
+                     *duration = crate::effects::PhaseOutDuration::UntilVisitRollAtMost(maximum);
+--- a/crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/control_copy_attach_verbs.rs
++++ b/crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/control_copy_attach_verbs.rs
+@@ -110,19 +110,20 @@
+     chosen_tag: TagKey,
+     chosen_zone: Zone,
+ ) -> Vec<EffectAst> {
+-    filter.zone = Some(Zone::Library);
+-    filter.tagged_constraints.push(TaggedObjectConstraint {
+-        tag: looked_tag.clone(),
+-        relation: TaggedOpbjectRelation::IsTaggedObject,
+-    });
++    // "From among them" names the retained producer packet. It is not
++    // necessarily still in the library: a preceding mill produced graveyard
++    // arrivals. Filter those exact current incarnations without inventing a
++    // source zone or searching unrelated cards in the destination zone.
++    filter.zone = None;
++    filter.match_current_state = true;
+     vec![
+         EffectAst::SnapshotLastObjectTag {
+-            into: crate::tag::TagRef::of(looked_tag),
++            into: crate::tag::TagRef::of(looked_tag.clone()),
+         },
+-        EffectAst::subject_verb_tag_matching_objects(
++        EffectAst::subject_verb_filtered_tagged_objects(
+             filter,
+-            vec![Zone::Library],
+             crate::tag::TagRef::of(chosen_tag.clone()),
++            vec![crate::tag::TagRef::of(looked_tag.clone())],
+         ),
+         EffectAst::MoveTaggedGroupToZone {
+             tag: crate::tag::TagRef::of(chosen_tag),
+--- a/crates/ironsmith-compiler-grammar/src/grammar/activated_lines.rs
++++ b/crates/ironsmith-compiler-grammar/src/grammar/activated_lines.rs
+@@ -116,6 +116,7 @@
+ pub struct NextSpellCostReductionSpec {
+     pub spell_filter: ObjectFilter,
+     pub reduction: ManaCost,
++    pub starts_during_next_turn: bool,
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -628,12 +629,20 @@
+ fn parse_next_spell_cost_reduction<'a>(
+     input: &mut LexStream<'a>,
+ ) -> WResult<NextSpellCostReductionSpec> {
+-    primitives::phrase(&["the", "next"]).parse_next(input)?;
++    let starts_during_next_turn = alt((
++        primitives::phrase(&["the", "next"]).value(false),
++        primitives::phrase(&["the", "first"]).value(true),
++    )).parse_next(input)?;
+     let spell_filter_tokens = repeat_till(0.., any.void(), peek(primitives::kw("spell")))
+         .map(|((), _)| ())
+         .take()
+         .parse_next(input)?;
+-    primitives::phrase(&["spell", "you", "cast", "this", "turn"]).parse_next(input)?;
++    primitives::phrase(&["spell", "you", "cast"]).parse_next(input)?;
++    if starts_during_next_turn {
++        primitives::phrase(&["during", "your", "next", "turn"]).parse_next(input)?;
++    } else {
++        primitives::phrase(&["this", "turn"]).parse_next(input)?;
++    }
+     let _: &[OwnedLexToken] = repeat_till(0.., any.void(), peek(primitives::kw("costs")))
+         .map(|((), _)| ())
+         .take()
+@@ -645,6 +654,7 @@
+     primitives::phrase(&["less", "to", "cast"]).parse_next(input)?;
+     let _: Vec<&OwnedLexToken> = repeat(0.., any).parse_next(input)?;
+     Ok(NextSpellCostReductionSpec {
++        starts_during_next_turn,
+         spell_filter: super::filters::parse_spell_filter_with_grammar_entrypoint_lexed(
+             trim_lexed_commas(spell_filter_tokens),
+         ),
+@@ -758,3 +768,22 @@
+ #[cfg(test)]
+ #[path = "activated_lines_inline_tests.rs"]
+ mod tests;
++
++#[cfg(test)]
++#[test]
++fn next_spell_cost_windows_distinguish_immediate_next_from_future_first() {
++ for (text,future) in [
++  ("The next instant or sorcery spell you cast this turn costs {3} less to cast.",false),
++  ("The first instant or sorcery spell you cast during your next turn costs {3} less to cast.",true),
++  ("The first permanent spell you cast during your next turn costs {3} less to cast.",true),
++ ] {
++  let tokens=crate::lexer::lex_line(text,0).unwrap();
++  let parsed=parse_next_spell_cost_reduction_tokens(&tokens).expect("complete timed payment modifier");
++  assert_eq!(parsed.starts_during_next_turn,future);
++  assert_eq!(parsed.reduction.to_oracle(),"{3}");
++ }
++ for text in [
++  "The first instant spell you cast this turn costs {3} less to cast.",
++  "The next instant spell you cast during your next turn costs {3} less to cast.",
++ ] {let tokens=crate::lexer::lex_line(text,0).unwrap();assert!(parse_next_spell_cost_reduction_tokens(&tokens).is_none(),"unimplemented temporal surface must not silently change its meaning: {text}");}
++}
+--- a/crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords/tests.rs
++++ b/crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords/tests.rs
+@@ -180,3 +180,14 @@
+     let tokens = lex_line("This creature phases out until an opponent casts a spell.", 0).unwrap();
+     assert!(parse_keyword_mechanic_tokens(&tokens).is_none());
+ }
++
++#[test]
++fn phase_out_owns_end_of_turn_duration_and_preserves_normal_or_source_durations() {
++    for text in ["This permanent phases out until end of turn.","All creatures phase out until end of turn."] {
++        let tokens=lex_line(text,0).unwrap();assert!(matches!(parse_keyword_mechanic_tokens(&tokens),Some(KeywordMechanicShape::Phase{direction:PhaseDirectionShape::Out,until_end_of_turn:true,..})),"{text}");
++    }
++    let tokens=lex_line("That creature phases out.",0).unwrap();assert!(matches!(parse_keyword_mechanic_tokens(&tokens),Some(KeywordMechanicShape::Phase{until_end_of_turn:false,..})));
++    for text in ["This permanent phases in until end of turn.","This permanent phases out until end of turn and draws a card."] {
++        let tokens=lex_line(text,0).unwrap();assert!(parse_keyword_mechanic_tokens(&tokens).is_none(),"{text}");
++    }
++}
+--- a/crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords.rs
++++ b/crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords.rs
+@@ -75,6 +75,7 @@
+         /// your Attractions" (Ferris Wheel): the highest releasing result.
+         until_visit_roll_at_most: Option<u32>,
+         until_controller_casts_nth_spell: Option<u32>,
++        until_end_of_turn: bool,
+     },
+     PhaseExchange {
+         phase_in: &'a [OwnedLexToken],
+@@ -469,13 +470,21 @@
+     {
+         opt(|input: &mut LexStream<'a>| -> WResult<u32> {
+             primitives::phrase(&["until", "you", "cast", "your"]).parse_next(input)?;
+-            let nth = any.verify_map(|token: &OwnedLexToken| token.as_word().and_then(ironsmith_core::parse_ordinal_word))
+-                .parse_next(input)?;
++            let (nth, ordinal_token) = any.verify_map(|token: &OwnedLexToken| {
++                token.as_word().and_then(ironsmith_core::parse_ordinal_word).map(|nth| (nth, token))
++            }).parse_next(input)?;
+             primitives::phrase(&["spell", "in", "a", "turn"]).parse_next(input)?;
+             if nth == 0 { return Err(primitives::backtrack_err("phase duration", "positive spell ordinal")); }
++            // The raw token reader recognizes a typed ordinal; unlike a
++            // keyword primitive it does not record its own surface claim.
++            crate::word_claims::claim_tokens(std::slice::from_ref(ordinal_token));
+             Ok(nth)
+         }).parse_next(input)?
+     } else { None };
++    let until_end_of_turn = direction == PhaseDirectionShape::Out
++        && until_source_leaves.is_none() && until_visit_roll_at_most.is_none()
++        && until_controller_casts_nth_spell.is_none()
++        && opt(primitives::phrase(&["until","end","of","turn"])).parse_next(input)?.is_some();
+     // A restated replacement ("... phases out instead") carries its
+     // `instead` marker; the conditional reading owns that surface.
+     opt(primitives::kw("instead")).parse_next(input)?;
+@@ -493,6 +502,7 @@
+         until_source_leaves,
+         until_visit_roll_at_most,
+         until_controller_casts_nth_spell,
++        until_end_of_turn,
+     })
+ }
+ 
+--- a/crates/ironsmith-compiler-grammar/src/semantic_line_parsing/effect.rs
++++ b/crates/ironsmith-compiler-grammar/src/semantic_line_parsing/effect.rs
+@@ -3,10 +3,11 @@
+ 
+ pub fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+     let parsed = activated_line_grammar::parse_next_spell_cost_reduction_tokens(tokens)?;
+-    Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
++    Some(EffectAst::subject_verb_reduce_next_spell_cost_window(
+         PlayerAst::You,
+         parsed.spell_filter,
+         parsed.reduction,
++        parsed.starts_during_next_turn,
+     ))
+ }
+ 
+--- a/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_dispatch/subject_verb_late.rs
++++ b/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_dispatch/subject_verb_late.rs
+@@ -3078,6 +3078,7 @@
+         SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
+             filter,
+             reduction,
++            starts_during_next_turn,
+         }) => {
+             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+             let mut player_filter = subject.into_player_filter();
+@@ -3089,16 +3090,13 @@
+                     &last_player_filter,
+                 );
+             }
+-            Ok((
+-                vec![Effect::new(
+-                    crate::effects::GrantNextSpellCostReductionEffect::new(
++            let mut modifier = crate::effects::GrantNextSpellCostReductionEffect::new(
+                         player_filter,
+                         resolved_filter,
+                         reduction.clone(),
+-                    ),
+-                )],
+-                Vec::new(),
+-            ))
++                    );
++            modifier.starts_during_next_turn = *starts_during_next_turn;
++            Ok((vec![Effect::new(modifier)], Vec::new()))
+         }
+         SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
+             filter,
+--- a/crates/ironsmith-compiler-runtime/tests/continuous_reference_quantities.rs
++++ b/crates/ironsmith-compiler-runtime/tests/continuous_reference_quantities.rs
+@@ -683,3 +683,28 @@
+         );
+     }
+ }
++
++#[test]
++fn filtered_from_among_milled_cards_uses_only_exact_arrivals_and_allows_an_empty_match() {
++    let input="Type: Sorcery\nMill two cards, then put all instant and sorcery cards from among them into your hand.";
++    let direct=compile_to_runtime_definition("Milled collection control",input,false).unwrap();
++    let (artifact,_)=ironsmith_compiler_runtime::compile_to_artifact("Milled collection control",input,false).unwrap();
++    let restored=CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
++    for definition in [direct,ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap()] {
++        for qualifying in [false,true] {
++            let mut g=game();
++            let outsider=g.create_object_from_definition(&resource("Unrelated graveyard instant","Instant"),A,Zone::Graveyard);
++            let outsider=g.object(outsider).unwrap().stable_id;
++            // Library order uses the native top convention explicitly.
++            for i in 0..2 {g.create_object_from_definition(&resource(&format!("Counted mill member {i}"),if qualifying{"Instant"}else{"Artifact"}),A,Zone::Library);}
++            let original=g.player(A).unwrap().library.clone();
++            let source=g.create_object_from_definition(&definition,A,Zone::Stack);
++            let effect=Effect::new(ironsmith::effects::SequenceEffect::new(definition.spell_effect.as_ref().unwrap().all_effects_owned()));
++            execute_effect(&mut g,&effect,&mut EffectContext::new_default(source,A)).unwrap();
++            assert_eq!(g.player(A).unwrap().hand.len(),if qualifying{2}else{0});
++            assert_eq!(g.player(A).unwrap().graveyard.len(),if qualifying{1}else{3});
++            let outsider=g.find_object_by_stable_id(outsider).unwrap();assert_eq!(g.object(outsider).unwrap().zone,Zone::Graveyard,"an eligible outsider is not in the milled producer packet");
++            assert!(original.iter().all(|id|g.object(*id).is_none()),"the selection uses exact resulting arrivals, not retired library incarnations");
++        }
++    }
++}
+--- a/crates/ironsmith-compiler-runtime/tests/craft_material_costs.rs
++++ b/crates/ironsmith-compiler-runtime/tests/craft_material_costs.rs
+@@ -415,11 +415,13 @@
+         assert_eq!((game.current_power(gondola), game.current_toughness(gondola)), (Some(4), Some(4)));
+         for index in 0..7 { printed(&mut game, A, Zone::Graveyard, &format!("Permanent {index}"), "Type: Artifact"); }
+         ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap();
+-        assert!(game.can_be_blocked(gondola), "seven permanents plus a sorcery is insufficient");
++        assert!(game.can_be_blocked_by_defender(gondola, B), "seven permanents plus a sorcery is insufficient");
++        assert!(game.effect_store.cant_effects.conditional_cant_be_blocked.iter().any(|rule|rule.attacker==gondola),
++            "the actual back face retains its conditional blocking-time restriction");
+         let eighth = printed(&mut game, A, Zone::Graveyard, "Eighth permanent", "Type: Land");
+-        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(!game.can_be_blocked(gondola));
++        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(!game.can_be_blocked_by_defender(gondola, B));
+         game.move_object_by_effect(eighth, Zone::Exile).unwrap();
+-        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(game.can_be_blocked(gondola));
++        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut Choices::default()).unwrap(); assert!(game.can_be_blocked_by_defender(gondola, B));
+         attack(&mut game, gondola); assert!(!game.is_tapped(gondola), "vigilance applies after crew");
+         ironsmith::turn::execute_cleanup_step(&mut game); assert!(!game.current_is_creature(gondola));
+     }
+--- a/crates/ironsmith-compiler-runtime/tests/custom_colored_resource_costs.rs
++++ b/crates/ironsmith-compiler-runtime/tests/custom_colored_resource_costs.rs
+@@ -101,12 +101,12 @@
+  let (named_artifact,named_direct)=ironsmith_compiler_runtime::compile_to_artifact("Named variable resolution program",&named_text,false).unwrap();
+  let named_decoded=ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&named_artifact.to_json().unwrap()).unwrap();let named_restored=ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&named_decoded).unwrap();
+  let decoded=ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();let restored=ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap();
+- for definition in [direct,restored,named_direct,named_restored]{for accept in [false,true]{for count in [0,2]{
++ for (route,definition) in [("direct",direct),("artifact",restored),("named-direct",named_direct),("named-artifact",named_restored)]{for accept in [false,true]{for count in [0,2]{
+   let mut game=GameState::new(vec!["A".into(),"B".into()],20);let source=game.create_object_from_definition(&definition,A,Zone::Stack);
+   let white=game.create_object_from_definition(&body("{W}"),A,Zone::Battlefield);let blue=game.create_object_from_definition(&body("{U}"),A,Zone::Battlefield);
+   for _ in 0..3{game.create_object_from_definition(&body("{0}"),A,Zone::Library);}
+   let effects=definition.spell_effect.as_ref().unwrap().all_effects_owned();let mut dm=Choices{accept,count};let mut ctx=ironsmith::effects::EffectContext::new_default(source,A).with_decision_maker(&mut dm);ctx.x_value=Some(99);
+   ironsmith::effects::execute_effect(&mut game,&Effect::new(ironsmith::effects::SequenceEffect::new(effects)),&mut ctx).unwrap();
+-  assert_eq!(ctx.x_value,Some(99));assert_eq!(game.player(A).unwrap().hand.len(),if accept{count}else{0});assert_eq!(game.player(A).unwrap().life,20+i32::from(accept));assert_eq!(game.is_tapped(white),accept&&count>0);assert_eq!(game.is_tapped(blue),accept&&count>0);
++  assert_eq!(ctx.x_value,Some(99),"route={route}, accept={accept}, count={count}");assert_eq!(game.player(A).unwrap().hand.len(),if accept{count}else{0},"route={route}, accept={accept}, count={count}; tags={:?}; effects={:?}",ctx.tagged_objects,definition.spell_effect);assert_eq!(game.player(A).unwrap().life,20+i32::from(accept));assert_eq!(game.is_tapped(white),accept&&count>0);assert_eq!(game.is_tapped(blue),accept&&count>0);
+  }}}
+ }
+--- a/crates/ironsmith-compiler-runtime/tests/custom_final_all_sources_next_wave.rs
++++ b/crates/ironsmith-compiler-runtime/tests/custom_final_all_sources_next_wave.rs
+@@ -124,3 +124,22 @@
+         assert!(encoded.contains("OpponentsNextTurn"), "{encoded}");
+     }
+ }
++
++#[test]
++fn active_counter_removal_and_future_phase_ordinal_are_strict_generic_readings() {
++    for (name, body, retained) in [
++        ("Counter removal witness", "Whenever you remove a time counter from this creature, draw a card.", "CounterRemovedFrom"),
++        ("Another removal witness", "Whenever you remove a stun counter from this creature, draw a card.", "CounterRemovedFrom"),
++        ("Future second cast witness", "Whenever you cast your second spell each turn, you may have this creature phase out until you cast your second spell in a turn.", "UntilControllerCastsNthSpellInTurn(2)"),
++        ("Future third cast witness", "Whenever you cast your third spell each turn, you may have this creature phase out until you cast your third spell in a turn.", "UntilControllerCastsNthSpellInTurn(3)"),
++    ] {
++        let source=serde_json::json!({"name":name,"executable_text":format!("Type: Creature — Spirit\nPower/Toughness: 2/2\n{body}")});
++        let [direct,artifact]=source_support::definitions(&source).unwrap_or_else(|error|panic!("{name}: {error}"));
++        for definition in [&direct,&artifact] {
++            let debug=format!("{:?}",definition.abilities);
++            assert!(debug.contains(retained),"{name}: {debug}");
++        }
++        assert_eq!(canonical_source(direct).unwrap(),canonical_source(artifact).unwrap(),"{name}");
++    }
++}
++
+--- a/crates/ironsmith-compiler-runtime/tests/custom_gestalt_merge.rs
++++ b/crates/ironsmith-compiler-runtime/tests/custom_gestalt_merge.rs
+@@ -78,3 +78,36 @@
+   }
+  }
+ }
++
++#[test]
++fn complete_gestalt_source_phases_out_with_attachments_until_cleanup_not_extra_untap() {
++ let fixture:serde_json::Value=serde_json::from_str(include_str!("../../../fixtures/custom_mechanics/msem-gestalt-next.json")).unwrap();let card=&fixture["mechanics"][0]["representative_cards"][0];
++ for definition in definitions(card["name"].as_str().unwrap(),card["executable_text"].as_str().unwrap()) {
++  let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.turn.active_player=A;
++  let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);let physical=game.object(source).unwrap().stable_id;
++  game.tap(source);game.object_mut(source).unwrap().counters.insert(CounterType::Charge,3);
++  let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Ordinary body","Type: Creature\nPower/Toughness: 2/2",false).unwrap();let normal=game.create_object_from_definition(&body,A,Zone::Battlefield);
++  let equipment=ironsmith_compiler_runtime::compile_to_runtime_definition("Attachment","Type: Artifact — Equipment",false).unwrap();let attachment=game.create_object_from_definition(&equipment,A,Zone::Battlefield);
++  game.object_mut(attachment).unwrap().attached_to=Some(AttachmentTarget::Object(source));game.object_mut(source).unwrap().attachments.push(attachment);game.mark_continuous_state_dirty();
++  let cast=ironsmith_compiler_runtime::compile_to_runtime_definition("Opponent spell","Type: Instant\nYou gain 1 life.",false).unwrap();let spell=game.create_object_from_definition(&cast,B,Zone::Stack);
++  let mut dm=Choices{accept:false,incoming_top:false};flush(&mut game,&mut dm);
++  for _ in 0..8 {if game.stack.is_empty(){break;}ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();flush(&mut game,&mut dm);}assert!(game.stack.is_empty());
++  game.queue_trigger_event(Default::default(),ironsmith::triggers::TriggerEvent::new_with_provenance(ironsmith::events::SpellCastEvent::new(spell,B,Zone::Hand),Default::default()));
++  flush(&mut game,&mut dm);assert_eq!(game.stack.len(),1);
++  ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();assert!(game.is_phased_out(source));assert!(game.is_phased_out(attachment));assert!(game.effect_store.delayed_triggers.is_empty(),"duration return is not a delayed stack trigger");
++  execute_effect(&mut game,&Effect::new(ironsmith::effects::PhaseOutEffect::new(ironsmith::target::ChooseSpec::SpecificObject(normal))),&mut EffectContext::new_default(normal,A)).unwrap();
++  ironsmith::turn::execute_untap_step(&mut game);assert!(game.is_phased_out(source));assert!(game.is_phased_out(attachment));assert!(!game.is_phased_out(normal),"normal phasing still returns at untap");
++  ironsmith::turn::try_execute_cleanup_step(&mut game).unwrap();assert!(!game.is_phased_out(source));assert!(!game.is_phased_out(attachment));assert_eq!(game.find_object_by_stable_id(physical),Some(source));assert!(game.is_tapped(source));assert_eq!(game.counter_count(source,CounterType::Charge),3);assert_eq!(game.object(attachment).unwrap().attached_to,Some(AttachmentTarget::Object(source)));
++  flush(&mut game,&mut dm);assert!(game.stack.is_empty(),"phasing creates no false Gestalt entry event");
++  ironsmith::turn::try_execute_cleanup_step(&mut game).unwrap();assert!(!game.is_phased_out(source));
++ }
++}
++#[test]
++fn end_of_turn_phase_deadline_does_not_follow_a_new_incarnation() {
++ let mut game=GameState::new(vec!["A".into(),"B".into()],20);let body=ironsmith_compiler_runtime::compile_to_runtime_definition("Physical creature","Type: Creature\nPower/Toughness: 2/2",false).unwrap();let source=game.create_object_from_definition(&body,A,Zone::Battlefield);
++ let mut phase=ironsmith::effects::PhaseOutEffect::new(ironsmith::target::ChooseSpec::SpecificObject(source));phase.duration=ironsmith::effects::PhaseOutDuration::UntilEndOfTurn;execute_effect(&mut game,&Effect::new(phase),&mut EffectContext::new_default(source,A)).unwrap();
++ game.phase_in(source);let hand=game.move_object(source,Zone::Hand,Default::default()).unwrap();let new=game.move_object(hand,Zone::Battlefield,Default::default()).unwrap();assert_ne!(source,new);
++ execute_effect(&mut game,&Effect::new(ironsmith::effects::PhaseOutEffect::new(ironsmith::target::ChooseSpec::SpecificObject(new))),&mut EffectContext::new_default(new,A)).unwrap();
++ ironsmith::turn::try_execute_cleanup_step(&mut game).unwrap();assert!(game.is_phased_out(new),"the canceled old deadline cannot return a different incarnation");
++ ironsmith::turn::execute_untap_step(&mut game);assert!(!game.is_phased_out(new));
++}
+--- a/crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs
++++ b/crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs
+@@ -107,3 +107,27 @@
+         }
+     }
+ }
++
++/// Parent-run diagnostic: compare the identical granted-duration activation
++/// under distinct preceding source instructions, preserving all source metadata.
++#[test]
++fn inscribe_compound_duration_public_route_diagnostic_matrix() {
++    let fixtures=inputs();
++    let original=fixtures.iter().flat_map(|f|f["mechanics"].as_array().unwrap()).flat_map(|row|row["representative_cards"].as_array().unwrap())
++        .find(|card|card["name"]=="Only Memories Remain").unwrap();
++    let text=original["executable_text"].as_str().unwrap();
++    assert!(text.contains("Target player mills seven cards."));
++    let variants=[("complete",text.to_string()),
++        ("no_prior_spell_instruction",text.replace("Target player mills seven cards.\n","")),
++        ("source_draw_first",text.replace("Target player mills seven cards.","Draw a card.")),
++        ("object_target_first",text.replace("Target player mills seven cards.","Target creature gets +0/+1 until end of turn."))];
++    let mut failures=Vec::new();
++    for (label,text) in variants {
++        let mut card=original.clone();card["executable_text"]=text.into();
++        match custom_final_next_wave_support::definitions(&card) {
++            Ok(_)=>eprintln!("INSCRIBE_DURATION_DIAGNOSTIC {label}: strict independent native/artifact OK"),
++            Err(error)=>{eprintln!("INSCRIBE_DURATION_DIAGNOSTIC {label}: {error}");failures.push(format!("{label}: {error}"));}
++        }
++    }
++    assert!(failures.is_empty(),"Exact duration diagnostic failures:\n{}",failures.join("\n"));
++}
+--- a/crates/ironsmith-compiler-runtime/tests/custom_module.rs
++++ b/crates/ironsmith-compiler-runtime/tests/custom_module.rs
+@@ -117,3 +117,42 @@
+   }}
+  }
+ }
++
++#[test]
++fn actual_fury_discount_starts_only_in_the_next_actual_turn_and_is_consumed_once() {
++ for definition in source("Fury Module") { for consume in [false,true] {
++  let mut game=play::game();let mut dm=play::Script::default();
++  let issuer=game.create_object_from_definition(&definition,play::A,Zone::Battlefield);
++  play::give_mana(&mut game,play::A,ironsmith::ManaSymbol::Red,1);
++  play::give_mana(&mut game,play::A,ironsmith::ManaSymbol::Colorless,3);
++  play::activate(&mut game,issuer,play::activated_at(&definition,0),&mut dm);
++  resolve_stack_entry_with(&mut game,&mut dm).unwrap();
++  let probe=ironsmith_compiler_runtime::compile_to_runtime_definition("Independent future payment","Mana cost: {3}\nType: Instant\nYou gain 1 life.",false).unwrap();
++  let candidate=game.create_object_from_definition(&probe,play::A,Zone::Hand);
++  let can_cast=|game:&GameState|compute_legal_actions(game,play::A).unwrap().iter().any(|action|matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==candidate));
++  assert!(!can_cast(&game),"a future discount cannot pay today's spell");
++  game.move_object_by_effect(issuer,Zone::Graveyard).unwrap();
++  game.cleanup_temporary_spell_cost_reductions_end_of_turn();
++  assert_eq!(game.effect_store.temporary_spell_cost_reductions.len(),1,"pending window survives ordinary cleanup and source departure");
++  for _ in 0..3 {
++   game.next_turn();
++   game.turn.priority_player=Some(play::A);
++   if game.is_active_player(play::A) {break;}
++   assert!(!can_cast(&game),"the first opponent turn is not the requested window");
++  }
++  assert!(game.is_active_player(play::A));
++  game.turn.phase=ironsmith::Phase::FirstMain;game.turn.step=None;
++  assert!(can_cast(&game),"the reduction starts at the actual next own-turn boundary");
++  let unrelated=play::vanilla("Nonmatching future body","{3}","Elf",2,2);
++  let unrelated=game.create_object_from_definition(&unrelated,play::A,Zone::Hand);
++  assert!(!compute_legal_actions(&game,play::A).unwrap().iter().any(|action|matches!(action,LegalAction::CastSpell{spell_id,..} if *spell_id==unrelated)),"nonmatching casts cannot borrow the instant/sorcery modifier");
++  if consume {
++   play::cast(&mut game,play::A,&probe,&mut dm);
++   assert!(!can_cast(&game),"the completed matching cast consumes the one use");
++   game.stack.pop(); // Countering that spell does not restore the spent discount.
++   assert!(!can_cast(&game));
++  }
++  game.next_turn();game.turn.priority_player=Some(play::A);
++  assert!(!can_cast(&game),"an unused window also expires when that turn ends");
++ }}
++}
+--- a/crates/ironsmith-compiler-semantic/src/model_impl/ast/actions/stack.rs
++++ b/crates/ironsmith-compiler-semantic/src/model_impl/ast/actions/stack.rs
+@@ -104,6 +104,7 @@
+     ReduceNextSpellCostThisTurn {
+         filter: ObjectFilter,
+         reduction: ManaCost,
++        starts_during_next_turn: bool,
+     },
+     /// "The next <filter> spell you cast this turn can be cast without paying
+     /// its mana cost."
+--- a/crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs
++++ b/crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs
+@@ -2965,8 +2965,9 @@
+                 }
+                 debug.finish()
+             }
+-            Self::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction }) => f
++            Self::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction, starts_during_next_turn }) => f
+                 .debug_struct("ReduceNextSpellCostThisTurn")
++                .field("starts_during_next_turn", starts_during_next_turn)
+                 .field("filter", filter)
+                 .field("reduction", reduction)
+                 .finish(),
+--- a/crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs
++++ b/crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs
+@@ -5278,12 +5278,17 @@
+         filter: ObjectFilter,
+         reduction: ManaCost,
+     ) -> Self {
+-        Self::subject_verb(
+-            SubjectVerbRoleAst::AffectedPlayer,
+-            player,
++        Self::subject_verb_reduce_next_spell_cost_window(player, filter, reduction, false)
++    }
++
++    pub fn subject_verb_reduce_next_spell_cost_window(
++        player: PlayerAst, filter: ObjectFilter, reduction: ManaCost,
++        starts_during_next_turn: bool,
++    ) -> Self {
++        Self::subject_verb(
++            SubjectVerbRoleAst::AffectedPlayer, player,
+             SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
+-                filter,
+-                reduction,
++                filter, reduction, starts_during_next_turn,
+             }),
+         )
+     }
+--- a/crates/ironsmith-core/src/effect/mana_damage_and_control.rs
++++ b/crates/ironsmith-core/src/effect/mana_damage_and_control.rs
+@@ -601,6 +601,9 @@
+     UntilVisitRollAtMost(u32),
+     /// Keep phased out until the effect controller completes their nth spell cast in a turn.
+     UntilControllerCastsNthSpellInTurn(u32),
++    /// Phase in as the current turn's until-end-of-turn durations expire.
++    /// Appended; every existing serialized discriminant remains unchanged.
++    UntilEndOfTurn,
+ }
+ 
+ impl PhaseOutDuration {
+--- a/crates/ironsmith-core/src/effect.rs
++++ b/crates/ironsmith-core/src/effect.rs
+@@ -4941,6 +4941,10 @@
+     /// that life payment instead of nothing.
+     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+     pub pay_life_equal_to_mana_value: bool,
++    /// Keep this rule pending until the affected player's next actual turn.
++    /// At that boundary its ordinary end-of-turn duration begins.
++    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
++    pub starts_during_next_turn: bool,
+ }
+ 
+ impl GrantNextSpellCostReductionEffect {
+@@ -4987,6 +4991,7 @@
+             without_paying_mana_cost: false,
+             increases_cost: false,
+             pay_life_equal_to_mana_value: false,
++            starts_during_next_turn: false,
+         }
+     }
+ 
+@@ -5005,6 +5010,7 @@
+             without_paying_mana_cost: false,
+             increases_cost: false,
+             pay_life_equal_to_mana_value: false,
++            starts_during_next_turn: false,
+         }
+     }
+ 
+@@ -5023,6 +5029,7 @@
+             without_paying_mana_cost: false,
+             increases_cost: false,
+             pay_life_equal_to_mana_value: false,
++            starts_during_next_turn: false,
+         }
+     }
+ 
+@@ -5042,6 +5049,7 @@
+             without_paying_mana_cost: false,
+             increases_cost: false,
+             pay_life_equal_to_mana_value: false,
++            starts_during_next_turn: false,
+         }
+     }
+ }
+--- a/crates/ironsmith-engine/src/decision/mana.rs
++++ b/crates/ironsmith-engine/src/decision/mana.rs
+@@ -7101,7 +7101,7 @@
+     }
+ 
+     for effect in &game.effect_store.temporary_spell_cost_reductions {
+-        if effect.player != player || effect.is_expired(game) {
++        if effect.player != player || !effect.is_active(game) {
+             continue;
+         }
+         let temporary_ctx = with_source_exiled_tagged_objects(
+--- a/crates/ironsmith-engine/src/decision/types.rs
++++ b/crates/ironsmith-engine/src/decision/types.rs
+@@ -453,7 +453,7 @@
+                 .effect_store
+                 .temporary_spell_cost_reductions
+                 .iter()
+-                .any(|effect| effect.player == player && !effect.is_expired(game)),
++                .any(|effect| effect.player == player && effect.is_active(game)),
+             minimum_total_spell_mana_payment: view.minimum_total_spell_mana_payment(),
+             strips_life_pips_for_casts: view.player_cant_pay_life_to_cast_or_activate(player),
+             perf: RefCell::new(CastLegalityPerfBreakdown::default()),
+--- a/crates/ironsmith-engine/src/effects/permanents/phase_out.rs
++++ b/crates/ironsmith-engine/src/effects/permanents/phase_out.rs
+@@ -163,6 +163,11 @@
+                 game.hold_phased_out_until_nth_spell(object_id, ctx.controller, nth);
+             }
+         }
++        if self.duration == PhaseOutDuration::UntilEndOfTurn {
++            for &object_id in &affected {
++                game.hold_phased_out_until_end_of_turn(object_id);
++            }
++        }
+         if self.duration.is_until_source_leaves() {
+             for &object_id in &affected {
+                 game.hold_phased_out_until_source_leaves(object_id, ctx.source);
+--- a/crates/ironsmith-engine/src/effects/player/grant_next_spell_cost_reduction.rs
++++ b/crates/ironsmith-engine/src/effects/player/grant_next_spell_cost_reduction.rs
+@@ -15,6 +15,10 @@
+         game: &mut GameState,
+         ctx: &mut ExecutionContext,
+     ) -> Result<EffectOutcome, ExecutionError> {
++        if self.starts_during_next_turn && self.without_paying_mana_cost {
++            return Err(ExecutionError::InternalError("future cost-modifier windows require an ordinary payment modifier".into()));
++        }
++        let first_registration = game.effect_store.temporary_spell_cost_reductions.len();
+         let players =
+             resolve_player_filter_to_list(game, &self.player, &ctx.filter_context(game), ctx)?;
+         if self.without_paying_mana_cost {
+@@ -121,6 +125,11 @@
+                 );
+             }
+         }
++        if self.starts_during_next_turn {
++            for modifier in &mut game.effect_store.temporary_spell_cost_reductions[first_registration..] {
++                modifier.starts_next_turn_of = Some(modifier.player);
++            }
++        }
+         Ok(EffectOutcome::resolved())
+     }
+ }
+--- a/crates/ironsmith-engine/src/game_loop/priority_mana.rs
++++ b/crates/ironsmith-engine/src/game_loop/priority_mana.rs
+@@ -5419,7 +5419,7 @@
+             .iter()
+             .enumerate()
+             .filter_map(|(idx, effect)| {
+-                if effect.player != caster || effect.is_expired(game) {
++                if effect.player != caster || !effect.is_active(game) {
+                     return None;
+                 }
+                 let mut cast_filter = effect.filter.clone();
+--- a/crates/ironsmith-engine/src/game_state/object_state_and_events.rs
++++ b/crates/ironsmith-engine/src/game_state/object_state_and_events.rs
+@@ -2192,6 +2192,7 @@
+                 .phase_out_holds_until_visit_roll
+                 .contains_key(&permanent)
+             || self.battlefield_flags.phase_out_holds_until_nth_spell.contains_key(&permanent)
++            || self.battlefield_flags.phase_out_holds_until_end_of_turn.contains_key(&permanent)
+     }
+ 
+     /// Keep a directly phased-out permanent phased out until `player` rolls
+@@ -2258,6 +2259,28 @@
+         for id in &released { self.battlefield_flags_mut().phase_out_holds_until_nth_spell.remove(id); }
+         released.retain(|id| !self.is_phase_out_held(*id));
+         self.phase_in_simultaneously(&released);
++    }
++
++    /// Keep this exact incarnation out through any extra untap occurrences.
++    /// Independent phasing in or departure cancels its former deadline.
++    pub fn hold_phased_out_until_end_of_turn(&mut self, permanent: ObjectId) {
++        if !self.is_phased_out(permanent) {return;}
++        let turn=self.turn.turn_number;
++        self.battlefield_flags_mut().phase_out_holds_until_end_of_turn.insert(permanent,turn);
++    }
++
++    /// CR514.2 duration expiration is a turn-based transition, not a delayed
++    /// trigger with a stack/priority window. Phase all eligible roots together.
++    pub(crate) fn release_end_of_turn_phase_out_holds(&mut self)->bool {
++        let turn=self.turn.turn_number;
++        let mut released=self.battlefield_flags.phase_out_holds_until_end_of_turn.iter()
++            .filter(|(_,deadline)|**deadline<=turn).map(|(id,_)|*id).collect::<Vec<_>>();
++        released.sort();
++        for id in &released {self.battlefield_flags_mut().phase_out_holds_until_end_of_turn.remove(id);}
++        released.retain(|id|!self.is_phase_out_held(*id)&&self.can_phase_in(*id)&&self.is_phased_out(*id));
++        if released.is_empty(){return false;}
++        self.phase_in_simultaneously(&released);
++        true
+     }
+ 
+     /// Record that `source` phased `permanent` out.
+@@ -2782,6 +2805,7 @@
+                 .retain(|_, held| !held.is_empty());
+             flags.phase_out_holds_until_visit_roll.remove(&id);
+             flags.phase_out_holds_until_nth_spell.remove(&id);
++            flags.phase_out_holds_until_end_of_turn.remove(&id);
+             flags.phased_out_with_source.remove(&id);
+             for phased in flags.phased_out_with_source.values_mut() {
+                 phased.remove(&id);
+--- a/crates/ironsmith-engine/src/game_state/phasing_transitions.rs
++++ b/crates/ironsmith-engine/src/game_state/phasing_transitions.rs
+@@ -154,6 +154,7 @@
+             }
+             flags.phase_out_holds_until_visit_roll.remove(id);
+             flags.phase_out_holds_until_nth_spell.remove(id);
++            flags.phase_out_holds_until_end_of_turn.remove(id);
+             flags.tap_on_held_phase_in.remove(id);
+             for pending in self.auxiliary_tracking_mut().pending_phase_duration_returns.values_mut() { pending.remove(id); }
+         }
+--- a/crates/ironsmith-engine/src/game_state.rs
++++ b/crates/ironsmith-engine/src/game_state.rs
+@@ -607,6 +607,8 @@
+     /// The permanents each source has phased out ("that hasn't been phased
+     /// out with this Attraction", Ferris Wheel), per source incarnation.
+     phased_out_with_source: HashMap<ObjectId, HashSet<ObjectId>>,
++    /// Exact direct-phase-out incarnations awaiting this turn's cleanup.
++    phase_out_holds_until_end_of_turn: HashMap<ObjectId, u32>,
+ }
+ 
+ /// Exile/casting permission flags grouped behind copy-on-write storage.
+@@ -3059,6 +3061,7 @@
+ 
+ #[derive(Debug, Clone)]
+ pub struct TemporarySpellCostReductionEffectInstance {
++    pub starts_next_turn_of: Option<PlayerId>,
+     pub player: PlayerId,
+     pub source: ObjectId,
+     pub duration_controller: PlayerId,
+@@ -3075,10 +3078,12 @@
+ }
+ 
+ impl TemporarySpellCostReductionEffectInstance {
++    pub fn is_active(&self, game: &GameState) -> bool {
++        self.starts_next_turn_of.is_none() && !self.is_expired(game)
++    }
+     pub fn is_expired(&self, game: &GameState) -> bool {
+-        if self.remaining_uses == 0 {
+-            return true;
+-        }
++        if self.remaining_uses == 0 { return true; }
++        if self.starts_next_turn_of.is_some() { return false; }
+         match self.duration {
+             crate::effect::Until::YourNextTurn => {
+                 game.turn.turn_number > self.expires_end_of_turn
+@@ -8837,6 +8842,15 @@
+     pub(crate) fn activate_restrictions_starting_this_turn(&mut self) {
+         let active_players = self.turn_players();
+         let current_turn = self.turn.turn_number;
++        // Cost rules begin at the turn boundary, before priority or any
++        // turn-step actions, without creating a stack object.
++        for effect in &mut self.effect_store.temporary_spell_cost_reductions {
++            if effect.starts_next_turn_of.is_some_and(|player| active_players.contains(&player)) {
++                effect.starts_next_turn_of = None;
++                effect.duration = crate::effect::Until::EndOfTurn;
++                effect.expires_end_of_turn = current_turn;
++            }
++        }
+         let had_restrictions = !self.effect_store.restriction_effects.is_empty();
+         for effect in &mut self.effect_store.restriction_effects {
+             if effect
+@@ -8934,6 +8948,7 @@
+     ) {
+         self.effect_store.temporary_spell_cost_reductions.push(
+             TemporarySpellCostReductionEffectInstance {
++                starts_next_turn_of: None,
+                 player,
+                 source,
+                 duration_controller,
+@@ -9001,6 +9016,7 @@
+     ) {
+         self.effect_store.temporary_spell_cost_reductions.push(
+             TemporarySpellCostReductionEffectInstance {
++                starts_next_turn_of: None,
+                 player,
+                 source,
+                 duration_controller,
+@@ -9033,6 +9049,7 @@
+     ) {
+         self.effect_store.temporary_spell_cost_reductions.push(
+             TemporarySpellCostReductionEffectInstance {
++                starts_next_turn_of: None,
+                 player,
+                 source,
+                 duration_controller,
+--- a/crates/ironsmith-engine/src/turn.rs
++++ b/crates/ironsmith-engine/src/turn.rs
+@@ -1569,6 +1569,16 @@
+         return Err(error);
+     }
+     game.update_cant_effects();
++    // Expired restrictions no longer prevent the duration's return. Returning
++    // static providers can alter discovery, so keep the existing cleanup
++    // transaction's rollback guarantee across this simultaneous transition.
++    if game.release_end_of_turn_phase_out_holds() {
++        if let Err(error)=game.refresh_continuous_state() {
++            game.restore_execution_checkpoint(checkpoint,false);
++            return Err(error);
++        }
++        game.update_cant_effects();
++    }
+ 
+     // Normally no priority during cleanup, but if triggers/SBAs happen, there's a new cleanup
+     game.turn.priority_player = None;
+--- a/crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/early.rs
++++ b/crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/early.rs
+@@ -8652,6 +8652,10 @@
+                 "{subject} phases out until you roll a {max_result} or less while rolling to visit your Attractions"
+             );
+         }
++        if phase_out.duration==crate::effects::PhaseOutDuration::UntilEndOfTurn {
++            let verb=if matches!(phase_out.spec.base(),ChooseSpec::All(_)){"phase"}else{"phases"};
++            return format!("{} {verb} out until end of turn",capitalize_first(&target));
++        }
+         if let crate::effects::PhaseOutDuration::UntilControllerCastsNthSpellInTurn(nth) = phase_out.duration {
+             let ordinal = ironsmith_core::ordinal_word(nth).unwrap_or_else(|| format!("{nth}th"));
+             let verb = if matches!(phase_out.spec.base(), ChooseSpec::All(_)) { "phase" } else { "phases" };
+--- a/crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/late.rs
++++ b/crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/late.rs
+@@ -9325,10 +9325,13 @@
+                 plural_spell_text, duration_text, reduction, direction, where_suffix,
+             );
+         }
+-        let duration_text = match grant_next_spell_cost_reduction.duration {
++        let duration_text = if grant_next_spell_cost_reduction.starts_during_next_turn {
++            if player_text == "you" { "during your next turn".to_string() }
++            else { format!("during {player_text}'s next turn") }
++        } else { match grant_next_spell_cost_reduction.duration {
+             Until::EndOfTurn => "this turn".to_string(),
+             _ => describe_until(&grant_next_spell_cost_reduction.duration),
+-        };
++        }};
+         if grant_next_spell_cost_reduction.pay_life_equal_to_mana_value {
+             return format!(
+                 "Rather than pay the mana cost of the next {spell_text} {player_text} cast {duration_text}, {player_text} may pay life equal to that spell's mana value",

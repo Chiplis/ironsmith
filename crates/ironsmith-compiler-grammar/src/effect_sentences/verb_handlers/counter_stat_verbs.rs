@@ -664,6 +664,23 @@ pub fn parse_reveal(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if let Some(shape) = crate::grammar::effects::parse_exile_bottom_library_shape(tokens, player)
+        && let crate::grammar::effects::ExileLibraryPlayerShape::Player(owner) = shape.player
+    {
+        let tag = crate::tag::CompilerReferenceTag::It.bind();
+        let (count, count_value) = match shape.count {
+            Value::Fixed(1) => (ChoiceCount::exactly(1), None),
+            value => (ChoiceCount::dynamic_x(), Some(value)),
+        };
+        return Ok(EffectAst::Sequence { effects: vec![
+            EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
+                filter: ObjectFilter::default().in_zone(Zone::Library),
+                count, count_value, player: owner, tag: tag.clone(),
+            }),
+            EffectAst::subject_verb_reveal_tagged(tag),
+        ] });
+    }
+
     if tokens.first().is_some_and(|token| token.is_word("target"))
         && let Ok(target @ TargetAst::Object(..)) = parse_target_phrase(tokens)
     {
@@ -1157,6 +1174,11 @@ pub fn parse_life_amount_from_trailing(
         let Some(rest) = addend_tokens.get(used..) else {
             return Ok(None);
         };
+        // The leading life unit applies to an unqualified final addend:
+        // `that much life plus 1` and `2 life plus X` retain both operands.
+        if rest.is_empty() {
+            return Ok(Some(Value::Add(Box::new(base_amount.clone()), Box::new(addend_base))));
+        }
         if !rest.first().is_some_and(|token| token.is_word(LIFE_WORD)) {
             return Ok(None);
         }
@@ -1703,5 +1725,18 @@ mod ordinal_life_tests {
                 4
             ))
         );
+    }
+}
+
+#[cfg(test)]
+mod inherited_life_unit_addend_tests {
+    use super::*;
+    #[test]
+    fn bare_addend_preserves_prior_amount_and_rejects_unread_trailing_text() {
+        let tokens=crate::util::tokenize_line("plus 1",0);
+        let amount=parse_life_amount_from_trailing(&Value::EventValue(EventValueSpec::Amount),&tokens).unwrap().unwrap();
+        assert_eq!(amount,Value::Add(Box::new(Value::EventValue(EventValueSpec::Amount)),Box::new(Value::Fixed(1))));
+        let tokens=crate::util::tokenize_line("plus 1 unsupported",0);
+        assert!(parse_life_amount_from_trailing(&Value::EventValue(EventValueSpec::Amount),&tokens).unwrap().is_none());
     }
 }

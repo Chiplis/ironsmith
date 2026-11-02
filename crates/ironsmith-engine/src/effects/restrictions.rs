@@ -778,6 +778,10 @@ impl EffectExecutor for CantEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        if matches!(self.restriction, Restriction::MoveBetweenZones { initial_state: Some(_), .. }) {
+            // Validate the boundary even when no object currently satisfies it.
+            game.initial_object_state(ctx.source)?;
+        }
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         let duration = if let Until::ForAsLongAs(predicate) = &self.duration {
             let Some(predicate) = crate::effects::continuous::materialize_duration_predicate(
@@ -1579,5 +1583,37 @@ mod tests {
             !game.can_be_blocked(creature_id),
             "tagged be-blocked restriction should still resolve when the runtime context only retains equivalent aliases for the same object"
         );
+    }
+}
+
+#[cfg(test)]
+mod opponent_turn_boundary_tests {
+    use super::*;
+    use crate::ids::{CardId, PlayerId};
+    use crate::card::CardBuilder;
+    use crate::types::CardType;
+    #[test]
+    fn opponent_turn_duration_ignores_extra_controller_turn_then_expires_permanently() {
+        let a = PlayerId(0); let b = PlayerId(1); let c = PlayerId(2);
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        game.turn.active_player = a;
+        let card = CardBuilder::new(CardId::new(), "Turn boundary source").card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, a, crate::zone::Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(source, a);
+        CantEffect::new(Restriction::GainLife(crate::target::PlayerFilter::You), Until::OpponentsNextTurn)
+            .execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.effect_store.restriction_effects.len(), 1);
+        game.turn.turn_number += 1;
+        game.turn.active_player = a;
+        game.update_cant_effects();
+        assert_eq!(game.effect_store.restriction_effects.len(), 1, "controller's extra turn is not an opponent turn");
+        game.turn.turn_number += 1;
+        game.turn.active_player = c;
+        game.update_cant_effects();
+        assert!(game.effect_store.restriction_effects.is_empty(), "any opponent's actual turn ends the duration");
+        game.turn.turn_number += 1;
+        game.turn.active_player = b;
+        game.update_cant_effects();
+        assert!(game.effect_store.restriction_effects.is_empty(), "expired restrictions never revive");
     }
 }

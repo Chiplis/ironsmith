@@ -806,6 +806,8 @@ pub struct Player {
 
     // Per-turn tracking
     pub lands_played_this_turn: u32,
+    /// Land allowances consumed by casts, without an actual land-play event.
+    pub nonland_land_play_usage_this_turn: u32,
     pub land_plays_per_turn: u32,
 
     // Game-scoped tracking
@@ -876,6 +878,7 @@ impl Player {
             ring_bearer: None,
             ring_legendary_added: None,
             lands_played_this_turn: 0,
+            nonland_land_play_usage_this_turn: 0,
             land_plays_per_turn: 1,
             spells_cast_this_game: 0,
             spell_cast_names_this_game: std::collections::BTreeMap::new(),
@@ -1033,7 +1036,7 @@ impl Player {
 
     /// Returns true if this player can play a land this turn.
     pub fn can_play_land(&self) -> bool {
-        self.lands_played_this_turn < self.land_plays_per_turn
+        self.lands_played_this_turn.saturating_add(self.nonland_land_play_usage_this_turn) < self.land_plays_per_turn
     }
 
     /// Deals damage to this player. Returns the actual damage dealt.
@@ -1187,6 +1190,12 @@ impl Player {
     /// Called at the beginning of this player's turn.
     pub fn begin_turn(&mut self) {
         self.lands_played_this_turn = 0;
+        self.nonland_land_play_usage_this_turn = 0;
+    }
+
+    /// Consume an allowance without claiming that a land was played.
+    pub fn consume_land_play_for_cast(&mut self) {
+        self.nonland_land_play_usage_this_turn = self.nonland_land_play_usage_this_turn.saturating_add(1);
     }
 
     /// Records a land play.

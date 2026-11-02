@@ -23,6 +23,7 @@ pub enum PermissionActor {
     /// "that creature's controller": in a triggered ability, the controller
     /// of the creature that caused the event (the trigger's event source).
     TriggeringCreatureController,
+    ThatPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +52,7 @@ pub enum TaggedPermissionReference {
     LastRevealed,
     SourceExiledSelf,
     PriorExiledCard,
+    CurrentIteratedObject,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -447,6 +449,8 @@ pub fn parse_spells_from_tagged_tokens(
                 .value(TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards),
             primitives::phrase(&["from", "among", "them"])
                 .value(TaggedPermissionTargetSurface::Other),
+            primitives::phrase(&["exiled", "this", "way"])
+                .value(TaggedPermissionTargetSurface::CardsExiledThisWay),
         ))
     })?;
     let subject_tokens = trim_lexed_commas(&tokens[..scope_start]);
@@ -484,6 +488,7 @@ fn parse_permission_lead_lexed<'a>(
             alt((
                 primitives::kw("you").value(PermissionActor::You),
                 primitives::phrase(&["any", "player"]).value(PermissionActor::AnyPlayer),
+                primitives::phrase(&["that", "player"]).value(PermissionActor::ThatPlayer),
                 primitives::phrase(&["its", "owner"]).value(PermissionActor::ItsOwner),
                 primitives::phrase(&["that", "creature's", "controller"])
                     .value(PermissionActor::TriggeringCreatureController),
@@ -514,6 +519,30 @@ fn parse_copy_of_tagged_permission_target<'a>(input: &mut LexStream<'a>) -> WRes
     Ok((reference,true,surface,None))
 }
 
+/// Explicit local operands share one outer alternative. Winnow's tuple-based
+/// `alt` supports at most nine arms; each local operand retains its own tag.
+fn parse_explicit_local_tagged_permission_target<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(TaggedPermissionReference, bool, TaggedPermissionTargetSurface, Option<u32>)> {
+    alt((
+        primitives::any_phrase(&[
+            &["the", "iterated", "card"],
+            &["the", "iterated", "object"],
+        ]).value((
+            TaggedPermissionReference::CurrentIteratedObject,
+            false,
+            TaggedPermissionTargetSurface::ThatCard,
+            None::<u32>,
+        )),
+        primitives::phrase(&["the", "exiled", "card"]).value((
+            TaggedPermissionReference::PriorExiledCard,
+            false,
+            TaggedPermissionTargetSurface::ThatCard,
+            None::<u32>,
+        )),
+    )).parse_next(input)
+}
+
 fn parse_tagged_permission_target_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<(
@@ -524,7 +553,7 @@ fn parse_tagged_permission_target_lexed<'a>(
 )> {
     alt((
         parse_copy_of_tagged_permission_target,
-        primitives::phrase(&["the","exiled","card"]).value((TaggedPermissionReference::PriorExiledCard,false,TaggedPermissionTargetSurface::ThatCard,None)),
+        parse_explicit_local_tagged_permission_target,
         alt((
         primitives::phrase(&["the", "card", "exiled", "this", "way"])
             .value((TaggedPermissionReference::LastTagged, false,
@@ -903,6 +932,11 @@ fn parse_allow_any_color_for_cast_lexed<'a>(
             "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast",
         ])
         .value(ironsmith_core::value_model::ManaSpendMode::AnyType),
+        (
+            primitives::kw("and"),
+            alt((primitives::kw("you"), primitives::kw("they"))),
+            primitives::phrase(&["may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any", "type", "to", "cast"]),
+        ).value(ironsmith_core::value_model::ManaSpendMode::AnyType),
         // "and you/they may spend [colorless] mana as though it were mana of
         // any color to cast": "they" names the permitted player; with
         // "colorless" only colorless mana converts (CR 609.4b).
@@ -1155,3 +1189,16 @@ use library_programs::{
 #[path = "tagged_surface/permission.rs"]
 mod permission_programs;
 use permission_programs::parse_for_as_long_as_play_cast_lexed;
+
+#[cfg(test)]
+mod current_iteration_cast_reference_tests {
+    use super::*;
+    #[test]
+    fn copy_cast_reference_keeps_the_explicit_iteration_operand() {
+        for text in ["a copy of the iterated card without paying its mana cost","a copy of the iterated object without paying its mana cost"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let target=parse_tagged_permission_target_tokens(&tokens).unwrap();
+            assert_eq!(target.reference,TaggedPermissionReference::CurrentIteratedObject);assert!(target.as_copy);
+        }
+    }
+}

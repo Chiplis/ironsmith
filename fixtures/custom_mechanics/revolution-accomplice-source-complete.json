@@ -1,0 +1,1206 @@
+{
+  "schema_version": 1,
+  "scope": "revolution",
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "rules_snapshot": "reports/cards/lackey-audit-2026-11-01/rev-rules.json",
+    "policy": "Immutable full originals; preserve971seed IDs via explicit derived mappings. Additional actual sources match authoritative rule matched_card_names. No native support inferred from materialization."
+  },
+  "full_source_count": 22,
+  "mechanics": [
+    {
+      "keyword": "Accomplice",
+      "scope": "revolution",
+      "rule_reference": "702.195.",
+      "rule_text": {
+        "name": "702.195.",
+        "rule": "Accomplice",
+        "subrules": [
+          {
+            "name": "702.195a",
+            "rule": "Accomplice is a triggered ability. “Accomplice” means “Whenever another creature you control attacks, you may tap this creature.”",
+            "custom": true
+          },
+          {
+            "name": "702.195b",
+            "rule": "A creature “becomes an accomplice to [a creature]” when the former creature is tapped as a result of a resolving accomplice ability that triggered from the latter creature's being declared as an attacker. The latter creature is also called the creature the former creature accompliced.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Agency Detectives",
+          "Amnesiac Sleuth",
+          "Angelic Embezzler",
+          "Bishop of Ameret's Way",
+          "Deacon of the Old Ways",
+          "Distracting Flapper",
+          "Dust Smugglers",
+          "Dwarven Butcher",
+          "Elvish Poet",
+          "Jaded Copper",
+          "Lorre Underboss",
+          "Lotus Lane Socialite",
+          "Obsessive Bureaucrat",
+          "Orc Reporter",
+          "Ride to Nowhere",
+          "Sinuous Tantalizer",
+          "Slippery Informant",
+          "Songstress of the River",
+          "Stalking Neonate",
+          "The Masked Benefactor",
+          "Torch Singer",
+          "Watchful Griffin"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Whenever another creature you control attacks, you may tap this creature.",
+      "source_cards": [
+        "Agency Detectives"
+      ],
+      "id": "rev-accomplice-068-source-complete",
+      "source_inventory_id": "rev-accomplice-068",
+      "additional_source_cards": [
+        "Amnesiac Sleuth",
+        "Angelic Embezzler",
+        "Bishop of Ameret's Way",
+        "Deacon of the Old Ways",
+        "Distracting Flapper",
+        "Dust Smugglers",
+        "Dwarven Butcher",
+        "Elvish Poet",
+        "Jaded Copper",
+        "Lorre Underboss",
+        "Lotus Lane Socialite",
+        "Obsessive Bureaucrat",
+        "Orc Reporter",
+        "Ride to Nowhere",
+        "Sinuous Tantalizer",
+        "Slippery Informant",
+        "Songstress of the River",
+        "Stalking Neonate",
+        "Torch Singer",
+        "Watchful Griffin"
+      ],
+      "executable_reminder": "Whenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way.",
+      "executable_definitions": [
+        {
+          "keyword": "Accomplice",
+          "reminder": "Whenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way.",
+          "forms": {
+            "variants": [
+              "an accomplice"
+            ]
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Agency Detectives_SRC",
+          "name": "Agency Detectives",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Human Detective \nPower/Toughness: 3/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever a creature you control becomes an accomplice, you may pay {1}. If you do, put a +1/+1 counter on the creature it accompliced.",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Creature — Human Detective \nPower/Toughness: 3/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever a creature you control participates in the accomplice association action, you may pay {1}. If you do, put a +1/+1 counter on the performer of this action.",
+          "mana_cost": "{1}{G}{W}",
+          "type_line": "Creature — Human Detective ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Agency Detectives_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Agency Detectives",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Human Detective \nPower/Toughness: 3/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever a creature you control becomes an accomplice, you may pay {1}. If you do, put a +1/+1 counter on the creature it accompliced."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Agency Detectives",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Creature — Human Detective \nPower/Toughness: 3/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever a creature you control participates in the accomplice association action, you may pay {1}. If you do, put a +1/+1 counter on the performer of this action.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever a creature you control becomes an accomplice, you may pay {1}. If you do, put a +1/+1 counter on the creature it accompliced.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever a creature you control becomes an accomplice, you may pay {1}. If you do, put a +1/+1 counter on the creature it accompliced."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever a creature you control becomes an accomplice, you may pay {1}. If you do, put a +1/+1 counter on the creature it accompliced.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever a creature you control becomes an accomplice, you may pay {1}. If you do, put a +1/+1 counter on the creature it accompliced.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Amnesiac Sleuth_SRC",
+          "name": "Amnesiac Sleuth",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Human Detective \nPower/Toughness: 1/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Amnesiac Sleuth becomes an accomplice, target player mills two cards.",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Detective \nPower/Toughness: 1/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Amnesiac Sleuth participates in the accomplice association action, target player mills two cards.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Human Detective ",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Amnesiac Sleuth_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Amnesiac Sleuth",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human Detective \nPower/Toughness: 1/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Amnesiac Sleuth becomes an accomplice, target player mills two cards."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Amnesiac Sleuth",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Detective \nPower/Toughness: 1/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Amnesiac Sleuth participates in the accomplice association action, target player mills two cards.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Amnesiac Sleuth becomes an accomplice, target player mills two cards.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Amnesiac Sleuth becomes an accomplice, target player mills two cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Amnesiac Sleuth becomes an accomplice, target player mills two cards.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Amnesiac Sleuth becomes an accomplice, target player mills two cards.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Angelic Embezzler_SRC",
+          "name": "Angelic Embezzler",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 4/4\nFlying\nWhenever a creature you control becomes an accomplice, you gain 2 life.",
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 4/4\nFlying\nWhenever a creature you control participates in the accomplice association action, you gain 2 life.",
+          "mana_cost": "{4}{W}",
+          "type_line": "Creature — Angel Soldier ",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Angelic Embezzler_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Angelic Embezzler",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 4/4\nFlying\nWhenever a creature you control becomes an accomplice, you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Angelic Embezzler",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 4/4\nFlying\nWhenever a creature you control participates in the accomplice association action, you gain 2 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever a creature you control becomes an accomplice, you gain 2 life.",
+              "original_printed_rules_text": "Flying\nWhenever a creature you control becomes an accomplice, you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhenever a creature you control becomes an accomplice, you gain 2 life.",
+          "original_printed_rules_text": "Flying\nWhenever a creature you control becomes an accomplice, you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Bishop of Ameret's Way_SRC",
+          "name": "Bishop of Ameret's Way",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Cleric \nPower/Toughness: 3/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Bishop of Ameret's Way becomes an accomplice, the creature it accompliced gains indestructible until end of turn.",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Cleric \nPower/Toughness: 3/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Bishop of Ameret's Way participates in the accomplice association action, the performer of this action gains indestructible until end of turn.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Human Cleric ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Bishop of Ameret's Way_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bishop of Ameret's Way",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Human Cleric \nPower/Toughness: 3/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Bishop of Ameret's Way becomes an accomplice, the creature it accompliced gains indestructible until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bishop of Ameret's Way",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Cleric \nPower/Toughness: 3/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Bishop of Ameret's Way participates in the accomplice association action, the performer of this action gains indestructible until end of turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Bishop of Ameret's Way becomes an accomplice, the creature it accompliced gains indestructible until end of turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Bishop of Ameret's Way becomes an accomplice, the creature it accompliced gains indestructible until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Bishop of Ameret's Way becomes an accomplice, the creature it accompliced gains indestructible until end of turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Bishop of Ameret's Way becomes an accomplice, the creature it accompliced gains indestructible until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Deacon of the Old Ways_SRC",
+          "name": "Deacon of the Old Ways",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Deacon of the Old Ways becomes an accomplice, you gain 2 life.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Deacon of the Old Ways participates in the accomplice association action, you gain 2 life.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Cleric ",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Deacon of the Old Ways_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Deacon of the Old Ways",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Deacon of the Old Ways becomes an accomplice, you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Deacon of the Old Ways",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Cleric \nPower/Toughness: 1/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Deacon of the Old Ways participates in the accomplice association action, you gain 2 life.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Deacon of the Old Ways becomes an accomplice, you gain 2 life.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Deacon of the Old Ways becomes an accomplice, you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Deacon of the Old Ways becomes an accomplice, you gain 2 life.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Deacon of the Old Ways becomes an accomplice, you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Distracting Flapper_SRC",
+          "name": "Distracting Flapper",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Citizen \nPower/Toughness: 2/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Distracting Flapper becomes an accomplice, target creature can't block this turn.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Citizen \nPower/Toughness: 2/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Distracting Flapper participates in the accomplice association action, target creature can't block this turn.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Citizen ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Distracting Flapper_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Distracting Flapper",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Human Citizen \nPower/Toughness: 2/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Distracting Flapper becomes an accomplice, target creature can't block this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Distracting Flapper",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Citizen \nPower/Toughness: 2/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Distracting Flapper participates in the accomplice association action, target creature can't block this turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Distracting Flapper becomes an accomplice, target creature can't block this turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Distracting Flapper becomes an accomplice, target creature can't block this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Distracting Flapper becomes an accomplice, target creature can't block this turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Distracting Flapper becomes an accomplice, target creature can't block this turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Dust Smugglers_SRC",
+          "name": "Dust Smugglers",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue \nPower/Toughness: 2/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Dust Smugglers becomes an accomplice, the creature it accompliced gets +1/+1 until end of turn.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue \nPower/Toughness: 2/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Dust Smugglers participates in the accomplice association action, the performer of this action gets +1/+1 until end of turn.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Rogue ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Dust Smugglers_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dust Smugglers",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue \nPower/Toughness: 2/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Dust Smugglers becomes an accomplice, the creature it accompliced gets +1/+1 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dust Smugglers",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue \nPower/Toughness: 2/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Dust Smugglers participates in the accomplice association action, the performer of this action gets +1/+1 until end of turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Dust Smugglers becomes an accomplice, the creature it accompliced gets +1/+1 until end of turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Dust Smugglers becomes an accomplice, the creature it accompliced gets +1/+1 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Dust Smugglers becomes an accomplice, the creature it accompliced gets +1/+1 until end of turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Dust Smugglers becomes an accomplice, the creature it accompliced gets +1/+1 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Dwarven Butcher_SRC",
+          "name": "Dwarven Butcher",
+          "original_text": "Mana cost: {R}\nType: Creature — Dwarf Citizen \nPower/Toughness: 1/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Dwarven Butcher becomes an accomplice, the creature it accompliced gets +1/+0 until end of turn.",
+          "executable_text": "Mana cost: {R}\nType: Creature — Dwarf Citizen \nPower/Toughness: 1/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Dwarven Butcher participates in the accomplice association action, the performer of this action gets +1/+0 until end of turn.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Dwarf Citizen ",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Dwarven Butcher_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dwarven Butcher",
+              "original_text": "Mana cost: {R}\nType: Creature — Dwarf Citizen \nPower/Toughness: 1/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Dwarven Butcher becomes an accomplice, the creature it accompliced gets +1/+0 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dwarven Butcher",
+              "executable_text": "Mana cost: {R}\nType: Creature — Dwarf Citizen \nPower/Toughness: 1/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Dwarven Butcher participates in the accomplice association action, the performer of this action gets +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Dwarven Butcher becomes an accomplice, the creature it accompliced gets +1/+0 until end of turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Dwarven Butcher becomes an accomplice, the creature it accompliced gets +1/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Dwarven Butcher becomes an accomplice, the creature it accompliced gets +1/+0 until end of turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Dwarven Butcher becomes an accomplice, the creature it accompliced gets +1/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Elvish Poet_SRC",
+          "name": "Elvish Poet",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Elf Bard \nPower/Toughness: 3/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Elvish Poet becomes an accomplice, you may discard a card. If you do, draw a card.",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Elf Bard \nPower/Toughness: 3/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Elvish Poet participates in the accomplice association action, you may discard a card. If you do, draw a card.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Elf Bard ",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Elvish Poet_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Elvish Poet",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Elf Bard \nPower/Toughness: 3/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Elvish Poet becomes an accomplice, you may discard a card. If you do, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Elvish Poet",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Elf Bard \nPower/Toughness: 3/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Elvish Poet participates in the accomplice association action, you may discard a card. If you do, draw a card.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Elvish Poet becomes an accomplice, you may discard a card. If you do, draw a card.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Elvish Poet becomes an accomplice, you may discard a card. If you do, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Elvish Poet becomes an accomplice, you may discard a card. If you do, draw a card.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Elvish Poet becomes an accomplice, you may discard a card. If you do, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Jaded Copper_SRC",
+          "name": "Jaded Copper",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/1\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Jaded Copper becomes an accomplice, the creature it accompliced gets +2/+2 until end of turn.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Jaded Copper participates in the accomplice association action, the performer of this action gets +2/+2 until end of turn.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Soldier ",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Jaded Copper_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Jaded Copper",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/1\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Jaded Copper becomes an accomplice, the creature it accompliced gets +2/+2 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Jaded Copper",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier \nPower/Toughness: 3/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Jaded Copper participates in the accomplice association action, the performer of this action gets +2/+2 until end of turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Jaded Copper becomes an accomplice, the creature it accompliced gets +2/+2 until end of turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Jaded Copper becomes an accomplice, the creature it accompliced gets +2/+2 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Jaded Copper becomes an accomplice, the creature it accompliced gets +2/+2 until end of turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Jaded Copper becomes an accomplice, the creature it accompliced gets +2/+2 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Lorre Underboss_SRC",
+          "name": "Lorre Underboss",
+          "original_text": "Mana cost: {W}{B}\nType: Creature — Human Warrior \nPower/Toughness: 2/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Lorre Underboss becomes an accomplice, each opponent loses 2 life and you gain 2 life.",
+          "executable_text": "Mana cost: {W}{B}\nType: Creature — Human Warrior \nPower/Toughness: 2/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Lorre Underboss participates in the accomplice association action, each opponent loses 2 life and you gain 2 life.",
+          "mana_cost": "{W}{B}",
+          "type_line": "Creature — Human Warrior ",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Lorre Underboss_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lorre Underboss",
+              "original_text": "Mana cost: {W}{B}\nType: Creature — Human Warrior \nPower/Toughness: 2/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Lorre Underboss becomes an accomplice, each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lorre Underboss",
+              "executable_text": "Mana cost: {W}{B}\nType: Creature — Human Warrior \nPower/Toughness: 2/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Lorre Underboss participates in the accomplice association action, each opponent loses 2 life and you gain 2 life.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Lorre Underboss becomes an accomplice, each opponent loses 2 life and you gain 2 life.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Lorre Underboss becomes an accomplice, each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Lorre Underboss becomes an accomplice, each opponent loses 2 life and you gain 2 life.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Lorre Underboss becomes an accomplice, each opponent loses 2 life and you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Lotus Lane Socialite_SRC",
+          "name": "Lotus Lane Socialite",
+          "original_text": "Mana cost: {G}\nType: Creature — Elf Citizen \nPower/Toughness: 0/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Lotus Lane Socialite becomes an accomplice, the creature it accompliced can't be blocked by creatures with power 2 or less this turn.",
+          "executable_text": "Mana cost: {G}\nType: Creature — Elf Citizen \nPower/Toughness: 0/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Lotus Lane Socialite participates in the accomplice association action, the performer of this action can't be blocked by creatures with power 2 or less this turn.",
+          "mana_cost": "{G}",
+          "type_line": "Creature — Elf Citizen ",
+          "power": "0",
+          "toughness": "3",
+          "source_card_key": "Lotus Lane Socialite_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lotus Lane Socialite",
+              "original_text": "Mana cost: {G}\nType: Creature — Elf Citizen \nPower/Toughness: 0/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Lotus Lane Socialite becomes an accomplice, the creature it accompliced can't be blocked by creatures with power 2 or less this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lotus Lane Socialite",
+              "executable_text": "Mana cost: {G}\nType: Creature — Elf Citizen \nPower/Toughness: 0/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Lotus Lane Socialite participates in the accomplice association action, the performer of this action can't be blocked by creatures with power 2 or less this turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Lotus Lane Socialite becomes an accomplice, the creature it accompliced can't be blocked by creatures with power 2 or less this turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Lotus Lane Socialite becomes an accomplice, the creature it accompliced can't be blocked by creatures with power 2 or less this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Lotus Lane Socialite becomes an accomplice, the creature it accompliced can't be blocked by creatures with power 2 or less this turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Lotus Lane Socialite becomes an accomplice, the creature it accompliced can't be blocked by creatures with power 2 or less this turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Obsessive Bureaucrat_SRC",
+          "name": "Obsessive Bureaucrat",
+          "original_text": "Mana cost: {W}\nType: Creature — Human Advisor \nPower/Toughness: 1/1\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Obsessive Bureaucrat becomes an accomplice, you may tap target creature.",
+          "executable_text": "Mana cost: {W}\nType: Creature — Human Advisor \nPower/Toughness: 1/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Obsessive Bureaucrat participates in the accomplice association action, you may tap target creature.",
+          "mana_cost": "{W}",
+          "type_line": "Creature — Human Advisor ",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Obsessive Bureaucrat_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Obsessive Bureaucrat",
+              "original_text": "Mana cost: {W}\nType: Creature — Human Advisor \nPower/Toughness: 1/1\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Obsessive Bureaucrat becomes an accomplice, you may tap target creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Obsessive Bureaucrat",
+              "executable_text": "Mana cost: {W}\nType: Creature — Human Advisor \nPower/Toughness: 1/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Obsessive Bureaucrat participates in the accomplice association action, you may tap target creature.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Obsessive Bureaucrat becomes an accomplice, you may tap target creature.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Obsessive Bureaucrat becomes an accomplice, you may tap target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Obsessive Bureaucrat becomes an accomplice, you may tap target creature.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Obsessive Bureaucrat becomes an accomplice, you may tap target creature.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Orc Reporter_SRC",
+          "name": "Orc Reporter",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Orc Detective \nPower/Toughness: 4/4\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever a creature you control becomes an accomplice, creatures you control get +1/+1 until end of turn.",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Orc Detective \nPower/Toughness: 4/4\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever a creature you control participates in the accomplice association action, creatures you control get +1/+1 until end of turn.",
+          "mana_cost": "{4}{G}",
+          "type_line": "Creature — Orc Detective ",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Orc Reporter_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Orc Reporter",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Orc Detective \nPower/Toughness: 4/4\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever a creature you control becomes an accomplice, creatures you control get +1/+1 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Orc Reporter",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Orc Detective \nPower/Toughness: 4/4\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever a creature you control participates in the accomplice association action, creatures you control get +1/+1 until end of turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever a creature you control becomes an accomplice, creatures you control get +1/+1 until end of turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever a creature you control becomes an accomplice, creatures you control get +1/+1 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever a creature you control becomes an accomplice, creatures you control get +1/+1 until end of turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever a creature you control becomes an accomplice, creatures you control get +1/+1 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Ride to Nowhere_SRC",
+          "name": "Ride to Nowhere",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nReturn target creature to its owner's hand. If it was tapped or had accomplice, scry 2.",
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nReturn target creature to its owner's hand. If it was tapped or it had custom keyword \"accomplice\", scry 2.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ride to Nowhere_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ride to Nowhere",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nReturn target creature to its owner's hand. If it was tapped or had accomplice, scry 2."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ride to Nowhere",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nReturn target creature to its owner's hand. If it was tapped or it had custom keyword \"accomplice\", scry 2.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature to its owner's hand. If it was tapped or had accomplice, scry 2.",
+              "original_printed_rules_text": "Return target creature to its owner's hand. If it was tapped or had accomplice, scry 2."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature to its owner's hand. If it was tapped or had accomplice, scry 2.",
+          "original_printed_rules_text": "Return target creature to its owner's hand. If it was tapped or had accomplice, scry 2.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Sinuous Tantalizer_SRC",
+          "name": "Sinuous Tantalizer",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Snake \nPower/Toughness: 5/5\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Sinuous Tantalizer becomes an accomplice, the creature it accompliced gets +3/+3 and gains trample until end of turn.",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Snake \nPower/Toughness: 5/5\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Sinuous Tantalizer participates in the accomplice association action, the performer of this action gets +3/+3 and gains trample until end of turn.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Snake ",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Sinuous Tantalizer_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sinuous Tantalizer",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Snake \nPower/Toughness: 5/5\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Sinuous Tantalizer becomes an accomplice, the creature it accompliced gets +3/+3 and gains trample until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sinuous Tantalizer",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Snake \nPower/Toughness: 5/5\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Sinuous Tantalizer participates in the accomplice association action, the performer of this action gets +3/+3 and gains trample until end of turn.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Sinuous Tantalizer becomes an accomplice, the creature it accompliced gets +3/+3 and gains trample until end of turn.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Sinuous Tantalizer becomes an accomplice, the creature it accompliced gets +3/+3 and gains trample until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Sinuous Tantalizer becomes an accomplice, the creature it accompliced gets +3/+3 and gains trample until end of turn.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Sinuous Tantalizer becomes an accomplice, the creature it accompliced gets +3/+3 and gains trample until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Slippery Informant_SRC",
+          "name": "Slippery Informant",
+          "original_text": "Mana cost: {3}{U}\nType: Creature — Human Detective \nPower/Toughness: 2/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Slippery Informant becomes an accomplice, draw a card.",
+          "executable_text": "Mana cost: {3}{U}\nType: Creature — Human Detective \nPower/Toughness: 2/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Slippery Informant participates in the accomplice association action, draw a card.",
+          "mana_cost": "{3}{U}",
+          "type_line": "Creature — Human Detective ",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Slippery Informant_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Slippery Informant",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Human Detective \nPower/Toughness: 2/3\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Slippery Informant becomes an accomplice, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Slippery Informant",
+              "executable_text": "Mana cost: {3}{U}\nType: Creature — Human Detective \nPower/Toughness: 2/3\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Slippery Informant participates in the accomplice association action, draw a card.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Slippery Informant becomes an accomplice, draw a card.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Slippery Informant becomes an accomplice, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Slippery Informant becomes an accomplice, draw a card.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Slippery Informant becomes an accomplice, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Songstress of the River_SRC",
+          "name": "Songstress of the River",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Elf Bard \nPower/Toughness: 3/1\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Songstress of the River becomes an accomplice, destroy target artifact or enchantment.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Bard \nPower/Toughness: 3/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Songstress of the River participates in the accomplice association action, destroy target artifact or enchantment.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Elf Bard ",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Songstress of the River_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Songstress of the River",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Elf Bard \nPower/Toughness: 3/1\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Songstress of the River becomes an accomplice, destroy target artifact or enchantment."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Songstress of the River",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Bard \nPower/Toughness: 3/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Songstress of the River participates in the accomplice association action, destroy target artifact or enchantment.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Songstress of the River becomes an accomplice, destroy target artifact or enchantment.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Songstress of the River becomes an accomplice, destroy target artifact or enchantment."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Songstress of the River becomes an accomplice, destroy target artifact or enchantment.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Songstress of the River becomes an accomplice, destroy target artifact or enchantment.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Stalking Neonate_SRC",
+          "name": "Stalking Neonate",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Vampire Beast \nPower/Toughness: 3/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Stalking Neonate becomes an accomplice, each opponent discards a card.",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Vampire Beast \nPower/Toughness: 3/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Stalking Neonate participates in the accomplice association action, each opponent discards a card.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Creature — Vampire Beast ",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Stalking Neonate_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Stalking Neonate",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Vampire Beast \nPower/Toughness: 3/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Stalking Neonate becomes an accomplice, each opponent discards a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Stalking Neonate",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Vampire Beast \nPower/Toughness: 3/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Stalking Neonate participates in the accomplice association action, each opponent discards a card.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Stalking Neonate becomes an accomplice, each opponent discards a card.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Stalking Neonate becomes an accomplice, each opponent discards a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Stalking Neonate becomes an accomplice, each opponent discards a card.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Stalking Neonate becomes an accomplice, each opponent discards a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Torch Singer_SRC",
+          "name": "Torch Singer",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Human Bard \nPower/Toughness: 5/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Torch Singer becomes an accomplice, gain control of target creature until end of turn. Tap it. It's attacking.",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Bard \nPower/Toughness: 5/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Torch Singer participates in the accomplice association action, gain control of target creature until end of turn. Tap it. It's attacking.",
+          "mana_cost": "{4}{R}",
+          "type_line": "Creature — Human Bard ",
+          "power": "5",
+          "toughness": "2",
+          "source_card_key": "Torch Singer_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Torch Singer",
+              "original_text": "Mana cost: {4}{R}\nType: Creature — Human Bard \nPower/Toughness: 5/2\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Torch Singer becomes an accomplice, gain control of target creature until end of turn. Tap it. It's attacking."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Torch Singer",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Bard \nPower/Toughness: 5/2\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Torch Singer participates in the accomplice association action, gain control of target creature until end of turn. Tap it. It's attacking.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Accomplice\nWhenever Torch Singer becomes an accomplice, gain control of target creature until end of turn. Tap it. It's attacking.",
+              "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Torch Singer becomes an accomplice, gain control of target creature until end of turn. Tap it. It's attacking."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Accomplice\nWhenever Torch Singer becomes an accomplice, gain control of target creature until end of turn. Tap it. It's attacking.",
+          "original_printed_rules_text": "Accomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Torch Singer becomes an accomplice, gain control of target creature until end of turn. Tap it. It's attacking.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "rev:Watchful Griffin_SRC",
+          "name": "Watchful Griffin",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Griffin \nPower/Toughness: 3/3\nFlying\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Watchful Griffin becomes an accomplice, put a +1/+1 counter on each other creature you control.",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Griffin \nPower/Toughness: 3/3\nFlying\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Watchful Griffin participates in the accomplice association action, put a +1/+1 counter on each other creature you control.",
+          "mana_cost": "{2}{W}{W}",
+          "type_line": "Creature — Griffin ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Watchful Griffin_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Watchful Griffin",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Griffin \nPower/Toughness: 3/3\nFlying\nAccomplice *(Whenever another creature you control attacks, you may tap this creature.)*\nWhenever Watchful Griffin becomes an accomplice, put a +1/+1 counter on each other creature you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Watchful Griffin",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Griffin \nPower/Toughness: 3/3\nFlying\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way\nWhenever Watchful Griffin participates in the accomplice association action, put a +1/+1 counter on each other creature you control.",
+              "custom_keyword_identities": [
+                "accomplice"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nAccomplice\nWhenever Watchful Griffin becomes an accomplice, put a +1/+1 counter on each other creature you control.",
+              "original_printed_rules_text": "Flying\nAccomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Watchful Griffin becomes an accomplice, put a +1/+1 counter on each other creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "accomplice"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nAccomplice\nWhenever Watchful Griffin becomes an accomplice, put a +1/+1 counter on each other creature you control.",
+          "original_printed_rules_text": "Flying\nAccomplice (Whenever another creature you control attacks, you may tap this creature.)\nWhenever Watchful Griffin becomes an accomplice, put a +1/+1 counter on each other creature you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_relation_receipt_candidate",
+      "test_status": "pending_parent_native_verification",
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Rule702.195a/b: resolved optional actual tap produces participant receipt linked to the exact attack-declaration source; no general tap trigger is substituted."
+      }
+    },
+    {
+      "keyword": "Accomplice",
+      "scope": "revolution",
+      "rule_reference": "702.195.",
+      "rule_text": {
+        "name": "702.195.",
+        "rule": "Accomplice",
+        "subrules": [
+          {
+            "name": "702.195a",
+            "rule": "Accomplice is a triggered ability. “Accomplice” means “Whenever another creature you control attacks, you may tap this creature.”",
+            "custom": true
+          },
+          {
+            "name": "702.195b",
+            "rule": "A creature “becomes an accomplice to [a creature]” when the former creature is tapped as a result of a resolving accomplice ability that triggered from the latter creature's being declared as an attacker. The latter creature is also called the creature the former creature accompliced.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Agency Detectives",
+          "Amnesiac Sleuth",
+          "Angelic Embezzler",
+          "Bishop of Ameret's Way",
+          "Deacon of the Old Ways",
+          "Distracting Flapper",
+          "Dust Smugglers",
+          "Dwarven Butcher",
+          "Elvish Poet",
+          "Jaded Copper",
+          "Lorre Underboss",
+          "Lotus Lane Socialite",
+          "Obsessive Bureaucrat",
+          "Orc Reporter",
+          "Ride to Nowhere",
+          "Sinuous Tantalizer",
+          "Slippery Informant",
+          "Songstress of the River",
+          "Stalking Neonate",
+          "The Masked Benefactor",
+          "Torch Singer",
+          "Watchful Griffin"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "They have “Whenever another creature you control attacks, you may tap this creature.”",
+      "source_cards": [
+        "The Masked Benefactor"
+      ],
+      "id": "rev-accomplice-069-source-complete",
+      "source_inventory_id": "rev-accomplice-069",
+      "additional_source_cards": [],
+      "executable_reminder": "Whenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way.",
+      "executable_definitions": [
+        {
+          "keyword": "Accomplice",
+          "reminder": "Whenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way.",
+          "forms": {
+            "variants": [
+              "an accomplice"
+            ]
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:The Masked Benefactor_SRC",
+          "name": "The Masked Benefactor",
+          "original_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Noble \nPower/Toughness: 3/3\nOther creatures you control have accomplice. *(They have “Whenever another creature you control attacks, you may tap this creature.”)*\nWhenever a creature becomes an accomplice to The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.",
+          "executable_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Noble \nPower/Toughness: 3/3\nOther creatures you control have custom keyword \"accomplice\", and \"Whenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way.\".\nWhenever a creature participates in the accomplice association action performed by The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.",
+          "mana_cost": "{R}{G}{W}",
+          "type_line": "Legendary Creature — Human Noble ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "The Masked Benefactor_SRC",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Masked Benefactor",
+              "original_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Noble \nPower/Toughness: 3/3\nOther creatures you control have accomplice. *(They have “Whenever another creature you control attacks, you may tap this creature.”)*\nWhenever a creature becomes an accomplice to The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "The Masked Benefactor",
+              "executable_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Noble \nPower/Toughness: 3/3\nOther creatures you control have custom keyword \"accomplice\", and \"Whenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the accomplice association action with objects tapped this way.\".\nWhenever a creature participates in the accomplice association action performed by The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Other creatures you control have accomplice.\nWhenever a creature becomes an accomplice to The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.",
+              "original_printed_rules_text": "Other creatures you control have accomplice. (They have “Whenever another creature you control attacks, you may tap this creature.”)\nWhenever a creature becomes an accomplice to The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Other creatures you control have accomplice.\nWhenever a creature becomes an accomplice to The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.",
+          "original_printed_rules_text": "Other creatures you control have accomplice. (They have “Whenever another creature you control attacks, you may tap this creature.”)\nWhenever a creature becomes an accomplice to The Masked Benefactor, put a +1/+1 counter on The Masked Benefactor. The Masked Benefactor gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_relation_receipt_candidate",
+      "test_status": "pending_parent_native_verification",
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Rule702.195a/b: resolved optional actual tap produces participant receipt linked to the exact attack-declaration source; no general tap trigger is substituted."
+      }
+    }
+  ]
+}

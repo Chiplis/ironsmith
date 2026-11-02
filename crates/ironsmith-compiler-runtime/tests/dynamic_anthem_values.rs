@@ -132,6 +132,29 @@ fn nine_exact_inputs_preserve_metadata_dynamic_nodes_signs_and_artifacts() {
     }
 }
 
+fn crew_vehicle(game:&mut GameState,vehicle:ObjectId,controller:PlayerId) {
+    use ironsmith::decision::{LegalAction,compute_legal_actions};
+    use ironsmith::game_loop::{PriorityLoopState,PriorityResponse,apply_priority_response_with_dm,apply_decision_context_with_dm,resolve_stack_entry_with};
+    game.turn.active_player=controller;game.turn.priority_player=Some(controller);
+    game.turn.phase=ironsmith::game_state::Phase::FirstMain;game.turn.step=None;
+    let crew=game.create_object_from_definition(&vanilla("Actual crew resource",2,2),controller,Zone::Battlefield);
+    let actions:Vec<_>=compute_legal_actions(game,controller).unwrap().into_iter()
+        .filter(|action|matches!(action,LegalAction::ActivateAbility{source,..}if *source==vehicle)).collect();
+    // With no mana, the printed {2}{B}, pay-life draw ability is unavailable.
+    // The actual Crew 2 ability must be the sole affordable activation.
+    assert_eq!(actions.len(),1);
+    let mut state=PriorityLoopState::new(game.players.len());let mut queue=ironsmith::triggers::TriggerQueue::new();let mut dm=SelectFirstDecisionMaker;
+    let mut progress=apply_priority_response_with_dm(game,&mut queue,&mut state,&PriorityResponse::PriorityAction(actions[0].clone()),&mut dm).unwrap();
+    for _ in 0..32 {
+        if !state.has_pending_action(){break;}
+        let ironsmith::GameProgress::NeedsDecisionCtx(ctx)=progress else{panic!("{progress:?}")};
+        progress=apply_decision_context_with_dm(game,&mut queue,&mut state,&ctx,&mut dm).unwrap();
+    }
+    assert!(!state.has_pending_action());assert!(game.is_tapped(crew));
+    resolve_stack_entry_with(game,&mut dm).unwrap();
+    assert!(game.current_is_creature(vehicle));
+}
+
 #[test]
 fn negative_life_basis_uses_current_source_controller_and_live_life_actions() {
     let alice = PlayerId::from_index(0);
@@ -142,6 +165,12 @@ fn negative_life_basis_uses_current_source_controller_and_live_life_actions() {
             game.lose_life(alice, 15);
             game.lose_life(bob, 13);
             let host = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            if definition.card.subtypes.contains(&ironsmith::Subtype::Vehicle) {
+                assert!(!game.current_is_creature(host));
+                assert!(game.current_power(host).is_none());
+                assert!(game.current_toughness(host).is_none());
+                crew_vehicle(&mut game,host,alice);
+            }
             assert_eq!(pt(&game, host), (8, 8));
             apply(&mut game, host, alice, Effect::gain_life(2));
             assert_eq!(pt(&game, host), (6, 6));

@@ -72,6 +72,7 @@ pub fn primary_damage_target_from_effect(effect: &EffectAst) -> Option<TargetAst
 pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction {performer:Some(target),..} | KeywordActionAst::PerformNamedAction {objects:Some(target),..}) => Some(target.clone()),
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { target, .. })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
                 target, ..
@@ -244,8 +245,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target, ..
             })
-            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, .. }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { target, .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
                 target,
                 ..

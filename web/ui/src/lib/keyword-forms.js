@@ -40,7 +40,7 @@ export function surfaceForms(forms) {
 // Every official name-derived form (participles, designations, variants).
 export const officialSurfaceForms = () => OFFICIAL_KEYWORD_FORMS.flatMap(surfaceForms);
 
-const FORM_FIELDS = ['participle', 'designation', 'costNoun', 'variants'];
+const FORM_FIELDS = ['participle', 'designation', 'costNoun', 'variants', 'eventVerb', 'eventLabel', 'eventObjectPreposition', 'eventPaymentNoun'];
 const plainForm = value => {
   const form = key(value);
   if (!/^[a-z][a-z '-]{0,63}$/.test(form)) throw new Error(`Custom keyword form "${value}" must be plain words.`);
@@ -75,6 +75,10 @@ export function customKeywordForms(definition) {
     participle: overrides.participle || deriveParticiple(name),
     designation: overrides.designation || null,
     costNoun: overrides.costNoun || name,
+    ...(overrides.eventVerb ? {eventVerb: overrides.eventVerb} : {}),
+    ...(overrides.eventLabel ? {eventLabel: overrides.eventLabel} : {}),
+    ...(overrides.eventPaymentNoun ? {eventPaymentNoun: overrides.eventPaymentNoun} : {}),
+    ...(overrides.eventObjectPreposition ? {eventObjectPreposition: overrides.eventObjectPreposition} : {}),
     variants: overrides.variants || [],
   };
 }

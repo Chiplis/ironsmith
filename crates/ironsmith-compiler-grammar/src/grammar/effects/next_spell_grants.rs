@@ -213,8 +213,13 @@ fn cant_be_countered<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
+fn quoted_grant_unit<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::quote().parse_next(input)?;
+    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::quote()).void().parse_next(input)
+}
+
 fn ability_tail<'a>(input: &mut LexStream<'a>) -> WResult<NextSpellGrantAbilitySurface<'a>> {
-    let ability_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
+    let ability_tokens = repeat_till(1.., alt((quoted_grant_unit, any.void())), peek(primitives::sentence_end()))
         .map(|((), _)| ())
         .take()
         .parse_next(input)?;
@@ -285,7 +290,7 @@ fn parse_standard_next_spell_grant<'a>(
     opt(primitives::comma()).parse_next(input)?;
     let ability = alt((
         (
-            alt((primitives::kw("has"), primitives::kw("have"))).void(),
+            alt((primitives::kw("has"), primitives::kw("have"), primitives::kw("gains"), primitives::kw("gain"))).void(),
             ability_tail,
         )
             .map(|(_, ability)| ability),

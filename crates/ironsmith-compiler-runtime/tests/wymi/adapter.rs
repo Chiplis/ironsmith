@@ -1012,6 +1012,16 @@ fn layer_characteristics_assertion(a: &J) -> R<()> {
         let chars = g
             .current_characteristics(id)
             .ok_or("native flipped characteristics unavailable")?;
+        if std::env::var_os("WYMI_TRACE_COPY_PT").is_some() {
+            let retained = snapshot(&g, id)?;
+            let object = g.object(id).ok_or("missing flipped diagnostic object")?;
+            eprintln!("WYMI flipped comparison field={} name={} object_base={:?}/{:?} current={:?}/{:?} current_base={:?}/{:?} current_types={:?} retained={:?}/{:?} retained_types={:?} retained_other={:?}",
+                a["target"]["field"], chars.name,
+                object.base_power, object.base_toughness,
+                chars.power, chars.toughness, chars.base_power, chars.base_toughness,
+                chars.card_types, retained.power, retained.toughness, retained.card_types,
+                retained.other_copy_face.as_ref().map(|face| (&face.name, face.power, face.toughness, &face.card_types)));
+        }
         return compare_values(
             &CopiableValues::from_calculated(&chars),
             &definition(&face(&expected, true))?,

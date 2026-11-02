@@ -1,0 +1,1189 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Monument selected-method replacement composition",
+  "notes": [
+    "Candidate composed with independent replacement clauses; structural and gameplay verification still required.",
+    "Formal rule702.255a-b governs. Both complete linked source faces preserved."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-721",
+      "keyword": "Monument",
+      "original_reminder": "You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.",
+      "executable_reminder": "You may cast this card from your graveyard transformed for {Cost}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+      "source_cards": [
+        "Blessing of Golna//Golna's Heart",
+        "Contemplate the Cosmos//Orrey of the Cosmos",
+        "Falconry//Skythrone Aviary",
+        "Fight for Succession//Chalice of Fallen Foes",
+        "Fury of Hadak//Hadak's Shrine",
+        "Gathering of Minds//Repository of Thoughts",
+        "Ghulish Unearthing//Obelisk of Absolute Rule",
+        "Golna, the First Shah//The Path of Greatness",
+        "Hidden Cache//Hadak's Guardian",
+        "Hidden Garden Entrance//Cosmic Contraption",
+        "Jahan, the Third Shah//Cup of Jahan",
+        "Peek into the Future//Seer's Astrolabe",
+        "Peer into the Cosmos//Bauble of Infinites",
+        "Piruz, the Fourth Shah//The Spire of Undeath",
+        "Rapid Transformation//Vortex of Change",
+        "Rite of Ends//Mausoleum of Ends",
+        "Sacred Heirloom//Blade of Ancestors",
+        "Shift the Sands//Hourglass of Decay",
+        "Shomi's Journey//Shrine to the Sailor",
+        "Zareen, the Second Shah//Throne of Soli",
+        "A Slave's Vengeance//Crown of the Urchin King"
+      ],
+      "rule_reference": "702.255.",
+      "rule_text": [
+        {
+          "name": "702.255a",
+          "rule": "Monument is an ability found on the front face of some transforming double-faced cards (see rule 712, “Double-Faced Cards”). “Monument [cost]” means “You may cast this card transformed from your graveyard by paying [cost] rather than its mana cost. If this spell would leave the stack other than being put onto the battlefield, or the permanent it becomes would leave the battlefield, exile it instead.” See rule 712.4b.",
+          "custom": true
+        },
+        {
+          "name": "702.255b",
+          "rule": "A resolving transforming double-faced spell that was cast using its monument ability enters the battlefield with its back face up.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blessing of Golna//Golna's Heart_ALK",
+          "name": "Blessing of Golna",
+          "source_card_key": "Blessing of Golna//Golna's Heart_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {G}\nType: Instant\nPut a +1/+1 counter on target creature you control.\nMonument {1}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blessing of Golna",
+              "original_text": "Mana cost: {G}\nType: Instant\nPut a +1/+1 counter on target creature you control.\nMonument {1}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Golna's Heart",
+              "original_text": "Type: Artifact Creature — Construct Monument\nPower/Toughness: 2/2\nTrample\nWhenever a creature you control leaves the battlefield, if it had counters on it, put those counters on Golna's Heart."
+            }
+          ],
+          "mana_cost": "{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {G}\nType: Instant\nPut a +1/+1 counter on target creature you control.\nYou may cast this card from your graveyard transformed for {1}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Blessing of Golna",
+              "executable_text": "Mana cost: {G}\nType: Instant\nPut a +1/+1 counter on target creature you control.\nYou may cast this card from your graveyard transformed for {1}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Put a +1/+1 counter on target creature you control.\nMonument {1}{G}"
+            },
+            {
+              "name": "Golna's Heart",
+              "executable_text": "Type: Artifact Creature — Construct Monument\nPower/Toughness: 2/2\nTrample\nWhenever a creature you control leaves the battlefield, if it had counters on it, put those counters on Golna's Heart.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Put a +1/+1 counter on target creature you control.\nMonument {1}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Contemplate the Cosmos//Orrey of the Cosmos_ALK",
+          "name": "Contemplate the Cosmos",
+          "source_card_key": "Contemplate the Cosmos//Orrey of the Cosmos_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{W}{U}\nType: Instant\nScry 2, then draw two cards. You gain 2 life.\nMonument {2}{W}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Contemplate the Cosmos",
+              "original_text": "Mana cost: {2}{W}{U}\nType: Instant\nScry 2, then draw two cards. You gain 2 life.\nMonument {2}{W}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Orrey of the Cosmos",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, scry 1, then you gain 1 life."
+            }
+          ],
+          "mana_cost": "{2}{W}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {2}{W}{U}\nType: Instant\nScry 2, then draw two cards. You gain 2 life.\nYou may cast this card from your graveyard transformed for {2}{W}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Contemplate the Cosmos",
+              "executable_text": "Mana cost: {2}{W}{U}\nType: Instant\nScry 2, then draw two cards. You gain 2 life.\nYou may cast this card from your graveyard transformed for {2}{W}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Scry 2, then draw two cards. You gain 2 life.\nMonument {2}{W}{U}"
+            },
+            {
+              "name": "Orrey of the Cosmos",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, scry 1, then you gain 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Scry 2, then draw two cards. You gain 2 life.\nMonument {2}{W}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Falconry//Skythrone Aviary_ALK",
+          "name": "Falconry",
+          "source_card_key": "Falconry//Skythrone Aviary_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {W}\nType: Sorcery\nCreate a 1/1 white Bird creature token with flying.\nMonument {2}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Falconry",
+              "original_text": "Mana cost: {W}\nType: Sorcery\nCreate a 1/1 white Bird creature token with flying.\nMonument {2}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Skythrone Aviary",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of combat on your turn, target creature you control with flying gets +1/+1 until end of turn."
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {W}\nType: Sorcery\nCreate a 1/1 white Bird creature token with flying.\nYou may cast this card from your graveyard transformed for {2}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Falconry",
+              "executable_text": "Mana cost: {W}\nType: Sorcery\nCreate a 1/1 white Bird creature token with flying.\nYou may cast this card from your graveyard transformed for {2}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Create a 1/1 white Bird creature token with flying.\nMonument {2}{W}"
+            },
+            {
+              "name": "Skythrone Aviary",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of combat on your turn, target creature you control with flying gets +1/+1 until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Create a 1/1 white Bird creature token with flying.\nMonument {2}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Fight for Succession//Chalice of Fallen Foes_ALK",
+          "name": "Fight for Succession",
+          "source_card_key": "Fight for Succession//Chalice of Fallen Foes_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nMonument {3}{W}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fight for Succession",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nMonument {3}{W}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Chalice of Fallen Foes",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, recruit. *(Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nYou may cast this card from your graveyard transformed for {3}{W}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Fight for Succession",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Instant\nDestroy target nonland permanent.\nYou may cast this card from your graveyard transformed for {3}{W}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Destroy target nonland permanent.\nMonument {3}{W}{B}"
+            },
+            {
+              "name": "Chalice of Fallen Foes",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, recruit. (Create a 0/0 white Soldier Army creature token, then put a +1/+1 counter on each Army you control.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Destroy target nonland permanent.\nMonument {3}{W}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Fury of Hadak//Hadak's Shrine_ALK",
+          "name": "Fury of Hadak",
+          "source_card_key": "Fury of Hadak//Hadak's Shrine_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {R}\nType: Instant\nTarget creature gets +1/+0 and gains first strike until end of turn.\nMonument {4}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fury of Hadak",
+              "original_text": "Mana cost: {R}\nType: Instant\nTarget creature gets +1/+0 and gains first strike until end of turn.\nMonument {4}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Hadak's Shrine",
+              "original_text": "Type: Artifact — Monument\nAttacking creatures you control get +1/+0."
+            }
+          ],
+          "mana_cost": "{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {R}\nType: Instant\nTarget creature gets +1/+0 and gains first strike until end of turn.\nYou may cast this card from your graveyard transformed for {4}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Fury of Hadak",
+              "executable_text": "Mana cost: {R}\nType: Instant\nTarget creature gets +1/+0 and gains first strike until end of turn.\nYou may cast this card from your graveyard transformed for {4}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Target creature gets +1/+0 and gains first strike until end of turn.\nMonument {4}{R}"
+            },
+            {
+              "name": "Hadak's Shrine",
+              "executable_text": "Type: Artifact — Monument\nAttacking creatures you control get +1/+0.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Target creature gets +1/+0 and gains first strike until end of turn.\nMonument {4}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Gathering of Minds//Repository of Thoughts_ALK",
+          "name": "Gathering of Minds",
+          "source_card_key": "Gathering of Minds//Repository of Thoughts_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{G}{U}\nType: Instant\nCreate three 1/1 blue Advisor creature tokens.\nMonument {2}{G}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gathering of Minds",
+              "original_text": "Mana cost: {1}{G}{U}\nType: Instant\nCreate three 1/1 blue Advisor creature tokens.\nMonument {2}{G}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Repository of Thoughts",
+              "original_text": "Type: Artifact — Monument\nWhenever a creature dies, put a +1/+1 counter on Repository of Thoughts.\nAt the beginning of each combat, you may move a counter from Repository of Thoughts to target creature."
+            }
+          ],
+          "mana_cost": "{1}{G}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{G}{U}\nType: Instant\nCreate three 1/1 blue Advisor creature tokens.\nYou may cast this card from your graveyard transformed for {2}{G}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Gathering of Minds",
+              "executable_text": "Mana cost: {1}{G}{U}\nType: Instant\nCreate three 1/1 blue Advisor creature tokens.\nYou may cast this card from your graveyard transformed for {2}{G}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Create three 1/1 blue Advisor creature tokens.\nMonument {2}{G}{U}"
+            },
+            {
+              "name": "Repository of Thoughts",
+              "executable_text": "Type: Artifact — Monument\nWhenever a creature dies, put a +1/+1 counter on Repository of Thoughts.\nAt the beginning of each combat, you may move a counter from Repository of Thoughts to target creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Create three 1/1 blue Advisor creature tokens.\nMonument {2}{G}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Ghulish Unearthing//Obelisk of Absolute Rule_ALK",
+          "name": "Ghulish Unearthing",
+          "source_card_key": "Ghulish Unearthing//Obelisk of Absolute Rule_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {B}{R}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ghulish Unearthing",
+              "original_text": "Mana cost: {B}{R}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Obelisk of Absolute Rule",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of your end step, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*"
+            }
+          ],
+          "mana_cost": "{B}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {B}{R}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nYou may cast this card from your graveyard transformed for {3}{B}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Ghulish Unearthing",
+              "executable_text": "Mana cost: {B}{R}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nYou may cast this card from your graveyard transformed for {3}{B}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R}"
+            },
+            {
+              "name": "Obelisk of Absolute Rule",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of your end step, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Golna, the First Shah//The Path of Greatness_ALK",
+          "name": "Golna, the First Shah",
+          "source_card_key": "Golna, the First Shah//The Path of Greatness_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{G}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/1\nWhen Golna, the First Shah enters, create Shir, a legendary 3/3 white Cat creature token with trample.\nMonument {5}{G}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Golna, the First Shah",
+              "original_text": "Mana cost: {2}{G}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/1\nWhen Golna, the First Shah enters, create Shir, a legendary 3/3 white Cat creature token with trample.\nMonument {5}{G}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "The Path of Greatness",
+              "original_text": "Type: Legendary Artifact — Monument\nCreatures you control have trample, haste, and hexproof.\n{2}{G}{G}: Create a 2/2 white Cat creature token."
+            }
+          ],
+          "mana_cost": "{2}{G}",
+          "type_line": "Legendary Creature — Human Noble",
+          "power": "1",
+          "toughness": "1",
+          "executable_text": "Mana cost: {2}{G}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/1\nWhen Golna, the First Shah enters, create Shir, a legendary 3/3 white Cat creature token with trample.\nYou may cast this card from your graveyard transformed for {5}{G}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Golna, the First Shah",
+              "executable_text": "Mana cost: {2}{G}\nType: Legendary Creature — Human Noble\nPower/Toughness: 1/1\nWhen Golna, the First Shah enters, create Shir, a legendary 3/3 white Cat creature token with trample.\nYou may cast this card from your graveyard transformed for {5}{G}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "When Golna, the First Shah enters, create Shir, a legendary 3/3 white Cat creature token with trample.\nMonument {5}{G}{G}"
+            },
+            {
+              "name": "The Path of Greatness",
+              "executable_text": "Type: Legendary Artifact — Monument\nCreatures you control have trample, haste, and hexproof.\n{2}{G}{G}: Create a 2/2 white Cat creature token.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "When Golna, the First Shah enters, create Shir, a legendary 3/3 white Cat creature token with trample.\nMonument {5}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Hidden Cache//Hadak's Guardian_ALK",
+          "name": "Hidden Cache",
+          "source_card_key": "Hidden Cache//Hadak's Guardian_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{R}\nType: Instant\nScry 2, then create a Treasure token. *(It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)*\nMonument {2}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hidden Cache",
+              "original_text": "Mana cost: {1}{R}\nType: Instant\nScry 2, then create a Treasure token. *(It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)*\nMonument {2}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Hadak's Guardian",
+              "original_text": "Type: Artifact Creature — Monument Snake\nPower/Toughness: 2/2\n{2}, Sacrifice a creature or artifact: Hadak's Guardian deals 2 damage to any target."
+            }
+          ],
+          "mana_cost": "{1}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{R}\nType: Instant\nScry 2, then create a Treasure token.\nYou may cast this card from your graveyard transformed for {2}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Hidden Cache",
+              "executable_text": "Mana cost: {1}{R}\nType: Instant\nScry 2, then create a Treasure token.\nYou may cast this card from your graveyard transformed for {2}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Scry 2, then create a Treasure token.\nMonument {2}{R}"
+            },
+            {
+              "name": "Hadak's Guardian",
+              "executable_text": "Type: Artifact Creature — Monument Snake\nPower/Toughness: 2/2\n{2}, Sacrifice a creature or artifact: Hadak's Guardian deals 2 damage to any target.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Scry 2, then create a Treasure token.\nMonument {2}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Hidden Garden Entrance//Cosmic Contraption_ALK",
+          "name": "Hidden Garden Entrance",
+          "source_card_key": "Hidden Garden Entrance//Cosmic Contraption_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Type: Land\n{T}, Sacrifice Hidden Garden Entrance: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nMonument {W}{U}{B}{R}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hidden Garden Entrance",
+              "original_text": "Type: Land\n{T}, Sacrifice Hidden Garden Entrance: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nMonument {W}{U}{B}{R}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Cosmic Contraption",
+              "original_text": "Type: Artifact\nWhen Cosmic Contraption enters or leaves the battlefield, you may reveal a noncreature card you own from outside the game and put it into your hand."
+            }
+          ],
+          "mana_cost": "",
+          "type_line": "Land",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Type: Land\n{T}, Sacrifice Hidden Garden Entrance: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nYou may cast this card from your graveyard transformed for {W}{U}{B}{R}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Hidden Garden Entrance",
+              "executable_text": "Type: Land\n{T}, Sacrifice Hidden Garden Entrance: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nYou may cast this card from your graveyard transformed for {W}{U}{B}{R}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "{T}, Sacrifice Hidden Garden Entrance: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nMonument {W}{U}{B}{R}{G}"
+            },
+            {
+              "name": "Cosmic Contraption",
+              "executable_text": "Type: Artifact\nWhen Cosmic Contraption enters or leaves the battlefield, you may reveal a noncreature card you own from outside the game and put it into your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "{T}, Sacrifice Hidden Garden Entrance: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nMonument {W}{U}{B}{R}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Jahan, the Third Shah//Cup of Jahan_ALK",
+          "name": "Jahan, the Third Shah",
+          "source_card_key": "Jahan, the Third Shah//Cup of Jahan_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 3/3\nWhen Jahan, the Third Shah enters, shuffle your hand and graveyard into your library, then draw three cards.\nMonument {3}{U}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Jahan, the Third Shah",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 3/3\nWhen Jahan, the Third Shah enters, shuffle your hand and graveyard into your library, then draw three cards.\nMonument {3}{U}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Cup of Jahan",
+              "original_text": "Type: Legendary Artifact — Monument\nYou may look at the top card of your library.\n{T}: You may play the top card of your library."
+            }
+          ],
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Legendary Creature — Nephilim Noble",
+          "power": "3",
+          "toughness": "3",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 3/3\nWhen Jahan, the Third Shah enters, shuffle your hand and graveyard into your library, then draw three cards.\nYou may cast this card from your graveyard transformed for {3}{U}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Jahan, the Third Shah",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Legendary Creature — Nephilim Noble\nPower/Toughness: 3/3\nWhen Jahan, the Third Shah enters, shuffle your hand and graveyard into your library, then draw three cards.\nYou may cast this card from your graveyard transformed for {3}{U}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "When Jahan, the Third Shah enters, shuffle your hand and graveyard into your library, then draw three cards.\nMonument {3}{U}{U}"
+            },
+            {
+              "name": "Cup of Jahan",
+              "executable_text": "Type: Legendary Artifact — Monument\nYou may look at the top card of your library.\n{T}: You may play the top card of your library.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "When Jahan, the Third Shah enters, shuffle your hand and graveyard into your library, then draw three cards.\nMonument {3}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Peek into the Future//Seer's Astrolabe_ALK",
+          "name": "Peek into the Future",
+          "source_card_key": "Peek into the Future//Seer's Astrolabe_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {U}\nType: Instant\nScry 3.\nMonument {1}{U}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Peek into the Future",
+              "original_text": "Mana cost: {U}\nType: Instant\nScry 3.\nMonument {1}{U}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Seer's Astrolabe",
+              "original_text": "Type: Artifact — Monument\nWhenever you scry, draw a card."
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {U}\nType: Instant\nScry 3.\nYou may cast this card from your graveyard transformed for {1}{U}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Peek into the Future",
+              "executable_text": "Mana cost: {U}\nType: Instant\nScry 3.\nYou may cast this card from your graveyard transformed for {1}{U}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Scry 3.\nMonument {1}{U}{U}"
+            },
+            {
+              "name": "Seer's Astrolabe",
+              "executable_text": "Type: Artifact — Monument\nWhenever you scry, draw a card.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Scry 3.\nMonument {1}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Peer into the Cosmos//Bauble of Infinites_ALK",
+          "name": "Peer into the Cosmos",
+          "source_card_key": "Peer into the Cosmos//Bauble of Infinites_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {R}{W}{U}\nType: Instant\nChoose one —\n• Counter target noncreature spell.\n• Peer into the Cosmos deals 3 damage to target creature.\n• Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.\nMonument {1}{U}{R}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Peer into the Cosmos",
+              "original_text": "Mana cost: {R}{W}{U}\nType: Instant\nChoose one —\n• Counter target noncreature spell.\n• Peer into the Cosmos deals 3 damage to target creature.\n• Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.\nMonument {1}{U}{R}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Bauble of Infinites",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, Bauble of Infinites deals 2 damage to each opponent and you gain 2 life."
+            }
+          ],
+          "mana_cost": "{R}{W}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {R}{W}{U}\nType: Instant\nChoose one —\n• Counter target noncreature spell.\n• Peer into the Cosmos deals 3 damage to target creature.\n• Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.\nYou may cast this card from your graveyard transformed for {1}{U}{R}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Peer into the Cosmos",
+              "executable_text": "Mana cost: {R}{W}{U}\nType: Instant\nChoose one —\n• Counter target noncreature spell.\n• Peer into the Cosmos deals 3 damage to target creature.\n• Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.\nYou may cast this card from your graveyard transformed for {1}{U}{R}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Choose one —\n• Counter target noncreature spell.\n• Peer into the Cosmos deals 3 damage to target creature.\n• Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.\nMonument {1}{U}{R}{W}"
+            },
+            {
+              "name": "Bauble of Infinites",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of your upkeep, Bauble of Infinites deals 2 damage to each opponent and you gain 2 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Choose one —\n• Counter target noncreature spell.\n• Peer into the Cosmos deals 3 damage to target creature.\n• Until end of turn, damage that would reduce your life total to less than 1 reduces it to 1 instead.\nMonument {1}{U}{R}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Piruz, the Fourth Shah//The Spire of Undeath_ALK",
+          "name": "Piruz, the Fourth Shah",
+          "source_card_key": "Piruz, the Fourth Shah//The Spire of Undeath_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {4}{B}{B}\nType: Legendary Creature — Azra Noble\nPower/Toughness: 3/3\nWhen Piruz, the Fourth Shah enters, discard your hand. For each creature card discarded this way, create a 3/3 black Demon creature token with flying. For each other card discarded this way, you gain 3 life.\nMonument {5}{B}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Piruz, the Fourth Shah",
+              "original_text": "Mana cost: {4}{B}{B}\nType: Legendary Creature — Azra Noble\nPower/Toughness: 3/3\nWhen Piruz, the Fourth Shah enters, discard your hand. For each creature card discarded this way, create a 3/3 black Demon creature token with flying. For each other card discarded this way, you gain 3 life.\nMonument {5}{B}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "The Spire of Undeath",
+              "original_text": "Type: Legendary Artifact — Monument\nAt the beginning of your upkeep, return target creature card from your graveyard to the battlefield."
+            }
+          ],
+          "mana_cost": "{4}{B}{B}",
+          "type_line": "Legendary Creature — Azra Noble",
+          "power": "3",
+          "toughness": "3",
+          "executable_text": "Mana cost: {4}{B}{B}\nType: Legendary Creature — Azra Noble\nPower/Toughness: 3/3\nWhen Piruz, the Fourth Shah enters, discard your hand. For each creature card discarded this way, create a 3/3 black Demon creature token with flying. For each other card discarded this way, you gain 3 life.\nYou may cast this card from your graveyard transformed for {5}{B}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Piruz, the Fourth Shah",
+              "executable_text": "Mana cost: {4}{B}{B}\nType: Legendary Creature — Azra Noble\nPower/Toughness: 3/3\nWhen Piruz, the Fourth Shah enters, discard your hand. For each creature card discarded this way, create a 3/3 black Demon creature token with flying. For each other card discarded this way, you gain 3 life.\nYou may cast this card from your graveyard transformed for {5}{B}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "When Piruz, the Fourth Shah enters, discard your hand. For each creature card discarded this way, create a 3/3 black Demon creature token with flying. For each other card discarded this way, you gain 3 life.\nMonument {5}{B}{B}"
+            },
+            {
+              "name": "The Spire of Undeath",
+              "executable_text": "Type: Legendary Artifact — Monument\nAt the beginning of your upkeep, return target creature card from your graveyard to the battlefield.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "When Piruz, the Fourth Shah enters, discard your hand. For each creature card discarded this way, create a 3/3 black Demon creature token with flying. For each other card discarded this way, you gain 3 life.\nMonument {5}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Rapid Transformation//Vortex of Change_ALK",
+          "name": "Rapid Transformation",
+          "source_card_key": "Rapid Transformation//Vortex of Change_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nUntap target creature. It gets +2/+2 and gains reach until end of turn.\nMonument {3}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rapid Transformation",
+              "original_text": "Mana cost: {1}{G}\nType: Instant\nUntap target creature. It gets +2/+2 and gains reach until end of turn.\nMonument {3}{G} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Vortex of Change",
+              "original_text": "Type: Artifact — Monument\nCreatures you control get +0/+1 and have reach."
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{G}\nType: Instant\nUntap target creature. It gets +2/+2 and gains reach until end of turn.\nYou may cast this card from your graveyard transformed for {3}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Rapid Transformation",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant\nUntap target creature. It gets +2/+2 and gains reach until end of turn.\nYou may cast this card from your graveyard transformed for {3}{G}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Untap target creature. It gets +2/+2 and gains reach until end of turn.\nMonument {3}{G}"
+            },
+            {
+              "name": "Vortex of Change",
+              "executable_text": "Type: Artifact — Monument\nCreatures you control get +0/+1 and have reach.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Untap target creature. It gets +2/+2 and gains reach until end of turn.\nMonument {3}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Rite of Ends//Mausoleum of Ends_ALK",
+          "name": "Rite of Ends",
+          "source_card_key": "Rite of Ends//Mausoleum of Ends_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget player sacrifices a creature.\nMonument {4}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rite of Ends",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget player sacrifices a creature.\nMonument {4}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Mausoleum of Ends",
+              "original_text": "Type: Artifact — Monument\nWhenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*"
+            }
+          ],
+          "mana_cost": "{1}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{B}\nType: Instant\nTarget player sacrifices a creature.\nYou may cast this card from your graveyard transformed for {4}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Rite of Ends",
+              "executable_text": "Mana cost: {1}{B}\nType: Instant\nTarget player sacrifices a creature.\nYou may cast this card from your graveyard transformed for {4}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Target player sacrifices a creature.\nMonument {4}{B}"
+            },
+            {
+              "name": "Mausoleum of Ends",
+              "executable_text": "Type: Artifact — Monument\nWhenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Target player sacrifices a creature.\nMonument {4}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sacred Heirloom//Blade of Ancestors_ALK",
+          "name": "Sacred Heirloom",
+          "source_card_key": "Sacred Heirloom//Blade of Ancestors_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nSearch your library for an Equipment card, reveal that card, put it into your hand, then shuffle.\nMonument {3}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sacred Heirloom",
+              "original_text": "Mana cost: {1}{W}\nType: Sorcery\nSearch your library for an Equipment card, reveal that card, put it into your hand, then shuffle.\nMonument {3}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Blade of Ancestors",
+              "original_text": "Type: Artifact — Equipment Monument\nAt the beginning of your upkeep, if Blade of Ancestors isn't attached to a creature, create a 1/1 white Soldier creature token, then attach Blade of Ancestors to it.\nEquipped creature gets +1/+1.\nEquip {2}"
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nSearch your library for an Equipment card, reveal that card, put it into your hand, then shuffle.\nYou may cast this card from your graveyard transformed for {3}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Sacred Heirloom",
+              "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nSearch your library for an Equipment card, reveal that card, put it into your hand, then shuffle.\nYou may cast this card from your graveyard transformed for {3}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Search your library for an Equipment card, reveal that card, put it into your hand, then shuffle.\nMonument {3}{W}"
+            },
+            {
+              "name": "Blade of Ancestors",
+              "executable_text": "Type: Artifact — Equipment Monument\nAt the beginning of your upkeep, if Blade of Ancestors isn't attached to a creature, create a 1/1 white Soldier creature token, then attach Blade of Ancestors to it.\nEquipped creature gets +1/+1.\nEquip {2}",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Search your library for an Equipment card, reveal that card, put it into your hand, then shuffle.\nMonument {3}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Shift the Sands//Hourglass of Decay_ALK",
+          "name": "Shift the Sands",
+          "source_card_key": "Shift the Sands//Hourglass of Decay_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nTarget player discards a card.\nMonument {1}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shift the Sands",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nTarget player discards a card.\nMonument {1}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Hourglass of Decay",
+              "original_text": "Type: Artifact — Monument\n{T}: Target player exiles a card from their graveyard. If they do, you gain 1 life."
+            }
+          ],
+          "mana_cost": "{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nTarget player discards a card.\nYou may cast this card from your graveyard transformed for {1}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Shift the Sands",
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nTarget player discards a card.\nYou may cast this card from your graveyard transformed for {1}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Target player discards a card.\nMonument {1}{B}"
+            },
+            {
+              "name": "Hourglass of Decay",
+              "executable_text": "Type: Artifact — Monument\n{T}: Target player exiles a card from their graveyard. If they do, you gain 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Target player discards a card.\nMonument {1}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Shomi's Journey//Shrine to the Sailor_ALK",
+          "name": "Shomi's Journey",
+          "source_card_key": "Shomi's Journey//Shrine to the Sailor_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {U}\nType: Instant\nTarget creature gains hexproof until end of turn.\nMonument {2}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shomi's Journey",
+              "original_text": "Mana cost: {U}\nType: Instant\nTarget creature gains hexproof until end of turn.\nMonument {2}{U} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Shrine to the Sailor",
+              "original_text": "Type: Artifact — Monument\n{2}{U}: Target creature can't be blocked this turn."
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {U}\nType: Instant\nTarget creature gains hexproof until end of turn.\nYou may cast this card from your graveyard transformed for {2}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Shomi's Journey",
+              "executable_text": "Mana cost: {U}\nType: Instant\nTarget creature gains hexproof until end of turn.\nYou may cast this card from your graveyard transformed for {2}{U}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Target creature gains hexproof until end of turn.\nMonument {2}{U}"
+            },
+            {
+              "name": "Shrine to the Sailor",
+              "executable_text": "Type: Artifact — Monument\n{2}{U}: Target creature can't be blocked this turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Target creature gains hexproof until end of turn.\nMonument {2}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Zareen, the Second Shah//Throne of Soli_ALK",
+          "name": "Zareen, the Second Shah",
+          "source_card_key": "Zareen, the Second Shah//Throne of Soli_ALK",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{W}\nType: Legendary Creature — Human Noble\nPower/Toughness: 2/2\nWhen Zareen, the Second Shah enters, search your library for a creature card with mana value 2 or less or a planeswalker card, reveal it, put it into your hand, then shuffle.\nMonument {2}{W}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Zareen, the Second Shah",
+              "original_text": "Mana cost: {2}{W}\nType: Legendary Creature — Human Noble\nPower/Toughness: 2/2\nWhen Zareen, the Second Shah enters, search your library for a creature card with mana value 2 or less or a planeswalker card, reveal it, put it into your hand, then shuffle.\nMonument {2}{W}{W} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Throne of Soli",
+              "original_text": "Type: Legendary Artifact — Monument\nEach creature you control enters with an additional +1/+1 counter on it.\nEach planeswalker you control enters with an additional loyalty counter on it."
+            }
+          ],
+          "mana_cost": "{2}{W}",
+          "type_line": "Legendary Creature — Human Noble",
+          "power": "2",
+          "toughness": "2",
+          "executable_text": "Mana cost: {2}{W}\nType: Legendary Creature — Human Noble\nPower/Toughness: 2/2\nWhen Zareen, the Second Shah enters, search your library for a creature card with mana value 2 or less or a planeswalker card, reveal it, put it into your hand, then shuffle.\nYou may cast this card from your graveyard transformed for {2}{W}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "Zareen, the Second Shah",
+              "executable_text": "Mana cost: {2}{W}\nType: Legendary Creature — Human Noble\nPower/Toughness: 2/2\nWhen Zareen, the Second Shah enters, search your library for a creature card with mana value 2 or less or a planeswalker card, reveal it, put it into your hand, then shuffle.\nYou may cast this card from your graveyard transformed for {2}{W}{W}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "When Zareen, the Second Shah enters, search your library for a creature card with mana value 2 or less or a planeswalker card, reveal it, put it into your hand, then shuffle.\nMonument {2}{W}{W}"
+            },
+            {
+              "name": "Throne of Soli",
+              "executable_text": "Type: Legendary Artifact — Monument\nEach creature you control enters with an additional +1/+1 counter on it.\nEach planeswalker you control enters with an additional loyalty counter on it.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "When Zareen, the Second Shah enters, search your library for a creature card with mana value 2 or less or a planeswalker card, reveal it, put it into your hand, then shuffle.\nMonument {2}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "A Slave's Vengeance//Crown of the Urchin King_OTH",
+          "name": "A Slave's Vengeance",
+          "source_card_key": "A Slave's Vengeance//Crown of the Urchin King_OTH",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{B}\nType: Enchantment — Quest\n*(Add a quest counter as this enters. Sacrifice after 3.)*\nWhenever you attack, add a quest counter.\n1, 2 — Mill a card, then create a 1/1 black Peasant creature token.\n3 — Each player sacrifices a creature.\nMonument {2}{B}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "A Slave's Vengeance",
+              "original_text": "Mana cost: {1}{B}\nType: Enchantment — Quest\n*(Add a quest counter as this enters. Sacrifice after 3.)*\nWhenever you attack, add a quest counter.\n1, 2 — Mill a card, then create a 1/1 black Peasant creature token.\n3 — Each player sacrifices a creature.\nMonument {2}{B}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "face": "back",
+              "name": "Crown of the Urchin King",
+              "original_text": "Type: Legendary Artifact — Equipment Monument\nEquipped creature gets +X/+X, where X is the number of cards in your graveyard.\nSacrifice a creature other than equipped creature: Equipped creature gains lifelink and indestructible until end of turn.\nEquip {3}"
+            }
+          ],
+          "mana_cost": "{1}{B}",
+          "type_line": "Enchantment — Quest",
+          "power": "",
+          "toughness": "",
+          "executable_text": "Mana cost: {1}{B}\nType: Enchantment — Quest\nWhenever you attack, add a quest counter.\n1, 2 — Mill a card, then create a 1/1 black Peasant creature token.\n3 — Each player sacrifices a creature.\nYou may cast this card from your graveyard transformed for {2}{B}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+          "executable_faces": [
+            {
+              "name": "A Slave's Vengeance",
+              "executable_text": "Mana cost: {1}{B}\nType: Enchantment — Quest\nWhenever you attack, add a quest counter.\n1, 2 — Mill a card, then create a 1/1 black Peasant creature token.\n3 — Each player sacrifices a creature.\nYou may cast this card from your graveyard transformed for {2}{B}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "original_display_text": "Whenever you attack, add a quest counter.\n1, 2 — Mill a card, then create a 1/1 black Peasant creature token.\n3 — Each player sacrifices a creature.\nMonument {2}{B}{B}"
+            },
+            {
+              "name": "Crown of the Urchin King",
+              "executable_text": "Type: Legendary Artifact — Equipment Monument\nEquipped creature gets +X/+X, where X is the number of cards in your graveyard.\nSacrifice a creature other than equipped creature: Equipped creature gains lifelink and indestructible until end of turn.\nEquip {3}",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "monument"
+          ],
+          "custom_keyword_payments": [
+            "monument"
+          ],
+          "original_display_text": "Whenever you attack, add a quest counter.\n1, 2 — Mill a card, then create a 1/1 black Peasant creature token.\n3 — Each player sacrifices a creature.\nMonument {2}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "candidate_executable_reminder": "You may cast this card transformed from your graveyard by paying {Cost} rather than its mana cost. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+      "support_status": "existing_operations_candidate",
+      "candidate_status": "frontend_candidate_pending_native_verification",
+      "test_status": "pending_behavioral_verification",
+      "required_behavioral_assertions": [
+        "normal front casting unchanged",
+        "graveyard alternative cost uses backface and exact original price",
+        "successful stack to battlefield allowed",
+        "counter or stack bounce redirects to exile",
+        "permanent destroy bounce sacrifice redirects to exile",
+        "replacement bound to selected method only",
+        "later incarnations do not inherit rider",
+        "direct and artifact linked-face roundtrip"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Monument {Cost}",
+          "reminder": "You may cast this card from your graveyard transformed for {Cost}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead."
+        }
+      ]
+    }
+  ]
+}

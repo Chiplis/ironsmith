@@ -1,0 +1,600 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Complete Dynamize source through generic activation alternatives",
+  "notes": [
+    "Pending native generic grant integration and source gameplay verification."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-392",
+      "keyword": "Dynamize",
+      "original_reminder": "A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.",
+      "executable_reminder": "Give {Object} the dynamized status until end of turn. While {Object} has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+      "source_cards": [
+        "Blooming Fireheart",
+        "Clutch of the Tyrant",
+        "Core of Swelling Fields",
+        "Crucible of Facets",
+        "Cup of Infinite Possibilities",
+        "Feather of All Paths",
+        "Heart of Creeping Doubt",
+        "Ic, Seeker of Elsewheres",
+        "Perch of the Sherdal",
+        "Quill of Fate",
+        "Twinning Lattice",
+        "Twins of the Unresting Sting"
+      ],
+      "rule_reference": "701.107.",
+      "rule_text": [
+        {
+          "name": "701.107a",
+          "rule": "Dynamize is a keyword action that gives a permanent the \"dynamized\" designation for a duration. Once each turn, each of a dynamized permanent's activated abilities other than loyalty abilities may be activated by paying {0} rather than its activation cost.",
+          "custom": true
+        },
+        {
+          "name": "701.107b",
+          "rule": "Dynamizing a permanent that is already dynamized is redundant.",
+          "custom": true
+        },
+        {
+          "name": "701.107c",
+          "rule": "Abilities that would not normally not function on the battlefield still cannot be activated, even if their cost was the only thing preventing them from functioning.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blooming Fireheart_G5L",
+          "name": "Blooming Fireheart",
+          "original_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Give Blooming Fireheart the dynamized status until end of turn. While Blooming Fireheart has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+          "source_card_key": "Blooming Fireheart_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blooming Fireheart",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blooming Fireheart",
+              "executable_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Give Blooming Fireheart the dynamized status until end of turn. While Blooming Fireheart has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery.",
+              "original_printed_rules_text": "{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{R}, {T}, Sacrifice Blooming Fireheart: It deals 2 damage to any target.\n{W}, {T}: You gain 2 life.\n{2}{R}{W}, {T}: Dynamize Blooming Fireheart until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Clutch of the Tyrant_G5L",
+          "name": "Clutch of the Tyrant",
+          "original_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Give Clutch of the Tyrant the dynamized status until end of turn. While Clutch of the Tyrant has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+          "source_card_key": "Clutch of the Tyrant_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Clutch of the Tyrant",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Clutch of the Tyrant",
+              "executable_text": "Mana cost: {1}\nType: Artifact\n{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Give Clutch of the Tyrant the dynamized status until end of turn. While Clutch of the Tyrant has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery.",
+              "original_printed_rules_text": "{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{R}, {T}: Create a tapped Treasure token.\n{1}{G}, {T}: Untap target land you control. Until end of turn, it becomes an artifact creature in addition to its other types with power and toughness each equal to the number of artifacts you control.\n{1}{R}{G}, {T}: Dynamize Clutch of the Tyrant until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Core of Swelling Fields_G5L",
+          "name": "Core of Swelling Fields",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Give Core of Swelling Fields the dynamized status until end of turn. While Core of Swelling Fields has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Core of Swelling Fields_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Core of Swelling Fields",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Core of Swelling Fields",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Give Core of Swelling Fields the dynamized status until end of turn. While Core of Swelling Fields has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn.",
+              "original_printed_rules_text": "{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{3}{G}, {T}: Create a colorless Satrapy land token with “{T}: Add {C}.”\n{1}{U}, {T}: Create a token that's a copy of a token you control.\n{3}{G}{U}, {T}: Dynamize Core of Swelling Fields until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Crucible of Facets_G5L",
+          "name": "Crucible of Facets",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Give Crucible of Facets the dynamized status until end of turn. While Crucible of Facets has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Crucible of Facets_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Crucible of Facets",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Crucible of Facets",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Give Crucible of Facets the dynamized status until end of turn. While Crucible of Facets has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn.",
+              "original_printed_rules_text": "{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{U}, {T}: Untap target permanent.\n{2}{B}, {T}: Target player loses 3 life unless they sacrifice a nonland permanent or discard a card.\n{2}{U}{B}, {T}: Dynamize Crucible of Facets until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Cup of Infinite Possibilities_G5L",
+          "name": "Cup of Infinite Possibilities",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Give Cup of Infinite Possibilities the dynamized status until end of turn. While Cup of Infinite Possibilities has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Cup of Infinite Possibilities_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cup of Infinite Possibilities",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cup of Infinite Possibilities",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Give Cup of Infinite Possibilities the dynamized status until end of turn. While Cup of Infinite Possibilities has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn.",
+              "original_printed_rules_text": "{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{W}, {T}: Tap target nonland permanent. Its abilities can't be activated this turn.\n{2}{U}, {T}: Scry 1, then draw a card.\n{2}{W}{U}, {T}: Dynamize Cup of Infinite Possibilities until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Feather of All Paths_G5L",
+          "name": "Feather of All Paths",
+          "original_text": "Mana cost: {2}\nType: Legendary Artifact\nFeather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Legendary Artifact\nFeather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Give Feather of All Paths the dynamized status until end of turn. While Feather of All Paths has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Feather of All Paths_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Legendary Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Feather of All Paths",
+              "original_text": "Mana cost: {2}\nType: Legendary Artifact\nFeather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Feather of All Paths",
+              "executable_text": "Mana cost: {2}\nType: Legendary Artifact\nFeather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Give Feather of All Paths the dynamized status until end of turn. While Feather of All Paths has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Feather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn.",
+              "original_printed_rules_text": "Feather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Feather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Feather of All Paths has all activated abilities of other artifacts you control with mana value 1 or greater.\n{2}{W}{U}{B}{R}{G}: Dynamize Feather of All Paths until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Heart of Creeping Doubt_G5L",
+          "name": "Heart of Creeping Doubt",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Give Heart of Creeping Doubt the dynamized status until end of turn. While Heart of Creeping Doubt has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Heart of Creeping Doubt_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Heart of Creeping Doubt",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Heart of Creeping Doubt",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Give Heart of Creeping Doubt the dynamized status until end of turn. While Heart of Creeping Doubt has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn.",
+              "original_printed_rules_text": "{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{B}, {T}: Mill three cards.\n{2}{G}, {T}, Sacrifice a creature: Create an X/X black Horror creature token, where X is the number of cards put into your graveyard this turn. It can't block this turn.\n{4}{B}{G}, {T}: Dynamize Heart of Creeping Doubt until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Ic, Seeker of Elsewheres_G5L",
+          "name": "Ic, Seeker of Elsewheres",
+          "original_text": "Mana cost: {2}\nType: Legendary Artifact Creature — Scout\nPower/Toughness: 2/2\n{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Legendary Artifact Creature — Scout\nPower/Toughness: 2/2\n{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Give Ic the dynamized status until end of turn. While Ic has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Ic, Seeker of Elsewheres_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Legendary Artifact Creature — Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ic, Seeker of Elsewheres",
+              "original_text": "Mana cost: {2}\nType: Legendary Artifact Creature — Scout\nPower/Toughness: 2/2\n{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ic, Seeker of Elsewheres",
+              "executable_text": "Mana cost: {2}\nType: Legendary Artifact Creature — Scout\nPower/Toughness: 2/2\n{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Give Ic the dynamized status until end of turn. While Ic has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn.",
+              "original_printed_rules_text": "{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn.",
+          "original_printed_rules_text": "{1}{W}: Ic gets +0/+3 until end of turn.\n{U}: Ic gains flying and hexproof until end of turn.\n{B}: Ic gains deathtouch and lifelink until end of turn.\n{1}{R}: Ic gets +3/+0 until end of turn.\n{2}{G}: Ic fights up to one target creature.\n{W}{U}{B}{R}{G}: Dynamize Ic until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Perch of the Sherdal_G5L",
+          "name": "Perch of the Sherdal",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{2}{G}, {T}: Target creature gets +3/+3 until end of turn. \n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{2}{G}, {T}: Target creature gets +3/+3 until end of turn.\n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Give Perch of the Sherdal the dynamized status until end of turn. While Perch of the Sherdal has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+          "source_card_key": "Perch of the Sherdal_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Perch of the Sherdal",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{2}{G}, {T}: Target creature gets +3/+3 until end of turn. \n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Perch of the Sherdal",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{2}{G}, {T}: Target creature gets +3/+3 until end of turn.\n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Give Perch of the Sherdal the dynamized status until end of turn. While Perch of the Sherdal has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{G}, {T}: Target creature gets +3/+3 until end of turn.\n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery.",
+              "original_printed_rules_text": "{2}{G}, {T}: Target creature gets +3/+3 until end of turn. \n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}{G}, {T}: Target creature gets +3/+3 until end of turn.\n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{2}{G}, {T}: Target creature gets +3/+3 until end of turn. \n{W}, {T}: Target creature gains lifelink until end of turn.\n{2}{G}{W}, {T}: Dynamize Perch of the Sherdal until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Quill of Fate_G5L",
+          "name": "Quill of Fate",
+          "original_text": "Mana cost: {1}\nType: Artifact\n{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {1}\nType: Artifact\n{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Give Quill of Fate the dynamized status until end of turn. While Quill of Fate has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+          "source_card_key": "Quill of Fate_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Quill of Fate",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Quill of Fate",
+              "executable_text": "Mana cost: {1}\nType: Artifact\n{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Give Quill of Fate the dynamized status until end of turn. While Quill of Fate has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery.",
+              "original_printed_rules_text": "{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{2}{W}, {T}: Put a +1/+1 counter on each of up to two target creatures.\n{B}, {T}: Creatures you control gain menace until end of turn.\n{2}{W}{B}, {T}: Dynamize Quill of Fate until end of turn. Activate only as a sorcery. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Twinning Lattice_G5L",
+          "name": "Twinning Lattice",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Give Twinning Lattice the dynamized status until end of turn. While Twinning Lattice has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Twinning Lattice_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Twinning Lattice",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Twinning Lattice",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Give Twinning Lattice the dynamized status until end of turn. While Twinning Lattice has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn.",
+              "original_printed_rules_text": "{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{U}, {T}: The next spell you cast this turn can be cast as though it had flash.\n{1}{R}, {T}: When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\n{1}{U}{R}, {T}: Dynamize Twinning Lattice until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        },
+        {
+          "id": "Twins of the Unresting Sting_G5L",
+          "name": "Twins of the Unresting Sting",
+          "original_text": "Mana cost: {2}\nType: Artifact\n{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\n{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Give Twins of the Unresting Sting the dynamized status until end of turn. While Twins of the Unresting Sting has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+          "source_card_key": "Twins of the Unresting Sting_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Twins of the Unresting Sting",
+              "original_text": "Mana cost: {2}\nType: Artifact\n{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn. *(A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Twins of the Unresting Sting",
+              "executable_text": "Mana cost: {2}\nType: Artifact\n{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Give Twins of the Unresting Sting the dynamized status until end of turn. While Twins of the Unresting Sting has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn.",
+              "custom_keyword_identities": [
+                "dynamize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn.",
+              "original_printed_rules_text": "{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "dynamize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "{2}{B}, {T}, Pay 3 life: Create a 3/3 red Manticore creature token.\n{R}, {T}: Creatures you control gain haste until end of turn.\n{4}{B}{R}, {T}: Dynamize Twins of the Unresting Sting until end of turn. (A dynamized permanent may activate each of its nonloyalty abilities for free once each turn.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Dynamize",
+          "template": "{Object} until end of turn",
+          "reminder": "Give {Object} the dynamized status until end of turn. While {Object} has the dynamized status, you may pay {0} rather than pay the activation cost of each of its nonloyalty activated abilities once each turn."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_generic_alternative_activation_integration"
+    }
+  ]
+}

@@ -206,6 +206,12 @@ fn read_top_level_activated_or_triggered(
 fn read_direct_quoted_object_restriction(
     input: &GrantedComponent<'_>,
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    // This complete intrinsic rule owns its named payment operand. The
+    // general negated-object reader is prefix-tolerant and cannot own the
+    // trailing qualifier. Token callers may have removed the outer quotes.
+    if let Some(ability) = crate::consumer_mana::named_tap_prohibition_ability(input.tokens) {
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(ability.into()))]));
+    }
     let authored_as_quoted_ability = input.authored_as_quoted_ability;
     let ability_tokens = input.tokens;
     if (authored_as_quoted_ability
@@ -225,6 +231,29 @@ fn read_quoted_static_abilities(
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
     let authored_as_quoted_ability = input.authored_as_quoted_ability;
     let ability_tokens = input.tokens;
+    if authored_as_quoted_ability
+        && let Some(facts) = crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(ability_tokens)
+            .statement.as_enters_effect_program
+        && !facts.turns_face_up_only
+        && ability_tokens.first().is_some_and(|token| token.is_word("as"))
+    {
+        let Some(comma) = ability_tokens.iter().position(OwnedLexToken::is_comma)
+            else { return Ok(None); };
+        let mut effects = crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+            &ability_tokens[comma + 1..])?;
+        if effects.is_empty() { return Ok(None); }
+        if facts.source_reference_enters_with_counter_surface {
+            ironsmith_compiler_resolve::reference_resolution::resolve_as_enters_source_counter_grants(&mut effects);
+        }
+        crate::word_claims::claim_tokens(&ability_tokens[..=comma]);
+        let ability = StaticAbility::as_enters_effect_program(
+            effects.into(), facts.subject, facts.also_turns_face_up,
+            facts.uses_enters_with_counter_surface, None,
+        );
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
+            StaticAbilityAst::Static(ability),
+        ))]));
+    }
     if authored_as_quoted_ability
         && let Some(static_abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)?
         && !static_abilities.is_empty()
@@ -373,4 +402,72 @@ fn read_single_word_keyword(
         return Ok(Some(vec![GrantedAbilityAst::from(action)]));
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod complete_quoted_entry_program_tests {
+    use super::*;
+    #[test]
+    fn quoted_entry_program_retains_both_local_producer_and_source_counter_instruction() {
+        for amount in ["2", "two"] {
+            let tokens = crate::lexer::lex_line(&format!("\"As this permanent enters, you may sacrifice up to {amount} artifacts and/or creatures. This permanent enters with that many +1/+1 counters on it.\""), 0).unwrap();
+            let (abilities, choice) = super::super::parse_granted_abilities_for_gain_clause(
+                &tokens, &crate::lexer::token_word_refs(&tokens), false).unwrap();
+            assert!(!choice);
+            let [GrantedAbilityAst::StaticAbility(ability)] = abilities.as_slice() else { panic!("one complete entry program: {abilities:?}"); };
+            let StaticAbilityAst::Static(ability) = ability.as_ref() else { panic!("typed static entry"); };
+            let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {program,..} = &ability.payload else { panic!("entry owner"); };
+            fn inspect(
+                effect: &crate::cards::builders::EffectAst,
+                choices: &mut Vec<(crate::cards::builders::TagKey, crate::ChoiceCount)>,
+                sacrifices: &mut Vec<ObjectFilter>,
+                counters: &mut Vec<(crate::cards::builders::TargetAst, crate::effect::Value)>,
+            ) {
+                use crate::cards::builders::{EffectAst, SubjectVerbActionAst, CounterActionAst, ZoneMoveActionAst, ObjectChoiceEffectAst};
+                if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {count,tag,..}) = effect {
+                    choices.push((tag.key.clone(), *count));
+                }
+                if let EffectAst::SubjectVerb(subject) = effect {
+                    if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SacrificeAll {filter}) = &subject.action {
+                        sacrifices.push(filter.clone());
+                    }
+                    if let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {target,count,..}) = &subject.action {
+                        counters.push((target.clone(), count.clone()));
+                    }
+                }
+                crate::model::visit::for_each_nested_effects(effect, true, |children| {
+                    for child in children { inspect(child, choices, sacrifices, counters); }
+                });
+            }
+            let mut choices = Vec::new(); let mut sacrifices = Vec::new(); let mut counters = Vec::new();
+            for effect in program.all_effects() { inspect(effect, &mut choices, &mut sacrifices, &mut counters); }
+            let [(selected, count)] = choices.as_slice() else { panic!("one bounded selection: {choices:?}"); };
+            assert_eq!(count.min, 0); assert_eq!(count.max, Some(2));
+            assert_eq!(sacrifices, vec![ObjectFilter::tagged(selected.clone())],
+                "one retained producer sacrifices exactly its selected set");
+            let [(target, count)] = counters.as_slice() else { panic!("one entrant counter action: {counters:?}"); };
+            assert!(matches!(target, crate::cards::builders::TargetAst::Source(_)));
+            assert!(!matches!(count, crate::effect::Value::Fixed(_)),
+                "counter count retains its local producer dependency");
+        }
+    }
+}
+
+#[cfg(test)]
+mod named_payment_component_tests {
+    use super::*;
+    #[test]
+    fn exact_source_payment_rule_precedes_prefix_restriction_with_or_without_outer_quote_role() {
+        for quoted in [false, true] {
+            let tokens=crate::lexer::lex_line("This creature can't be tapped to pay the generic tap payment named cadence craft.",0).unwrap();
+            let words=crate::lexer::token_word_refs(&tokens);
+            let input=GrantedComponent { tokens:&tokens,clause_words:&words,authored_as_quoted_ability:quoted,
+                top_level_activated_ability:false,top_level_triggered_ability:false,read_by_cache:Default::default() };
+            let abilities=read_direct_quoted_object_restriction(&input).unwrap().unwrap();
+            assert_eq!(abilities.len(),1);
+            let GrantedAbilityAst::StaticAbility(ability)=&abilities[0] else{panic!("expected static grant")};
+            let StaticAbilityAst::Static(ability)=ability.as_ref() else{panic!("expected intrinsic source rule")};
+            assert!(matches!(&ability.payload,ironsmith_core::StaticAbilityPayload::GenericManaTapPaymentProhibition{name} if name=="cadence craft"));
+        }
+    }
 }

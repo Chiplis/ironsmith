@@ -40,7 +40,14 @@ pub struct AlternativeCastRequirements {
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum ExilePreparation {
     FaceDown { price: ManaCost },
-    FaceUpSorcery { price: ManaCost },
+    FaceUpSorcery {
+        price: ManaCost,
+        #[cfg_attr(feature = "serde", serde(default))]
+        on_next_spell_resolution: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        optional_cast: bool,
+    },
+    FaceDownSorcery { price: ManaCost },
 }
 
 fn is_false(value: &bool) -> bool { !*value }
@@ -61,6 +68,28 @@ pub struct ZoneChangeRedirectSpec {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, Clone, PartialEq, TagKeyWalk)]
 pub struct ZoneCastInstructions {
+    /// Layer effects of selecting this price. These retain printed mana,
+    /// color, types, abilities and copiable values.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub casting_power_toughness: Option<PowerToughness>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub casting_added_supertypes: Vec<crate::Supertype>,
+    /// The hand-only reveal window is observed with the ordinary typed event
+    /// matcher. Its chosen complete price is retained by the resulting trigger.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub hand_reveal_event: Option<Box<crate::CompilerTrigger>>,
+    /// Copiable mana-cost/color characteristics of this selected method.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub casting_mana_cost: Option<ManaCost>,
+    /// Resolve the nonpermanent spell's instructions, then enter as a creature.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub resolves_as_creature: Option<Vec<crate::Subtype>>,
+    /// Cast a newly created card copy; the source remains a separate object.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub cast_copy: bool,
+    /// Move the original source as a donor-bound cost, independently of the copy.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub source_destination_as_cost: Option<Zone>,
     /// Restrict this alternative price to the window, independently of flash timing.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub casting_window: Option<crate::ThisSpellCastTiming>,
@@ -69,6 +98,10 @@ pub struct ZoneCastInstructions {
     /// Reductions on the selected price; filters use the usual object vocabulary.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub generic_cost_reductions: Vec<(u32, crate::ObjectFilter)>,
+    /// A reduction belonging to this selected price, checked as total costs
+    /// are determined. The ordinary colored-reduction spill policy applies.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub conditional_mana_reductions: Vec<(ManaCost, crate::ThisSpellCostCondition)>,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
     pub enters_tapped: bool,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
@@ -77,6 +110,24 @@ pub struct ZoneCastInstructions {
     pub add_printed_mana_cost: bool,
     /// Use the source's linked back face while casting.
     pub transformed: bool,
+    /// Resolve the selected front-face spell, then put it onto the battlefield transformed.
+    /// This does not change the face or characteristics used while casting.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub enters_transformed: bool,
+    /// After resolution, choose an eligible spell target as the transformed Aura's attachment.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub attach_to_resolving_spell_target: bool,
+    /// Resolve this front-face program normally, then enter with the specified
+    /// creature types in place of the spell card types and spell subtypes.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub resolution_entry_creature_subtypes: Option<Vec<crate::types::Subtype>>,
+    /// Keep creature subtypes of a Kindred spell in that entry presentation.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub keep_kindred_creature_types_on_entry: bool,
+    /// Copies of a spell using this price may resolve its effects, but may
+    /// not become a permanent, whether as a token or otherwise.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub spell_copies_cannot_enter: bool,
     /// Replace every move off the stack with exile, including a return to hand.
     pub exile_on_stack_exit: bool,
     /// Selected-method replacement clauses. Stack clauses apply to this spell;
@@ -93,6 +144,9 @@ pub struct ZoneCastInstructions {
     pub sacrifice_at_next_end_step: bool,
     #[cfg_attr(feature = "serde", serde(default))]
     pub sacrifice_on_entry: bool,
+    /// On entry, match only this permanent's own dies abilities using entry LKI.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub project_own_dies_on_entry: bool,
     /// A discard replacement exiles this card and grants a one-shot cast.
     #[cfg_attr(feature = "serde", serde(default))]
     pub cast_when_discarded_into_exile: bool,
@@ -145,6 +199,7 @@ fn serialize_from_zone_payload<S, C, Cond>(
     condition: &Option<Cond>,
     exiles_after_resolution: &bool,
     entry_counters: &Vec<(crate::CounterType, u32)>,
+    preparation_total_cost: &Option<TotalCost<C>>,
     instructions: &ZoneCastInstructions,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
@@ -162,6 +217,8 @@ where
         exiles_after_resolution: &'a bool,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         entry_counters: &'a Vec<(crate::CounterType, u32)>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        preparation_total_cost: &'a Option<TotalCost<C>>,
         instructions: &'a ZoneCastInstructions,
     }
     serde::Serialize::serialize(
@@ -172,6 +229,7 @@ where
             condition,
             exiles_after_resolution,
             entry_counters,
+            preparation_total_cost,
             instructions,
         },
         serializer,
@@ -280,6 +338,12 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         /// Keeping this alongside the alternative cost lets runtime casting
         /// apply Prototype without reparsing keyword display text.
         prototype_power_toughness: Option<PowerToughness>,
+        /// Choosing this price consumes one land play and is available only
+        /// during the caster's turn. It does not impose sorcery timing.
+        #[cfg_attr(feature = "serde", serde(default))]
+        uses_land_play: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        instructions: ZoneCastInstructions,
     },
     #[cfg_attr(
         feature = "serde",
@@ -295,6 +359,10 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         /// Spell copies retain the alternative-cost choice (CR 707.10).
         #[cfg_attr(feature = "serde", serde(default))]
         entry_counters: Vec<(crate::CounterType, u32)>,
+        /// Complete independently selected preparation price. The later spell
+        /// casting price remains total_cost and is never charged this price.
+        #[cfg_attr(feature = "serde", serde(default = "Option::default"))]
+        preparation_total_cost: Option<TotalCost<C>>,
         #[cfg_attr(feature = "serde", serde(default))]
         instructions: ZoneCastInstructions,
     },
@@ -329,9 +397,20 @@ where
         match self {
             Self::Dash { .. } => ZoneCastInstructions { haste_on_battlefield: true, return_at_next_end_step: true, ..Default::default() },
             Self::Blitz { .. } => ZoneCastInstructions { haste_on_battlefield: true, draw_on_death: true, sacrifice_at_next_end_step: true, ..Default::default() },
-            Self::FromZone { instructions, .. } => instructions.clone(),
+            Self::FromZone { instructions, .. } | Self::Composed { instructions, .. } => instructions.clone(),
             _ => ZoneCastInstructions::default(),
         }
+    }
+
+    pub fn uses_land_play(&self) -> bool {
+        matches!(self, Self::Composed { uses_land_play: true, .. })
+    }
+
+    pub fn with_land_play(mut self) -> Self {
+        if let Self::Composed { uses_land_play, .. } = &mut self {
+            *uses_land_play = true;
+        }
+        self
     }
 
     pub fn sacrifice_reduces_generic_by_mana_value(&self) -> bool {
@@ -345,7 +424,7 @@ where
     }
 
     pub fn grants_instant_timing(&self) -> bool {
-        matches!(self, Self::Composed { name, .. }
+        self.uses_land_play() || matches!(self, Self::Composed { name, .. }
             if name.eq_ignore_ascii_case(FREE_CAST_AS_THOUGH_FLASH_METHOD))
             || matches!(self, Self::FromZone { instructions, .. } if instructions.instant_timing)
     }
@@ -600,7 +679,7 @@ where
             name: name.into(),
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: None,
-            prototype_power_toughness: None,
+            prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
         }
     }
 
@@ -614,7 +693,7 @@ where
             name: name.into(),
             total_cost: compose_total_cost(mana_cost, additional_costs),
             condition: Some(condition),
-            prototype_power_toughness: None,
+            prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
         }
     }
 
@@ -623,8 +702,20 @@ where
             name: "Prototype".into(),
             total_cost: compose_total_cost(Some(cost), Vec::new()),
             condition: None,
-            prototype_power_toughness: Some(power_toughness),
+            prototype_power_toughness: Some(power_toughness), uses_land_play: false, instructions: Default::default(),
         }
+    }
+
+    /// A selected casting method may change copiable mana cost/color and,
+    /// independently, power/toughness. Only the official Prototype choice is
+    /// independently selectable; a zone method's changes belong to that route.
+    pub fn casting_characteristics(&self) -> Option<(ManaCost, Option<PowerToughness>)> {
+        if let Self::FromZone { instructions, .. } = self {
+            if let Some(cost) = &instructions.casting_mana_cost {
+                return Some((cost.clone(), instructions.casting_power_toughness));
+            }
+        }
+        Some((self.mana_cost()?.clone(), Some(self.prototype_power_toughness()?)))
     }
 
     pub fn prototype_power_toughness(&self) -> Option<PowerToughness> {
@@ -651,12 +742,27 @@ where
             condition,
             exiles_after_resolution,
             entry_counters: Vec::new(),
+            preparation_total_cost: None,
             instructions: ZoneCastInstructions::default(),
         }
     }
 
+    pub fn with_preparation_total_cost(mut self, cost: TotalCost<C>) -> Self {
+        if let Self::FromZone { preparation_total_cost, .. } = &mut self {
+            *preparation_total_cost = Some(cost);
+        }
+        self
+    }
+
+    pub fn preparation_total_cost(&self) -> Option<&TotalCost<C>> {
+        match self { Self::FromZone { preparation_total_cost, .. } => preparation_total_cost.as_ref(), _ => None }
+    }
+
     pub fn with_zone_cast_instructions(mut self, value: ZoneCastInstructions) -> Self {
-        if let Self::FromZone { instructions, .. } = &mut self { *instructions = value; }
+        match &mut self {
+            Self::FromZone { instructions, .. } | Self::Composed { instructions, .. } => *instructions = value,
+            _ => {},
+        }
         self
     }
 
@@ -724,7 +830,7 @@ where
         match self { Self::FromZone { instructions, .. } => instructions.exile_preparation.as_ref(), _ => None }
     }
     pub fn prepares_face_down(&self) -> bool {
-        matches!(self, Self::Foretell { .. }) || matches!(self.exile_preparation(), Some(ExilePreparation::FaceDown { .. }))
+        matches!(self, Self::Foretell { .. }) || matches!(self.exile_preparation(), Some(ExilePreparation::FaceDown { .. } | ExilePreparation::FaceDownSorcery { .. }))
     }
     pub fn prepares_face_up_sorcery(&self) -> bool {
         matches!(self, Self::Plot { .. }) || matches!(self.exile_preparation(), Some(ExilePreparation::FaceUpSorcery { .. }))
@@ -733,7 +839,7 @@ where
         match self {
             Self::Plot { cost } => Some(cost),
             _ => match self.exile_preparation() {
-                Some(ExilePreparation::FaceUpSorcery { price }) => Some(price), _ => None,
+                Some(ExilePreparation::FaceUpSorcery { price, .. }) => Some(price), _ => None,
             },
         }
     }
@@ -959,11 +1065,15 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 total_cost,
                 condition,
                 prototype_power_toughness,
+                uses_land_play,
+                instructions,
             } => AlternativeCastingMethod::Composed {
                 name,
                 total_cost: map_total_cost(total_cost)?,
                 condition,
                 prototype_power_toughness,
+                uses_land_play,
+                instructions,
             },
             Self::FromZone {
                 name,
@@ -972,6 +1082,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 condition,
                 exiles_after_resolution,
                 entry_counters,
+                preparation_total_cost,
                 instructions,
             } => AlternativeCastingMethod::FromZone {
                 name,
@@ -980,6 +1091,9 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 condition,
                 exiles_after_resolution,
                 entry_counters,
+                preparation_total_cost: match preparation_total_cost {
+                    Some(cost) => Some(map_total_cost(cost)?), None => None,
+                },
                 instructions,
             },
             Self::Trap {
@@ -1032,7 +1146,7 @@ mod tests {
                     TotalCost::mana(generic_two()),
                 ]),
                 condition: None,
-                prototype_power_toughness: None,
+                prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
             };
 
         let mapped: AlternativeCastingMethod<(), Cost<usize>, ()> = method

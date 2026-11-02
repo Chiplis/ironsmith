@@ -319,6 +319,9 @@ fn poison_model_with(
         P::SourceHasFullTextOfTopGraveyardCard { display, .. } => {
             *display = POISON.into();
         }
+        P::RevealActionOffer { display, .. } => { *display = POISON.into(); }
+        P::CopySourceSelectionReplacement {display,..}=>{*display=POISON.into();}
+        P::CardCreationSelectionReplacement {display,..}=>{*display=POISON.into();}
         P::MaySkipDrawStepWithFollowup { display, .. } => {
             *display = POISON.into();
         }

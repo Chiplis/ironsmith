@@ -203,6 +203,7 @@ fn separately_acquired_producer_cannot_feed_the_printed_static_permission() {
         let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         let donor = game.create_object_from_definition(&definition, A, Zone::Exile);
         let modification = if borrowed { Modification::CopyTriggeredAbilities {
+            excluded_ability_designations: Vec::new(),
             filter: ObjectFilter::specific(donor), exclude_source_name: false, exclude_source_id: true,
         } } else { Modification::AddAbilityGeneric(producer(&definition).clone()) };
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(source, A, EffectTarget::Specific(source), modification));

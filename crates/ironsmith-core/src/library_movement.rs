@@ -237,6 +237,7 @@ pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement
         ReflexiveTriggerEffect<E>,
         HauntExileEffect<E>,
         RegisterDrawReplacementEffect<E>,
+        RegisterEventReplacementEffect<E>,
         PreventDamageEffect<E>,
         PreventAllDamageEffect<E>,
         PreventAllDamageToTargetEffect<E>,
@@ -270,6 +271,9 @@ pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement
     if let Some(e) = payload.downcast_ref::<IfEffect<E>>() {
         return Some(context.inspect_branches([e.then.as_slice(), e.else_.as_slice()]));
     }
+    if let Some(e) = payload.downcast_ref::<FirstResolutionEachTurnEffect<E>>() {
+        return Some(context.inspect_branches([e.effects.as_slice(), &[]]));
+    }
     if let Some(e) = payload.downcast_ref::<MayEffect<E>>() {
         return Some(context.inspect_branches([e.effects.as_slice(), &[]]));
     }
@@ -278,6 +282,9 @@ pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement
     }
     if let Some(e) = payload.downcast_ref::<CumulativeUpkeepEffect<E>>() {
         return Some(context.inspect_branches([e.payment.as_slice(), e.failure.as_slice()]));
+    }
+    if let Some(e) = payload.downcast_ref::<NamedActionProgramEffect<E>>() {
+        return Some(context.inspect_sequence(&e.effects));
     }
     if let Some(e) = payload.downcast_ref::<RepeatEffectsEffect<E>>() {
         return Some(match e.count.constant_integer() {

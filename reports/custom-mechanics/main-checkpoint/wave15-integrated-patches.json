@@ -1,0 +1,1913 @@
+{
+  "patches": [
+    {
+      "patch": "tmp/custom-mechanics/next-wave/master-integration/master-coherent.patch",
+      "sha256": "41c19fb2e86af9d0c8b737c536e45835e317e89e41c7a34349144e3f9cf2499d",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/categories/vocabulary-forms/subtype-word-forms-test-contract.patch",
+      "sha256": "0d17887ba0f3c3fe78d66303be849dfec301b4b1d0f9d63bab70b8cb413e3030",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-collect-coherent/collect-maypay-completion-coherent.patch",
+      "sha256": "05978f3957865ed08e279f5f8bd659401c71cde8c7e8bd0eb4d60dee878ee627",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/designation-read-dependency/designation-read-dependency.patch",
+      "sha256": "cd2150c12d95016a068d411c43bb8d0145b643aa2196919633729c843447c799",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-scaled-preflight/scaled-selection-preflight.patch",
+      "sha256": "c65f625ae6fcdeb830529645fd5bd047ebf4000d45aae9c2a67e278910166470",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/practiced-quote-boundary/practiced-quote-boundary.patch",
+      "sha256": "a21e3901c1249f6ffece34fb3f50f60d2544eb8f31332d26077b2805939c6bd4",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_middle_wave14/derived-land-allowance-test.patch",
+      "sha256": "941bfa86f6ad12ea0ed99f6385cef93601abef98628bf153b51c8c96d32fced9",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/token-trigger-document-diagnostics/token-trigger-document-ownership.patch",
+      "sha256": "bcf18858496a8b06362c5ed4e583cd92dabe340a81edee3539db9a7e343f6abf",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/designation-mana-retention/designation-mana-retention.patch",
+      "sha256": "5eac4c9ef9eef13e9c283795429d3464e073d4a7f646f2d40f2d2f6b19a0e0ef",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/alpha-token-status-opaque/alpha-token-status-opaque.patch",
+      "sha256": "6ee1df65d51a5de2d3a1c9eb6b4a6e95e28b2e3578f2ac41c93d1f2a7697a2b5",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/designation-history-invalidation/designation-history-invalidation.patch",
+      "sha256": "aee522975821592824d86edc1443852c34cedaad466bb662369dd61181149418",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/granted-intrinsic-activation-surcharge/intrinsic-activation-surcharge.patch",
+      "sha256": "252dd504db7defd14fefea683cfc32c3afb468163f263fe0fb92ad61a4a0d126",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/class-modifier-reader-placement/class-modifier-reader-placement.patch",
+      "sha256": "47ce523c2546631e8ad3c7b63d3eb417fa137e8ab4837213054b8523b8a73abe",
+      "scope": "full",
+      "native_verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-wave15-frontend/cost-program-admission.patch",
+      "sha256": "343095a54c6bea5b4ecc5a2baa8ef6d0451ca85af14b3fb5fd51998691cbb96b",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-wave15-mandatory/mandatory-additional-price.patch",
+      "sha256": "7a31a58bd5f9ed8d1c95602dc3f66b92a6bec96a86bc76f9b9111b648bcec57b",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-imports/current-live-imports.patch",
+      "sha256": "e434e84208d860d6a5ca85febb43a5eb65d48f51dbf909c6f6bf60ab15bff645",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/counter-serde-default/counter-serde-default.patch",
+      "sha256": "fb26b65355f46f745c65a7b9bfeb8f210d1afb77c940055002a77f590040e379",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-grant-traversal/grant-activation-reference-traversal.patch",
+      "sha256": "2fa060498edd463ab66dbcd81f50dd9f93e155aa7964f05a63b4014c5fc06fd5",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-cost-dispatch/cost-dispatch.patch",
+      "sha256": "8e951fbab01285435dffa1e32748a6a64078037308318e0d79b801760dbae1f7",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/class-modifier-current-controller/class-modifier-current-controller.patch",
+      "sha256": "938a24f6926793ce9099f5d8aaef94160287248d9f1519fd76142518d8b1afde",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-named-expansion-bindings/named-operation-expansion-bindings.patch",
+      "sha256": "3f553c772b5dd0873e60d34c9b16f569ffdfbc2c0b6cd2068507fa2bbb10b95f",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/counter-object-constructors/counter-object-constructors.patch",
+      "sha256": "d75321e9423d351f645ac4ebdab20bc6c224d5e1ac6ea87627574e7c254a3e6c",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-wave15-grammar-paths/canonical-builder-paths.patch",
+      "sha256": "ab9b715ee0e4fcc33fe3f34b9533ef16f812e445722012be4790af63208e753a",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-r3/imports-and-owned-program-return.patch",
+      "sha256": "a79b23a16326f4a828d3b9120d2abe2491613c7085f58594498a68f3cc529018",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/wave15-grammar-fixes/grammar-compile-fixes.patch",
+      "sha256": "208424b957b2fb998ca2d8dccf56302a80731c770a12fe8cb1c6527b6ac053b3",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/external-trigger-rule-id/external-trigger-rule-id.patch",
+      "sha256": "e401a5f9c5a73572acf3234f780eb877a7ad56cacbbfe401c90185d7dd98ad39",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/wave15-tagged-target-alt/tagged-target-alternative-arity.patch",
+      "sha256": "f8741adc931f6927f8c57aebfc360d1feaac646314e5f5dc6d600cf5f467e098",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-r4/timing-imports-composed-guard-and-grant-targets.patch",
+      "sha256": "370f636d416f12f8f6b658852ffd66f76e7d0c8f9602cec6e1a3c33775dd7d2a",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-r5/settled-entry-public-builder.patch",
+      "sha256": "8dfcb8b11e4c14feab52ed83089a5f233353954e2b5a9cf942e109d539f2b666",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-zero-completion/accepted-zero-completion.patch",
+      "sha256": "fd123fc52cd4c18ce22c3120556c43ddc50346d1b74f823ac23e8154091a1700",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-zero-completion/registered-zero-expectations.patch",
+      "sha256": "f4d52e8237ff6eae959a9210898a37784c4dd055fd2f573614b60afc10f51b55",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-zero-frontend-corrections/zero-frontend-corrections.patch",
+      "sha256": "2c38321427111714666cd61d8427eb28f070eed47bcceb1ec7299ea51df18051",
+      "scope": "full",
+      "verification": "frontend 24 passed"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/coalesce-test-slice/coalesce-test-slice.patch",
+      "sha256": "3d7f61ae6d5ad049da0162ab3689850086cd4c3ff2d922fd8376636ae3899d95",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-r7-enspirit-test-fix/enspirit-test-api.patch",
+      "sha256": "5aae56dc60a69c87a52531ce798dadbe0b3d73d4f594e5944e84c92109d74568",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-participant-test-api/participant-test-api.patch",
+      "sha256": "39572f4b97e92de03ac287d1175fd619b9ee1687d3ea9e5dbdcdc1cd09ec5413",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-r7-helper-followup/test-helper-api-followup.patch",
+      "sha256": "380bdb3afabb30f477643b50aab3b8b044c8da633b03e0c9314210881f14441e",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/card-scope-coverage/card-scope-coverage.patch",
+      "sha256": "f4fa9d06d6e116b63508e0adb8d901055f9e2e48bcccd8142e8fc4cf50f8e9e0",
+      "scope": "full",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/salvage-recipient-provenance/salvage-recipient-provenance.patch",
+      "sha256": "4803828b5398436fa38c50f54ab7e62db381a24817f123d76d03ac90c303cccf",
+      "scope": "full",
+      "verification": "coverage progressed to next Policy metadata failure"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/policy-category-registration/policy-category-registration.patch",
+      "sha256": "0f0082d12d0b06bac276da1514f3b7211aa9ca7015ab0d7300d863df43652273",
+      "scope": "full",
+      "verification": "coverage passes, original971/custom970 invariant intact"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/granted-cost-test-counter-option/counter-option-test-fix.patch",
+      "sha256": "c205987d4a5c42809d2b651275e7af8598f88275c19ed28c8a4d291110512b23",
+      "scope": "test-only",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-wave15-r8-tests/named-operation-test-imports.patch",
+      "sha256": "ce4facee597c24af667088bbafbe775b72ad4a5ccbf6633e4adba290136bbb9e",
+      "scope": "test-only",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/wave15-r8-public-turn/public-turn-lifecycle-test.patch",
+      "sha256": "9461666bf09afa9fc6ff1cfa95dd9a3a14eb9a740468e65d4f304f88d45af8c7",
+      "scope": "test-only",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-r9-embody-test-fix/embody-test-slice.patch",
+      "sha256": "73726f875c15d37ad5d25a7887a2ef733b979617de9f641f15c00c46fd71817c",
+      "scope": "test-only",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-zero-test-trait/effect-predicate-trait.patch",
+      "sha256": "7addafbe14846023f38067b96cebbb0e21e05e51fd4dda0f238fccd1887fafde",
+      "scope": "test-only",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-wave15-r9-tests/public-cost-test-admission.patch",
+      "sha256": "efc1120b1288f859f900b55042302d0a7ab034c2fcd235292f68c67cc044b8ba",
+      "scope": "test-only",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/token-runtime-ownership-diagnostic/token-runtime-ownership-diagnostic.patch",
+      "sha256": "97f1844786a3376b1c253daceca7882ed3d377995689bac22e5b337ec5d6d410",
+      "scope": "test-only diagnostic appended after originaltargetcompleted",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/named-create-boundary/independent-create-program-boundary.patch",
+      "sha256": "7bd3404d49e2a6d7f5ae77597738623bb886b8350276c24806e68214724cbb0b",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/granted-surcharge-claim-frame/surcharge-claim-frame.patch",
+      "sha256": "709e11ce3b6173694f0a6e1f2cbe11a09320b909dca946b6e635564d076c8185",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-resource-preflight/resource-binding-preview.patch",
+      "sha256": "27286b91a213ecb93b9ac45bee2bf52c2ada96c261b56ec8baaf5b4ca06c9ad0",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/activation-status-claims/activation-status-claims.patch",
+      "sha256": "6ac4d3247a8a754136b0c03573e7d65cd3a7c3192428ac87f50630169b866f66",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/currentwave15fix/practiced-envelope-and-source-diagnostics.patch",
+      "sha256": "8a263da3abaa856b33d3e1e92bdc0788519287ac4fb06996dfbfb25c6ccf60d5",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/vision-receipts/vision-receipt-scenario.patch",
+      "sha256": "8c2cbfb4af3ac0be8684f784e56b2ecb65e17952ab245af540bc4b616b7d8c4c",
+      "scope": "native-r2-test-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/named-observer-test-owners/named-receipt-observer-test-owners.patch",
+      "sha256": "1f6bd3431d5f24578ab669ab613ab20f39e1830c3d097156e1b353a19ceca80f",
+      "scope": "native-r2-test-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-native-r2-readers-current/bounded-cost-reader-repairs-current.patch",
+      "sha256": "7052f2d6eabff58862f70d7a9082dce8abedd96b4f8689d3a093ca8205227ce6",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-source-vocabulary/source-scoped-vocabulary-adapters.patch",
+      "sha256": "c2a90c6da7483e5cf4db34157c035c222abf92dc499d01d0ec16ce6cd6ece21a",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/named-reader-composition/named-reader-composition.patch",
+      "sha256": "7a2dd7771b161fee23ecdc58fb0c2b5efe8389517356c4eb534692d026039053",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/wave15-reader-repairs/wave15-reader-repairs.patch",
+      "sha256": "63d23c9431dd8e46923f5b5ef9c638cc05892e9bfb19f5ce2f68c1da993f9c86",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/quoted-token-list-outer-boundary/quoted-token-list-outer-boundary.patch",
+      "sha256": "925826a3f49c63597ba3abfef429efb1c822f9d7b65e9518900126ba4e1ce829",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-enspirit-receipt/selected-cost-receipt.patch",
+      "sha256": "76fbc4355c3d891059fee9c25406bfd2d84125184044465747021c36b11b7ae9",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-enspirit-scenario-owner/scenario-owner.patch",
+      "sha256": "3732aff75688a1b956cd521258b42ee8d1b82928dd4447a8f0fd1f38f1a5db1c",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/currentwave15fix/ability-counter-runtime/ability-counter-runtime.patch",
+      "sha256": "c154b4e50182ed83dda513730283d47c58d307265664e7e8b6b0ed3ea131b3f8",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/history-snapshot-qualifier/history-snapshot-qualifier.patch",
+      "sha256": "f82f4c6dcfe847f178deecd24e6d23d4f8b260162018b2cdee1328cec1672991",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-resource-preview-borrow/preview-borrow-lifetime.patch",
+      "sha256": "e2d84af3f71bc3aea4a5534f75a7c97cb9190349890d38d3202a9ef415061b88",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/token-boundary-lexer-qualification/qualify-lexer-trim.patch",
+      "sha256": "3667b7ecff34211e72761b578ca1b810bfcca81d4c6deec786af402c05b12364",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/vision-receipts/vision-named-events-only-incremental.patch",
+      "sha256": "00b0a927db07ffe5ff0deb7d1a785b70e153d5ccb5fe2ab1d02231c1f8d29995",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/golden-source-aggregate/golden-source-aggregate.patch",
+      "sha256": "710ed63929fb4d9481e5ebe651c50ade291f5c6b8d4712d43fd77efb1938bf62",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-resource-context-import/public-context-import.patch",
+      "sha256": "1949c6450723dcd9d6f340f3018f28ed8ead1dfbde305f76250dba8b5ba31a9b",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/external-heading-dispatch/external-heading-dispatch.patch",
+      "sha256": "51c90a75356fdc39e20da36edeaa8afea4cb5317fec7e20f4c24b04cfa580b35",
+      "scope": "native-r2-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/choice-count-ownership/authored-choice-count-reader.patch",
+      "sha256": "ae8287a42afc3ea4b6b19521a05317f7586013ec758c1f9a199248246cfdfd1a",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-native-r3-ownership/complete-statement-colon-ownership.patch",
+      "sha256": "488464692aaa4ad764b4918a6980a03ff999ce575d1ffa7a0e719eb5a2db5c61",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/currentwave15r3fix/static-cost-program-ownership-and-source-subtypes.patch",
+      "sha256": "d7004c47c45b6b2165c67b5899f45feef8d04f9d3425c4ebdc1c6b94986d26c4",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/currentwave15fix/ability-counter-r3/ability-counter-r3.patch",
+      "sha256": "48ae72266171b8967308b975dec4dbb0de03f1f6e370d689ce6f6e5958c44955",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/action-history-binding-priority/action-history-binding-priority.patch",
+      "sha256": "7af96b4451cc50f2150211f0c36a564642ef8a65ae41cb66ef29eda9e66ea127",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/composed-mana-feasibility/composed-mana-feasibility.patch",
+      "sha256": "b8d4715f203be32e516f7b7a97efbb4a90bd7dd743944e2d53663a0ba4dd845e",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/activation-planner-r3/activation-planner-r3.patch",
+      "sha256": "689063a5dab5199b532e36e5c8bfe5bace89b484fe06d78a72bdd68d0a2735fe",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/participant-original-observers/retain-original-movement-observers.patch",
+      "sha256": "de012ebf936bb1a55cadbb94d16df7c44e9526f7e1127527e15b38f728bcb947",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave15-player-return-channel/player-return-channel.patch",
+      "sha256": "d44b26cfa8ec471e6f4f96f72593726a316bd3258a48a46048c0b241a1cf7a25",
+      "scope": "native-r3-followup",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/wave16-master-current-r3/wave16-current-r3.patch",
+      "sha256": "fa28b8df6cad03ef62b7a3919519ca860e9598b6dda37fb15ebe4a96e51366d2",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-resource-untargeted-tests/untargeted-resource-test-api.patch",
+      "sha256": "85ed68f9685eed4817dd8541944f70d551876bdb43ce0ae5eda8c902ed4e42b2",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-face-actions/generic-face-state-actions.patch",
+      "sha256": "f27e6aaf8af3886b353952f9dd121a4517369d059c08a1b2970da6be52558fcd",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-compiled-resource-bindings/compiled-resource-bindings.patch",
+      "sha256": "870e9cc6aa3102fab97695656802de298e383eca5e9b6013d86236224b93e8e1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/zero-observer-diagnostic/zero-observer-structural-diagnostic.patch",
+      "sha256": "9697dadbd7e917b43bf5352e56126bd12214b0236e14a021d969037ffb1e7ccb",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/hamlet-source-alias/humble-hamlet-source-regression.patch",
+      "sha256": "99b7c79c5ad11648f12796b3261ac21b49a2b5bf798b68f053a78d3e9a743e47",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/wave16-postmaster-copy-cost/postmaster-copy-cost.patch",
+      "sha256": "a14decc8b71a721ecedebf65a6630785520604b469b2f58580ee1fa699229738",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/named-action-subject-roles/named-action-subject-roles.patch",
+      "sha256": "be8a3b181cc22f749f5f83af835dec54939d59b46c2187281a15e052e4500fb7",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave15-source-residuals/imperative-optional-player-and-source-vocabulary.patch",
+      "sha256": "f5c45deb5724f9aee6bfa3a92d341797b73ff23960cb3b097c1e408b932b97d0",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/wave16-core-reborrow/core-reborrow.patch",
+      "sha256": "5bfd222e06ccc078225aab55df1850f47d409a844738b7b9224f91e6aec38a48",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/wave16-filter-brace/object-filter-brace.patch",
+      "sha256": "1f734399313735d61251602b423868fd4979f2087e44c8ed063868d29b88e88f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/first-mate-inventory-provenance/exact-first-mate-source-identity.patch",
+      "sha256": "4169cd33f5c6ba67ca2849697de3a9c0dcb54803b9068203d4decdea0f6633f5",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/fragment-classifications/fragment-modification-classifications.patch",
+      "sha256": "788a756294a0d8ce084c1ba1418c56cdd91dc04fb0134b653057291037e582fc",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-history-subtype-scope/history-subtype-scope.patch",
+      "sha256": "d3275d554f41e4d461554f53ab322de6c9aa3ea6713f6b833eb57e810c7e69b4",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-wave16-grammar-qualifiers/grammar-qualifiers.patch",
+      "sha256": "13c5a1db92862a6fb70b517582c3a7a4c0495fe0d7c613ee476a747729f1003a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/source-evidence-ledger/source-evidence-ledger.patch",
+      "sha256": "7c8b50dcb17d9f12b3e77f4a1feb9f25a4748fc07d1b8abb77dd68dcfc709e40",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/wave16-grammar-type-fixes/wave16-grammar-type-fixes.patch",
+      "sha256": "eef1a773484801e148f8fb6278b4145f5a9643f998e18c9fd87b7e173cab4d0c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/wave16-test-api/test-api-fixes.patch",
+      "sha256": "7a94010d983fe3a9549caaa2e9cabb6e37a8ae94a1f30a75ac77aafdb7046731",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-union-state-domain/union-state-domain.patch",
+      "sha256": "75acea5067274d059cc4d0411218920cddba3222208e9d37ef80110afd2b070b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/named-action-card-zones/named-action-card-zones.patch",
+      "sha256": "871e4af04bea4394664a90ce1c3d61650bc2418fb38dd23fa09b18a3db8fad02",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-copy-noncreature-pt/noncreature-current-pt.patch",
+      "sha256": "a795e57a1ce8a040fe5d6a77d3e8f10e373a55b1a1cf14a574faed29de8b77db",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave16-receipt-trace/bounded-cost-receipt-trace.patch",
+      "sha256": "dc1bed4c2ea0d14db90661c7dddcbc82fb3238863dda26d60de9d241621f73b6",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/subtype-vocabulary-admission/subtype-vocabulary-admission.patch",
+      "sha256": "bfd4dc35870040eca444c1eaed42b719d5e584a39ba5ea9a5af6b85d48cc7c1f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/reprise-wave16-native-fix/reprise-wave16-native-fix.patch",
+      "sha256": "b969df7f1d38b36e838c359e219d3ac5aad8cdb43725c07565c56809bd30e6ac",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-imperative-player-loop/imperative-player-loop.patch",
+      "sha256": "778bfc788c3dfea9b8bd9b81aebbcc0d8e91ffcd0a6f272a39c422fa7e009a2a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave16-cost-sentence-composition/typed-cost-sentence-composition.patch",
+      "sha256": "0fef53433881427eafc6f2ce2d73781fe96da59965ede503aee795451474f960",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/wave17-master-v2/wave17-current-live.patch",
+      "sha256": "4baf05dd90ed016d3953e16dadea0efe611425ed148ad9cc67746be056f10951",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave16-named-cast-queue-owner/retain-cast-trigger-queue.patch",
+      "sha256": "eedb2395aa1b77187b178dc2fa43fabeb94213c9563cd16998dc8c973b6187d8",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/wave16-readers/bounded-optional-prefix.patch",
+      "sha256": "82d56154e4410ecaf11b6779d33d09ee9405ff78d94422404a56cd9bb8812797",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/wave16-readers/cost-history-operand-claims.patch",
+      "sha256": "209348443e8d609eb301c7dd8b720d82594a401793ee193ef2eef22c3dd95eab",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_wave16_parse/shared-atomic-readers-currentlive.patch",
+      "sha256": "0a1db803ccedde311f05dcf6d0ce24b62d89b3415dab5e63a57671953fd47e8c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-maypay-query-regression/maypay-query-regression.patch",
+      "sha256": "969e2c72c99f94b3650abbf5f85f4b7044e20d189a9d645b4d4a35da16bcb2d0",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/reprise-lineage-diagnostic/reprise-lineage-diagnostic.patch",
+      "sha256": "92d028eed44d0d351a0bfb422d4e4669d3fe360c8239b4403739af594da66efb",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_plane_receipts/plane-transition-receipts.patch",
+      "sha256": "06420b7a123f04e420855452fad19d430a9008f9fa78f5b5686890f21554f83c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/coalesce-source-readers/coalesce-source-readers.patch",
+      "sha256": "1bc3af5fc7fbd9da931799da20f786257653e6fc279f31d5d282fd32c2abe796",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/lay_waste_delayed_attack/delayed-indefinite-attacker.patch",
+      "sha256": "91b9fb41599dcfdf77a1355b148414167c184c23aedf1c4f6efc92c30e226d96",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/wave16-readers/funding-diagnostic-registration-current.patch",
+      "sha256": "96303a71fe58af1f80dc5f579da76ffcba09ee7df99ab929075138fbaf680d26",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/quantity-noun-source-alias/quantity-noun-source-alias.patch",
+      "sha256": "a42380f39856cb44ae29a54f77a80a27827e3e2ef0b1c6cf3dc5c8917f8fa960",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "/tmp/ironsmith-optional-wave17-combined.patch",
+      "sha256": "da6bff232077edfd36d58cf0cf73bad36953ba0c33397e225f52935ae4412dce",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/subtype-source-statics/subtype-source-statics.patch",
+      "sha256": "613d5d83f511334f22e31e86a44c386936901faf9ca145788278843904baf707",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/reprise-lineage-runtime/reprise-lineage-runtime.patch",
+      "sha256": "97a2669fad11712bfd44d8d65d6dbc806b7321c621e9f7aff4577ef646464a7a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-imperative-player-owner/imperative-player-document-owner.patch",
+      "sha256": "21ac6eb75d8d03cf473e005d9c41467ec15163892467cd7a301a2d31d7c1c767",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-maypay-query-reason/effect-query-reason.patch",
+      "sha256": "e136e9abf79d613b9d78e0acb416d3a397c72714bdb30bf912e67b295e76e6f1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_wave17_compilefix/activation-consumer-constraint-type-path.patch",
+      "sha256": "6bc38ff4c65b9d3c032f509b71c66bcd8f2320957d4d6260ff96b346827036ff",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_keyword_predicate_ownership/predicate-creation-grant-ownership.patch",
+      "sha256": "45af353fdc9bffcd992312afa85f581dcb5e85a6ac3b6e82690c1a47f1eba64c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_wave17_compilefix/activation-consumer-native-type-path.patch",
+      "sha256": "1f9094f3d1362eaf721bc5bca213a3c1b80587d06ab9fd47fa92c7f1f63a8e08",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/wave17-creation-helper-dedup/creation-helper-dedup.patch",
+      "sha256": "3a453dededb46d4b16a91a10086f1f04a1083bbf704d4e2b2a031ae628881bc3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/fabled-label-type-fix/fabled-label-type-fix.patch",
+      "sha256": "3100ebde552314e0494aba87a6cb328124a6fc6f8c779b2adf1b8a3a8438eec4",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_wave17_r2_compilefix/r2-imports-and-payment-slots.patch",
+      "sha256": "f86aa634348becee83189b69ce49a92052d43b781eb3a9e61b90e4867c4320e8",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/reporting-wave17-currentlive/reporting-wave17-currentlive.patch",
+      "sha256": "2d195e08e8a90b1b7c13a60cf37f4866e559aed49fd9a4e9fae87a9a38d3e44b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_wave17_r3_compilefix/cursed-participant-prefix-lifetime.patch",
+      "sha256": "3dce4e445c6e561f52c521cf21d2920e45ebfe5da78e9910e44ca59da5b5de77",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/source-helper-counter-marker-introspection/counter-marker-introspection.patch",
+      "sha256": "e0bba963ce699a4ba2ce4ffaa4aaa11f150fcb9b3d7b9241e17ae0af0e80ccac",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "/tmp/ironsmith-funding-diagnostic-source.patch",
+      "sha256": "22561bc62a483ba27cfb02d09e4d86861121c874917458683e283b089cdb198c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_breach_turn_api/breach-public-turn-expiry.patch",
+      "sha256": "c1e7e40298d577dc8379755c81dec15549829a9d66c52c11b3ef2f7cdc5d1771",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_plane_receipts/plane-test-relocation-currentlive.patch",
+      "sha256": "26185a28514af8fcec958381121b99d507a96f527039914b67a1ec4f5b804e34",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/expected-token-dependencies/expected-token-dependencies.patch",
+      "sha256": "faeadca3f93cb6d83e6c5ec67c3c8bcb608ca84131b8cf3b54f00909706ed338",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_stack_trace/source-stack-phase-trace.patch",
+      "sha256": "0e7fdcc4f28b4a6ae9123c37fb05a350167972d684f08cc815b19f70c767127d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_render_progress/activation-rider-render-progress-with-regression.patch",
+      "sha256": "fa8b3cbcba8eb6ef19eab87187f56b9548961a3bbadc0cf7788d964f8b9e393f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_wave17_repairs_union/current-live-native-repairs.patch",
+      "sha256": "bef64e1d3f412e94f5d2471feddfab40391a8e63f1242734725507e3784f57b9",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/wave17-small-fixes/ordered-small-fixes.patch",
+      "sha256": "1c3a39992b4385ef56bc955fa8eda2a4c7029fee6273664adb478676bf71e060",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/wave17-optional-runtime/optional-text-runtime-followup.patch",
+      "sha256": "c238b5b3ee3ccd78cccabd7a122fac6fa4c137e171011ca7cd33e96e4b84c4dc",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/wave17-participant-trace/named-participant-trace.patch",
+      "sha256": "2c58a2931e0fe422b87457facd787fb56f087dcd732d06878f6f8d9010eb9f22",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_siphon_trace/counter-payment-commit-trace.patch",
+      "sha256": "985681f68e82661343778cbe0dded126dbfc577015b431c0a31ba515f8c000c4",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_remaining_trace/entry-projection-and-recursive-trace.patch",
+      "sha256": "64688d71de1a95bd8e2aa1fbb228cc987ad8107058a88278169865fe125cee98",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "/tmp/ironsmith-manifest-current.patch",
+      "sha256": "324f52c2b16bddc80319e93eb0e5931b3f8bbef7b58f1f8048849c941e8159a1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "/tmp/ironsmith-level-current.patch",
+      "sha256": "09913c5e0c578d4df7f0d2eccfebd778e9cc3fd940b0b69ecbee3cfb0ec42f27",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/source-route-parity/typed-source-route-parity.patch",
+      "sha256": "ae91c90b3b80a209853051fcf59130b4cd64f5870530ecc2c1b5aa2280183a26",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_distributive_grant/distributive-player-source-keyword-grants.patch",
+      "sha256": "5ab35493aff2593acb1933bcea420a9105cc6b40461a4f814ca105a8b4126e04",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_linked_boundary_fix/linked-face-target-public-boundary.patch",
+      "sha256": "e03ff1818d9617c81e03dbef71086754853c00654e8f6c8ccfc7c8914ceaf32d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/decoder-registry-parity/decoder-registry-parity.patch",
+      "sha256": "aa7a898d3a58c1e97ab2a03887e5e63d2bb38daac91fb6068795bd5b65a09ba5",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/metadata-controller-query/metadata-controller-query.patch",
+      "sha256": "9a636ed374118f993bc5ffa7c92fb8e8d7eaf4e52bc590fab1804386b12bcff2",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/reviewed-current-union/reviewed-current-union-v2.patch",
+      "sha256": "ec9f305b0a14dd294b2b794f901758b3d79f911a054a62787268faa976732ae0",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/union6-core-struct-boundary/close-grant-activation-struct.patch",
+      "sha256": "a96bc63c4072c72292a5fe48fd17301bec97fbf1c2f20fef4d5b1c693b4cbb40",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/union6-token-size-followup/token-size-operand-reader.patch",
+      "sha256": "2254746e6e6396e05daf1501509059474c607817d77b33c26cbf69d7749c1cad",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/time-after-time-display-contract/time-after-time-display-contract.patch",
+      "sha256": "f9014d939e687075c620b4c188eaf84582dd51f2d6800d320bba6544f4de6505",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/inscribe-definition-alignment/inscribe-duplicate-definition-alignment.patch",
+      "sha256": "5f9e74cb9bb1198fb1e2a5fc6424ae58cce08edd72af2d0bafdb095fdf36f637",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/union6-compile-fixes/union6-explicit-visitor-and-reexports.patch",
+      "sha256": "d0a3ba8b0bacc23e90286d3cfa568c834684d5b01130a8ec5547f5e828791500",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/union6_engine_api_repairs/union6-engine-api-repairs.patch",
+      "sha256": "d64608619750648a53bf914d5fd51858477e9dd1f03e795f8cc7d5dacee4cf0d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-zone-qualification/union6-zone-qualification.patch",
+      "sha256": "beb8f2cbc77ffb00a9ef40fc486f2d77849a47b48380f8327d16d016aeb82626",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/ready-native-repairs-v2/ready-native-repairs.patch",
+      "sha256": "a199b84d6595ef22e55ec3e8e48292f45d0fb985579527339e67c2c79a421d59",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/optional-text-runtime-repairs/optional-text-runtime-repairs.patch",
+      "sha256": "defbb4103a820dfa3401330385cb37eadce82ab12a2c47949bb6dff29bd07301",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/union6_captured_label_owned/captured-cast-label-owned.patch",
+      "sha256": "5d9bbd576ed55bf8427bfb0746152a960d25bbae9e2d040a6caee3ff0fef34f2",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-persistent-reference-scope/union6-persistent-reference-scope.patch",
+      "sha256": "269e12ee547ac121ee6ac3cc245cea79a23513b971e04e0e4300f0ae3e0faac6",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-loyalty-partial-eq/union6-loyalty-partial-eq.patch",
+      "sha256": "eed6c0197d5c637445e9b8aad1ce3560cf5cef0b75f15391b957c1efdecd3f42",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_identity_filter_trace/identity-filter-branch-trace.patch",
+      "sha256": "49feee429419f86ae1707e2394ad3252aeab0442fe1e02021bd8e99b3c5137bd",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-object-group-imports/union6-object-group-imports.patch",
+      "sha256": "5836366f05db8b79708d53161118fda0bd798a9c6f9e07402d74a184beb8fc9a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-persistent-rule-lowering/union6-persistent-rule-lowering.patch",
+      "sha256": "70c720ec1dd72cbd55bf67e0863272daa1584a9c571f3eb1d27f7aff9a05fc18",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/link-group-decoder-registration/link-group-decoder-registration.patch",
+      "sha256": "15eac704b69e4adeb3b1109bd9e1af85297adddf6f5dffd70e8f2af192e8760c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/older-native-repairs/older-native-first-repairs-d41eb358.patch",
+      "sha256": "d41eb35807e9fe85ada3537f32afa14c21360cb0dee8450aa0be412bdb16ec02",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/older-native-instruction-label/instruction-menu-procedure-admission.patch",
+      "sha256": "354314a3599e29021095aa842f89d96a1cc0973ed6b3493d9cca15990cf79bf8",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/filtered-exile-spell-permission/filtered-exiled-spell-reference.patch",
+      "sha256": "37f29a8399b095b52e78af91f8e5888e44b487078056da9341c0e844692ec74e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/older-status-program-completeness/status-program-completeness.patch",
+      "sha256": "3b26227912c3d8d94874cec0dd1144f46d56f2aebbb4f8cc9fc7489404beaf68",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/quoted-menu-continuation/quoted-pipe-menu-sentence-continuation.patch",
+      "sha256": "73164cac24e8ca04aa0666f84dfbec18b5495aef9f5e404daa52b2291d759db5",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/older-source-metadata-routes/source-metadata-independent-routes.patch",
+      "sha256": "4ee1ce3150b182a5fe10968474c706221cbedc5ad565539be8483748516f2d88",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-grammar-ast-r6/union6-grammar-ast-r6.patch",
+      "sha256": "b850c288b6fcac83203b76008c83f37979e4278e05a55a2742a4c75213f9c9f0",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/union6_r7_source_test_repairs/r7-source-test-api-repairs.patch",
+      "sha256": "8fce2510c8fd35b51ded1610055e95b7156a291bb83f3f65b58698ed9cfc42bd",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/union6-r7-test-api/r7-test-api-repairs.patch",
+      "sha256": "04be0b06800e8da7f01b027a0e92d6847a26ef84ae1b30a48687d3ee04b9045b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/group-test-public-owners/group-test-public-owners.patch",
+      "sha256": "5079190b32189107dd7bb3253bbc19a4c88efda410b80688cad0fb1d894b5095",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/union6-r7-four-test-types/union6-r7-four-test-types.patch",
+      "sha256": "a5a168a369a7d54c5e3c6c07c93d303baa0561ccead44bb59f66389b4d21164c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/next-native-repairs/next-native-repairs.patch",
+      "sha256": "100ff1c9e2479a727e05e3d68b9aef6eed37454cee50ef87946f02341ff49fd9",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/singular_action_scope_self_operand_test/self-player-operand-contract.patch",
+      "sha256": "02898107a09a1c237b93c6f6e09169db9ca8d43c507c8a29400f084921a78340",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/reviewed-ordinary-materialization/reviewed-ordinary-materialization.patch",
+      "sha256": "e70e9b269f9c95af1cd7ed193a05939c0d21601aab66f52233804a78b58026db",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/cfgtest-attachment-object-id/cfgtest-attachment-object-id.patch",
+      "sha256": "ca17e05caaf59ef3ca2336f09a6616e1be977be1ad8513677ededb5f0225ad4e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/nonbattlefield-union-scope/nonbattlefield-union-scope.patch",
+      "sha256": "ae7e381443e09c411fc6cea30d2a105b52995c37c67d1ccfbb1af1485f1efb07",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/gorge-source-repairs/gorge-source-repairs.patch",
+      "sha256": "0cb5d25e91c67c066d050841f862ee307165482215183d322a1af81696bcfc3d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/dynamize-full-source-regression/dynamize-complete-source-regression.patch",
+      "sha256": "aa3efb1031120f55f97072bf30beac7a25460d4de0fe37ec8f6fd1ade5525e3a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/older-cohorts-r2/quoted-activation-fail-closed.patch",
+      "sha256": "e88916d8aa1a7810e86c82dd1abf26ad5efae34658b5cf8a7e7aef5a56eca293",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/quoted-status-alias/quoted-status-alias-boundary.patch",
+      "sha256": "c416c336a904b29728450be5ccec30aa6efa1ff78f7c86e422dbd0e9dc051fb8",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/native-free-activation-targets/waived-activation-target-announcement.patch",
+      "sha256": "f82584785c3b32f76fcf3b71a5c48495048db9543c188c7b62bd1827fcfc3590",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/grammar-instruction-menu-boundary/grammar-instruction-menu-boundary.patch",
+      "sha256": "fc098c04b8ffe6c2a9fcb50414ece31c3bf6ff08142f459ec7440c9f872a4b4f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/creed_permission_bundle_lifetime/exile-permission-retains-complete-authority.patch",
+      "sha256": "3d490222d1d3e9d4b9ba5cd956fd106899f8f7181516b6048a97cc815411bfb2",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/completed-return-owners/completed-return-owners.patch",
+      "sha256": "b644992d219ad11ba50a29304140dbb9ab25c97ffda9a959bec6013f06595f7d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/scoped-redirection-source-operands/scoped-redirection-source-operands.patch",
+      "sha256": "fa46f5842e4ad98a95d30ca2a6d07c606b22b8ea95ea6bfdc25d3a8a2696348f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/granted-death-subject-filter/granted-death-subject-filter.patch",
+      "sha256": "066251ff3945d1327052037e54c1ee6317edde2c902f73b9108599cdc1358623",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/any-type-permission-rider/any-type-permission-rider.patch",
+      "sha256": "c5ced82e4f971bac01390a23f31e6b605d448fb474b462d083ebe4ca11b464a9",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/controlled-entry-history/controlled-entry-history.patch",
+      "sha256": "f183026f2f8e05d3780ec5df321939feec73e64118faa83ffe00a9feb2badcb9",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-payment-primary-result/validated-payment-primary-result.patch",
+      "sha256": "27ce9c2313dbbb08e0a375acfb40ea2df2b6a5bee58746442bbe0903ed78bfd6",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/casting-reader-repairs-current/casting-reader-repairs-current.patch",
+      "sha256": "15b3cab9d2505c45ebdfae68934de452796ceef18f9a532bc8a0093d2992b2bd",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_attain_sibling_followup/mixed-unrestricted-mana-and-floor-auxiliary.patch",
+      "sha256": "50915be88d5da0d9998d0bd3a3083f409b463179e7c16c8bf537e6838af9411b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_captured_price_receipt/captured-cast-price-receipt.patch",
+      "sha256": "9e0a3c1394f15d39ddd3769e27d0d8762f255c8b089642bde0f34778b39f5f52",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/triggered-group-source-ownership/triggered-group-source-ownership.patch",
+      "sha256": "ce94c7f30653571695fc6b12737a19acfa04759c81a89a84a7dd7451cdae18ee",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/tap-prestate-structural-assertion/tap-prestate-structural-assertion.patch",
+      "sha256": "f14c88722ffab02754002a257be90853c9d75f2db4b014334199b69c1f981bb0",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/instruction-menu-semantic-header/instruction-menu-semantic-header.patch",
+      "sha256": "99803aab9af7845c669f9e3860ccd14573ff945d92e200c5531724be1efc2c02",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/source-label-parser-word-contract/source-label-parser-word-contract.patch",
+      "sha256": "b8e6ea68eeee16dbfc8333f106cf34f766532171d1fafb50e5fbb064b8a4db8c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_encourage_registry_ownership/named-action-relation-dominates-loose-tagged-state.patch",
+      "sha256": "51242b1683592eef51de504056b5a775b729a763d3185dd8684d2b507acf090d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_reprise_unit_contract/reprise-entrypoint-unit-real-contract.patch",
+      "sha256": "0e417db7535cb5b90e3e7f2fc9b810e7d5c73ec59903030218892927554308ae",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/quoted-static-restriction-owner/quoted-static-restriction-owner.patch",
+      "sha256": "fa5f361c06a53e88c29652aa98fbb9e3af5571863fb64724774153569e0c8389",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/zone-change-origin-identities/zone-change-origin-identities.patch",
+      "sha256": "739c7e9ce8bde80b71c239ab63e29ae9334b5224f2c71717744174844b20f01f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/quoted-static-include-path/quoted-static-include-path.patch",
+      "sha256": "5477e4ce387477633ff673546f59961b8201f13b9f05e0dc2bed086fa5dec0dc",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/big-coherent-currentlive-v2/big-coherent-currentlive-v2.patch",
+      "sha256": "b8fc621314b930664865c0d5966a91d5ce26b380c5f637363b6fe400dbb1bfda",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_encourage_descriptor_ownership/named-action-relation-dominates-demonstrative.patch",
+      "sha256": "4a10437eb4812889274f9f181d168049b340a25ff9e4cbc1e42fca2f1b7e42ec",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/core-zone-import-fix/core-zone-import-fix.patch",
+      "sha256": "8ddf88e35cd71245250ff7ed29d317e39c46b43a62364d85b1a92faa1b74b7df",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-death-knell-fixture-path/fixture-root-path.patch",
+      "sha256": "242080e9c962a07ef0e28ec0f04089c03c45a1a99332d8ac14c72834d8422cea",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-leitmotif-layout-assertion/leitmotif-primary-layout-assertion.patch",
+      "sha256": "21a7009fdb7ac4c76ff3fd176f6338f64c849addbf0d321f96b6e4f03fa1d703",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/categories/unite-number-parameters-repair/unite-written-number-and-eureka-contract.patch",
+      "sha256": "1819a18ccdea5acddbb3b73d4cc815d958dea5ec1789500f1d8c4922cf1a71bd",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-trigger-reference-case/canonical-trigger-reference-case.patch",
+      "sha256": "5ef853b215bdc4a5d835f597d876b773132221aa1d5c45dacd6e631c49260fee",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/library-boundary-indirection/library-boundary-indirection.patch",
+      "sha256": "fcfeeaa9e4e861b61098e05ceb021444a6a0a0ef808623abb1e4b1b8ee533a19",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_final_big_engine_visibility/existing-transaction-and-trigger-visibility.patch",
+      "sha256": "5455e106eb804b3c7e9b46fd4d2501a3787ab8e91dbf35e05b098f298ec7969b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/big-v2-decoder-semantic-paths/big-v2-decoder-semantic-paths.patch",
+      "sha256": "a4c574c437b797bd02970c5ec0fe1d3b8a0ff792e99f07a5540b20d3050fa005",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/activation-designation-frontend-repair/activation-designation-frontend-repair.patch",
+      "sha256": "bd1b8af20dc3db1e92bb8411d552c75c5239acd4151cd2d2cb816dc32e254d2f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/big-transform-static-copy-api/big-transform-static-copy-api.patch",
+      "sha256": "06961825ba3b8c989fda9b0818ce54b567215a513dc49c22082de5bd0ea41e1a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/big-v2-resolve-exile-store/big-v2-resolve-exile-store.patch",
+      "sha256": "209a6d1de5e58b28d11659462a90f394726725c538cd487097f6315b4b494ef6",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/remembered-arrival-traversal/remembered-arrival-traversal.patch",
+      "sha256": "7655b9c2e3d1fbd5777d5e2bb92eb99705020c79f3a4e41732594b4f58123aec",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-created-result-contract/original-created-result-contract.patch",
+      "sha256": "5a17e7981630dffc636191589c1313230400365af7a4d21a7d6beed8c95a1f30",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/core-unit-model-fixture/core-unit-model-fixture.patch",
+      "sha256": "c580729e4de1a7c56ca87c8fb53a05e4fbfb87a7a2bb112e40a6c13cb4b8ecb1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-created-entry-prefix-regression/actual-created-entry-prefix.patch",
+      "sha256": "4d89e20ed332282b2862bc8ef1b1a541b96bed08718e1dedb867b4da73b42a1d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/big-v2-production-tokenizer-alias/big-v2-production-tokenizer-alias.patch",
+      "sha256": "a18272984e6addc3ae506ffbfb1594a2ef0e6b759adb4225f74b448a28ac9978",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/exact-created-result-predicate/exact-created-result-predicate.patch",
+      "sha256": "5569d34802ef57ee51e254a189b9a5ca0eb5578d5f8742d2defd95027e6c3ecf",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/zone-status-cast-continuation/zone-status-cast-continuation.patch",
+      "sha256": "78cbe56fe8394991f841d5728fb084a272e6b5228af70d30263460fb19969b59",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/exact-created-result-source-regression/exact-created-result-source-regression.patch",
+      "sha256": "e2394bacaa43dc8ee0a1054ef0c7ed369d492118baf3c6e388d140163bb62102",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/favored-trigger-event-api/favored-trigger-event-api.patch",
+      "sha256": "ab9902c9a1e6aefb5a571152247e05541cf297332e4e55eae2466a2c593a9007",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-compose-leitmotif-test-api-r7/compose-leitmotif-public-test-api.patch",
+      "sha256": "5754e42d25f06876cbfef4407b0fc1f1b847132151d60b67928eddc8d3406fe8",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/permanent-link-test-type-mutations/permanent-link-test-type-mutations.patch",
+      "sha256": "aea1876e47cd187de974eaf9ed0c533024ea8a03d88c1061d9608637ada6c893",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/schema20-library-boundary-refresh/schema20-library-boundary-refresh.patch",
+      "sha256": "3f5ae6ad829a62aea6cbe6bac568dd537b5a23e4225099bfb2725b831bb3c5d3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/remembered-arrival-cfg-traversal/remembered-arrival-cfg-traversal.patch",
+      "sha256": "074d304135c2a8668f6f767e9c7204bd840fea584909ddd1d941d167feff8f87",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/schema20-cfg-traversal-refresh/schema20-cfg-traversal-refresh.patch",
+      "sha256": "da2bc1b37c78326e7a62248ca27d1ec2458b9330dbe0ce44a414f04b895ef36d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/engine-unit-test-api-r2/engine-unit-test-api-r2.patch",
+      "sha256": "2e7bc6bb02507974d2d4052052a9bc20e3204dfa43d6b6d303c1d2984aeb8294",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/quoted-grant-review-blockers-current/quoted-grant-review-blockers.patch",
+      "sha256": "33752ed2ea655cbe3ed930ece62f386e5572ffc74afe3e4eaf88efd5b83bdd34",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/cast-tagged-input-dependencies/cast-tagged-input-dependencies.patch",
+      "sha256": "7c926ce0160071c1663e36d813eaf08171882ce1e5546df54729bc0b4b8214c3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/quoted-mana-unit-contract/quoted-mana-unit-contract.patch",
+      "sha256": "c612b493719e43b88f5f15dc6793f09d01e39fda9bc7e7db50ebf14cfac79555",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_actions/modal-power-typed-expectation/modal-power-typed-expectation.patch",
+      "sha256": "1cb2c925490360954e6ea9f5ee063b8e2d33606ae7c9a5632f4abcd0daf5b34e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/transform-counter-reader-noun/transform-counter-reader-noun.patch",
+      "sha256": "3c3dd10cc5771d07e38454597213914f935d6bc7cb182bf895421ce812524719",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-recipe-literal-key/declared-recipe-literal-ownership.patch",
+      "sha256": "7cf3874a5afcfee6778e1357a3125dea9fe8f93280a853d359c82be4d9a5aa42",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/quoted-entry-program-ownership/quoted-entry-program-ownership.patch",
+      "sha256": "fc8ef76829e8a125ce3988aac5a1e06e50ef11d4e99761a4c4c4a92d07f1549e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/unrepresented-subtype-test-domain/unrepresented-subtype-test-domain.patch",
+      "sha256": "ef939a17e90fe10c4e91a58cb94130c19f80d1f4bbf27512fd2f4ab90298e3ed",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-class-choice-fixture-ownership/producer-owned-event-choice-fixtures.patch",
+      "sha256": "38d5b1f791a0e341ce9f674cae32ed8660765c13a608f74e528d74e68c9c9cc0",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/current-live-three-reader-schema20/current-live-three-reader-schema20.patch",
+      "sha256": "c27a1eb151137e71e12ab25f4b22deaa7c702df85b75cfcd6dbb887e71aa9953",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_middle/quoted-entry-selected-sacrifice-assertion/quoted-entry-selected-sacrifice-assertion.patch",
+      "sha256": "74cad6c72e50ea9b365d001cab25b0764af48adf9f459e0ab8e8a5fa97d570b7",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-recipe-token-typed-regression/quoted-chapter-owner-and-typed-recipe.patch",
+      "sha256": "10d0da2187b73eb5c5b4090e06e319ab7ba74cc1dc2acb4c42bac6fb3732bf4d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-quoted-chapter-diagnostic/quoted-chapter-diagnostic.patch",
+      "sha256": "478b52a6a0669b063c45bf3dd85c944d9af72802de988aeddfbe8f087c77cdde",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/final-coherent-currentlive/final-coherent-currentlive.patch",
+      "sha256": "e9c9c9f5b24d4f0996c9184edd32ddf12e9458a197b6f62e877d5f2935d12693",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/second-followup-on-final-e9/second-followup-on-final-e9.patch",
+      "sha256": "2df7c100dd6f4fd3234e354db490126cae5fedc096f586e70ee8e884f3d1b4d8",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/preparation-price-serde-default/preparation-price-serde-default.patch",
+      "sha256": "17345bb6d65cc607606987911c0a49c9a5b7732a3f3316f080cdbc600a63a9a3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/decoder-module-doc-order/decoder-module-doc-order.patch",
+      "sha256": "af969481c0ce85bd6b8a4e552d2815e4f94d0e5c1f2d133003c2c56254908367",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/reference-name-joins-runtime-serde/reference-name-joins-runtime-serde.patch",
+      "sha256": "d1440ce239fffa13bf941f554854188e14cbea85a58ce00359eedea0ae5faa3d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_real_card_filter_import/real-card-filter-import.patch",
+      "sha256": "ec1ad26b760a26b4b02ed3c8d1e1cbdab7d497c90ccbb0fc3ad930f3969acfb1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/replacement-orphan-cfg-followup/replacement-orphan-cfg-followup.patch",
+      "sha256": "124d66e018aab94f769473c8d32d40e847f5c609bd984ef90d3467e3d09a55f1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/third-followup-on-second/third-followup-on-second.patch",
+      "sha256": "0fcb9db070364674493e75941fb6a14a7e190e299823cee578af13cce6c9c820",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/optional-tap-prefix-boundary/optional-tap-prefix-boundary.patch",
+      "sha256": "2b9a7bd88e2620756eac67e581e4503d3d6aa78180c5a5a50e3984ea4d8ac4eb",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/return-next-main-phase-player-type/return-next-main-phase-player-type.patch",
+      "sha256": "d5496cbbecfb51258da8b3c527d35bb885320df2c84d6b40415f49d0bd1620d6",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_status-verdant-owned-map-fix/verdant-owned-model-map.patch",
+      "sha256": "e8fdde4e3fa4f436be87c27ed43904297164133c7f7b6137b4bb8015cb2dc29b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/enspirit-prep-syntax/enspirit-prep-syntax.patch",
+      "sha256": "a6e6355b901a159d4b2ee5aea6232c4d39c3576dd91b415911159300a1384479",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/return-timing-filter-clone/return-timing-filter-clone.patch",
+      "sha256": "107146b4dfb655d17def491e375818690581e23ba812875c541ec4f5a9afe9e3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/judge-reference-quote-helper/judge-reference-quote-helper.patch",
+      "sha256": "a8581c49178c9e3cc0ccbdb335bd621e663391e1941e96846c43e88d87e8fc1b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/upgrade-tail-definition-reconciliation/upgrade-tail-definition-reconciliation.patch",
+      "sha256": "ec1f9db18316042bcd04d6b04a6156d21c954dc1bb5ab373745e78a99cf16a03",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_conjure_collective_metadata/conjure-collective-source-declarations.patch",
+      "sha256": "41ae27f6e052019f2de7adb3d413905471b5feaaf1215b8319021259a6b0bb7e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/source-linked-nouns-partition-test/source-linked-nouns-partition-test.patch",
+      "sha256": "71c236e878c7428c3fb104c7fcf0de52c1ec4f3f70a969332cd6ec9331c9fb91",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/spirited-provider-canonical-contract/spirited-provider-canonical-contract.patch",
+      "sha256": "51724e5d3b6f69bccc3da1af3f0926229e0e70b4cce14814a41671b58cfe8397",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/lowering-import-references/lowering-import-references.patch",
+      "sha256": "db1daef0f09ce0438880ec85dbc570282194c6523f82fe80a5360c4cc2fa64cb",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/card-creation-tag-action/card-creation-tag-action.patch",
+      "sha256": "7dc05ae5409be358878f0888e85d958aba85bdb14aba0ee8ee1c6e98a1a60b70",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_card_creation_proposal_interface/card-creation-proposal-interface-after41.patch",
+      "sha256": "ce24a97b805dcef0c41e3e9a2f32d92bcc55a72d0397a26bd8d3fdc6a4ee1fee",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/native-creation-architecture/native-creation-architecture.patch",
+      "sha256": "4111c8883d9b63e2a4c37b2bd78542a79c4285519d3975a6ae8c6ce5e237c972",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/native-creation-legacy-admission/native-creation-legacy-admission.patch",
+      "sha256": "782f6cca0548e7df78a635edfa05d456da3c2af9ff6c3daf9dff5551b4c0dcda",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/native-recipe-references/native-recipe-references-first-candidate.patch",
+      "sha256": "a8e59124d124407e5adcbeed462df7867bcfe8a4503dab1a956e03a154ac1e0c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/filter-model-test-contracts/filter-model-test-contracts.patch",
+      "sha256": "cc9f6e4da52e7927e5a123d9d236b44e6f07c9d0d87e48bc2429a5ed023d1670",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-core-structural-contracts/core-structural-contracts.patch",
+      "sha256": "662ed4cf3ff6249e33dc9dcb38d633fb679669b90ba2f79f63474d952687127a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/waterbend-native-x-binding/waterbend-native-x-binding.patch",
+      "sha256": "7f9eee5f3c0bcba0bd039930288a9d8ca7154d626d92285a257769315ea2b954",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/native-recipe-reference-import/native-recipe-reference-import.patch",
+      "sha256": "b6156a9ee904a9395de8219224b98a31e0f7e4bd3fd0d16266cb0a48c1cf5254",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/fourth-followup-currentlive-v2/fourth-followup-currentlive.patch",
+      "sha256": "ac50a4eac1dcd3bb5d5e209e6ad0ed7dcc4b04e58f9c1515bf45b1875164352d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/filter-debug-qualified-target/filter-debug-qualified-target.patch",
+      "sha256": "06fa8f9f6b2419872ad3ffd856da52e91360b95f247cd1c8ec3b6f2b15cabdf7",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/native-creation-static-visitor/native-creation-static-visitor.patch",
+      "sha256": "430e42b249e56caee05a0676fcde8654069cff4f302b1c7d8e593e762449b22d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/native-recipe-reference-tests/native-recipe-reference-tests.patch",
+      "sha256": "50458803e790c61d851036afbb6de97ccfbc2d95b6d94d0a3e6ba7081fee6290",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_late/entry-from-option-boundary/entry-from-option-boundary.patch",
+      "sha256": "3c15f6bc23a4332d37fb06868d155ede66822a0a740065e45390f5a376991794",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/priority-cast-typed-cost-repair/priority-cast-typed-cost-repair.patch",
+      "sha256": "e89bcf5b46df9900c82f921a08167be98ff439855b02f8cedac064b39c4a4fe1",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/optional-recipe-trigger-designations/optional-recipe-trigger-designations.patch",
+      "sha256": "1e9ecf300c2f7cc4f5e6d8183d53c3ea705ffdc6aabeb96a13396731ac042650",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/text-change-new-static-payloads/text-change-new-static-payloads.patch",
+      "sha256": "cac40dc75892b000c6bc094a91097e8780a81d944863649c7e25c99f021aa485",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/native-creation-owned-carriers/native-creation-owned-carriers.patch",
+      "sha256": "ce738147db2878d2856e97445b52724a0150a7acea189835f619181487fc3507",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/special_actions/spell-resolution-foundation-restored/spell-resolution-foundation-restored.patch",
+      "sha256": "15ade96033e5e1fba98faba56d6e72288d6da1d73f95f822ebb3eba088b2b270",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/retained-keyword-followup-type-scope/masked-keyword-followup-type-scope.patch",
+      "sha256": "a112c901f29e2285c5ba182f91a83d935ce83de7adc14c65eaee855c0c641b1a",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/native-recipe-reference-test-imports/native-recipe-reference-test-imports.patch",
+      "sha256": "2203a0e795cb12f1c98649355f0caa319800df121aee5de93def051165884df9",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/retained-keyword-snapshot-filter-trait/masked-snapshot-filter-trait.patch",
+      "sha256": "77a0bf7167ceca48bb98572b830df93186fa8f1b67f3bfd554d6e802a53b415b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/keyword-observer-grant-test-contract/keyword-observer-grant-test-contract.patch",
+      "sha256": "604a14aed4e5861441c09e32b8d202e269f3fcd57b7e6c0f9c8a6826c47cc166",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/executable-granted-observer-test-contract/executable-granted-observer-test-contract.patch",
+      "sha256": "ff0c6dbce675993fe1fcb7aa301f779135ed0f5cce14ba486f6efa32f719e5ff",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/fifth-followup-currentlive/fifth-followup-currentlive.patch",
+      "sha256": "4798d0ce183487bb0bd01914a7f6722cc1fcd3bf30b531472f0b6054740b1857",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/baseline-exposure-decision-channels/baseline-exposure-decision-channels.patch",
+      "sha256": "aed1d29f0c136602bc896f2dd946521492a39ad59c9def30cda297d19eb3855f",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/moved-zones-ever-condition-rendering/moved-zones-ever-condition-rendering.patch",
+      "sha256": "0ebec4dbda3ff0c30685f6aa588e0ddfdfb79a229c8c90b82c68278601797df3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/attain-designation-source-alignment/attain-designation-source-alignment.patch",
+      "sha256": "91a473722390cf3dc051f3bd374da16c404eb200c228ee4491e87e5f515c8d19",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/hezrou-resolution-diagnostics/hezrou-resolution-diagnostics.patch",
+      "sha256": "9b70d0c367f12bd07f870031f63ef3ecd3c534246112a801c0291a20d0c19081",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/color-or-type-compiler-model-constructor/color-or-type-compiler-model-constructor.patch",
+      "sha256": "13a7b8fbf8bbd39f2a2d2a0daa15d2c80c55724e5d43750ec579a15d17cdcae3",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/activation-designation-outer-owner/activation-designation-outer-owner.patch",
+      "sha256": "e0b7e7e96334ba9d1849f4107da65c1e5d01ef46508731a95d489c4e6eab4580",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/baseline-diagnostics-followup-currentlive/baseline-diagnostics-followup.patch",
+      "sha256": "35118024e37112f84e1e3567224f72aa4979cf4ea8021caa6e14179c62ebab7c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/attain-display-source-contract/attain-display-source-contract.patch",
+      "sha256": "74dbc2d3840a6ac1699511c9205fe3006ffd326cdcfd7d19ad31b7d2d240ee39",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/compiler-runtime-artifact-module-owner/compiler-runtime-artifact-module-owner.patch",
+      "sha256": "cbb1c9cf226b6e6ef78793cc08bacb9b50c97bc68e3adac80147eadb370a6e24",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/tokens-sharkey-current-source/sharkey-current-source.patch",
+      "sha256": "d564dba41fc783451a92ab1e440f5152c1cd41f1f24051b8bb33002b92474a7c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/baseline-keyword-prepare/baseline-keyword-prepare.patch",
+      "sha256": "e9937cf276a90a2b9a2e13e147e79e01875352331dab850162ff957e4d37f29e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/final-current20-stable-refresh/final-current20-stable-refresh.patch",
+      "sha256": "cf00c84295d6f27b092f82999a7d4401cd2ec3af798fb80795a584b255b47a6c",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/unit-cost-test-api-references/unit-cost-test-api-references.patch",
+      "sha256": "059eb1bb4c2ea6911f5f9463959545c0656475861b8fa5d20e33bed4a3a30a17",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/inscribe/native-creation-unit-build-fixes/native-creation-unit-build-fixes.patch",
+      "sha256": "130fa7ed76f5a71e10ca88562edc76d1267c2e668bb4936cc5045379301e6352",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_unit_api_followup/merged-and-meld-unit-api-followup.patch",
+      "sha256": "a9e738502c1db0f8e738f8e19494ba0a3417069bd6c1de117816aa025f91a5bb",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/action_choices/consultation-unit-local-card-setup/consultation-unit-local-card-setup.patch",
+      "sha256": "490affcd7f08bbe7f04ccb3afe9e8a31e80c19c183a87e51c7cddadb9fd9f4c6",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/boundary_remaining/syntax-literal-contracts/syntax-literal-contracts.patch",
+      "sha256": "34b832908177c1fa35e6dc88043e2f39fecdf2fc14bf9e6518e8e50f542bc86e",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/actions_linked/native-test-architecture-boundaries/native-test-architecture-boundaries.patch",
+      "sha256": "8e09275ad7eddf10e632f99ee554933830d9ab0bd119b33c85169ce4d55a0fb9",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/source-name-test-tagged-action/source-name-test-tagged-action.patch",
+      "sha256": "aa015b4c371b2bf4ef7782f69f6398b93293f39ae2e6be58747272e29cc96ecd",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/sixth-followup-currentlive/sixth-followup-currentlive.patch",
+      "sha256": "8758b8a24c5fac7140775ec4eecfae58d9ce1171fde9bbb625e3ea17b3d31d36",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/casting_early/private-reservation-anchor-contract/private-reservation-anchor-contract.patch",
+      "sha256": "c510d2406e9c53e9781acc38533191fa74a59866396ca5c405ca04caf1c02f8d",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/abilities_growth/native-prowess-program-identity/native-prowess-program-identity.patch",
+      "sha256": "c35ccd21c06c3a725c02c69b4b3bbd5a1977d0a90462eb320fa76606b83e827b",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/seventh-followup-currentlive/seventh-followup-currentlive.patch",
+      "sha256": "24263f57c2ef36c5b18f1064414ae2665ff80e71a519414955bd93254f2c69da",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    },
+    {
+      "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/final-current20-after-seventh-refresh/final-current20-after-seventh-refresh.patch",
+      "sha256": "8dad79b74b89e2445cff9f3b607f301d1e5e5793e49ebd066c6c06bcdbd23b32",
+      "scope": "native-r3-followup-and-next-wave",
+      "verification": "pending"
+    }
+  ],
+  "direct_worker_corrections": [
+    {
+      "owner": "inscribe",
+      "file": "crates/ironsmith-compiler-lowering/src/lowering_impl/runtime_static_ability_helpers.rs",
+      "change": "Use concrete compiler reference_state::ReferenceEnv, preserving ability.reference_imports",
+      "sha256": "06f1ecf08396a6945213b4a194ebca6ec171560bd6a1893a0b0c866ecf16d85d",
+      "verification": "pending"
+    }
+  ],
+  "root_target_registrations": [
+    {
+      "targets": [
+        "custom_compiled_resource_bindings",
+        "custom_face_state_selections_next",
+        "custom_named_action_subject_roles"
+      ],
+      "cargo_sha256": "1fc5239298937d0490c6fb5babe398c9c8d1b82c50d46f1ea50d2c2c086cf67b"
+    }
+  ]
+}

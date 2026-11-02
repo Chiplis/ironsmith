@@ -548,6 +548,7 @@ fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
                     ..
                 })
                 | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { target, .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { target, .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     target, ..
                 }) if matches!(target, TargetAst::Object(_, Some(_), _)) => Some(target),
@@ -927,13 +928,16 @@ fn transport_non_aura_return_followups(effects: &mut Vec<EffectAst>) {
 fn rewrite_die_table_roll_again(effects: &mut Vec<EffectAst>) {
     use crate::cards::builders::{IfResultPredicate, PlayerAst};
     use ironsmith_compiler_semantic::model::RandomActionAst;
-    fn is_may_repeat_marker(effect: &EffectAst) -> bool {
-        match effect {
-            EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => true,
+    fn is_repeat_marker(effect: &EffectAst) -> bool {
+        match peel_single_source_sentence(effect) {
+            EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay | ForEachEffectAst::RepeatThisProcess) => true,
             EffectAst::Permissions(PermissionEffectAst::May { effects })
             | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: PlayerAst::You,
                 effects,
+            } | PermissionEffectAst::MayPay {
+                player: PlayerAst::You,
+                effects,payment_receipt:None,
             }) => matches!(
                 effects.as_slice(),
                 [EffectAst::ForEach(
@@ -945,7 +949,7 @@ fn rewrite_die_table_roll_again(effects: &mut Vec<EffectAst>) {
     }
     fn is_die_row(effect: &EffectAst) -> bool {
         matches!(
-            effect,
+            peel_single_source_sentence(effect),
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::DieValue(_),
                 ..
@@ -998,11 +1002,11 @@ fn rewrite_die_table_roll_again(effects: &mut Vec<EffectAst>) {
     }
     let Some(marked) = effects.iter().position(|effect| {
         matches!(
-            effect,
+            peel_single_source_sentence(effect),
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate: IfResultPredicate::DieValue(_),
                 effects: row,
-            }) if row.len() > 1 && row.last().is_some_and(is_may_repeat_marker)
+            }) if row.last().is_some_and(is_repeat_marker)
         )
     }) else {
         return;
@@ -1018,28 +1022,40 @@ fn rewrite_die_table_roll_again(effects: &mut Vec<EffectAst>) {
     if first_row == 0 || !declares_targets_then_rolls(&effects[first_row - 1]) {
         return;
     }
-    let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-        predicate,
-        effects: row,
-    }) = &mut effects[marked]
-    else {
-        unreachable!("the marked row was matched above");
-    };
-    row.pop();
+    fn row_surface_mut(effect: &mut EffectAst) -> (&mut IfResultPredicate, &mut Vec<EffectAst>) {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } if effects.len() == 1 => row_surface_mut(&mut effects[0]),
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => (predicate, effects),
+            _ => unreachable!("the marked row was matched above"),
+        }
+    }
+    let (predicate, row) = row_surface_mut(&mut effects[marked]);
+    let marker = row.pop().expect("the matched row has a repeat marker");
+    let optional = !matches!(peel_single_source_sentence(&marker), EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess));
+    let predicate = predicate.clone();
     let gate = EffectAst::Conditionals(ConditionalEffectAst::IfResult {
         predicate: predicate.clone(),
         effects: vec![EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)],
     });
     let head = first_row - 1;
     let mut body: Vec<EffectAst> = effects.drain(head..=last_row).collect();
-    body.push(gate);
-    let continue_effect_index = body.len() - 1;
+    // Keep a reroll-only row as an empty result gate. Its numeric row
+    // identity still belongs to this roll; removing it can strand later
+    // sibling rows when the process is staged again during lowering.
+    let (continue_effect_index, continue_predicate) = if optional {
+        body.push(gate);
+        (body.len() - 1, IfResultPredicate::Did)
+    } else {
+        // Mandatory rerolls test the completed roll directly. Adding a may
+        // prompt here would let a player decline an obligatory instruction.
+        (0, predicate)
+    };
     effects.insert(
         head,
         EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
             effects: body,
             continue_effect_index,
-            continue_predicate: IfResultPredicate::Did,
+            continue_predicate,
             max_iterations: None,
         }),
     );
@@ -1066,6 +1082,9 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
             | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
                 player: crate::cards::builders::PlayerAst::You,
                 effects,
+            } | PermissionEffectAst::MayPay {
+                player: crate::cards::builders::PlayerAst::You,
+                effects,payment_receipt:None,
             }) => matches!(
                 effects.as_slice(),
                 [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)]
@@ -1873,7 +1892,7 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. }) => {
             sequence_kind(effects)
         }
         EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
@@ -1931,7 +1950,7 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. }) => {
             !effects.is_empty()
                 && effects
                     .iter()
@@ -1988,7 +2007,7 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. }) => {
             for effect in effects {
                 retag_choice_collection_producer(effect, durable_tag);
             }
@@ -2288,7 +2307,7 @@ fn choice_collection_producer_matches_object_kind(
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::ResultBranchLabel { effects, .. }
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => {
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. }) => {
             !effects.is_empty()
                 && effects
                     .iter()
@@ -2945,7 +2964,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { effects, .. })
         | EffectAst::Permissions(PermissionEffectAst::May { effects })
-        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. })
         | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { effects, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { effects, .. })
         | EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult { effects, .. })
@@ -3145,6 +3164,10 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
     else {
         return None;
     };
+    // A numeric row owns only one case of its die table. The dedicated
+    // table normalizer must collect all sibling rows before making a loop;
+    // the generic prefix-repeater would strand the later cases outside it.
+    if matches!(predicate, crate::cards::builders::IfResultPredicate::DieValue(_)) { return None; }
     let excludes_prior_choices = matches!(
         tail_effects.last(),
         Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices))
@@ -3325,12 +3348,21 @@ fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> 
         let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate, if_true, if_false,
         }) = &effects[index] else { continue; };
-        if !if_false.is_empty() || !matches!(if_true.as_slice(),
-            [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)]) { continue; }
+        if !if_false.is_empty() { continue; }
         let body = effects[..index].to_vec();
-        let mut process = body.clone();
+        let repeated = match if_true.as_slice() {
+            [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)] => body.clone(),
+            [EffectAst::Permissions(PermissionEffectAst::May { effects })]
+                if matches!(effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)]) =>
+                vec![EffectAst::Permissions(PermissionEffectAst::May { effects: body.clone() })],
+            [EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, effects })]
+                if matches!(effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)]) =>
+                vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player: player.clone(), effects: body.clone() })],
+            _ => continue,
+        };
+        let mut process = body;
         process.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            predicate: predicate.clone(), if_true: body, if_false: Vec::new(),
+            predicate: predicate.clone(), if_true: repeated, if_false: Vec::new(),
         }));
         // The condition is evaluated after the first complete execution. A
         // suffix such as "If you searched this way, shuffle" observes the
@@ -3368,7 +3400,7 @@ fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> 
 fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     let marker_index = effects.iter().position(|effect| match effect {
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => true,
-        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => matches!(
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. }) => matches!(
             effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)]),
         _ => false,
     })?;
@@ -3438,6 +3470,8 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
             target,
             attachment_filter,
+            attachment_player_filter,
+            additional_subtypes,
             granted_abilities,
             ..
         }) = &aura_subject_verb.action
@@ -3448,6 +3482,12 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         };
         if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
         {
+            rewritten.push(effects[index].clone());
+            index += 1;
+            continue;
+        }
+
+        if attachment_player_filter.is_some() || !additional_subtypes.is_empty() {
             rewritten.push(effects[index].clone());
             index += 1;
             continue;
@@ -4245,6 +4285,25 @@ mod tests {
     }
 
     #[test]
+    fn optional_condition_repeat_once_keeps_the_entire_process_and_its_choice() {
+        let body = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
+            crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                LifeResourceActionAst::Draw { count: Value::Fixed(1) }));
+        let gate = PredicateAst::LifeTotalOrLess(20);
+        let optional = EffectAst::Permissions(PermissionEffectAst::May {
+            effects: vec![EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)],
+        });
+        let normalized = normalize_effects_ast(&[body.clone(), EffectAst::Conditionals(
+            ConditionalEffectAst::Conditional { predicate: gate.clone(), if_true: vec![optional], if_false: Vec::new() })]);
+        assert_eq!(normalized, vec![EffectAst::CommaThen { effects: vec![body.clone(),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: gate, if_true: vec![EffectAst::Permissions(PermissionEffectAst::May { effects: vec![body] })], if_false: Vec::new(),
+            })] }]);
+        assert_eq!(normalize_effects_ast(&normalized), normalized);
+    }
+
+    #[test]
     fn live_condition_repeat_once_observes_initial_body_and_exports_both_search_receipts() {
         let initial = EffectAst::subject_verb(
             crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
@@ -4368,7 +4427,7 @@ mod tests {
             one_shot: false,
             duration: Until::EndOfTurn,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None,
         });
         let grant = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
             crate::tag::CompilerReferenceTag::It.bind(),
@@ -4402,7 +4461,7 @@ mod tests {
             one_shot: false,
             duration: Until::EndOfTurn,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None,
         });
         let explicit_tag =
             ironsmith_compiler_semantic::tag::declared_key("explicit_permission_pool");

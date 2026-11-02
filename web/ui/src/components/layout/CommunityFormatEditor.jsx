@@ -1,5 +1,6 @@
+import SubtypesPanel from './SubtypesPanel';
 import { MechanicForm } from './MechanicsPanel';
-import { setMechanics, updateSetMechanic } from '@/lib/set-workspace';
+import { setMechanics, setSubtypes, updateSetMechanic } from '@/lib/set-workspace';
 import { loadCommunityLibrary, saveCommunityItem } from '@/lib/community-library';
 import { COMMUNITY_FILE_MAX_BYTES, encodeCommunityShare, decodeCommunityShare, communityFilename } from '@/lib/community-sharing';
 import { useEffect, useRef, useState } from 'react';
@@ -62,8 +63,8 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
     try { await action(); } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   };
-  const entry = () => isSet ? { name: value.name.trim(), cards: structuredClone(value.customCards), customMechanics: setMechanics(value) } : normalizeCommunityFormat(value);
-  const load = item => { setEditingMechanic(null); setSetView('cards'); onChange(isSet ? { ...emptyCommunityFormat(), name: item.name, customCards: structuredClone(item.cards), customMechanics: structuredClone(item.customMechanics || []) } : structuredClone(item)); };
+  const entry = () => isSet ? { name: value.name.trim(), cards: structuredClone(value.customCards), customMechanics: setMechanics(value), customSubtypes: setSubtypes(value) } : normalizeCommunityFormat(value);
+  const load = item => { setEditingMechanic(null); setSetView('cards'); onChange(isSet ? { ...emptyCommunityFormat(), name: item.name, customCards: structuredClone(item.cards), customMechanics: structuredClone(item.customMechanics || []), customSubtypes: structuredClone(item.customSubtypes || []) } : structuredClone(item)); };
   const savedItems = isSet ? library.sets : library.formats;
   const save = () => run(async () => {
     await saveCommunityItem(kind, entry());
@@ -96,7 +97,7 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
   return <div className="community-format-editor mx-auto grid w-full max-w-7xl content-start gap-5 p-4 md:p-6">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-2xl"><h2 className="text-xl font-semibold">{ui(isSet ? 'Custom sets' : 'Custom formats')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{ui(isSet ? 'Create cards and tune mechanics right here. Every design belongs to this set, ready to use in a custom format.' : 'Define the card pool for your next game. Combine official cards and custom sets, then save a format to use in Play.')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{ui(isSet ? 'Create cards, tune mechanics, and define subtypes right here. Every design belongs to this set, ready to use in a custom format.' : 'Define the card pool for your next game. Combine official cards and custom sets, then save a format to use in Play.')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {onBackToCard && <button type="button" className={`${button} ui-primary-action`} disabled={busy} onClick={onBackToCard}>{ui('Back to card')}</button>}
@@ -109,11 +110,21 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
       </div>
     </header>
     {isSet && <div className="flex flex-wrap items-center gap-3 border-b border-white/15 pb-3">
-      <button disabled={busy || Boolean(onBackToCard)} className={`${button} ${setView === 'cards' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'cards'} onClick={() => setSetView('cards')}>{ui('Set cards')} · {value.customCards.length}</button>
+      <button disabled={busy} className={`${button} ${setView === 'cards' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'cards'} onClick={() => onBackToCard ? onBackToCard() : setSetView('cards')}>{ui('Set cards')} · {value.customCards.length}</button>
       <button disabled={busy} className={`${button} ${setView === 'mechanics' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'mechanics'} onClick={() => setSetView('mechanics')}>{ui('Set mechanics')} · {setMechanics(value).length}</button>
-      <span className="text-xs text-muted-foreground">{ui('One workspace for your cards and keywords.')}</span>
+      <button disabled={busy} className={`${button} ${setView === 'subtypes' ? 'ui-primary-action' : ''}`} aria-pressed={setView === 'subtypes'} onClick={() => setSetView('subtypes')}>{ui('Set subtypes')} · {setSubtypes(value).length}</button>
+      <span className="text-xs text-muted-foreground">{ui('One workspace for your cards, mechanics, and subtypes.')}</span>
     </div>}
-    {isSet && setView === 'mechanics' ? <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+    {isSet && setView === 'subtypes' ? <section className="fantasy-sheet-section p-4">
+      <SubtypesPanel setName={value.name} definitions={setSubtypes(value)} onChange={definitions => {
+        const removed = setSubtypes(value).filter(def => !definitions.some(next => next.singular === def.singular));
+        if (removed.some(def => value.customCards.some(card => card.draft.customSubtypes?.some(item => item.singular === def.singular)))) throw new Error('This subtype is used by a set card. Remove it from those cards first.');
+        onChange({ ...value, customSubtypes: definitions });
+      }} />
+      <button className={`${button} ui-primary-action`} disabled={busy || !libraryReady || !value.name.trim()} onClick={save}>{ui('Save set')}</button>
+      {notice && <p role="status">{ui(notice)}</p>}
+      {error && <p role="alert">{error}</p>}
+    </section> : isSet && setView === 'mechanics' ? <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <section className="fantasy-sheet-section space-y-3 p-4">
         <h3 className="font-semibold">{value.name || ui('Untitled set')}</h3>
         <p className="text-sm text-muted-foreground">{ui('Updating a mechanic recompiles every card in this set. Other sets and your personal library keep their own definitions.')}</p>
@@ -174,7 +185,7 @@ export default function CommunityFormatEditor({ value, onChange, kind = 'format'
             }
             const card = option.card || { id: `catalog:${option.name}`, draft: await fetchCardBuildDraft(option.name) };
             const next = { ...value, customCards: [...value.customCards.filter(entry => entry.id !== card.id), structuredClone(card)] };
-            if (isSet) setMechanics(next);
+            if (isSet) { setMechanics(next); setSubtypes(next); }
             onChange(next);
           })} />}
           <p className="text-xs text-muted-foreground">{ui('Search for a card and select a result to add it. Enable custom cards to include your saved designs.')}</p>

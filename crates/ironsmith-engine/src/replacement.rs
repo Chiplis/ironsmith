@@ -208,6 +208,10 @@ pub enum ReplacementAction {
         amount: u32,
     },
 
+    /// Redirect only damage beyond the current recipient's lethal threshold.
+    /// Computed when this replacement is selected, after earlier modifications.
+    RedirectExcessDamage { target: RedirectTarget, which: RedirectWhich },
+
     /// Change the zone an object would go to
     ChangeDestination(Zone),
 
@@ -316,6 +320,7 @@ pub enum ReplacementAction {
 
     /// Enter with permanent characteristic changes.
     EnterWithCharacteristics {
+        face_down: bool,
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
         set_base_power_toughness: Option<(i32, i32)>,
@@ -511,6 +516,11 @@ pub enum EventModification {
     /// counter removal is reduced so one counter of its kind remains on its
     /// target. Other events are unchanged. Appended to preserve the schema.
     LeaveOneCounter,
+
+    /// Replace only the definition selected by an explicit real-card creation.
+    ReplaceCardDefinition(String),
+    /// Modify a named operation's retained original modal plan, not its numeric amount.
+    NamedActionFirstThenOtherMode { first_mode: u32 },
 }
 
 /// Where to redirect an effect.
@@ -2028,3 +2038,4 @@ impl ReplacementAction {
         }
     }
 }
+

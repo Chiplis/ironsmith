@@ -89,6 +89,16 @@ pub fn parse_line_variant_split(line: &str) -> Option<LineVariantSplitSurface> {
 pub fn parse_line_variant_split_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LineVariantSplitSurface> {
+    // Quoted child programs own their internal costs and timing restrictions.
+    // Query only the parent's tokens; retain authored spans for split offsets.
+    if tokens.iter().any(|token| token.kind == TokenKind::Quote) {
+        let mut quoted = false;
+        let outside = tokens.iter().filter_map(|token| {
+            if token.kind == TokenKind::Quote { quoted = !quoted; None }
+            else if quoted { None } else { Some(token.clone()) }
+        }).collect::<Vec<_>>();
+        return parse_line_variant_split_tokens(&outside);
+    }
     if permission_shapes::prefix_tokens(
         tokens,
         &[
@@ -379,4 +389,18 @@ mod tests {
 /// rewrite, and reads nothing (the rewritten line's readers claim words).
 fn preprocess_locate_words(words: &[&str], expected: &[&str]) -> Option<usize> {
     crate::word_claims::probe_only(|| permission_shapes::find_words(words, expected))
+}
+
+#[cfg(test)]
+mod quoted_modifier_ownership_tests {
+    use super::*;
+    #[test]
+    fn quoted_own_activation_price_stays_with_its_recipient_program() {
+        let text="Equipped creature has custom keyword \"improve\", and \"{1}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\"";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert!(parse_line_variant_split_tokens(&tokens).is_none());
+        let text=format!("{text}. This spell costs {{1}} less to cast.");
+        let tokens=crate::lexer::lex_line(&text,0).unwrap();let split=parse_line_variant_split_tokens(&tokens).unwrap();
+        assert!(text[split.second_start..].starts_with("This spell costs"),"only the outer modifier may split: {split:?}");
+        let tokens=crate::lexer::lex_line("{1}: Draw a card. This ability costs {1} more to activate for each charge counter on this permanent.",0).unwrap();assert!(parse_line_variant_split_tokens(&tokens).is_some());
+    }
 }

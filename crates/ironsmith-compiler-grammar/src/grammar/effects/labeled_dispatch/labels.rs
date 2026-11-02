@@ -88,6 +88,9 @@ fn supported_procedure_label(input: &mut LexStream<'_>) -> WResult<()> {
         primitives::phrase(&["council's", "dilemma"]),
         primitives::phrase(&["parley"]),
         primitives::phrase(&["join", "forces"]),
+        // An explicit instruction menu is a resolution-time procedure, not
+        // an unknown ability-word label. Its complete menu reader owns modes.
+        primitives::phrase(&["choose", "one", "instruction"]),
     ))
     .void()
     .parse_next(input)?;
@@ -123,5 +126,17 @@ mod tests {
         )
         .unwrap();
         assert!(parse_leading_effect_label_tokens(&embedded).is_none());
+    }
+}
+
+#[cfg(test)]
+mod explicit_instruction_label_tests {
+    #[test]
+    fn instruction_menu_passes_procedure_admission_but_unknown_labels_do_not(){
+        let tokens=crate::lexer::lex_line("Choose one instruction — Draw a card. | Gain 2 life.",0).unwrap();
+        let shape=super::parse_leading_effect_label_tokens(&tokens).unwrap();
+        assert_eq!(shape.kind,super::LeadingEffectLabelKind::SupportedProcedure);
+        let tokens=crate::lexer::lex_line("Mystery procedure — Draw a card.",0).unwrap();
+        assert_eq!(super::parse_leading_effect_label_tokens(&tokens).unwrap().kind,super::LeadingEffectLabelKind::Unknown);
     }
 }

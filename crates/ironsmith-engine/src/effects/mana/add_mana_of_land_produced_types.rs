@@ -1,4 +1,4 @@
-//! Add mana of any color/type that lands matching a filter could produce.
+//! Add mana of any color/type that permanents matching a filter could produce.
 
 use crate::ability::{AbilityKind, ActivatedAbility, ActivatedAbilityRuntimeExt as _};
 use crate::effect::{EffectOutcome, Value};
@@ -11,7 +11,10 @@ use crate::object::Object;
 use crate::target::{ObjectFilter, PlayerFilter};
 pub use ironsmith_core::ManaTypeSource;
 
-/// Effect that adds mana constrained by a set of land-produced mana types.
+/// Effect that adds mana constrained by what matching permanents could produce.
+///
+/// The historical land-specific type and field names are retained for artifact
+/// compatibility; the producer filter supplies any card-type restriction.
 ///
 /// This models text like:
 /// - "Add one mana of any color that a land an opponent controls could produce."
@@ -23,13 +26,13 @@ pub struct AddManaOfLandProducedTypesEffect {
     pub amount: Value,
     /// Which player receives the mana.
     pub player: PlayerFilter,
-    /// Lands to inspect for producible mana.
+    /// Permanents to inspect for producible mana.
     pub land_filter: ObjectFilter,
     /// Whether colorless mana is allowed ("any type" vs "any color").
     pub allow_colorless: bool,
     /// If true, all mana must be the same type.
     pub same_type: bool,
-    /// Whether to inspect potential land abilities or the actual triggering event.
+    /// Whether to inspect potential producer abilities or the actual triggering event.
     pub mana_type_source: ManaTypeSource,
 }
 
@@ -166,10 +169,10 @@ pub(super) fn collect_available_mana_symbols(
     let mut visiting = vec![ctx.source];
     let mut replacements = None;
     let mut symbols =
-        could_produce_from_matching_lands(game, ctx, land_filter, &mut visiting, &mut replacements);
+        could_produce_from_matching_permanents(game, ctx, land_filter, &mut visiting, &mut replacements);
     let filter_ctx = ctx.filter_context(game);
     // "any type the sacrificed land could produce" (Squandered Resources):
-    // a tagged land that already left the battlefield is read from its
+    // a tagged producer that already left the battlefield is read from its
     // last-known abilities (CR 106.7, 608.2h).
     for constraint in &land_filter.tagged_constraints {
         if constraint.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject {
@@ -180,7 +183,6 @@ pub(super) fn collect_available_mana_symbols(
         };
         for snapshot in snapshots {
             if game.battlefield.contains(&snapshot.object_id)
-                || !snapshot.card_types.contains(&crate::types::CardType::Land)
                 || !land_filter.matches_snapshot(snapshot, &filter_ctx, game)
             {
                 continue;
@@ -206,13 +208,13 @@ pub(super) fn collect_available_mana_symbols(
     symbols
 }
 
-/// CR 106.7: the types of mana the matching lands "could produce" are the
+/// CR 106.7: the types of mana the matching permanents "could produce" are the
 /// types their abilities would produce if they resolved now, whether or not
 /// they are mana abilities and whether or not their costs could be paid,
 /// counting current output quantities and applicable replacement effects.
-/// Lands asking what other lands could produce are followed recursively; a
-/// land already being evaluated contributes nothing (the mutual-Orchard case).
-fn could_produce_from_matching_lands(
+/// Producers asking what other permanents could produce are followed recursively;
+/// a producer already being evaluated contributes nothing (the mutual-Orchard case).
+fn could_produce_from_matching_permanents(
     game: &GameState,
     ctx: &ExecutionContext,
     land_filter: &ObjectFilter,
@@ -225,14 +227,14 @@ fn could_produce_from_matching_lands(
         let Some(perm) = game.object(perm_id) else {
             continue;
         };
-        if !perm.is_land() || !land_filter.matches(perm, &filter_ctx, game) {
+        if !land_filter.matches(perm, &filter_ctx, game) {
             continue;
         }
         if visiting.contains(&perm_id) {
             continue;
         }
         visiting.push(perm_id);
-        for symbol in could_produce_from_land(game, perm, visiting, replacements) {
+        for symbol in could_produce_from_permanent(game, perm, visiting, replacements) {
             push_symbol_if_addable(&mut symbols, symbol);
         }
         visiting.pop();
@@ -240,7 +242,7 @@ fn could_produce_from_matching_lands(
     symbols
 }
 
-fn could_produce_from_land(
+fn could_produce_from_permanent(
     game: &GameState,
     perm: &Object,
     visiting: &mut Vec<crate::ids::ObjectId>,
@@ -267,7 +269,7 @@ fn could_produce_from_land(
             continue;
         }
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let land_ctx = ExecutionContext::new(perm_id, controller, &mut dm);
+        let producer_ctx = ExecutionContext::new(perm_id, controller, &mut dm);
         for effect in crate::ability::selected_resolution_effects_for_current_state(
             &activated.effects,
             game,
@@ -288,7 +290,7 @@ fn could_produce_from_land(
                 _ => None,
             };
             if let Some(amount) = amount
-                && crate::effects::helpers::resolve_value(game, amount, &land_ctx)
+                && crate::effects::helpers::resolve_value(game, amount, &producer_ctx)
                     .is_ok_and(|value| value <= 0)
             {
                 continue;
@@ -301,8 +303,8 @@ fn could_produce_from_land(
             }) = effect.mana_production()
             {
                 raw.extend(
-                    could_produce_from_matching_lands(
-                        game, &land_ctx, filter, visiting, replacements,
+                    could_produce_from_matching_permanents(
+                        game, &producer_ctx, filter, visiting, replacements,
                     )
                     .into_iter()
                     .filter(|symbol| is_allowed_symbol(*symbol, allow_colorless)),

@@ -1,0 +1,1436 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Advance named action state and entry composition",
+  "notes": [
+    "Source identities and original texts are immutable. Frontend materialization and native behavior remain separate verification obligations.",
+    "Named action watchers, dynamic grants, mana source name restrictions, selected sacrifice reductions and linked exile must retain their exact structured semantics."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-776",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {1}{R}{W}{B} to advance it as it enters. {1}{R}{W}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Blastburn Angel"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blastburn Angel_KXP",
+          "name": "Blastburn Angel",
+          "original_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Angel\nPower/Toughness: 3/3\nAdvance {1}{R}{W}{B} *(Cast this for {1}{R}{W}{B} to advance it as it enters. {1}{R}{W}{B}: Advance this as a sorcery.)*\nWhenever Blastburn Angel advances, it gets +1/+1 and gains flying until end of turn. It deals 1 damage to each other creature.",
+          "executable_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Angel\nPower/Toughness: 3/3\nYou may pay {1}{R}{W}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{R}{W}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, it gets +1/+1 and gains flying until end of turn. It deals 1 damage to each other creature.",
+          "mana_cost": "{R}{W}{B}",
+          "type_line": "Artifact Creature — Angel",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Blastburn Angel_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blastburn Angel",
+              "original_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Angel\nPower/Toughness: 3/3\nAdvance {1}{R}{W}{B} *(Cast this for {1}{R}{W}{B} to advance it as it enters. {1}{R}{W}{B}: Advance this as a sorcery.)*\nWhenever Blastburn Angel advances, it gets +1/+1 and gains flying until end of turn. It deals 1 damage to each other creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blastburn Angel",
+              "executable_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Angel\nPower/Toughness: 3/3\nYou may pay {1}{R}{W}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{R}{W}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, it gets +1/+1 and gains flying until end of turn. It deals 1 damage to each other creature.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {1}{R}{W}{B}\nWhenever Blastburn Angel advances, it gets +1/+1 and gains flying until end of turn. It deals 1 damage to each other creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {1}{R}{W}{B}\nWhenever Blastburn Angel advances, it gets +1/+1 and gains flying until end of turn. It deals 1 damage to each other creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-777",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {1}{R} to advance it as it enters. {1}{R}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Blitz Breaker"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blitz Breaker_KXP",
+          "name": "Blitz Breaker",
+          "original_text": "Mana cost: {R}\nType: Artifact Creature — Human Warrior\nPower/Toughness: 1/1\nAdvance {1}{R} *(Cast this for {1}{R} to advance it as it enters. {1}{R}: Advance this as a sorcery.)*\nWhenever Blitz Breaker advances, its power becomes equal to the amount of noncombat damage that's been dealt to your opponents this turn. *(This effect lasts indefinitely.)*",
+          "executable_text": "Mana cost: {R}\nType: Artifact Creature — Human Warrior\nPower/Toughness: 1/1\nYou may pay {1}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, its power becomes equal to the amount of noncombat damage that's been dealt to your opponents this turn.",
+          "mana_cost": "{R}",
+          "type_line": "Artifact Creature — Human Warrior",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Blitz Breaker_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blitz Breaker",
+              "original_text": "Mana cost: {R}\nType: Artifact Creature — Human Warrior\nPower/Toughness: 1/1\nAdvance {1}{R} *(Cast this for {1}{R} to advance it as it enters. {1}{R}: Advance this as a sorcery.)*\nWhenever Blitz Breaker advances, its power becomes equal to the amount of noncombat damage that's been dealt to your opponents this turn. *(This effect lasts indefinitely.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blitz Breaker",
+              "executable_text": "Mana cost: {R}\nType: Artifact Creature — Human Warrior\nPower/Toughness: 1/1\nYou may pay {1}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, its power becomes equal to the amount of noncombat damage that's been dealt to your opponents this turn.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {1}{R}\nWhenever Blitz Breaker advances, its power becomes equal to the amount of noncombat damage that's been dealt to your opponents this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {1}{R}\nWhenever Blitz Breaker advances, its power becomes equal to the amount of noncombat damage that's been dealt to your opponents this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-778",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {2}{W} to advance it as it enters. {2}{W}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Construct Engine"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Construct Engine_KXP",
+          "name": "Construct Engine",
+          "original_text": "Mana cost: {W}\nType: Artifact\nAdvance {2}{W} *(Cast this for {2}{W} to advance it as it enters. {2}{W}: Advance this as a sorcery.)*\nWhenever Construct Engine advances, create a 1/1 colorless Construct artifact creature token.",
+          "executable_text": "Mana cost: {W}\nType: Artifact\nYou may pay {2}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{2}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, create a 1/1 colorless Construct artifact creature token.",
+          "mana_cost": "{W}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Construct Engine_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Construct Engine",
+              "original_text": "Mana cost: {W}\nType: Artifact\nAdvance {2}{W} *(Cast this for {2}{W} to advance it as it enters. {2}{W}: Advance this as a sorcery.)*\nWhenever Construct Engine advances, create a 1/1 colorless Construct artifact creature token."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Construct Engine",
+              "executable_text": "Mana cost: {W}\nType: Artifact\nYou may pay {2}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{2}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, create a 1/1 colorless Construct artifact creature token.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {2}{W}\nWhenever Construct Engine advances, create a 1/1 colorless Construct artifact creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {2}{W}\nWhenever Construct Engine advances, create a 1/1 colorless Construct artifact creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-779",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3}{W} to advance it as it enters. {3}{W}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Hrexa Enforcer"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hrexa Enforcer_KXP",
+          "name": "Hrexa Enforcer",
+          "original_text": "Mana cost: {1}{W}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nAdvance {3}{W} *(Cast this for {3}{W} to advance it as it enters. {3}{W}: Advance this as a sorcery.)*\nWhenever Hrexa Enforcer advances, put a +1/+1 counter on it.",
+          "executable_text": "Mana cost: {1}{W}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nYou may pay {3}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, put a +1/+1 counter on it.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Artifact Creature — Human Soldier",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Hrexa Enforcer_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hrexa Enforcer",
+              "original_text": "Mana cost: {1}{W}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nAdvance {3}{W} *(Cast this for {3}{W} to advance it as it enters. {3}{W}: Advance this as a sorcery.)*\nWhenever Hrexa Enforcer advances, put a +1/+1 counter on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hrexa Enforcer",
+              "executable_text": "Mana cost: {1}{W}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nYou may pay {3}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, put a +1/+1 counter on it.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}{W}\nWhenever Hrexa Enforcer advances, put a +1/+1 counter on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}{W}\nWhenever Hrexa Enforcer advances, put a +1/+1 counter on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-780",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {1}{R}{R} to advance it as it enters. {1}{R}{R}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Impulse Module"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Impulse Module_KXP",
+          "name": "Impulse Module",
+          "original_text": "Mana cost: {R}\nType: Artifact\nAdvance {1}{R}{R} *(Cast this for {1}{R}{R} to advance it as it enters. {1}{R}{R}: Advance this as a sorcery.)*\nWhenever Impulse Module enters or advances, put a charge counter on it, then exile a card from the top of your library for each charge counter on it. Until your next turn, you may play one of those cards.",
+          "executable_text": "Mana cost: {R}\nType: Artifact\nYou may pay {1}{R}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{R}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent enters or this permanent performs the advance action, put a charge counter on it, then exile a card from the top of your library for each charge counter on it. Until your next turn, you may play one of those cards.",
+          "mana_cost": "{R}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Impulse Module_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Impulse Module",
+              "original_text": "Mana cost: {R}\nType: Artifact\nAdvance {1}{R}{R} *(Cast this for {1}{R}{R} to advance it as it enters. {1}{R}{R}: Advance this as a sorcery.)*\nWhenever Impulse Module enters or advances, put a charge counter on it, then exile a card from the top of your library for each charge counter on it. Until your next turn, you may play one of those cards."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Impulse Module",
+              "executable_text": "Mana cost: {R}\nType: Artifact\nYou may pay {1}{R}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{R}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent enters or this permanent performs the advance action, put a charge counter on it, then exile a card from the top of your library for each charge counter on it. Until your next turn, you may play one of those cards.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {1}{R}{R}\nWhenever Impulse Module enters or advances, put a charge counter on it, then exile a card from the top of your library for each charge counter on it. Until your next turn, you may play one of those cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {1}{R}{R}\nWhenever Impulse Module enters or advances, put a charge counter on it, then exile a card from the top of your library for each charge counter on it. Until your next turn, you may play one of those cards.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-781",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3}{W}{W} to advance it as it enters. {3}{W}{W}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Inconspicuous Loxodon"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Agent E Reminder_KXP",
+          "name": "Inconspicuous Loxodon",
+          "original_text": "Mana cost: {1}{W}\nType: Legendary Artifact Creature — Elephant Rogue\nPower/Toughness: 5/5\n*(Use only while enchanted or equipped.)*\nAdvance {3}{W}{W} *(Cast this for {3}{W}{W} to advance it as it enters. {3}{W}{W}: Advance this as a sorcery.)*\nWhenever Agent E advances, search your library for an Equipment card, put it onto the battlefield, then shuffle.",
+          "executable_text": "Mana cost: {1}{W}\nType: Legendary Artifact Creature — Elephant Rogue\nPower/Toughness: 5/5\nYou may pay {3}{W}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{W}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever Agent E advances, search your library for an Equipment card, put it onto the battlefield, then shuffle.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Legendary Artifact Creature — Elephant Rogue",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Agent E Reminder_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inconspicuous Loxodon",
+              "original_text": "Mana cost: {1}{W}\nType: Legendary Artifact Creature — Elephant Rogue\nPower/Toughness: 5/5\n*(Use only while enchanted or equipped.)*\nAdvance {3}{W}{W} *(Cast this for {3}{W}{W} to advance it as it enters. {3}{W}{W}: Advance this as a sorcery.)*\nWhenever Agent E advances, search your library for an Equipment card, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Inconspicuous Loxodon",
+              "executable_text": "Mana cost: {1}{W}\nType: Legendary Artifact Creature — Elephant Rogue\nPower/Toughness: 5/5\nYou may pay {3}{W}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{W}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever Agent E advances, search your library for an Equipment card, put it onto the battlefield, then shuffle.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}{W}{W}\nWhenever Agent E advances, search your library for an Equipment card, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}{W}{W}\nWhenever Agent E advances, search your library for an Equipment card, put it onto the battlefield, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-782",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {4}{R} to advance it as it enters. {4}{R}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Intruder Drone"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Intruder Drone_KXP",
+          "name": "Intruder Drone",
+          "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/2\nAdvance {4}{R} *(Cast this for {4}{R} to advance it as it enters. {4}{R}: Advance this as a sorcery.)*\nWhenever Intruder Drone advances, exile the top card of your library. You may cast a spell exiled with Intruder Drone with mana value 3 or less without paying its mana cost.",
+          "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/2\nYou may pay {4}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{4}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, exile the top card of your library. You may cast a spell exiled with Intruder Drone with mana value 3 or less without paying its mana cost.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Intruder Drone_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Intruder Drone",
+              "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/2\nAdvance {4}{R} *(Cast this for {4}{R} to advance it as it enters. {4}{R}: Advance this as a sorcery.)*\nWhenever Intruder Drone advances, exile the top card of your library. You may cast a spell exiled with Intruder Drone with mana value 3 or less without paying its mana cost."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Intruder Drone",
+              "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/2\nYou may pay {4}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{4}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, exile the top card of your library. You may cast a spell exiled with Intruder Drone with mana value 3 or less without paying its mana cost.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {4}{R}\nWhenever Intruder Drone advances, exile the top card of your library. You may cast a spell exiled with Intruder Drone with mana value 3 or less without paying its mana cost."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {4}{R}\nWhenever Intruder Drone advances, exile the top card of your library. You may cast a spell exiled with Intruder Drone with mana value 3 or less without paying its mana cost.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-783",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {2} to advance it as it enters. {2}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Jet Pack"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Jet Pack_KXP",
+          "name": "Jet Pack",
+          "original_text": "Mana cost: {1}\nType: Artifact — Equipment\nAdvance {2} *(Cast this for {2} to advance it as it enters. {2}: Advance this as a sorcery.)*\nEquipped creature gets +X/+0 and has flying, where X is the number of times it and Jet Pack have advanced this turn.\nEquip {1}",
+          "executable_text": "Mana cost: {1}\nType: Artifact — Equipment\nYou may pay {2} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{2}: Have this permanent perform the advance action. Activate only as a sorcery.\nEquipped creature gets +X/+0 and has flying, where X is the number of times it has performed the advance action this turn plus the number of times this permanent has performed the advance action this turn.\nEquip {1}",
+          "mana_cost": "{1}",
+          "type_line": "Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Jet Pack_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Jet Pack",
+              "original_text": "Mana cost: {1}\nType: Artifact — Equipment\nAdvance {2} *(Cast this for {2} to advance it as it enters. {2}: Advance this as a sorcery.)*\nEquipped creature gets +X/+0 and has flying, where X is the number of times it and Jet Pack have advanced this turn.\nEquip {1}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Jet Pack",
+              "executable_text": "Mana cost: {1}\nType: Artifact — Equipment\nYou may pay {2} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{2}: Have this permanent perform the advance action. Activate only as a sorcery.\nEquipped creature gets +X/+0 and has flying, where X is the number of times it has performed the advance action this turn plus the number of times this permanent has performed the advance action this turn.\nEquip {1}",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {2}\nEquipped creature gets +X/+0 and has flying, where X is the number of times it and Jet Pack have advanced this turn.\nEquip {1}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {2}\nEquipped creature gets +X/+0 and has flying, where X is the number of times it and Jet Pack have advanced this turn.\nEquip {1}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-784",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {1}{B} to advance it as it enters. {1}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Scarcrawler"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Scarcrawler_KXP",
+          "name": "Scarcrawler",
+          "original_text": "Mana cost: {1}{B}\nType: Artifact Creature — Mutant\nPower/Toughness: 2/2\nAdvance {1}{B} *(Cast this for {1}{B} to advance it as it enters. {1}{B}: Advance this as a sorcery.)*\nWhenever Scarcrawler advances, you lose life equal to its power, then put a +1/+1 counter on it.",
+          "executable_text": "Mana cost: {1}{B}\nType: Artifact Creature — Mutant\nPower/Toughness: 2/2\nYou may pay {1}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, you lose life equal to its power, then put a +1/+1 counter on it.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Artifact Creature — Mutant",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Scarcrawler_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scarcrawler",
+              "original_text": "Mana cost: {1}{B}\nType: Artifact Creature — Mutant\nPower/Toughness: 2/2\nAdvance {1}{B} *(Cast this for {1}{B} to advance it as it enters. {1}{B}: Advance this as a sorcery.)*\nWhenever Scarcrawler advances, you lose life equal to its power, then put a +1/+1 counter on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scarcrawler",
+              "executable_text": "Mana cost: {1}{B}\nType: Artifact Creature — Mutant\nPower/Toughness: 2/2\nYou may pay {1}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{1}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, you lose life equal to its power, then put a +1/+1 counter on it.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {1}{B}\nWhenever Scarcrawler advances, you lose life equal to its power, then put a +1/+1 counter on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {1}{B}\nWhenever Scarcrawler advances, you lose life equal to its power, then put a +1/+1 counter on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-785",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {4}{B} to advance it as it enters. {4}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Shearing Vampire"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Shearing Vampire_KXP",
+          "name": "Shearing Vampire",
+          "original_text": "Mana cost: {2}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/2\nAdvance {4}{B} *(Cast this for {4}{B} to advance it as it enters. {4}{B}: Advance this as a sorcery.)*\nWhenever Shearing Vampire advances, target player discards a card.",
+          "executable_text": "Mana cost: {2}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/2\nYou may pay {4}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{4}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, target player discards a card.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Artifact Creature — Vampire Rogue",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Shearing Vampire_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shearing Vampire",
+              "original_text": "Mana cost: {2}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/2\nAdvance {4}{B} *(Cast this for {4}{B} to advance it as it enters. {4}{B}: Advance this as a sorcery.)*\nWhenever Shearing Vampire advances, target player discards a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Shearing Vampire",
+              "executable_text": "Mana cost: {2}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/2\nYou may pay {4}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{4}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, target player discards a card.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {4}{B}\nWhenever Shearing Vampire advances, target player discards a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {4}{B}\nWhenever Shearing Vampire advances, target player discards a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-786",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3}{R} to advance it as it enters. {3}{R}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Skalorian Orbguard"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Skalorian Orbguard_KXP",
+          "name": "Skalorian Orbguard",
+          "original_text": "Mana cost: {1}{R}\nType: Artifact Creature — Orb\nPower/Toughness: 0/2\nAdvance {3}{R} *(Cast this for {3}{R} to advance it as it enters. {3}{R}: Advance this as a sorcery.)*\nWhenever another artifact creature you control enters or a permanent you control advances, Skalorian Orbguard deals 1 damage to any target.",
+          "executable_text": "Mana cost: {1}{R}\nType: Artifact Creature — Orb\nPower/Toughness: 0/2\nYou may pay {3}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever another artifact creature you control enters or a permanent you control performs the advance action, Skalorian Orbguard deals 1 damage to any target.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Artifact Creature — Orb",
+          "power": "0",
+          "toughness": "2",
+          "source_card_key": "Skalorian Orbguard_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skalorian Orbguard",
+              "original_text": "Mana cost: {1}{R}\nType: Artifact Creature — Orb\nPower/Toughness: 0/2\nAdvance {3}{R} *(Cast this for {3}{R} to advance it as it enters. {3}{R}: Advance this as a sorcery.)*\nWhenever another artifact creature you control enters or a permanent you control advances, Skalorian Orbguard deals 1 damage to any target."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Skalorian Orbguard",
+              "executable_text": "Mana cost: {1}{R}\nType: Artifact Creature — Orb\nPower/Toughness: 0/2\nYou may pay {3}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever another artifact creature you control enters or a permanent you control performs the advance action, Skalorian Orbguard deals 1 damage to any target.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}{R}\nWhenever another artifact creature you control enters or a permanent you control advances, Skalorian Orbguard deals 1 damage to any target."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}{R}\nWhenever another artifact creature you control enters or a permanent you control advances, Skalorian Orbguard deals 1 damage to any target.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-787",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3}{R}{R} to advance it as it enters. {3}{R}{R}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Skiviar Scraplord"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Skiviar Scraplord_KXP",
+          "name": "Skiviar Scraplord",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Artifact Creature — Dragon\nPower/Toughness: 2/2\nAdvance {3}{R}{R} *(Cast this for {3}{R}{R} to advance it as it enters. {3}{R}{R}: Advance this as a sorcery.)*\nFlying, haste\nWhenever Skiviar Scraplord advances, put a +1/+1 counter on it.",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Artifact Creature — Dragon\nPower/Toughness: 2/2\nYou may pay {3}{R}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{R}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nFlying, haste\nWhenever this permanent performs the advance action, put a +1/+1 counter on it.",
+          "mana_cost": "{1}{R}{R}",
+          "type_line": "Artifact Creature — Dragon",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Skiviar Scraplord_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skiviar Scraplord",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Artifact Creature — Dragon\nPower/Toughness: 2/2\nAdvance {3}{R}{R} *(Cast this for {3}{R}{R} to advance it as it enters. {3}{R}{R}: Advance this as a sorcery.)*\nFlying, haste\nWhenever Skiviar Scraplord advances, put a +1/+1 counter on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Skiviar Scraplord",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Artifact Creature — Dragon\nPower/Toughness: 2/2\nYou may pay {3}{R}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{R}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nFlying, haste\nWhenever this permanent performs the advance action, put a +1/+1 counter on it.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}{R}{R}\nFlying, haste\nWhenever Skiviar Scraplord advances, put a +1/+1 counter on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}{R}{R}\nFlying, haste\nWhenever Skiviar Scraplord advances, put a +1/+1 counter on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-788",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {5}{B}{B} to advance it as it enters. {5}{B}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Sluiceway Collector"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sluiceway Collector_KXP",
+          "name": "Sluiceway Collector",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Artifact Creature — Spider\nPower/Toughness: 5/4\nAdvance {5}{B}{B} *(Cast this for {5}{B}{B} to advance it as it enters. {5}{B}{B}: Advance this as a sorcery.)*\nWhenever Sluiceway Collector advances, put a permanent card from a graveyard onto the battlefield under your control.",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Artifact Creature — Spider\nPower/Toughness: 5/4\nYou may pay {5}{B}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{5}{B}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, put a permanent card from a graveyard onto the battlefield under your control.",
+          "mana_cost": "{3}{B}{B}",
+          "type_line": "Artifact Creature — Spider",
+          "power": "5",
+          "toughness": "4",
+          "source_card_key": "Sluiceway Collector_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sluiceway Collector",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Artifact Creature — Spider\nPower/Toughness: 5/4\nAdvance {5}{B}{B} *(Cast this for {5}{B}{B} to advance it as it enters. {5}{B}{B}: Advance this as a sorcery.)*\nWhenever Sluiceway Collector advances, put a permanent card from a graveyard onto the battlefield under your control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sluiceway Collector",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Artifact Creature — Spider\nPower/Toughness: 5/4\nYou may pay {5}{B}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{5}{B}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, put a permanent card from a graveyard onto the battlefield under your control.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {5}{B}{B}\nWhenever Sluiceway Collector advances, put a permanent card from a graveyard onto the battlefield under your control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {5}{B}{B}\nWhenever Sluiceway Collector advances, put a permanent card from a graveyard onto the battlefield under your control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-789",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {2}{R} to advance it as it enters. {2}{R}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Soulblade Warrior"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Soulblade Warrior_KXP",
+          "name": "Soulblade Warrior",
+          "original_text": "Mana cost: {R}\nType: Artifact Creature — Human Spirit Warrior\nPower/Toughness: 1/1\nAdvance {2}{R} *(Cast this for {2}{R} to advance it as it enters. {2}{R}: Advance this as a sorcery.)*\nHaste\nWhenever Soulblade Warrior advances, it gets +2/+0 until end of turn.",
+          "executable_text": "Mana cost: {R}\nType: Artifact Creature — Human Spirit Warrior\nPower/Toughness: 1/1\nYou may pay {2}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{2}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nHaste\nWhenever this permanent performs the advance action, it gets +2/+0 until end of turn.",
+          "mana_cost": "{R}",
+          "type_line": "Artifact Creature — Human Spirit Warrior",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Soulblade Warrior_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Soulblade Warrior",
+              "original_text": "Mana cost: {R}\nType: Artifact Creature — Human Spirit Warrior\nPower/Toughness: 1/1\nAdvance {2}{R} *(Cast this for {2}{R} to advance it as it enters. {2}{R}: Advance this as a sorcery.)*\nHaste\nWhenever Soulblade Warrior advances, it gets +2/+0 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Soulblade Warrior",
+              "executable_text": "Mana cost: {R}\nType: Artifact Creature — Human Spirit Warrior\nPower/Toughness: 1/1\nYou may pay {2}{R} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{2}{R}: Have this permanent perform the advance action. Activate only as a sorcery.\nHaste\nWhenever this permanent performs the advance action, it gets +2/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {2}{R}\nHaste\nWhenever Soulblade Warrior advances, it gets +2/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {2}{R}\nHaste\nWhenever Soulblade Warrior advances, it gets +2/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-790",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3}{B}{B} to advance it as it enters. {3}{B}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Tireless Archivist"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Tireless Archivist_KXP",
+          "name": "Tireless Archivist",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Advisor\nPower/Toughness: 3/3\nAdvance {3}{B}{B} *(Cast this for {3}{B}{B} to advance it as it enters. {3}{B}{B}: Advance this as a sorcery.)*\nWhenever Tireless Archivist advances, search your library for a card, put it into your hand, then shuffle.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Advisor\nPower/Toughness: 3/3\nYou may pay {3}{B}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{B}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, search your library for a card, put it into your hand, then shuffle.",
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Artifact Creature — Advisor",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Tireless Archivist_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tireless Archivist",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Advisor\nPower/Toughness: 3/3\nAdvance {3}{B}{B} *(Cast this for {3}{B}{B} to advance it as it enters. {3}{B}{B}: Advance this as a sorcery.)*\nWhenever Tireless Archivist advances, search your library for a card, put it into your hand, then shuffle."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Tireless Archivist",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Advisor\nPower/Toughness: 3/3\nYou may pay {3}{B}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{B}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, search your library for a card, put it into your hand, then shuffle.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}{B}{B}\nWhenever Tireless Archivist advances, search your library for a card, put it into your hand, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}{B}{B}\nWhenever Tireless Archivist advances, search your library for a card, put it into your hand, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-791",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {6}{W}{W} to advance it as it enters. {6}{W}{W}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Valera, Constructed Angel"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Valera, Constructed Angel_KXP",
+          "name": "Valera, Constructed Angel",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Legendary Artifact Creature — Angel\nPower/Toughness: 4/4\nAdvance {6}{W}{W} *(Cast this for {6}{W}{W} to advance it as it enters. {6}{W}{W}: Advance this as a sorcery.)*\nFlying, vigilance, lifelink\nWhenever Valera, Constructed Angel advances, destroy all nonartifact creatures.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Legendary Artifact Creature — Angel\nPower/Toughness: 4/4\nYou may pay {6}{W}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{6}{W}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nFlying, vigilance, lifelink\nWhenever this permanent performs the advance action, destroy all nonartifact creatures.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Legendary Artifact Creature — Angel",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Valera, Constructed Angel_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Valera, Constructed Angel",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Legendary Artifact Creature — Angel\nPower/Toughness: 4/4\nAdvance {6}{W}{W} *(Cast this for {6}{W}{W} to advance it as it enters. {6}{W}{W}: Advance this as a sorcery.)*\nFlying, vigilance, lifelink\nWhenever Valera, Constructed Angel advances, destroy all nonartifact creatures."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Valera, Constructed Angel",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Legendary Artifact Creature — Angel\nPower/Toughness: 4/4\nYou may pay {6}{W}{W} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{6}{W}{W}: Have this permanent perform the advance action. Activate only as a sorcery.\nFlying, vigilance, lifelink\nWhenever this permanent performs the advance action, destroy all nonartifact creatures.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {6}{W}{W}\nFlying, vigilance, lifelink\nWhenever Valera, Constructed Angel advances, destroy all nonartifact creatures."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {6}{W}{W}\nFlying, vigilance, lifelink\nWhenever Valera, Constructed Angel advances, destroy all nonartifact creatures.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-792",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {4}{B}{B} to advance it as it enters. {4}{B}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Valinov Siphoner"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Valinov Siphoner_KXP",
+          "name": "Valinov Siphoner",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/3\nAdvance {4}{B}{B} *(Cast this for {4}{B}{B} to advance it as it enters. {4}{B}{B}: Advance this as a sorcery.)*\nFlying\nWhenever Valinov Siphoner advances, target player loses 2 life and you gain 2 life.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/3\nYou may pay {4}{B}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{4}{B}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nFlying\nWhenever this permanent performs the advance action, target player loses 2 life and you gain 2 life.",
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Artifact Creature — Vampire Rogue",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Valinov Siphoner_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Valinov Siphoner",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/3\nAdvance {4}{B}{B} *(Cast this for {4}{B}{B} to advance it as it enters. {4}{B}{B}: Advance this as a sorcery.)*\nFlying\nWhenever Valinov Siphoner advances, target player loses 2 life and you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Valinov Siphoner",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 2/3\nYou may pay {4}{B}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{4}{B}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nFlying\nWhenever this permanent performs the advance action, target player loses 2 life and you gain 2 life.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {4}{B}{B}\nFlying\nWhenever Valinov Siphoner advances, target player loses 2 life and you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {4}{B}{B}\nFlying\nWhenever Valinov Siphoner advances, target player loses 2 life and you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-793",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3}{R}{W}{B} to advance it as it enters. {3}{R}{W}{B}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Valinov Vandal"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Valinov Vandal_KXP",
+          "name": "Valinov Vandal",
+          "original_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 4/3\nAdvance {3}{R}{W}{B} *(Cast this for {3}{R}{W}{B} to advance it as it enters. {3}{R}{W}{B}: Advance this as a sorcery.)*\nWhenever Valinov Vandal advances, target opponent sacrifices a permanent. Put a +1/+1 counter on Valinov Vandal.",
+          "executable_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 4/3\nYou may pay {3}{R}{W}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{R}{W}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, target opponent sacrifices a permanent. Put a +1/+1 counter on Valinov Vandal.",
+          "mana_cost": "{R}{W}{B}",
+          "type_line": "Artifact Creature — Vampire Rogue",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Valinov Vandal_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Valinov Vandal",
+              "original_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 4/3\nAdvance {3}{R}{W}{B} *(Cast this for {3}{R}{W}{B} to advance it as it enters. {3}{R}{W}{B}: Advance this as a sorcery.)*\nWhenever Valinov Vandal advances, target opponent sacrifices a permanent. Put a +1/+1 counter on Valinov Vandal."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Valinov Vandal",
+              "executable_text": "Mana cost: {R}{W}{B}\nType: Artifact Creature — Vampire Rogue\nPower/Toughness: 4/3\nYou may pay {3}{R}{W}{B} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}{R}{W}{B}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, target opponent sacrifices a permanent. Put a +1/+1 counter on Valinov Vandal.",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}{R}{W}{B}\nWhenever Valinov Vandal advances, target opponent sacrifices a permanent. Put a +1/+1 counter on Valinov Vandal."
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}{R}{W}{B}\nWhenever Valinov Vandal advances, target opponent sacrifices a permanent. Put a +1/+1 counter on Valinov Vandal.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    },
+    {
+      "id": "msem-794",
+      "keyword": "Advance",
+      "original_reminder": "Cast this for {3} to advance it as it enters. {3}: Advance this as a sorcery.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{Cost}: Have this permanent perform the advance action. Activate only as a sorcery.",
+      "source_cards": [
+        "Wastes Scrambler"
+      ],
+      "rule_reference": "702.264.",
+      "rule_text": [
+        {
+          "name": "702.264a",
+          "rule": "Advance is a keyword ability that represents a static ability that functions while the spell with advance is on the stack, and an activated ability. “Advance [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, as the permanent it becomes enters the battlefield, it advances” and “[cost]: This permanent advances. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.264b",
+          "rule": "“Advances” is a designation that has no rules meaning other than to act as a marker that other spells and abilities can identify. The number of times a permanent has advanced is not part of the permanent's copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.264c",
+          "rule": "If a triggered ability refers to the mana that was spent to advance a permanent, it means the mana used to cast that spell if that ability was triggered by the creature advancing as a result of being cast for its advance ability, the mana used to activate its advance ability if that ability was triggered by the creature advancing as a result of its advanced activated ability resolving, and nothing if it is triggered in some other manner.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Wastes Scrambler_KXP",
+          "name": "Wastes Scrambler",
+          "original_text": "Mana cost: {1}\nType: Artifact — Vehicle\nPower/Toughness: 2/2\nAdvance {3} *(Cast this for {3} to advance it as it enters. {3}: Advance this as a sorcery.)*\nWhenever Wastes Scrambler advances, put your choice of a +1/+1, first strike, menace, trample, or vigilance counter on it. If {R}{W}{B} was spent to advance it, repeat this process twice.\nCrew 1",
+          "executable_text": "Mana cost: {1}\nType: Artifact — Vehicle\nPower/Toughness: 2/2\nYou may pay {3} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, put your choice of a +1/+1, first strike, menace, trample, or vigilance counter on it. If {R}{W}{B} was spent to perform the advance action, repeat this process twice.\nCrew 1",
+          "mana_cost": "{1}",
+          "type_line": "Artifact — Vehicle",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Wastes Scrambler_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wastes Scrambler",
+              "original_text": "Mana cost: {1}\nType: Artifact — Vehicle\nPower/Toughness: 2/2\nAdvance {3} *(Cast this for {3} to advance it as it enters. {3}: Advance this as a sorcery.)*\nWhenever Wastes Scrambler advances, put your choice of a +1/+1, first strike, menace, trample, or vigilance counter on it. If {R}{W}{B} was spent to advance it, repeat this process twice.\nCrew 1"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wastes Scrambler",
+              "executable_text": "Mana cost: {1}\nType: Artifact — Vehicle\nPower/Toughness: 2/2\nYou may pay {3} rather than pay this spell's mana cost.\nAs this permanent enters, if its advance cost was paid, have this permanent perform the advance action.\n{3}: Have this permanent perform the advance action. Activate only as a sorcery.\nWhenever this permanent performs the advance action, put your choice of a +1/+1, first strike, menace, trample, or vigilance counter on it. If {R}{W}{B} was spent to perform the advance action, repeat this process twice.\nCrew 1",
+              "custom_keyword_identities": [
+                "advance"
+              ],
+              "custom_keyword_payments": [
+                "advance"
+              ],
+              "original_display_text": "Advance {3}\nWhenever Wastes Scrambler advances, put your choice of a +1/+1, first strike, menace, trample, or vigilance counter on it. If {R}{W}{B} was spent to advance it, repeat this process twice.\nCrew 1"
+            }
+          ],
+          "custom_keyword_identities": [
+            "advance"
+          ],
+          "custom_keyword_payments": [
+            "advance"
+          ],
+          "original_display_text": "Advance {3}\nWhenever Wastes Scrambler advances, put your choice of a +1/+1, first strike, menace, trample, or vigilance counter on it. If {R}{W}{B} was spent to advance it, repeat this process twice.\nCrew 1",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires a repeatable noncopiable per-object advance count and named event, plus payment-linked entry action. No counter substitution is equivalent."
+    }
+  ]
+}

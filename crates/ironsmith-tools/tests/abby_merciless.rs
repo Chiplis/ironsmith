@@ -120,7 +120,7 @@ fn abby_normal_cast_creates_tokens_for_caster_then_enters_for_opponent() {
                             ManaSymbol::Generic(paid),
                         ])),
                         condition: None,
-                        prototype_power_toughness: None,
+                        prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
                     },
                     ironsmith::grant_registry::GrantSource::Effect {
                         source_id: source,

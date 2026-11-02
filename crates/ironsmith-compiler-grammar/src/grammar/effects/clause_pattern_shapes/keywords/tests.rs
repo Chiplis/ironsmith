@@ -168,3 +168,26 @@ fn explicit_exchange_has_two_complete_filter_domains() {
         "Simultaneously, all phased-out creatures phase in and all creatures with phasing.",
     ] {assert!(parse_keyword_mechanic_tokens(&lex_line(text,0).unwrap()).is_none(),"{text}");}
 }
+
+#[test]
+fn phase_hold_owns_future_spell_ordinal_duration() {
+    for (text, ordinal) in [("This creature phases out until you cast your second spell in a turn.", 2),
+        ("All creatures phase out until you cast your third spell in a turn.", 3)] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(matches!(parse_keyword_mechanic_tokens(&tokens), Some(KeywordMechanicShape::Phase {
+            until_controller_casts_nth_spell: Some(n), .. }) if n == ordinal));
+    }
+    let tokens = lex_line("This creature phases out until an opponent casts a spell.", 0).unwrap();
+    assert!(parse_keyword_mechanic_tokens(&tokens).is_none());
+}
+
+#[test]
+fn phase_out_owns_end_of_turn_duration_and_preserves_normal_or_source_durations() {
+    for text in ["This permanent phases out until end of turn.","All creatures phase out until end of turn."] {
+        let tokens=lex_line(text,0).unwrap();assert!(matches!(parse_keyword_mechanic_tokens(&tokens),Some(KeywordMechanicShape::Phase{direction:PhaseDirectionShape::Out,until_end_of_turn:true,..})),"{text}");
+    }
+    let tokens=lex_line("That creature phases out.",0).unwrap();assert!(matches!(parse_keyword_mechanic_tokens(&tokens),Some(KeywordMechanicShape::Phase{until_end_of_turn:false,..})));
+    for text in ["This permanent phases in until end of turn.","This permanent phases out until end of turn and draws a card."] {
+        let tokens=lex_line(text,0).unwrap();assert!(parse_keyword_mechanic_tokens(&tokens).is_none(),"{text}");
+    }
+}

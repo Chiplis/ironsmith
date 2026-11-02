@@ -212,10 +212,10 @@ fn held_trigger_matching_keeps_real_receipt_proof_across_iterator_continuation()
         assert!(outcome.events.iter().filter(|event| event.downcast::<crate::events::LifeGainEvent>().is_some())
             .all(|event| !event.triggers_captured()));
         game.effect_store.trigger_matching_holds -= 1;
-        crate::effects::capture_triggers_before_added_program(&mut game, &ctx, None, outcome.events.iter_mut()).unwrap();
+        crate::effects::capture_triggers_before_added_program(&mut game, &mut ctx, None, outcome.events.iter_mut()).unwrap();
         assert_eq!(game.take_pending_trigger_entries().len(), 1);
         assert_eq!(game.turn_store.turn_history.total_life_gained_for_players(&[alice]), 2);
-        crate::effects::capture_triggers_before_added_program(&mut game, &ctx, None, outcome.events.iter_mut()).unwrap();
+        crate::effects::capture_triggers_before_added_program(&mut game, &mut ctx, None, outcome.events.iter_mut()).unwrap();
         assert!(game.take_pending_trigger_entries().is_empty());
     }
 }

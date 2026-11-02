@@ -1,3 +1,5 @@
+#[path = "chosen_setup.rs"]
+mod chosen_setup;
 use crate::word_primitives::WordWindows as _;
 #[cfg(test)]
 use ironsmith_compiler::ParseCardText;
@@ -637,6 +639,9 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     preprocessed: &PreprocessedDocument,
     tokens: &[OwnedLexToken],
 ) -> bool {
+    if crate::grammar::activation_restrictions::parse_filtered_unpreventability(tokens).is_some() {
+        return false;
+    }
     let builder_has_nonpermanent_spell_type =
         preprocessed.card.card_types_ref().iter().any(|card_type| {
             matches!(
@@ -660,6 +665,18 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     let is_nonpermanent_spell =
         builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type;
     if crate::grammar::abilities::is_shuffle_into_library_from_graveyard_line_lexed(tokens) {
+        return false;
+    }
+    // An unconditional definition of this card's own subtypes remains a
+    // static ability even on an instant or sorcery (CR 604.3). The broad
+    // statement classifier also recognizes type assignments; it must not
+    // turn this rules-text definition into an instruction on resolution.
+    let (subtype_definition, _) = crate::word_claims::speculative(|| {
+        crate::keyword_static::parse_subject_are_card_types_in_addition_to_their_other_types_line(tokens)
+    });
+    if matches!(subtype_definition, Ok(Some(ref abilities))
+        if !abilities.is_empty() && abilities.iter().all(|ability|
+            ability.characteristic_defining_subtypes().is_some())) {
         return false;
     }
     let is_effect_redirect =
@@ -1272,6 +1289,9 @@ pub(crate) fn normalize_named_source_tokens_for_builder(
     card: &crate::card::CardBuilder,
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
+    // A whole keyword declaration has no proper-name source operand.
+    // In particular, a creature named Reach still has a Reach keyword line.
+    if parse_ability_line_lexed(tokens).is_some() { return None; }
     let subject = named_source_subject_for_builder(card);
     let aliases = aliases_for_builder(card);
     let all_words = alias_word_lists(&aliases);
@@ -1451,6 +1471,22 @@ fn replace_named_source_alias_tokens(
     }
     debug_assert_eq!(piece_tokens.len(), pieces.len());
 
+    // Explicit status names are opaque operands in the token-level owner
+    // too. String preprocessing may preserve their source spelling, then a
+    // token-native statement reader can run this alias pass independently.
+    let mut opaque_status_tokens=vec![false;tokens.len()];
+    for start in 0..tokens.len() {
+        if !tokens[start].is_word("the"){continue;}
+        let mut end=start+1;
+        while end<tokens.len()&&tokens[end].kind==TokenKind::Word {
+            if tokens[end].is_word("status") {
+                if end>start+1 {opaque_status_tokens[start+1..end].fill(true);}
+                break;
+            }
+            end+=1;
+        }
+    }
+
     let quoted_characteristic_pt_tokens = quoted_characteristic_pt_token_flags(tokens);
     let attachment_grant_replacements = quoted_attachment_grant_token_replacements(tokens);
 
@@ -1462,6 +1498,10 @@ fn replace_named_source_alias_tokens(
         if !source_alias_word_span_matches(&pieces, word_idx, &alias_words) {
             word_idx += 1;
             continue;
+        }
+        let first=piece_tokens[word_idx];let last=piece_tokens[word_idx+alias_words.len()-1];
+        if opaque_status_tokens[first..=last].iter().any(|opaque|*opaque) {
+            word_idx+=1;continue;
         }
         // A keyword's participle is rules vocabulary even when it also
         // matches the source's short-name alias.
@@ -1830,6 +1870,18 @@ fn source_alias_occurrence_is_rules_term_lexed(
         .then(|| pieces.get(start_word).map(|piece| piece.text))
         .flatten();
 
+    // A declared collection's grammar noun is not a short source alias.
+    // The registration header owns `collection with ...`, even if the card's
+    // abbreviated name happens to be Collection.
+    if matched_word == Some("collection") && next_word == Some("with") {
+        return true;
+    }
+
+    // The anaphoric instruction qualifier is not a short source name.
+    if matched_word == Some("way") && matches!(previous_word, Some("this" | "that")) {
+        return true;
+    }
+
     if (matched_word == Some("random") && previous_word == Some("at"))
         || (matched_word == Some("upkeep") && previous_word == Some("cumulative"))
     {
@@ -1857,6 +1909,19 @@ fn source_alias_occurrence_is_rules_term_lexed(
     if matched_word == Some("base") && matches!(next_word, Some("power" | "toughness")) {
         return true;
     }
+
+    // Quantity nouns in "an amount of ..." / "the number of ..." are
+    // operands of the surrounding rule, not abbreviated source names. Keep
+    // genuine short-name references ("Amount gets ...") available elsewhere.
+    if matches!(matched_word, Some("amount" | "number"))
+        && matches!(previous_word, Some("a" | "an" | "the" | "any" | "same" | "that" | "this"))
+        && (next_word == Some("of")
+            || (next_word == Some("equal")
+                && pieces.get(end_word + 1).is_some_and(|piece| piece.text == "to")))
+    {
+        return true;
+    }
+
 
     if matched_word == Some("starting")
         && pieces
@@ -3136,10 +3201,26 @@ fn try_parse_labeled_line_dispatch(
     line: &PreprocessedLine,
     allow_unsupported: bool,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let dispatch =
+    let mut dispatch =
         try_parse_labeled_line_dispatch_inner(preprocessed, idx, line, allow_unsupported)?;
-    if dispatch.is_some() {
+    if let Some(result) = &mut dispatch {
         claim_presentation_only_label(preprocessed, idx, line);
+        // This route is also called directly by labeled-line recognition,
+        // before the standard registry dispatch. Keep authored ownership
+        // here, before stripping the label from the triggered body.
+        let source_facts = crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+            &line.info.source_tokens,
+        );
+        for recognized in &mut result.lines {
+            if let RecognizedLine::Triggered(triggered) = recognized {
+                for name in &source_facts.ability_designations {
+                    let owned = &mut triggered.info.semantic_facts.ability_designations;
+                    if !owned.contains(name) {
+                        owned.push(name.clone());
+                    }
+                }
+            }
+        }
     }
     Ok(dispatch)
 }
@@ -4162,6 +4243,9 @@ fn split_activation_text_tokens_lexed(
     Some((cost_tokens.to_vec(), effect_tokens.to_vec()))
 }
 
+#[path = "optional_text_fragments.rs"]
+mod optional_text_fragments;
+
 fn rewrite_cleave_bracket_document(
     document: &PreprocessedDocument,
     remove_bracketed_text: bool,
@@ -4322,6 +4406,10 @@ fn parse_card_text_to_semantic_document(
         return Err(err);
     }
     context.replace_provenance(preprocessed.provenance.clone());
+    let optional_text_documents = optional_text_fragments::read(&preprocessed)?;
+    if let Some(plan) = &optional_text_documents {
+        preprocessed.items = plan.branches[0].items.clone();
+    }
     let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
         preprocessed.items.iter().filter_map(|item| match item {
             PreprocessedItem::Metadata(_) => None,
@@ -4404,10 +4492,19 @@ fn parse_card_text_to_semantic_document(
             recognized.lines.len()
         );
     }
+    let optional_text_recognized = optional_text_documents.map(|plan| {
+        let branches = plan.branches.into_iter().map(|branch| {
+            let mut variant_document = preprocessed.clone(); variant_document.items = branch.items;
+            let recognized = recognize_document_with_context(document_context.child(ParseScopeKind::OptionalTextVariant), &variant_document)?;
+            Ok(crate::model::OptionalTextVariantBranch { removed: branch.removed, items: recognized.lines })
+        }).collect::<Result<Vec<_>, CardTextError>>()?;
+        Ok::<_, CardTextError>(crate::model::OptionalTextVariants { labels: plan.labels, branches, casting_payment: plan.casting_payment })
+    }).transpose()?;
     let semantic = assemble_document_with_symbols(
         preprocessed,
         recognized,
         cleave_recognized,
+        optional_text_recognized,
         semantic_facts,
         allow_unsupported,
         context.symbols().clone(),
@@ -4724,6 +4821,16 @@ fn dispatch_remaining_preprocessed_line(
         {
             previous.parse_tokens.extend(line.tokens.clone());
         }
+        return Ok(idx + 1);
+    }
+    // This native ability heading is semantic syntax, not a presentation
+    // label. Claim it before labeled-line and ordinary statement fast paths
+    // can discard the heading while accepting only its effect body.
+    if let Some(parsed) = crate::clause_support::parse_externally_triggered_line(&line.tokens)? {
+        lines.push(RecognizedLine::Static(RecognizedStaticLine {
+            info: line.info.clone(), parse_tokens: line.tokens.clone(),
+            chosen_option: None, parsed: Some(Box::new(parsed)),
+        }));
         return Ok(idx + 1);
     }
     if let Some(next_idx) = try_push_labeled_line_dispatch(
@@ -5435,6 +5542,13 @@ fn try_push_complete_typed_static_line(
         // label before semantic assembly.
         return Ok(false);
     }
+    if let Some(ability) = chosen_setup::parse(&line.tokens)? {
+        lines.push(RecognizedLine::Static(RecognizedStaticLine {
+            info: line.info.clone(), parse_tokens: line.tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbilities(vec![ability.into()]))),
+        }));
+        return Ok(true);
+    }
     if super::grammar::structure::classify_static_line_family_lexed(&line.tokens)
         != Some(super::grammar::structure::StaticLineFamily::GrantedQuotedAbility)
     {
@@ -5617,6 +5731,11 @@ fn try_push_complete_typed_statement(
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
+    // This front door runs before line-family dispatch. A complete passive
+    // rule cannot become a one-shot effect through the broad action grammar.
+    if crate::grammar::activation_restrictions::parse_filtered_unpreventability(&line.tokens).is_some() {
+        return Ok(false);
+    }
     // Cumulative upkeep owns the entire payment instruction. Token/effect
     // leaves can recognize its body, but must not turn the keyword into a
     // standalone spell effect before keyword-line dispatch runs.
@@ -6292,6 +6411,7 @@ fn assemble_document(
         preprocessed,
         recognized,
         cleave_recognized,
+        None,
         semantic_facts,
         allow_unsupported,
         crate::model::symbols::SymbolTable::default(),
@@ -6302,6 +6422,7 @@ fn assemble_document_with_symbols(
     preprocessed: PreprocessedDocument,
     recognized: RecognizedDocument,
     cleave_recognized: Option<RecognizedDocument>,
+    optional_text_recognized: Option<crate::model::OptionalTextVariants<RecognizedLine>>,
     semantic_facts: super::ir::DocumentSemanticFacts,
     allow_unsupported: bool,
     symbols: crate::model::symbols::SymbolTable,
@@ -6309,6 +6430,18 @@ fn assemble_document_with_symbols(
     // Assembly parses the recognized lines' effects: keys minted for a line bind
     // in the scope recognition opened for it.
     let symbols = std::cell::RefCell::new(symbols);
+    let optional_text_variants = optional_text_recognized.map(|plan| {
+        let branches = plan.branches.into_iter().map(|branch| {
+            let mut items = Vec::new();
+            for line in branch.items {
+                if matches!(&line, RecognizedLine::Metadata(_)) { continue; }
+                let _references = line_reference_scope(&symbols, &line);
+                items.push(assemble_non_metadata_line(line, allow_unsupported)?);
+            }
+            Ok(crate::model::OptionalTextVariantBranch { removed: branch.removed, items })
+        }).collect::<Result<Vec<_>, CardTextError>>()?;
+        Ok::<_, CardTextError>(crate::model::OptionalTextVariants { labels: plan.labels, branches, casting_payment: plan.casting_payment })
+    }).transpose()?;
     let overload_items = semantic_facts
         .overload_rewrite
         .as_ref()
@@ -6413,6 +6546,7 @@ fn assemble_document_with_symbols(
         items,
         overload_items,
         cleave_items,
+        optional_text_variants,
         allow_unsupported,
     })
 }
@@ -6775,6 +6909,22 @@ mod tests {
             PreprocessedItem::Line(line) => line,
             other => panic!("expected preprocessed line, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn nonpermanent_source_subtype_definition_is_static_not_a_resolution_instruction() -> Result<(), CardTextError> {
+        for kind in [CardType::Instant, CardType::Sorcery] {
+            let card = CardBuilder::new(CardId::new(), "Source subtype definition").card_types(vec![kind]);
+            let document = preprocess_document(card, "This card is an Arcane in addition to its other types.")?;
+            let recognized = super::recognize_document(&document, false)?;
+            assert!(matches!(recognized.lines.as_slice(), [RecognizedLine::Static(_)]), "{recognized:#?}");
+        }
+        // A recipient's type change remains an ordinary spell instruction.
+        let card = CardBuilder::new(CardId::new(), "Recipient type change").card_types(vec![CardType::Sorcery]);
+        let document = preprocess_document(card, "Target creature becomes a Frog until end of turn.")?;
+        let recognized = super::recognize_document(&document, false)?;
+        assert!(matches!(recognized.lines.as_slice(), [RecognizedLine::Statement(_)]), "{recognized:#?}");
+        Ok(())
     }
 
     #[test]
@@ -9260,6 +9410,20 @@ mod tests {
     }
 
     #[test]
+    fn named_source_rewrite_preserves_quantity_nouns_without_disabling_real_source_references() {
+        for (alias, text) in [
+            ("amount", "Whenever you perform the fund action with an amount of 2 or more, draw a card."),
+            ("number", "Draw a number of cards equal to the number of creatures you control."),
+            ("amount", "You gain an amount equal to that creature's power."),
+        ] {
+            assert_eq!(replace_named_source_aliases(text, alias, "this enchantment"), text.to_lowercase());
+            assert_eq!(replace_named_source_aliases_from_set(text, alias, "this enchantment", &[alias.to_string()], false), text.to_lowercase());
+        }
+        assert_eq!(replace_named_source_aliases("Amount gets +1/+1.", "amount", "this creature"), "this creature gets +1/+1.");
+        assert_eq!(replace_named_source_aliases("Put a counter on Number.", "number", "this artifact"), "put a counter on this artifact.");
+    }
+
+    #[test]
     fn named_source_rewrite_preserves_combat_damage_rules_term() {
         assert_eq!(
             replace_named_source_aliases(
@@ -10057,4 +10221,104 @@ mod tests {
         assert!(debug.contains("Land"), "{debug}\n{}", trace.render());
         assert!(debug.contains("Exile"), "{debug}\n{}", trace.render());
     }
+}
+
+#[cfg(test)]
+mod token_opaque_status_alias_tests {
+    use super::*;
+    #[test]
+    fn token_native_aliases_preserve_complete_status_operands() {
+        for label in ["alpha","alpha creature","moon blessed"] {
+            let line=format!("Give Alpha creature the {label} status. If Alpha creature has the {label} status, tap Alpha creature.");
+            let all=vec![vec!["alpha".to_string(),"creature".to_string()],vec!["alpha".to_string()]];
+            let mut tokens=crate::lexer::lex_line(&line,0).unwrap();
+            for alias in &all {tokens=replace_named_source_alias_tokens(&tokens,alias,"this creature",&all,false).unwrap_or(tokens);}
+            let normalized=crate::lexer::render_token_slice(&tokens).to_ascii_lowercase();
+            assert_eq!(normalized.matches(&format!("the {label} status")).count(),2,"{normalized}");
+            assert!(normalized.starts_with("give this creature the "),"{normalized}");assert!(normalized.ends_with("tap this creature."),"{normalized}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod labeled_trigger_ownership_regressions {
+    use super::*;
+    use crate::{CardId,CardType};
+
+    #[test]
+    fn direct_labeled_dispatch_keeps_explicit_trigger_group_ownership() {
+        let card = CardBuilder::new(CardId::from_raw(1), "Ownership witness")
+            .card_types(vec![CardType::Creature]);
+        let preprocessed = preprocess_document(
+            card,
+            "Keyword ability \"echoing\" — Whenever this creature attacks, you gain 1 life.",
+        ).expect("preprocess explicit label");
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected labeled line");
+        };
+        let dispatch = try_parse_labeled_line_dispatch(&preprocessed, 0, line, false)
+            .expect("dispatch succeeds").expect("explicit label is recognized");
+        let Some(RecognizedLine::Triggered(triggered)) = dispatch.lines.first() else {
+            panic!("expected triggered line");
+        };
+        assert!(triggered.info.semantic_facts.ability_designations.iter()
+            .any(|name| name == "echoing"));
+    }
+}
+
+#[cfg(test)]
+mod anaphoric_way_alias_regression {
+    use super::*;
+    #[test]
+    fn source_short_name_does_not_replace_instruction_qualifier() {
+        let tokens = crate::lexer::lex_line("Exile Way. For each card exiled this way, draw a card.", 0).unwrap();
+        let aliases = vec![vec!["way".to_string()]];
+        let rewritten = replace_named_source_alias_tokens(&tokens, &aliases[0], "this permanent", &aliases, false).unwrap();
+        let text = crate::lexer::render_token_slice(&rewritten).to_ascii_lowercase();
+        assert!(text.starts_with("exile this permanent."), "{text}");
+        assert!(text.contains("exiled this way"), "{text}");
+    }
+}
+
+#[cfg(test)]
+mod passive_damage_rule_entrypoint_tests {
+    use super::*;
+    #[test]
+    fn all_statement_front_doors_decline_only_complete_durationless_damage_rules() {
+        for timed in [false, true] {
+            let suffix = if timed { " this turn" } else { "" };
+            let body = format!("Damage dealt by sources with text added from this card can't be prevented{suffix}.");
+            let input = format!("Type: Instant\nYou gain 4 life.\n{body}");
+            let preprocessed = preprocess_document(
+                crate::card::CardBuilder::new(crate::ids::CardId::new(), "Independent passive source"), &input).unwrap();
+            let line = preprocessed.items.iter().filter_map(|item| match item {
+                PreprocessedItem::Line(line) => Some(line), _ => None,
+            }).last().unwrap();
+            // The statement-before-static preference is a heuristic, not a
+            // requirement that every timed statement advertises that preference.
+            // Verify the actual complete ownership gate and direct recognizer.
+            assert_eq!(crate::grammar::activation_restrictions::parse_filtered_unpreventability(&line.tokens).is_some(), !timed);
+            if !timed { assert!(!should_prefer_statement_before_static_for_nonpermanent_spell(&preprocessed, &line.tokens)); }
+            let statement = recognize_statement_line(line).unwrap();
+            assert_eq!(statement.is_some(), timed, "{body}");
+            if !timed {
+                let mut lines = Vec::new();
+                assert!(!try_push_complete_typed_statement(&preprocessed.card, line, &mut lines).unwrap());
+                assert!(lines.is_empty());
+                assert!(matches!(recognize_static_line(line), Ok(Some(_))));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn collection_header_noun_is_not_a_short_source_alias() {
+    let tokens = crate::lexer::lex_line("Exile Collection. Maintain the cargo collection with cards exiled this way: Whenever Collection deals combat damage to a player, draw a card.", 0).unwrap();
+    let aliases = vec![vec!["collection".to_string()]];
+    let rewritten = replace_named_source_alias_tokens(&tokens, &aliases[0], "this permanent", &aliases, false).unwrap();
+    let text = crate::lexer::render_token_slice(&rewritten).to_ascii_lowercase();
+    assert!(text.starts_with("exile this permanent."), "{text}");
+    assert!(text.contains("cargo collection with cards"), "{text}");
+    assert!(text.contains("whenever this permanent deals"), "{text}");
 }

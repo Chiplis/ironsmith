@@ -1,0 +1,1172 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "policy": "Exact source text and IDs retained; next-wave generic named-choice readers not yet integrated."
+  },
+  "mechanics": [
+    {
+      "id": "msem-368",
+      "keyword": "Judge",
+      "original_reminder": "Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.",
+      "executable_reminder": "You choose honor or condemn. If you chose honor, perform the honor action with {Object}, then put a +1/+1 counter on {Object}. If you chose condemn, perform the condemn action with {Object}, then sacrifice {Object}, then draw a card.",
+      "source_cards": [
+        "Aminatou, Justicar",
+        "Aminatou's Adherent",
+        "Aminatou's Touch",
+        "Andazir's Judgment",
+        "Atieh's Elite",
+        "Avaz Cataphract",
+        "Champion of Foibles",
+        "Champion of Ideals",
+        "Danaj Decider",
+        "Exquisite Artisan",
+        "Fall from the Heavens",
+        "Fiery Efreet",
+        "Ghulish Unearthing//Obelisk of Absolute Rule",
+        "Guidance from Above",
+        "Impede",
+        "Judgment of the Soul",
+        "Kaneh Assassin",
+        "Knife of Sanctity",
+        "Leech-Encrusted Div",
+        "Martoob Guardian",
+        "Nizev Arbiter",
+        "Ordeal of Kaneh",
+        "Patronizing Taromad",
+        "Rite of Ends//Mausoleum of Ends",
+        "Sahra's Crusher",
+        "Soli's Blessed",
+        "Soli Chronicler",
+        "Worth of Ruin",
+        "The Magistrate"
+      ],
+      "rule_reference": "701.96.",
+      "rule_text": [
+        {
+          "name": "701.96a",
+          "rule": "Judge is a keyword action. To judge a permanent, honor it or condemn it. If you honor it, put a +1/+1 counter on it. If you condemn it, sacrifice it, then draw a card.",
+          "custom": true
+        },
+        {
+          "name": "701.96b",
+          "rule": "Honoring or condemning a permanent has no rules meaning, and only acts a designation that spells and abilities can identify.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aminatou, Justicar_ALK",
+          "name": "Aminatou, Justicar",
+          "original_text": "Mana cost: {1}{W}{U}{B}\nType: Legendary Planeswalker — Aminatou\nLoyalty: 4\n[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: Judge each creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs.",
+          "executable_text": "Mana cost: {1}{W}{U}{B}\nType: Legendary Planeswalker — Aminatou\nLoyalty: 4\n[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: For each creature you control, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs.",
+          "mana_cost": "{1}{W}{U}{B}",
+          "type_line": "Legendary Planeswalker — Aminatou",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Aminatou, Justicar_ALK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "4",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aminatou, Justicar",
+              "original_text": "Mana cost: {1}{W}{U}{B}\nType: Legendary Planeswalker — Aminatou\nLoyalty: 4\n[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: Judge each creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aminatou, Justicar",
+              "executable_text": "Mana cost: {1}{W}{U}{B}\nType: Legendary Planeswalker — Aminatou\nLoyalty: 4\n[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: For each creature you control, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: Judge each creature you control.\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs.",
+              "original_printed_rules_text": "[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: Judge each creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs."
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: Judge each creature you control.\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs.",
+          "original_printed_rules_text": "[+1]: Scry 2. Create a 1/1 black Insect creature token with flying.\n[-2]: Judge each creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\n[-8]: For each card type, search your library and graveyard for a card of that type and exile it, then shuffle. You may play any number of cards exiled this way without paying their mana costs.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Aminatou's Adherent_ALK",
+          "name": "Aminatou's Adherent",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Azra Warrior\nPower/Toughness: 4/2\nWhen Aminatou's Adherent enters, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*\nWhenever you condemn a creature, creatures you control gain menace until end of turn.",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Azra Warrior\nPower/Toughness: 4/2\nWhen Aminatou's Adherent enters, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.\nWhenever you perform the condemn action with a creature, creatures you control gain menace until end of turn.",
+          "source_card_key": "Aminatou's Adherent_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Aminatou's Adherent",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Azra Warrior\nPower/Toughness: 4/2\nWhen Aminatou's Adherent enters, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.\nWhenever you perform the condemn action with a creature, creatures you control gain menace until end of turn.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Aminatou's Adherent enters, judge target creature you control.\nWhenever you condemn a creature, creatures you control gain menace until end of turn.",
+              "original_printed_rules_text": "When Aminatou's Adherent enters, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nWhenever you condemn a creature, creatures you control gain menace until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Aminatou's Adherent enters, judge target creature you control.\nWhenever you condemn a creature, creatures you control gain menace until end of turn.",
+          "original_printed_rules_text": "When Aminatou's Adherent enters, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nWhenever you condemn a creature, creatures you control gain menace until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Aminatou's Touch_ALK",
+          "name": "Aminatou's Touch",
+          "original_text": "Mana cost: {2}{W}{U}{B}\nType: Sorcery\nCreate three 1/1 black Insect creature tokens with flying, then judge each of them. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{W}{U}{B}\nType: Sorcery\nCreate three 1/1 black Insect creature tokens with flying, then judge each of them. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "source_card_key": "Aminatou's Touch_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Aminatou's Touch",
+              "executable_text": "Mana cost: {2}{W}{U}{B}\nType: Sorcery\nCreate three 1/1 black Insect creature tokens with flying, then judge each of them. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create three 1/1 black Insect creature tokens with flying, then judge each of them.",
+              "original_printed_rules_text": "Create three 1/1 black Insect creature tokens with flying, then judge each of them. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create three 1/1 black Insect creature tokens with flying, then judge each of them.",
+          "original_printed_rules_text": "Create three 1/1 black Insect creature tokens with flying, then judge each of them. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Andazir's Judgment_ALK",
+          "name": "Andazir's Judgment",
+          "original_text": "Mana cost: {3}{B}\nType: Enchantment\nAt the beginning of your upkeep, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*\nWhenever you sacrifice a creature, each opponent loses 1 life.",
+          "executable_text": "Mana cost: {3}{B}\nType: Enchantment\nAt the beginning of your upkeep, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.\nWhenever you sacrifice a creature, each opponent loses 1 life.",
+          "source_card_key": "Andazir's Judgment_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Andazir's Judgment",
+              "executable_text": "Mana cost: {3}{B}\nType: Enchantment\nAt the beginning of your upkeep, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.\nWhenever you sacrifice a creature, each opponent loses 1 life.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your upkeep, judge target creature you control.\nWhenever you sacrifice a creature, each opponent loses 1 life.",
+              "original_printed_rules_text": "At the beginning of your upkeep, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nWhenever you sacrifice a creature, each opponent loses 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of your upkeep, judge target creature you control.\nWhenever you sacrifice a creature, each opponent loses 1 life.",
+          "original_printed_rules_text": "At the beginning of your upkeep, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nWhenever you sacrifice a creature, each opponent loses 1 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Atieh's Elite_ALK",
+          "name": "Atieh's Elite",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/2\nFlying\nWhen Atieh's Elite enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*\nWhenever you honor a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types.",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/2\nFlying\nWhen Atieh's Elite enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.\nWhenever you perform the honor action with a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types.",
+          "source_card_key": "Atieh's Elite_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Atieh's Elite",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/2\nFlying\nWhen Atieh's Elite enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.\nWhenever you perform the honor action with a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen Atieh's Elite enters, judge another target creature you control.\nWhenever you honor a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types.",
+              "original_printed_rules_text": "Flying\nWhen Atieh's Elite enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nWhenever you honor a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types."
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhen Atieh's Elite enters, judge another target creature you control.\nWhenever you honor a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types.",
+          "original_printed_rules_text": "Flying\nWhen Atieh's Elite enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nWhenever you honor a creature, until end of turn, that creature has base power and toughness 4/4, gains flying, and becomes an Angel in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Avaz Cataphract_ALK",
+          "name": "Avaz Cataphract",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Human Cleric Knight\nPower/Toughness: 2/1\nFirst strike\nWhen Avaz Cataphract enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Cleric Knight\nPower/Toughness: 2/1\nFirst strike\nWhen Avaz Cataphract enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Avaz Cataphract_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Avaz Cataphract",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Cleric Knight\nPower/Toughness: 2/1\nFirst strike\nWhen Avaz Cataphract enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nWhen Avaz Cataphract enters, judge another target creature you control.",
+              "original_printed_rules_text": "First strike\nWhen Avaz Cataphract enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike\nWhen Avaz Cataphract enters, judge another target creature you control.",
+          "original_printed_rules_text": "First strike\nWhen Avaz Cataphract enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Champion of Foibles_ALK",
+          "name": "Champion of Foibles",
+          "original_text": "Mana cost: {B}{R}{G}\nType: Creature — Azra Wizard\nPower/Toughness: 3/3\nWhenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Judge target creature you control. Activate only as a sorcery. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {B}{R}{G}\nType: Creature — Azra Wizard\nPower/Toughness: 3/3\nWhenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. Activate only as a sorcery.",
+          "source_card_key": "Champion of Foibles_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Champion of Foibles",
+              "executable_text": "Mana cost: {B}{R}{G}\nType: Creature — Azra Wizard\nPower/Toughness: 3/3\nWhenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Judge target creature you control. Activate only as a sorcery.",
+              "original_printed_rules_text": "Whenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Judge target creature you control. Activate only as a sorcery. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Judge target creature you control. Activate only as a sorcery.",
+          "original_printed_rules_text": "Whenever you sacrifice a permanent, Champion of Foibles becomes a Demon with base power and toughness 6/6, flying, and trample until end of turn.\n{3}{B}: Judge target creature you control. Activate only as a sorcery. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Champion of Ideals_ALK",
+          "name": "Champion of Ideals",
+          "original_text": "Mana cost: {G}{W}{U}\nType: Creature — Nephilim Warrior\nPower/Toughness: 3/3\nAs long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Judge target creature you control. Activate only as a sorcery. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {G}{W}{U}\nType: Creature — Nephilim Warrior\nPower/Toughness: 3/3\nAs long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. Activate only as a sorcery.",
+          "source_card_key": "Champion of Ideals_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Champion of Ideals",
+              "executable_text": "Mana cost: {G}{W}{U}\nType: Creature — Nephilim Warrior\nPower/Toughness: 3/3\nAs long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "As long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Judge target creature you control. Activate only as a sorcery.",
+              "original_printed_rules_text": "As long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Judge target creature you control. Activate only as a sorcery. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "As long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Judge target creature you control. Activate only as a sorcery.",
+          "original_printed_rules_text": "As long as Champion of Ideals has one or more +1/+1 counters on it, it's an Angel with base power and toughness 4/4, flying, vigilance, and lifelink.\n{3}{G}: Judge target creature you control. Activate only as a sorcery. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Danaj Decider_ALK",
+          "name": "Danaj Decider",
+          "original_text": "Mana cost: {G}\nType: Creature — Azra Cleric Soldier\nPower/Toughness: 1/2\nReach\nWhen Danaj Decider dies, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {G}\nType: Creature — Azra Cleric Soldier\nPower/Toughness: 1/2\nReach\nWhen Danaj Decider dies, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Danaj Decider_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Danaj Decider",
+              "executable_text": "Mana cost: {G}\nType: Creature — Azra Cleric Soldier\nPower/Toughness: 1/2\nReach\nWhen Danaj Decider dies, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reach\nWhen Danaj Decider dies, judge another target creature you control.",
+              "original_printed_rules_text": "Reach\nWhen Danaj Decider dies, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reach\nWhen Danaj Decider dies, judge another target creature you control.",
+          "original_printed_rules_text": "Reach\nWhen Danaj Decider dies, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Exquisite Artisan_ALK",
+          "name": "Exquisite Artisan",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Human Artificer\nPower/Toughness: 2/2\nWhen Exquisite Artisan enters, judge target noncreature artifact you control. If you honor it, it becomes a 0/0 Construct artifact creature with flying. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Artificer\nPower/Toughness: 2/2\nWhen Exquisite Artisan enters, Choose target noncreature artifact you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that artifact, then put a +1/+1 counter on that artifact; If you chose condemn, perform the condemn action with that artifact, then sacrifice that artifact, then draw a card. If the preceding program included the honor action, it becomes a 0/0 Construct artifact creature with flying.",
+          "source_card_key": "Exquisite Artisan_ALK",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Exquisite Artisan",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Artificer\nPower/Toughness: 2/2\nWhen Exquisite Artisan enters, Choose target noncreature artifact you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that artifact, then put a +1/+1 counter on that artifact; If you chose condemn, perform the condemn action with that artifact, then sacrifice that artifact, then draw a card. If the preceding program included the honor action, it becomes a 0/0 Construct artifact creature with flying.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Exquisite Artisan enters, judge target noncreature artifact you control. If you honor it, it becomes a 0/0 Construct artifact creature with flying.",
+              "original_printed_rules_text": "When Exquisite Artisan enters, judge target noncreature artifact you control. If you honor it, it becomes a 0/0 Construct artifact creature with flying. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Exquisite Artisan enters, judge target noncreature artifact you control. If you honor it, it becomes a 0/0 Construct artifact creature with flying.",
+          "original_printed_rules_text": "When Exquisite Artisan enters, judge target noncreature artifact you control. If you honor it, it becomes a 0/0 Construct artifact creature with flying. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+        },
+        {
+          "id": "Fall from the Heavens_ALK",
+          "name": "Fall from the Heavens",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nDestroy target creature with flying. Judge up to one target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Instant\nDestroy target creature with flying. Choose up to one target creature you control. For each permanent chosen this way, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+          "source_card_key": "Fall from the Heavens_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Fall from the Heavens",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant\nDestroy target creature with flying. Choose up to one target creature you control. For each permanent chosen this way, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target creature with flying. Judge up to one target creature you control.",
+              "original_printed_rules_text": "Destroy target creature with flying. Judge up to one target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target creature with flying. Judge up to one target creature you control.",
+          "original_printed_rules_text": "Destroy target creature with flying. Judge up to one target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Fiery Efreet_ALK",
+          "name": "Fiery Efreet",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Djinn\nPower/Toughness: 2/2\nWhenever you cast a noncreature spell, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Djinn\nPower/Toughness: 2/2\nWhenever you cast a noncreature spell, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Fiery Efreet_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Fiery Efreet",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Djinn\nPower/Toughness: 2/2\nWhenever you cast a noncreature spell, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast a noncreature spell, judge target creature you control.",
+              "original_printed_rules_text": "Whenever you cast a noncreature spell, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever you cast a noncreature spell, judge target creature you control.",
+          "original_printed_rules_text": "Whenever you cast a noncreature spell, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Guidance from Above_ALK",
+          "name": "Guidance from Above",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Instant\nJudge each creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Instant\nFor each creature you control, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+          "source_card_key": "Guidance from Above_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Guidance from Above",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Instant\nFor each creature you control, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Judge each creature you control.",
+              "original_printed_rules_text": "Judge each creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Judge each creature you control.",
+          "original_printed_rules_text": "Judge each creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Impede_ALK",
+          "name": "Impede",
+          "original_text": "Mana cost: {1}{U}\nType: Sorcery\nTap target creature. It doesn't untap during its controllers next untap step.\nJudge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Sorcery\nTap target creature. It doesn't untap during its controllers next untap step.\nChoose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Impede_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Impede",
+              "executable_text": "Mana cost: {1}{U}\nType: Sorcery\nTap target creature. It doesn't untap during its controllers next untap step.\nChoose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Tap target creature. It doesn't untap during its controllers next untap step.\nJudge target creature you control.",
+              "original_printed_rules_text": "Tap target creature. It doesn't untap during its controllers next untap step.\nJudge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Tap target creature. It doesn't untap during its controllers next untap step.\nJudge target creature you control.",
+          "original_printed_rules_text": "Tap target creature. It doesn't untap during its controllers next untap step.\nJudge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Judgment of the Soul_ALK",
+          "name": "Judgment of the Soul",
+          "original_text": "Mana cost: {1}{W}{B}{R}\nType: Sorcery\nJudge target creature you control. If you honored it, it deals damage to each other creature equal to its power. If you condemned it, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {1}{W}{B}{R}\nType: Sorcery\nChoose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. If the preceding program included the honor action, it deals damage to each other creature equal to its power. If the preceding program included the condemn action, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield.",
+          "source_card_key": "Judgment of the Soul_ALK",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Judgment of the Soul",
+              "executable_text": "Mana cost: {1}{W}{B}{R}\nType: Sorcery\nChoose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. If the preceding program included the honor action, it deals damage to each other creature equal to its power. If the preceding program included the condemn action, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Judge target creature you control. If you honored it, it deals damage to each other creature equal to its power. If you condemned it, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield.",
+              "original_printed_rules_text": "Judge target creature you control. If you honored it, it deals damage to each other creature equal to its power. If you condemned it, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Judge target creature you control. If you honored it, it deals damage to each other creature equal to its power. If you condemned it, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield.",
+          "original_printed_rules_text": "Judge target creature you control. If you honored it, it deals damage to each other creature equal to its power. If you condemned it, return up to two creature cards with lesser mana value than the sacrificed creature from your graveyard to the battlefield. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+        },
+        {
+          "id": "Kaneh Assassin_ALK",
+          "name": "Kaneh Assassin",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin\nPower/Toughness: 1/3\nDeathtouch\nWhen Kaneh Assassin enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin\nPower/Toughness: 1/3\nDeathtouch\nWhen Kaneh Assassin enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Kaneh Assassin_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Kaneh Assassin",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin\nPower/Toughness: 1/3\nDeathtouch\nWhen Kaneh Assassin enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nWhen Kaneh Assassin enters, judge another target creature you control.",
+              "original_printed_rules_text": "Deathtouch\nWhen Kaneh Assassin enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Deathtouch\nWhen Kaneh Assassin enters, judge another target creature you control.",
+          "original_printed_rules_text": "Deathtouch\nWhen Kaneh Assassin enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Knife of Sanctity_ALK",
+          "name": "Knife of Sanctity",
+          "original_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, judge it. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*\nEquip {2}",
+          "executable_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with it, then put a +1/+1 counter on it; If you chose condemn, perform the condemn action with it, then sacrifice it, then draw a card.\nEquip {2}",
+          "source_card_key": "Knife of Sanctity_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Knife of Sanctity",
+              "executable_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with it, then put a +1/+1 counter on it; If you chose condemn, perform the condemn action with it, then sacrifice it, then draw a card.\nEquip {2}",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Equipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, judge it.\nEquip {2}",
+              "original_printed_rules_text": "Equipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, judge it. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nEquip {2}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Equipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, judge it.\nEquip {2}",
+          "original_printed_rules_text": "Equipped creature gets +1/+2.\nWhenever equipped creature deals combat damage, judge it. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)\nEquip {2}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Leech-Encrusted Div_ALK",
+          "name": "Leech-Encrusted Div",
+          "original_text": "Mana cost: {5}{G}{G}\nType: Creature — Horror\nPower/Toughness: 7/7\nTrample\nWhen Leech-Encrusted Div enters, judge each creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {5}{G}{G}\nType: Creature — Horror\nPower/Toughness: 7/7\nTrample\nWhen Leech-Encrusted Div enters, For each creature you control, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+          "source_card_key": "Leech-Encrusted Div_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Leech-Encrusted Div",
+              "executable_text": "Mana cost: {5}{G}{G}\nType: Creature — Horror\nPower/Toughness: 7/7\nTrample\nWhen Leech-Encrusted Div enters, For each creature you control, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhen Leech-Encrusted Div enters, judge each creature you control.",
+              "original_printed_rules_text": "Trample\nWhen Leech-Encrusted Div enters, judge each creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nWhen Leech-Encrusted Div enters, judge each creature you control.",
+          "original_printed_rules_text": "Trample\nWhen Leech-Encrusted Div enters, judge each creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Martoob Guardian_ALK",
+          "name": "Martoob Guardian",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Nephilim Warrior\nPower/Toughness: 3/2\nWhenever another creature you control enters, you may pay {2}. If you do, judge that creature. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Nephilim Warrior\nPower/Toughness: 3/2\nWhenever another creature you control enters, you may pay {2}. If you do, Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Martoob Guardian_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Martoob Guardian",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Nephilim Warrior\nPower/Toughness: 3/2\nWhenever another creature you control enters, you may pay {2}. If you do, Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever another creature you control enters, you may pay {2}. If you do, judge that creature.",
+              "original_printed_rules_text": "Whenever another creature you control enters, you may pay {2}. If you do, judge that creature. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever another creature you control enters, you may pay {2}. If you do, judge that creature.",
+          "original_printed_rules_text": "Whenever another creature you control enters, you may pay {2}. If you do, judge that creature. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Nizev Arbiter_ALK",
+          "name": "Nizev Arbiter",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Chimera\nPower/Toughness: 1/4\nFlying\nWhen Nizev Arbiter enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Chimera\nPower/Toughness: 1/4\nFlying\nWhen Nizev Arbiter enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Nizev Arbiter_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Nizev Arbiter",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Chimera\nPower/Toughness: 1/4\nFlying\nWhen Nizev Arbiter enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen Nizev Arbiter enters, judge another target creature you control.",
+              "original_printed_rules_text": "Flying\nWhen Nizev Arbiter enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhen Nizev Arbiter enters, judge another target creature you control.",
+          "original_printed_rules_text": "Flying\nWhen Nizev Arbiter enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Ordeal of Kaneh_ALK",
+          "name": "Ordeal of Kaneh",
+          "original_text": "Mana cost: {4}{B}\nType: Sorcery\nTarget creature gets -5/-5 until end of turn.\nJudge up to one target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {4}{B}\nType: Sorcery\nTarget creature gets -5/-5 until end of turn.\nChoose up to one target creature you control. For each permanent chosen this way, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+          "source_card_key": "Ordeal of Kaneh_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Ordeal of Kaneh",
+              "executable_text": "Mana cost: {4}{B}\nType: Sorcery\nTarget creature gets -5/-5 until end of turn.\nChoose up to one target creature you control. For each permanent chosen this way, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets -5/-5 until end of turn.\nJudge up to one target creature you control.",
+              "original_printed_rules_text": "Target creature gets -5/-5 until end of turn.\nJudge up to one target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets -5/-5 until end of turn.\nJudge up to one target creature you control.",
+          "original_printed_rules_text": "Target creature gets -5/-5 until end of turn.\nJudge up to one target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Patronizing Taromad_ALK",
+          "name": "Patronizing Taromad",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Demon Cleric\nPower/Toughness: 3/5\n{3}{B}: Judge another target creature you control. Activate only as a sorcery. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Demon Cleric\nPower/Toughness: 3/5\n{3}{B}: Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. Activate only as a sorcery.",
+          "source_card_key": "Patronizing Taromad_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Patronizing Taromad",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Demon Cleric\nPower/Toughness: 3/5\n{3}{B}: Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{3}{B}: Judge another target creature you control. Activate only as a sorcery.",
+              "original_printed_rules_text": "{3}{B}: Judge another target creature you control. Activate only as a sorcery. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{3}{B}: Judge another target creature you control. Activate only as a sorcery.",
+          "original_printed_rules_text": "{3}{B}: Judge another target creature you control. Activate only as a sorcery. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sahra's Crusher_ALK",
+          "name": "Sahra's Crusher",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Creature — Demon Berserker\nPower/Toughness: 4/3\nTrample\nWhen Sahra's Crusher enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Demon Berserker\nPower/Toughness: 4/3\nTrample\nWhen Sahra's Crusher enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Sahra's Crusher_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Sahra's Crusher",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Demon Berserker\nPower/Toughness: 4/3\nTrample\nWhen Sahra's Crusher enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhen Sahra's Crusher enters, judge another target creature you control.",
+              "original_printed_rules_text": "Trample\nWhen Sahra's Crusher enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nWhen Sahra's Crusher enters, judge another target creature you control.",
+          "original_printed_rules_text": "Trample\nWhen Sahra's Crusher enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Soli's Blessed_ALK",
+          "name": "Soli's Blessed",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\nFlying\nWhen Soli's Blessed enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\nFlying\nWhen Soli's Blessed enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Soli's Blessed_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Soli's Blessed",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\nFlying\nWhen Soli's Blessed enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen Soli's Blessed enters, judge another target creature you control.",
+              "original_printed_rules_text": "Flying\nWhen Soli's Blessed enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhen Soli's Blessed enters, judge another target creature you control.",
+          "original_printed_rules_text": "Flying\nWhen Soli's Blessed enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Soli Chronicler_ALK",
+          "name": "Soli Chronicler",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Nephilim Cleric\nPower/Toughness: 2/2\nWhen Soli Chronicler enters, judge another target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Nephilim Cleric\nPower/Toughness: 2/2\nWhen Soli Chronicler enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Soli Chronicler_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Soli Chronicler",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Nephilim Cleric\nPower/Toughness: 2/2\nWhen Soli Chronicler enters, Choose another target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Soli Chronicler enters, judge another target creature you control.",
+              "original_printed_rules_text": "When Soli Chronicler enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Soli Chronicler enters, judge another target creature you control.",
+          "original_printed_rules_text": "When Soli Chronicler enters, judge another target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Worth of Ruin_ALK",
+          "name": "Worth of Ruin",
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target land. Then, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target land. Then, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Worth of Ruin_ALK",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Worth of Ruin",
+              "executable_text": "Mana cost: {3}{R}\nType: Sorcery\nDestroy target land. Then, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target land. Then, judge target creature you control.",
+              "original_printed_rules_text": "Destroy target land. Then, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target land. Then, judge target creature you control.",
+          "original_printed_rules_text": "Destroy target land. Then, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "The Magistrate_MSC",
+          "name": "The Magistrate",
+          "original_text": "Mana cost: {4}{G}{G}{G}\nType: Legendary Creature — Avatar\nPower/Toughness: 7/7\nConvoke *(Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)*\nProtection from noncreatures\nWhen The Magistrate enters, judge each creature that convoked it. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Mana cost: {4}{G}{G}{G}\nType: Legendary Creature — Avatar\nPower/Toughness: 7/7\nConvoke\nProtection from noncreatures\nWhen The Magistrate enters, For each creature that convoked it, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+          "source_card_key": "The Magistrate_MSC",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "The Magistrate",
+              "executable_text": "Mana cost: {4}{G}{G}{G}\nType: Legendary Creature — Avatar\nPower/Toughness: 7/7\nConvoke\nProtection from noncreatures\nWhen The Magistrate enters, For each creature that convoked it, do the following: [Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that permanent, then put a +1/+1 counter on that permanent; If you chose condemn, perform the condemn action with that permanent, then sacrifice that permanent, then draw a card].",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Convoke\nProtection from noncreatures\nWhen The Magistrate enters, judge each creature that convoked it.",
+              "original_printed_rules_text": "Convoke (Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)\nProtection from noncreatures\nWhen The Magistrate enters, judge each creature that convoked it. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Convoke\nProtection from noncreatures\nWhen The Magistrate enters, judge each creature that convoked it.",
+          "original_printed_rules_text": "Convoke (Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)\nProtection from noncreatures\nWhen The Magistrate enters, judge each creature that convoked it. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Ghulish Unearthing//Obelisk of Absolute Rule_ALK",
+          "name": "Obelisk of Absolute Rule",
+          "original_text": "Type: Artifact — Monument\nAt the beginning of your end step, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Type: Artifact — Monument\nAt the beginning of your end step, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Ghulish Unearthing//Obelisk of Absolute Rule_ALK",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Ghulish Unearthing",
+              "original_text": "Mana cost: {B}{R}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "name": "Obelisk of Absolute Rule",
+              "original_text": "Type: Artifact — Monument\nAt the beginning of your end step, judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ghulish Unearthing",
+              "executable_text": "Mana cost: {B}{R}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nYou may cast this card from your graveyard transformed for {3}{B}{R}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R}",
+              "original_printed_rules_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield. It gains haste until end of turn.\nMonument {3}{B}{R} (You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)"
+            },
+            {
+              "name": "Obelisk of Absolute Rule",
+              "executable_text": "Type: Artifact — Monument\nAt the beginning of your end step, Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your end step, judge target creature you control.",
+              "original_printed_rules_text": "At the beginning of your end step, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of your end step, judge target creature you control.",
+          "original_printed_rules_text": "At the beginning of your end step, judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Rite of Ends//Mausoleum of Ends_ALK",
+          "name": "Mausoleum of Ends",
+          "original_text": "Type: Artifact — Monument\nWhenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*",
+          "executable_text": "Type: Artifact — Monument\nWhenever you perform the condemn action with a creature, each opponent sacrifices a creature.\n{4}{B}: Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+          "source_card_key": "Rite of Ends//Mausoleum of Ends_ALK",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Rite of Ends",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nTarget player sacrifices a creature.\nMonument {4}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*"
+            },
+            {
+              "name": "Mausoleum of Ends",
+              "original_text": "Type: Artifact — Monument\nWhenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control. *(Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rite of Ends",
+              "executable_text": "Mana cost: {1}{B}\nType: Instant\nTarget player sacrifices a creature.\nYou may cast this card from your graveyard transformed for {4}{B}. If this spell would leave the stack other than being put onto the battlefield, exile it instead. If the permanent this spell becomes would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [
+                "monument"
+              ],
+              "custom_keyword_payments": [
+                "monument"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player sacrifices a creature.\nMonument {4}{B}",
+              "original_printed_rules_text": "Target player sacrifices a creature.\nMonument {4}{B} (You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)"
+            },
+            {
+              "name": "Mausoleum of Ends",
+              "executable_text": "Type: Artifact — Monument\nWhenever you perform the condemn action with a creature, each opponent sacrifices a creature.\n{4}{B}: Choose target creature you control. Perform the judge action as follows: You choose honor or condemn; If you chose honor, perform the honor action with that creature, then put a +1/+1 counter on that creature; If you chose condemn, perform the condemn action with that creature, then sacrifice that creature, then draw a card.",
+              "custom_keyword_identities": [
+                "judge"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control.",
+              "original_printed_rules_text": "Whenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "judge"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control.",
+          "original_printed_rules_text": "Whenever you condemn a creature, each opponent sacrifices a creature.\n{4}{B}: Judge target creature you control. (Honor it by putting a +1/+1 counter on it or condemn it by sacrificing it to draw a card.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Judge {Object}",
+          "actionProgram": true,
+          "reminder": "You choose honor or condemn. If you chose honor, perform the honor action with {Object}, then put a +1/+1 counter on {Object}. If you chose condemn, perform the condemn action with {Object}, then sacrifice {Object}, then draw a card."
+        },
+        {
+          "keyword": "Honor {Object}",
+          "reminder": "Perform the honor action with {Object}.",
+          "forms": {
+            "eventVerb": "honor",
+            "eventLabel": "honor"
+          }
+        },
+        {
+          "keyword": "Condemn {Object}",
+          "reminder": "Perform the condemn action with {Object}.",
+          "forms": {
+            "eventVerb": "condemn",
+            "eventLabel": "condemn"
+          }
+        }
+      ],
+      "support_status": "scratch named choice with exact selected-recipient receipts; shared player-subject event references and native verification pending",
+      "behavioral_assertions": [
+        {
+          "id": "judge-complete-branches",
+          "status": "pending",
+          "test_reference": "custom_judgment_choices",
+          "observable": "Each creature receives an independent honor or condemn choice at resolution. Honor puts a counter; condemn sacrifices then draws even if sacrifice fails. Other creatures and players remain unaffected."
+        }
+      ]
+    }
+  ]
+}

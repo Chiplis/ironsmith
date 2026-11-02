@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "source_cards": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "scope": "Full sourced Waste action cohort; generic overwrite body implemented in scratch patch, action/cost bindings explicitly pending."
+  },
+  "mechanics": [
+    {
+      "id": "rev-waste-003",
+      "keyword": "Waste",
+      "scope": "revolution",
+      "rule_reference": "701.71.",
+      "rule_text": {
+        "name": "701.71.",
+        "rule": "Waste",
+        "subrules": [
+          {
+            "name": "701.71a",
+            "rule": "To waste a permanent means to create a continuous effect. The permanent's name is changed to Wastes, it becomes a basic land, gains \u201c{T}: Add {C},\u201d and loses all other supertypes, card types, subtypes, and abilities.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Desperate Animist",
+          "Exiled Channeler",
+          "Forlorn Firstspear",
+          "Goresand Remnant",
+          "Harvester of Vigor",
+          "Landscape Decay",
+          "Leyline Feeder",
+          "Leyline Reaper",
+          "Leyline Router",
+          "Life Desecrator",
+          "Mirage Oddity",
+          "Neglected Nexus",
+          "Radaran Reclaimer",
+          "Radaran Remnant",
+          "Radaran Stirrings",
+          "Radaran Undying",
+          "Rayak's Prelate",
+          "Realm Siphoner",
+          "Resigned Seraph",
+          "Ruinstorm Remnant",
+          "Sanctis Banneret",
+          "Sanctis Remnant",
+          "Sand Manipulator",
+          "Sandwarp",
+          "Saviour of the Lost",
+          "Sephius, Endtime Scholar",
+          "Sephius's Research",
+          "The Fall of Aethanis",
+          "The Source",
+          "Tradeway Remnant",
+          "Eldritch Growth",
+          "Reality Wanes",
+          "Scape Surveyor",
+          "Reminder",
+          "Wastes Overlay"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.",
+      "executable_reminder": null,
+      "semantic_equivalence": {
+        "status": "reviewed_body_only",
+        "evidence": "Rule 701.71a overwrite is a single continuous effect setting name/types/supertypes, clearing all old subtype families and abilities, adding only the declared mana ability. Colors, counters, tappedness, controller and zone are unchanged. Arbitrary action operands, optional/group action scopes, conversion costs, discounts and completion events require independent structural readers; no whole-card equivalence certified."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Desperate Animist_VST",
+          "name": "Desperate Animist",
+          "original_text": "Type: Creature \u2014 Human Shaman \nMana cost: {G}\nPower/Toughness: 1/1\nWhenever Desperate Animist attacks, you may waste a nonwastes land you control. If you do, Desperate Animist gets +2/+2 until end of turn. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Exiled Channeler_VST",
+          "name": "Exiled Channeler",
+          "original_text": "Type: Creature \u2014 Elf Druid \nMana cost: {1}{G}\nPower/Toughness: 1/3\n{T}, Waste a nonwastes land you control: Add one mana of any color. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Forlorn Firstspear_VST",
+          "name": "Forlorn Firstspear",
+          "original_text": "Type: Creature \u2014 Human Soldier \nMana cost: {2}{W}\nPower/Toughness: 2/2\nFirst strike\nWhenever Forlorn Firstspear attacks, you may waste a nonwastes land you control. If you do, creatures you control get +1/+1 until end of turn. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Goresand Remnant_VST",
+          "name": "Goresand Remnant",
+          "original_text": "Type: Land\nWhen Goresand Remnant enters, waste a nonwastes land you control. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\n{T}: Add {B} or {R}.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Harvester of Vigor_VST",
+          "name": "Harvester of Vigor",
+          "original_text": "Type: Creature \u2014 Vampire Cleric \nMana cost: {3}{B}\nPower/Toughness: 2/4\n{T}, Waste a nonwastes land you control: Each opponent loses 2 life and you gain 2 life. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Landscape Decay_VST",
+          "name": "Landscape Decay",
+          "original_text": "Type: Sorcery\nMana cost: {3}{G}\nSearch your library for up to two land cards, put them onto the battlefield tapped, then shuffle. Then waste two nonwastes lands you control. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Leyline Feeder_VST",
+          "name": "Leyline Feeder",
+          "original_text": "Type: Creature \u2014 Mutant \nMana cost: {1}{G}\nPower/Toughness: 3/2\n{2}, Waste a nonwastes land you control: Leyline Feeder gets +2/+2 and gains hexproof until end of turn. Activate this ability only once each turn. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Leyline Reaper_VST",
+          "name": "Leyline Reaper",
+          "original_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{B}\nPower/Toughness: 3/2\nWhen Leyline Reaper enters, you may waste two nonwastes lands you control. If you do, target creature gets -3/-3 until end of turn. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Leyline Router_VST",
+          "name": "Leyline Router",
+          "original_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{U}{U}\nPower/Toughness: 3/3\nWhen Leyline Router enters, you may waste two nonwastes lands you control. If you do, return target creature to its owner's hand. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Life Desecrator_VST",
+          "name": "Life Desecrator",
+          "original_text": "Type: Creature \u2014 Vampire Cleric \nMana cost: {1}{B}{B}\nPower/Toughness: 3/2\nWhen Life Desecrator dies, you may waste two nonwastes lands you control. If you do, return another target creature card from your graveyard to your hand. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Mirage Oddity_VST",
+          "name": "Mirage Oddity",
+          "original_text": "Type: Creature \u2014 Mutant \nMana cost: {2}{U}{U}\nPower/Toughness: 4/3\nFlying\nWaste two nonwastes lands you control: Exile Mirage Oddity. Return it to the battlefield under its owner's control at the beginning of the next end step. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Radaran Reclaimer_VST",
+          "name": "Radaran Reclaimer",
+          "original_text": "Type: Creature \u2014 Human Nomad \nMana cost: {2}{G}\nPower/Toughness: 4/2\nWhenever Radaran Reclaimer enters or attacks, you may waste a nonwastes land you control. If you do, you gain 4 life. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Radaran Remnant_VST",
+          "name": "Radaran Remnant",
+          "original_text": "Type: Land\nWhen Radaran Remnant enters, waste a nonwastes land you control. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\n{T}: Add {U} or {B}.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Radaran Stirrings_VST",
+          "name": "Radaran Stirrings",
+          "original_text": "Type: Enchantment\nMana cost: {B}\n{2}, Waste two nonwastes lands you control: Create a tapped 2/2 black Zombie Mutant creature token with deathtouch. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Radaran Undying_VST",
+          "name": "Radaran Undying",
+          "original_text": "Type: Creature \u2014 Mutant Zombie \nMana cost: {6}{B}\nPower/Toughness: 6/4\nYou may waste any number of nonwastes lands you control as an additional cost to cast this spell. It costs {1} less to cast for each land wasted this way. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\nYou may cast Radaran Undying from your graveyard if you spend 5 or less mana to cast it.\nDeathtouch, menace",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_additional_or_alternative_cost_binding",
+          "obligation": "additional_or_alternative_cost"
+        },
+        {
+          "id": "rev:Rayak's Prelate_VST",
+          "name": "Rayak's Prelate",
+          "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {3}{B}\nPower/Toughness: 3/3\nWhen Rayak's Prelate enters, you may waste two nonwastes lands you control. If you do, you draw two cards and you lose 2 life. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Realm Siphoner_VST",
+          "name": "Realm Siphoner",
+          "original_text": "Type: Creature \u2014 Demon Wizard \nMana cost: {3}{U}{B}\nPower/Toughness: 5/5\nWhenever you waste one or more lands, each opponent loses 2 life, you gain 2 life, and you draw a card.\nPay 1 life, Tap an untapped land you control: Add one mana of any color.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_action_completion_watcher_binding",
+          "obligation": "action_completion_watcher"
+        },
+        {
+          "id": "rev:Resigned Seraph_VST",
+          "name": "Resigned Seraph",
+          "original_text": "Type: Creature \u2014 Angel \nMana cost: {4}{W}{W}\nPower/Toughness: 3/3\nFlying\nAt the beginning of combat on your turn, you may waste a nonwastes land you control. If you do, target creature gets +1/+1 and gains vigilance until end of turn. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Ruinstorm Remnant_VST",
+          "name": "Ruinstorm Remnant",
+          "original_text": "Type: Land\nWhen Ruinstorm Remnant enters, waste a nonwastes land you control. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\n{T}: Add {R} or {G}.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Sanctis Banneret_VST",
+          "name": "Sanctis Banneret",
+          "original_text": "Type: Creature \u2014 Human Soldier Nomad \nMana cost: {1}{W}\nPower/Toughness: 2/2\nWhenever Sanctis Banneret attacks, you may waste a nonwastes land you control. If you do, create a 1/1 white Nomad creature token with vigilance. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Sanctis Remnant_VST",
+          "name": "Sanctis Remnant",
+          "original_text": "Type: Land\nWhen Sanctis Remnant enters, waste a nonwastes land you control. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\n{T}: Add {G} or {W}.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Sand Manipulator_VST",
+          "name": "Sand Manipulator",
+          "original_text": "Type: Creature \u2014 Human Wizard \nMana cost: {1}{U}\nPower/Toughness: 2/1\n{T}, Waste a nonwastes land you control: Tap target creature. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Sandwarp_VST",
+          "name": "Sandwarp",
+          "original_text": "Type: Instant\nMana cost: {2}{U}{U}\nYou may pay {U} and waste three nonwastes lands you control rather than pay this spell's mana cost. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\nCounter target spell.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_additional_or_alternative_cost_binding",
+          "obligation": "additional_or_alternative_cost"
+        },
+        {
+          "id": "rev:Saviour of the Lost_VST",
+          "name": "Saviour of the Lost",
+          "original_text": "Type: Creature \u2014 Angel \nMana cost: {2}{W}\nPower/Toughness: 2/3\nFlying, lifelink\nWhenever Saviour of the Lost attacks, you may waste two nonwastes lands you control. If you do, return up to two target creature cards with total mana value 2 or less from your graveyard to the battlefield. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:Sephius, Endtime Scholar_VST",
+          "name": "Sephius, Endtime Scholar",
+          "original_text": "Type: Legendary Creature \u2014 Human Wizard \nMana cost: {4}{U}{U}\nPower/Toughness: 3/3\n{T}, Waste a nonwastes land you control: You may pay {0} rather than pay the mana cost for the next spell you cast this turn. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_additional_or_alternative_cost_binding",
+          "obligation": "additional_or_alternative_cost"
+        },
+        {
+          "id": "rev:Sephius's Research_VST",
+          "name": "Sephius's Research",
+          "original_text": "Type: Sorcery\nMana cost: {1}{U}\nWaste two nonwastes lands you control. If you do, search your library for a colorless card, reveal it, put it into your hand, then shuffle. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:The Fall of Aethanis_VST",
+          "name": "The Fall of Aethanis",
+          "original_text": "Type: Legendary Enchantment\nMana cost: {3}{B}{B}\nWhen The Fall of Aethanis enters, if it was cast from your hand, destroy all creatures.\nAt the beginning of your upkeep, you may waste a nonwastes land you control. If you do, each opponent loses 2 life. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        },
+        {
+          "id": "rev:The Source_VST",
+          "name": "The Source",
+          "original_text": "Type: Legendary Artifact\nMana cost: {4}{C}\nIndestructible\n{T}, Waste a nonwastes land you control: Add three mana in any combination of colors. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\nAs long as you control seven or more lands that can produce {C}, you may play cards you own from outside the game.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_activation_cost_binding",
+          "obligation": "activation_cost"
+        },
+        {
+          "id": "rev:Tradeway Remnant_VST",
+          "name": "Tradeway Remnant",
+          "original_text": "Type: Land\nWhen Tradeway Remnant enters, waste a nonwastes land you control. *(It becomes Wastes, a basic land with \u201c{T}: Add {C}\u201d and no other abilities or types.)*\n{T}: Add {W} or {U}.",
+          "source_layout": "normal",
+          "executable_text": null,
+          "rewrite_status": "pending_effect_action_binding",
+          "obligation": "effect_action"
+        }
+      ],
+      "source_cards": [
+        "Desperate Animist",
+        "Exiled Channeler",
+        "Forlorn Firstspear",
+        "Goresand Remnant",
+        "Harvester of Vigor",
+        "Landscape Decay",
+        "Leyline Feeder",
+        "Leyline Reaper",
+        "Leyline Router",
+        "Life Desecrator",
+        "Mirage Oddity",
+        "Radaran Reclaimer",
+        "Radaran Remnant",
+        "Radaran Stirrings",
+        "Radaran Undying",
+        "Rayak's Prelate",
+        "Resigned Seraph",
+        "Ruinstorm Remnant",
+        "Sanctis Banneret",
+        "Sanctis Remnant",
+        "Sand Manipulator",
+        "Sandwarp",
+        "Saviour of the Lost",
+        "Sephius, Endtime Scholar",
+        "Sephius's Research",
+        "The Fall of Aethanis",
+        "The Source",
+        "Tradeway Remnant"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "full-characteristic-overwrite",
+          "status": "pending",
+          "test_reference": "custom_revolution_waste::waste_replaces_all_characteristic_families_and_preserves_unmentioned_state"
+        },
+        {
+          "id": "fullsource-optional-selector-reward",
+          "status": "pending",
+          "test_reference": "custom_revolution_waste::desperate_animist_fullsource_equivalent_keeps_optional_choice_and_reward_scope"
+        },
+        {
+          "id": "independent-family-clearing",
+          "status": "pending",
+          "test_reference": "custom_revolution_waste::clearing_one_characteristic_family_does_not_clear_other_families"
+        }
+      ],
+      "candidate_executable_reminder": "Choose {Object}. That permanent becomes a basic land named Wastes with \"{T}: Add {C}\" and loses all other supertypes, card types, subtypes, and abilities.",
+      "support_status": "scratch_characteristic_overwrite_pending_native_and_action_binding"
+    }
+  ]
+}

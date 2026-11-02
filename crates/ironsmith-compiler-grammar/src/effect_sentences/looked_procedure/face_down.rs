@@ -127,3 +127,51 @@ pub(super) fn face_down_selection(group: &mut ViewedGroup, sentence: &SentenceIn
     group.selected = Some(selected_tag.key.clone());
     true
 }
+
+/// Read a viewed-card entry and its attached optional action, preserving the
+/// original viewed set for the independent remainder reader.
+pub(super) fn described_selection_shape<'a>(sentence: &SentenceInput, rest: &'a [SentenceInput]) -> Result<Option<Vec<crate::lexer::OwnedLexToken>>, crate::cards::builders::CardTextError> {
+    if rest.len() < 2 { return Ok(None); }
+    let mut tokens = sentence.lowered().to_vec();
+    tokens.push(crate::lexer::OwnedLexToken::period(crate::cards::builders::TextSpan::synthetic()));
+    tokens.extend_from_slice(rest[0].lowered());
+    tokens.push(crate::lexer::OwnedLexToken::period(crate::cards::builders::TextSpan::synthetic()));
+    tokens.extend_from_slice(rest[1].lowered());
+    tokens.push(crate::lexer::OwnedLexToken::period(crate::cards::builders::TextSpan::synthetic()));
+    let Some(entry) = super::super::dispatch_entry::described_face_down_entry::read(&tokens)? else { return Ok(None); };
+    if entry.permission.is_none() { return Ok(None); }
+    if !crate::lexer::TokenWordView::new(entry.target_tokens).word_refs().windows(3).any(|words| words == ["from", "among", "them"])
+        && !crate::lexer::TokenWordView::new(entry.target_tokens).word_refs().windows(4).any(|words| words == ["from", "among", "those", "cards"]) { return Ok(None); }
+    Ok(Some(tokens))
+}
+
+pub(super) fn described_selection(group: &mut ViewedGroup, sentence: &SentenceInput, rest: &[SentenceInput]) -> Result<bool, crate::cards::builders::CardTextError> {
+    if group.revealed { return Ok(false); }
+    let Some(tokens) = described_selection_shape(sentence, rest)? else { return Ok(false); };
+    let entry = super::super::dispatch_entry::described_face_down_entry::read(&tokens)?.unwrap();
+    let view = crate::lexer::TokenWordView::new(entry.target_tokens);
+    let words = view.word_refs();
+    if !matches!(words.first(), Some(&"a" | &"an" | &"one")) && !words.starts_with(&["up", "to", "one"]) { return Ok(false); }
+    let Some(from) = words.windows(2).position(|pair| pair == ["from", "among"]) else { return Ok(false); };
+    let Some(from_token) = view.token_start_indices().get(from).copied() else { return Ok(false); };
+    let Some(mut filter) = super::super::looked_cards_family::parse_looked_card_choice_filter(&entry.target_tokens[..from_token]) else { return Ok(false); };
+    crate::word_claims::claim_tokens(&entry.target_tokens[from_token..]);
+    filter.zone = Some(Zone::Library);
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: group.tag.clone(), relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let selected = helper_tag_for_tokens(sentence.lowered(), "described_face_down_selected");
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+        filter, count: if entry.optional || words.starts_with(&["up", "to", "one"]) { crate::effect::ChoiceCount::up_to(1) } else { crate::effect::ChoiceCount::exactly(1) },
+        player: PlayerAst::You, tag: crate::tag::TagRef::of(selected.clone()), zone: Zone::Library,
+    }));
+    group.effects.push(super::super::dispatch_entry::described_face_down_entry::build_entry(
+        TargetAst::Tagged(crate::tag::TagRef::of(selected.clone()), None), entry.owner, entry.permission,
+    ));
+    group.selected = Some(selected.into());
+    // The permission's two statements are owned by this entry, rather than
+    // becoming separately executable cast instructions.
+    group.pending_statements.push_back(Vec::new());
+    group.pending_statements.push_back(Vec::new());
+    Ok(true)
+}

@@ -1,0 +1,180 @@
+[
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_late/counter-removal-ordinal-current/counter-removal-ordinal-current.patch",
+    "sha256": "4ff921f26f04a3e83588e74f191c0b62999700bb7022d85bf7bd14bc99e8071c",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/activation_and_restrictions/semantic/semantic_trigger.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/custom_final_all_sources_next_wave.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/phase-out-end-of-turn/phase-out-end-of-turn.patch",
+    "sha256": "cb32eeb6268fa81950604696667901a78ee3bba4e891b39d332d3d201b1fcc73",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-core/src/effect/mana_damage_and_control.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/clause_pattern_helpers.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/game_state.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/game_state/object_state_and_events.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/game_state/phasing_transitions.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/effects/permanents/phase_out.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/turn.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/early.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords/tests.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/custom_gestalt_merge.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/casting_suite09_collection_legality/suite09-collection-and-block-legality.patch",
+    "sha256": "43c85db548b36e381a0e3e581aba6e7c984ae33677e70bed69003b9aa3bc6490",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/control_copy_attach_verbs.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/continuous_reference_quantities.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/craft_material_costs.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/casting_early/variable-resource-route-diagnostics/variable-resource-route-diagnostics.patch",
+    "sha256": "18eb39fda23d0c855c83bfc4800e49941a78adff3665a10223a41062fd972bcd",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/custom_colored_resource_costs.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/inscribe-compound-duration-diagnostic/inscribe-compound-duration-diagnostic.patch",
+    "sha256": "f0d0698618c1d31bee02d93bce0a63cf765ca42548d0efc788b80a7a379bb835",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs",
+        "status": "CONFLICT"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_middle/next-turn-spell-cost-window/next-turn-spell-cost-window.patch",
+    "sha256": "ef39132ea3d9c09cad958082b5817bd6dd42baed9788d581eee62cdd2bbe6634",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/activation_and_restrictions/activated_sentence_parsers.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/grammar/activated_lines.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/effect.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_dispatch/subject_verb_late.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-compiler-runtime/tests/custom_module.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions/stack.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-core/src/effect.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/decision/mana.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/decision/types.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/effects/player/grant_next_spell_cost_reduction.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/game_loop/priority_mana.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/game_state.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/late.rs",
+        "status": "three-way-clean"
+      }
+    ]
+  }
+]

@@ -45,6 +45,7 @@ pub(super) fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -
 }
 
 impl EffectExecutor for ExileUntilEffect {
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> { Some(self) }
     fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
         vec![self.spec.clone()]
     }
@@ -103,6 +104,20 @@ impl EffectExecutor for ExileUntilEffect {
     }
 }
 
+impl crate::effects::CostExecutableEffect for ExileUntilEffect {
+    fn can_execute_as_cost(&self, game: &GameState, source: ObjectId, controller: crate::ids::PlayerId)
+        -> Result<(), crate::effects::CostValidationError> {
+        if self.duration != ExileUntilDuration::SourceLeavesStackOrBattlefield
+            || self.leave_watcher.is_some() || self.spec.is_target()
+            || game.object(source).is_none() {
+            return Err(crate::effects::CostValidationError::Other("unsupported exile-until payment scope".into()));
+        }
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &crate::effects::ExileEffect::with_spec(self.spec.clone()), game, source, controller,
+        )
+    }
+}
+
 impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
     fn select(&self, game: &mut GameState, ctx: &mut ExecutionContext)
         -> Result<super::movement_instruction::SelectedZoneMovement, ExecutionError> {
@@ -111,40 +126,46 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                         event.downcast::<crate::events::MonarchChangedEvent>().is_some_and(|event| game.are_opponents(ctx.controller, event.monarch))
                     })?
                 {
-                    return Ok(super::movement_instruction::SelectedZoneMovement::Finished(EffectOutcome::count(0)));
+                    return Ok(super::movement_instruction::SelectedZoneMovement::Finished(EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new()))));
                 }
-                let leave_watcher = if self.duration == ExileUntilDuration::SourceLeavesBattlefield
+                let source_duration = matches!(self.duration, ExileUntilDuration::SourceLeavesBattlefield | ExileUntilDuration::SourceLeavesStackOrBattlefield);
+                let leave_watcher = if source_duration
                 {
                     if let Some(watcher_spec) = &self.leave_watcher {
                         let watchers = match resolve_objects_for_effect(game, ctx, watcher_spec) {
                             Ok(watchers) => watchers,
                             Err(ExecutionError::InvalidTarget) => {
                                 return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
-                                    EffectOutcome::count(0),
+                                    EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())),
                                 ));
                             }
                             Err(error) => return Err(error),
                         };
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
-                                EffectOutcome::count(0),
+                                EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())),
                             ));
                         }
                         let Some(&watcher) = watchers.first() else {
                             return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
-                                EffectOutcome::count(0),
+                                EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())),
                             ));
                         };
-                        if object_not_on_battlefield(game, watcher) {
+                        let valid = game.object(watcher).is_some_and(|object| object.zone == Zone::Battlefield
+                            || (self.duration == ExileUntilDuration::SourceLeavesStackOrBattlefield && object.zone == Zone::Stack));
+                        if !valid {
                             return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
-                                EffectOutcome::count(0),
+                                EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())),
                             ));
                         }
                         watcher
                     } else {
-                        let Some(watcher) = current_source_watcher(game, ctx) else {
+                        let watcher = if self.duration == ExileUntilDuration::SourceLeavesStackOrBattlefield {
+                            game.object(ctx.source).filter(|object| matches!(object.zone, Zone::Stack | Zone::Battlefield)).map(|object| object.id)
+                        } else { current_source_watcher(game, ctx) };
+                        let Some(watcher) = watcher else {
                             return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
-                                EffectOutcome::count(0),
+                                EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())),
                             ));
                         };
                         watcher
@@ -160,9 +181,12 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                 };
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
-                        EffectOutcome::count(0),
+                        EffectOutcome::count(0).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())),
                     ));
                 }
+                let original_sources=objects.iter().filter_map(|id|
+                    crate::snapshot::ObjectSnapshot::from_object_id(game,*id).map(|snapshot|(*id,snapshot)))
+                    .collect::<std::collections::HashMap<_,_>>();
                 let source_zones = objects
                     .iter()
                     .filter_map(|id| game.object(*id).map(|object| (*id, object.zone)))
@@ -184,6 +208,17 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                     .collect();
         let effect = self.clone();
         Ok(super::movement_instruction::SelectedZoneMovement::moves(moves, move |game, ctx, receipts, _| {
+                    let mut original_moves=Vec::new();
+                    for (id,receipt) in receipts {
+                        let EventOutcome::Proceed(change)=&receipt.original else{continue};
+                        let Some(origin)=original_sources.get(id) else{continue};
+                        for new_id in &change.new_object_ids {
+                            if let Some(object)=game.object(*new_id) {
+                                let arrival=crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object,game)?;
+                                original_moves.push((origin.clone(),Zone::Exile,arrival));
+                            }
+                        }
+                    }
                     let mut exiled_count = 0_i32;
                     let mut monarch_duration_stable_ids = Vec::new();
                     for (object_id, receipt) in receipts {
@@ -192,13 +227,22 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                             && result.final_zone == Zone::Exile
                         {
                             for &new_id in &result.new_object_ids {
-                                if let Some(owner) = &ctx.linked_exile_owner {
-                                    game.add_linked_exile_pair_member(owner.clone(), new_id);
+                                let owner = ctx.linked_exile_owner.clone().or_else(|| {
+                                    (ctx.cause.cause_type == crate::events::cause::CauseType::Cost)
+                                        .then_some(effect.cost_linked_exile_pair).flatten()
+                                        .map(|pair| crate::linked_exile::LinkedExileOwner {
+                                            host: ctx.source,
+                                            pair,
+                                            acquisition: crate::linked_exile::LinkedExileAcquisition::Printed,
+                                        })
+                                });
+                                if let Some(owner) = owner {
+                                    game.add_linked_exile_pair_member(owner, new_id);
                                 }
                                 if effect.face_down {
                                     game.set_face_down(new_id);
                                 }
-                                if effect.duration == ExileUntilDuration::SourceLeavesBattlefield {
+                                if matches!(effect.duration, ExileUntilDuration::SourceLeavesBattlefield | ExileUntilDuration::SourceLeavesStackOrBattlefield) {
                                     game.add_exiled_with_source_link_returning_to(
                                         leave_watcher,
                                         new_id,
@@ -207,7 +251,7 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                                 } else {
                                     game.add_exiled_with_source_link(ctx.source, new_id);
                                 }
-                                if (effect.duration != ExileUntilDuration::SourceLeavesBattlefield
+                                if (!matches!(effect.duration, ExileUntilDuration::SourceLeavesBattlefield | ExileUntilDuration::SourceLeavesStackOrBattlefield)
                                     || leave_watcher == ctx.source)
                                     && let Some(object) = game.object(new_id)
                                 {
@@ -231,7 +275,7 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                     }
 
                     if exiled_count > 0
-                        && effect.duration == ExileUntilDuration::SourceLeavesBattlefield
+                        && matches!(effect.duration, ExileUntilDuration::SourceLeavesBattlefield | ExileUntilDuration::SourceLeavesStackOrBattlefield)
                     {
                         game.mark_return_exiled_when_source_leaves(leave_watcher);
                     }
@@ -244,7 +288,7 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
                             effect.return_zone,
                         );
                     }
-                    Ok(EffectOutcome::count(exiled_count))
+                    Ok(EffectOutcome::count(exiled_count).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(original_moves)))
         }))
     }
 }

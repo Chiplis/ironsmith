@@ -6,6 +6,7 @@ license = "AGPL-3.0-or-later"
 build = "build.rs"
 
 [dependencies]
+ironsmith-core = { path = "../ironsmith-core", default-features = false }
 ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }
 ironsmith-compiler = { path = "../ironsmith-compiler", default-features = false }
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }

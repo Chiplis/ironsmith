@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Tether chosen permanent and exact exiled-card capture",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/mechanic-definitions.json",
+    "card_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "snapshot_fetched": "2026-10-31",
+    "scope": "msem",
+    "status": "unreviewed source inventory; all executable rewrites pending",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces."
+  },
+  "mechanics": [
+    {
+      "id": "msem-686",
+      "keyword": "Tether",
+      "original_reminder": "Then if you cast this from your hand, you may exile it tethered to a creature you control. When it dies, you may cast this from exile without paying its mana cost.",
+      "executable_reminder": "If this spell was cast from your hand, you may choose a creature you control. If you do, exile this spell. When that creature dies, you may cast the card exiled this way without paying its mana cost.",
+      "source_cards": [
+        "Cling to Undeath"
+      ],
+      "rule_reference": "702.242.",
+      "rule_text": [
+        {
+          "name": "702.242a",
+          "rule": "Tether appears on some instants and sorceries. It represents two abilities. The first is a spell ability that functions while the spell with tether is on the stack. The second is a static ability that functions while the card with tether is in the exile zone. “Tether” means “If this spell is represented by a card, you may exile this card tethered to a creature you control” and “When the creature this card is tethered to dies, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.242b",
+          "rule": "The term “tethered” describes the relationship between the card with tether while in the exile zone and the creature chosen when the spell represented by that card resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.242c",
+          "rule": "The card with tether remains tethered to the chosen creature as long as the card with tether remains exiled and the creature remains on the battlefield. The card remains tethered to that object even if it changes controller or stops being a creature, as long as it remains on the battlefield.",
+          "custom": true
+        },
+        {
+          "name": "702.242d",
+          "rule": "If the permanent is put into a graveyard while not a creature, the 'dies' trigger of tether will still trigger.",
+          "custom": true
+        },
+        {
+          "name": "702.242e",
+          "rule": "Tether to type is a variant of the tether ability. “Tether to [type]” means “If this spell is represented by a card, you may exile this card tethered to a [type] you control” and “When the permanent this card is tethered to is put into a graveyard from the battlefield, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Cling to Undeath_ALR",
+          "name": "Cling to Undeath",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nCreate a 2/2 black Zombie creature token.\nTether *(Then if you cast this from your hand, you may exile it tethered to a creature you control. When it dies, you may cast this from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nCreate a 2/2 black Zombie creature token.\nIf this spell was cast from your hand, you may choose a creature you control. If you do, exile this spell. When that creature dies, you may cast the card exiled this way without paying its mana cost",
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Cling to Undeath_ALR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cling to Undeath",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nCreate a 2/2 black Zombie creature token.\nTether *(Then if you cast this from your hand, you may exile it tethered to a creature you control. When it dies, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cling to Undeath",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nCreate a 2/2 black Zombie creature token.\nIf this spell was cast from your hand, you may choose a creature you control. If you do, exile this spell. When that creature dies, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "tether"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 2/2 black Zombie creature token.\nTether",
+              "original_printed_rules_text": "Create a 2/2 black Zombie creature token.\nTether (Then if you cast this from your hand, you may exile it tethered to a creature you control. When it dies, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "tether"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 2/2 black Zombie creature token.\nTether",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Create a 2/2 black Zombie creature token.\nTether (Then if you cast this from your hand, you may exile it tethered to a creature you control. When it dies, you may cast this from exile without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Tether",
+          "reminder": "If this spell was cast from your hand, you may choose a creature you control. If you do, exile this spell. When that creature dies, you may cast the card exiled this way without paying its mana cost."
+        }
+      ],
+      "implementation_status": "next_wave_chosen_object_and_exact_exile_capture_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "linked-host-and-exile-incarnation",
+          "status": "pending",
+          "test_reference": "custom_delayed_exact_capture::delayed_body_cannot_revive_a_card_that_left_and_reentered_exile",
+          "observable": "Foundation verifies exact exile arrival; full source chosen-host/hand gate/optional-decline/death-vs-artifact-graveyard scope need native source verification."
+        }
+      ]
+    },
+    {
+      "id": "msem-687",
+      "keyword": "Tether",
+      "original_reminder": "Then if you cast this from your hand, you may exile it tethered to an artifact you control. When it dies, you may cast this from exile without paying its mana cost.",
+      "executable_reminder": "If this spell was cast from your hand, you may choose an artifact you control. If you do, exile this spell. When that permanent is put into a graveyard from the battlefield, you may cast the card exiled this way without paying its mana cost.",
+      "source_cards": [
+        "Chaos of the Conflux"
+      ],
+      "rule_reference": "702.242.",
+      "rule_text": [
+        {
+          "name": "702.242a",
+          "rule": "Tether appears on some instants and sorceries. It represents two abilities. The first is a spell ability that functions while the spell with tether is on the stack. The second is a static ability that functions while the card with tether is in the exile zone. “Tether” means “If this spell is represented by a card, you may exile this card tethered to a creature you control” and “When the creature this card is tethered to dies, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.242b",
+          "rule": "The term “tethered” describes the relationship between the card with tether while in the exile zone and the creature chosen when the spell represented by that card resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.242c",
+          "rule": "The card with tether remains tethered to the chosen creature as long as the card with tether remains exiled and the creature remains on the battlefield. The card remains tethered to that object even if it changes controller or stops being a creature, as long as it remains on the battlefield.",
+          "custom": true
+        },
+        {
+          "name": "702.242d",
+          "rule": "If the permanent is put into a graveyard while not a creature, the 'dies' trigger of tether will still trigger.",
+          "custom": true
+        },
+        {
+          "name": "702.242e",
+          "rule": "Tether to type is a variant of the tether ability. “Tether to [type]” means “If this spell is represented by a card, you may exile this card tethered to a [type] you control” and “When the permanent this card is tethered to is put into a graveyard from the battlefield, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Chaos of the Conflux_OTH",
+          "name": "Chaos of the Conflux",
+          "original_text": "Mana cost: {3}{G}\nType: Sorcery\nCreate a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nTether to artifact *(Then if you cast this from your hand, you may exile it tethered to an artifact you control. When it dies, you may cast this from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {3}{G}\nType: Sorcery\nCreate a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nIf this spell was cast from your hand, you may choose an artifact you control. If you do, exile this spell. When that permanent is put into a graveyard from the battlefield, you may cast the card exiled this way without paying its mana cost",
+          "mana_cost": "{3}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Chaos of the Conflux_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chaos of the Conflux",
+              "original_text": "Mana cost: {3}{G}\nType: Sorcery\nCreate a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nTether to artifact *(Then if you cast this from your hand, you may exile it tethered to an artifact you control. When it dies, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Chaos of the Conflux",
+              "executable_text": "Mana cost: {3}{G}\nType: Sorcery\nCreate a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nIf this spell was cast from your hand, you may choose an artifact you control. If you do, exile this spell. When that permanent is put into a graveyard from the battlefield, you may cast the card exiled this way without paying its mana cost",
+              "custom_keyword_identities": [
+                "tether to artifact"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nTether to artifact",
+              "original_printed_rules_text": "Create a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nTether to artifact (Then if you cast this from your hand, you may exile it tethered to an artifact you control. When it dies, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "tether to artifact"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nTether to artifact",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Create a 1/1 red Goblin creature token and a 2/2 white Knight creature token.\nTether to artifact (Then if you cast this from your hand, you may exile it tethered to an artifact you control. When it dies, you may cast this from exile without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Tether to artifact",
+          "reminder": "If this spell was cast from your hand, you may choose an artifact you control. If you do, exile this spell. When that permanent is put into a graveyard from the battlefield, you may cast the card exiled this way without paying its mana cost."
+        }
+      ],
+      "implementation_status": "next_wave_chosen_object_and_exact_exile_capture_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "linked-host-and-exile-incarnation",
+          "status": "pending",
+          "test_reference": "custom_delayed_exact_capture::delayed_body_cannot_revive_a_card_that_left_and_reentered_exile",
+          "observable": "Foundation verifies exact exile arrival; full source chosen-host/hand gate/optional-decline/death-vs-artifact-graveyard scope need native source verification."
+        },
+        {
+          "id": "source-artifact-link",
+          "status": "pending",
+          "test_reference": "custom_tether::source_tether_artifact_is_optional_and_watches_its_chosen_noncreature_only",
+          "observable": "Actual complete source cast/resolves; optional decline and no eligible artifact remain in graveyard, chosen artifact establishes exile link, unrelated artifact does not trigger, chosen noncreature artifact battlefield-to-graveyard departure offers exact free cast."
+        }
+      ]
+    }
+  ]
+}

@@ -32,3 +32,27 @@ export const renderCardGlint = (face,options) => queue.render(face,options);
 export const hasCardGlintFrame = face => queue.has(face);
 
 export const peekCardGlintFrame = face => queue.peek(face);
+
+// Keep the same frame geometry and artwork, omitting only the rules ink so
+// the inspector can supply readable, scrollable live ability controls.
+const rulesBackdrops = new WeakMap();
+export function renderCardGlintRulesBackdrop(result) {
+  if (result.rulesOmitted) return Promise.resolve(result.canvas);
+  if (!rulesBackdrops.has(result)) {
+    const {api,face}=result;
+    const pending=api.composeCardTexture({face,printingId:null,printedImage:null,rulesText:false},'inspect',new AbortController().signal,
+      {loadImages:(urls,signal)=>images.images(urls,signal)});
+    rulesBackdrops.set(result,pending);
+    pending.catch(()=>rulesBackdrops.delete(result));
+  }
+  return rulesBackdrops.get(result);
+}
+
+export async function renderCardGlintWithoutRules(face) {
+  const api=await loadCardGlint();
+  images ??= new CardGlintImageCache(api.loadCanvasImages);
+  const presented=presentCardGlintFace(api,face);
+  const result={api,face:presented};
+  const canvas=await renderCardGlintRulesBackdrop(result);
+  return {...result,canvas,rulesOmitted:true};
+}

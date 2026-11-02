@@ -1,4 +1,5 @@
 # effect kind	serde payload type	runtime family
+ActivateAbilityWithoutCostsEffect	ironsmith_core::ActivateAbilityWithoutCostsEffect	resources
 ActivateManaAbilityOfEachLandEffect	ironsmith_core::ActivateManaAbilityOfEachLandEffect	resources
 AdaptEffect	ironsmith_core::AdaptEffect	composition-a-l
 AddManaEffect	ironsmith_core::AddManaEffect	resources
@@ -39,6 +40,7 @@ CastTaggedEffect	ironsmith_core::CastTaggedEffect<wire::WireCost>	player
 ChooseCardNameEffect	ironsmith_core::ChooseCardNameEffect	player
 ChooseCardTypeEffect	ironsmith_core::ChooseCardTypeEffect	player
 ChangeTextEffect	ironsmith_core::ChangeTextEffect	permanent
+RemoveOptionalTextFragmentEffect	ironsmith_core::RemoveOptionalTextFragmentEffect	permanent
 ChooseColorEffect	ironsmith_core::ChooseColorEffect	player
 ChooseCreatureTypeEffect	ironsmith_core::ChooseCreatureTypeEffect	player
 ChooseLandTypeEffect	ironsmith_core::ChooseLandTypeEffect	player
@@ -59,11 +61,15 @@ ConsultTopOfLibraryEffect	ironsmith_core::ConsultTopOfLibraryEffect	zone-library
 ControlCombatChoicesThisTurnEffect	ironsmith_core::ControlCombatChoicesThisTurnEffect	player
 ControlPlayerEffect	ironsmith_core::ControlPlayerEffect	player
 ConvertEffect	ironsmith_core::ConvertEffect	permanent
+TriggerAbilitiesByClassEffect	ironsmith_core::TriggerAbilitiesByClassEffect	stack-event
 CopySpellEffect	ironsmith_core::CopySpellEffect	stack-event
 CopySpellForEachTargetEffect	ironsmith_core::CopySpellForEachTargetEffect	stack-event
 CounterEffect	ironsmith_core::CounterEffect	stack-event
 CreateEmblemEffect	ironsmith_core::CreateEmblemEffect<wire::WireEmblemDescription>	player
+CreateLinkedFaceTokenEffect	ironsmith_core::CreateLinkedFaceTokenEffect	permanent
 CreateTokenCopyEffect	ironsmith_core::CreateTokenCopyEffect<wire::WireStaticAbility>	permanent
+CopyFromDefinitionEffect	ironsmith_core::CopyFromDefinitionEffect<wire::WireCardDefinition>	permanent
+CreateCardsEffect	ironsmith_core::CreateCardsEffect<wire::WireCardDefinition>	permanent
 CreateTokenEffect	ironsmith_core::CreateTokenEffect<wire::WireCardDefinition>	permanent
 CrewCostEffect	ironsmith_core::CrewCostEffect	permanent
 CumulativeUpkeepEffect	ironsmith_core::CumulativeUpkeepEffect<wire::WireEffect>	composition-a-l
@@ -86,6 +92,7 @@ EachPlayerScryEffect	ironsmith_core::EachPlayerScryEffect	zone-library
 EarthbendEffect	ironsmith_core::EarthbendEffect	permanent
 EmitGiftGivenEffect	ironsmith_core::EmitGiftGivenEffect	composition-a-l
 EmitKeywordActionEffect	ironsmith_core::EmitKeywordActionEffect	composition-a-l
+PerformNamedActionEffect	ironsmith_core::PerformNamedActionEffect	composition-a-l
 EmptyManaPoolEffect	ironsmith_core::EmptyManaPoolEffect	resources
 EndCombatPhaseEffect	ironsmith_core::EndCombatPhaseEffect	player
 EndTurnEffect	ironsmith_core::EndTurnEffect	player
@@ -158,6 +165,7 @@ MayCastMatchingSpellWithoutPayingManaCostEffect	ironsmith_core::MayCastMatchingS
 MayEffect	ironsmith_core::MayEffect<wire::WireEffect>	composition-m-z
 MayMoveToZoneEffect	ironsmith_core::MayMoveToZoneEffect	zone-library
 MeldEffect	ironsmith_core::MeldEffect	permanent
+MergePermanentsEffect	ironsmith_core::MergePermanentsEffect	permanent
 MillEffect	ironsmith_core::MillEffect	zone-library
 ModifyPowerToughnessEffect	ironsmith_core::ModifyPowerToughnessEffect	combat
 ModifyPowerToughnessForEachEffect	ironsmith_core::ModifyPowerToughnessForEachEffect	combat
@@ -167,7 +175,7 @@ MoveCountersEffect	ironsmith_core::MoveCountersEffect	resources
 MoveOneCounterEffect	ironsmith_core::MoveOneCounterEffect	resources
 MoveToLibraryNthFromTopEffect	ironsmith_core::MoveToLibraryNthFromTopEffect	zone-library
 MoveToLibraryTopOrBottomChoiceEffect	ironsmith_core::MoveToLibraryTopOrBottomChoiceEffect	zone-library
-MoveToZoneEffect	ironsmith_core::MoveToZoneEffect	zone-library
+MoveToZoneEffect	ironsmith_core::MoveToZoneEffect<wire::WireContinuousModification>	zone-library
 NinjutsuCostEffect	ironsmith_core::NinjutsuCostEffect	permanent
 NinjutsuEffect	ironsmith_core::NinjutsuEffect	permanent
 NoteLifeTotalEffect	ironsmith_core::NoteLifeTotalEffect	resources
@@ -353,3 +361,26 @@ PutCounterOfRandomKindEffect	ironsmith_core::PutCounterOfRandomKindEffect	resour
 RegisterExtraDieReplacementEffect	ironsmith_core::RegisterExtraDieReplacementEffect	resources
 NoteActivationManaPaymentEffect	ironsmith_core::NoteActivationManaPaymentEffect	resources
 CastFaceDownUsingActivationManaEffect	ironsmith_core::CastFaceDownUsingActivationManaEffect	resources
+
+FirstResolutionEachTurnEffect	ironsmith_core::FirstResolutionEachTurnEffect<wire::WireEffect>	composition-m-z
+NamedActionProgramEffect	ironsmith_core::NamedActionProgramEffect<wire::WireEffect>	composition-m-z
+AdditionalStepsEffect	ironsmith_core::AdditionalStepsEffect	player
+ChooseNumberAtRandomEffect	ironsmith_core::ChooseNumberAtRandomEffect	player
+DeclareBlockersByRandomPilesThisTurnEffect	ironsmith_core::DeclareBlockersByRandomPilesThisTurnEffect	player
+ForEachAnnouncedTargetSlotEffect	ironsmith_core::ForEachAnnouncedTargetSlotEffect<wire::WireEffect>	composition-a-l
+GrantActivationCostAlternativeEffect	ironsmith_core::GrantActivationCostAlternativeEffect	permanent
+GrantPayLifeManaAbilityUntilEndOfTurnEffect	ironsmith_core::GrantPayLifeManaAbilityUntilEndOfTurnEffect	player
+NextAdaptIgnoresCountersEffect	ironsmith_core::NextAdaptIgnoresCountersEffect	permanent
+RedistributeLifeTotalsEffect	ironsmith_core::RedistributeLifeTotalsEffect	resources
+RerollStoredDieResultsEffect	ironsmith_core::RerollStoredDieResultsEffect	player
+RollAndStoreDieResultsEffect	ironsmith_core::RollAndStoreDieResultsEffect	player
+SetPermanentDesignationEffect	ironsmith_core::SetPermanentDesignationEffect	permanent
+TurnFaceDownEffect	ironsmith_core::TurnFaceDownEffect	permanent
+
+RecordSourceCollectionEffect	ironsmith_core::RecordSourceCollectionEffect	permanent
+LinkObjectsToGroupEffect	ironsmith_core::LinkObjectsToGroupEffect	permanent
+RememberOriginalMovementArrivalsEffect	ironsmith_core::effect::RememberOriginalMovementArrivalsEffect	composition-m-z
+RegisterEventReplacementEffect	ironsmith_core::RegisterEventReplacementEffect<wire::WireEffect>	stack-event
+GrantExileControllerInspectionEffect	ironsmith_core::GrantExileControllerInspectionEffect	permanent
+LinkExiledCardsEffect	ironsmith_core::LinkExiledCardsEffect	permanent
+LinkPermanentsEffect	ironsmith_core::LinkPermanentsEffect	permanent

@@ -85,7 +85,7 @@ fn manifest_dread_counter_bundle_requires_a_shared_recipient() {
             2,
             ChooseSpec::Source,
         )),
-        outcome_only: false,
+        outcome_only: false, action:None,
     });
     let second = crate::effects::PutCountersEffect {
         maximum_total: None,

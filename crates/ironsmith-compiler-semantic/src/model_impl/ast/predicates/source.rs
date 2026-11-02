@@ -80,4 +80,5 @@ pub enum SourcePredicateAst {
     /// an attacker in the current combat.
     SourceAttackedThisCombat,
     SourceCameUnderYourControlSinceYourLastUpkeep,
+    EachCurrentDesignatedAbilityActivatedByYou { designation: String },
 }

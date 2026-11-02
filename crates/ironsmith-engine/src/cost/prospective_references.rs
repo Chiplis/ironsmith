@@ -371,7 +371,7 @@ pub(crate) fn activation_reference_preflight(
                 source,
                 &locked,
                 &[],
-                Some(crate::decision::ActivationCostAbility::of(
+                Some(&crate::decision::ActivationCostAbility::of(
                     game, payer, source, activated,
                 )),
             );
@@ -477,7 +477,7 @@ pub(crate) fn activation_branch_preflight_checked(
                 source,
                 raw,
                 &[],
-                Some(crate::decision::ActivationCostAbility::of(
+                Some(&crate::decision::ActivationCostAbility::of(
                     checked, payer, source, activated,
                 )),
             );

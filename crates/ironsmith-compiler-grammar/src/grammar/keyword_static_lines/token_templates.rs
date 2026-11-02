@@ -27,7 +27,7 @@ pub struct TokenTemplateReplacement<'a> {
 }
 
 fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, bool, bool, bool)> {
-    let first_time = opt(primitives::phrase(&["the", "first", "time"])).parse_next(input)?.is_some();
+    let mut first_time = opt(primitives::phrase(&["the", "first", "time"])).parse_next(input)?.is_some();
     if !first_time { primitives::kw("if").parse_next(input)?; }
     let active = opt(primitives::kw("you")).parse_next(input)?.is_some();
     if first_time && !active { return Err(primitives::backtrack_err("token replacement", "you")); }
@@ -42,6 +42,15 @@ fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, 
     alt((primitives::kw("token"), primitives::kw("tokens"))).parse_next(input)?;
     if !active { primitives::phrase(&["would", "be", "created", "under", "your", "control"]).parse_next(input)?; }
     let mut your_turns_only = false;
+    // The same first matching creation window can be authored after the
+    // passive or active creation clause, rather than before its subject.
+    if !first_time && opt(primitives::phrase(&["for", "the", "first", "time", "each", "turn"]))
+        .parse_next(input)?.is_some()
+    {
+        first_time = true;
+        opt(primitives::comma()).parse_next(input)?;
+        return Ok((descriptor, singular, active, first_time, your_turns_only));
+    }
     if first_time {
         if opt(primitives::phrase(&["during", "each", "of", "your", "turns"])).parse_next(input)?.is_some() {
             your_turns_only = true;
@@ -173,12 +182,27 @@ mod tests {
     #[test]
     fn token_template_boundary_does_not_drop_conditions_extra_sentences_or_choice_words() {
         for text in [
-            "If you would create one or more tokens for the first time each turn, instead create that many Food tokens.",
+            "If you would create one or more tokens for the second time each turn, instead create that many Food tokens.",
             "If you would create a Fish token, create a Shark token instead unless an opponent pays {1}.",
             "If you would create a Fish token, instead create a Shark token. Create a Food token.",
             "If you would create a Fish token, instead create a Shark token instead.",
             "If one or more tokens would be created under an opponent's control, those tokens plus a Food token are created instead.",
             "If you would create one or more tokens, create a Food token instead.",
         ] { assert!(parse_token_template_replacement(&lex_line(text, 0).unwrap()).is_none(), "{text}"); }
+    }
+}
+
+#[cfg(test)]
+mod first_matching_creation_suffix_tests {
+    use super::*;
+    #[test]
+    fn first_creation_suffix_preserves_authored_append_once_template() {
+        let tokens = crate::lexer::lex_line("If one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead.", 0).unwrap();
+        let parsed = parse_token_template_replacement(&tokens).unwrap();
+        assert!(parsed.first_time_each_turn);
+        assert_eq!(parsed.mode, ironsmith_core::TokenCreationTemplateMode::AppendOnce);
+        assert_eq!(parsed.templates.len(), 1);
+        assert_eq!(crate::lexer::parser_token_word_refs(parsed.source_descriptor), vec!["creature"]);
+        assert_eq!(crate::lexer::parser_token_word_refs(parsed.templates[0]), vec!["1/1", "white", "soldier", "creature", "token"]);
     }
 }

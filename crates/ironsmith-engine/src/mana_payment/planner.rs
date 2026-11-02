@@ -262,6 +262,9 @@ pub fn mana_payment_source_inventory(
             .or_default()
             .push(ManaPaymentSourceKind::Waterbend);
     }
+    for (source, _) in counter_payment_sources(game, request) {
+        by_source.entry(source).or_default().push(ManaPaymentSourceKind::PutMinusOneCounter);
+    }
     by_source
         .into_iter()
         .map(|(source, mut kinds)| {
@@ -359,7 +362,7 @@ fn ready_and_manual_inventory_inner<D: crate::decision::DecisionMaker>(
                 choice.source,
                 &activated.mana_cost,
                 &[],
-                Some(crate::decision::ActivationCostAbility::of(
+                Some(&crate::decision::ActivationCostAbility::of(
                     game,
                     request.payer,
                     choice.source,
@@ -821,6 +824,10 @@ fn execute_mana_payment_plan_inner_with_outputs(
             }
         }
     }
+    if !validate_counter_allocations(game, request, &current.allocations) {
+        *game = checkpoint;
+        return Err(ManaPaymentFailure::ExecutionFailed);
+    }
     if !super::validate_waterbend_taps(game, request, &current.allocations) {
         *game = checkpoint;
         return Err(ManaPaymentFailure::ExecutionFailed);
@@ -853,6 +860,20 @@ fn execute_mana_payment_plan_inner_with_outputs(
                     *game = checkpoint.clone();
                     ManaPaymentFailure::EffectExecutionFailed(error)
                 })?,
+                super::PlannedPipPayment::PutMinusOneCounter(source) => {
+                    eprintln!("COUNTER_PAYMENT_TRACE commit source={source:?} before={} allocation={allocation:?}", game.counter_count(source,crate::CounterType::MinusOneMinusOne));
+                    if !counter_payment_sources(game, request).iter().any(|(id, capacity)| *id == source && *capacity > 0) {
+                        false
+                    } else {
+                        let cost = crate::costs::Cost::validated_effect(crate::effect::Effect::put_counters(
+                            crate::CounterType::MinusOneMinusOne, 1, crate::target::ChooseSpec::SpecificObject(source)));
+                        match cost.pay_with_outputs(game, &mut cost_context) {
+                            Ok(receipt) if matches!(receipt.result, crate::costs::CostPaymentResult::Paid) => { eprintln!("COUNTER_PAYMENT_TRACE paid source={source:?} after={} result={:?}",game.counter_count(source,crate::CounterType::MinusOneMinusOne),receipt.result); outputs.extend(receipt.outputs); true },
+                            Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => { *game = checkpoint; return Err(ManaPaymentFailure::EffectExecutionFailed(error)); },
+                            _ => false,
+                        }
+                    }
+                }
                 super::PlannedPipPayment::Delve(source) => {
                     if !delve_cards(game, request).contains(&source) {
                         false
@@ -1027,6 +1048,7 @@ fn every_mana_ability_is_single_use(
 ) -> bool {
     let analysis = view.simple_battlefield_mana_analysis(request.payer);
     for &source in analysis.mana_source_ids() {
+        if super::sources::has_live_activation_alternatives(game,Some(source)){return false;}
         let Some(object) = game.object(source) else {
             continue;
         };
@@ -1130,6 +1152,7 @@ fn finite_fixed_production_is_insufficient(
     request: &ManaPaymentRequest,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    if super::sources::has_live_activation_alternatives(game,None){return false;}
     fn symbol_units(symbols: &[ManaSymbol]) -> Option<u64> {
         symbols
             .iter()
@@ -1386,6 +1409,9 @@ fn affordability_solver_sees_every_resource(
     game: &GameState,
     request: &ManaPaymentRequest,
 ) -> bool {
+    if request.cost.spending_restrictions().iter().any(|rule| matches!(rule,
+        ironsmith_core::mana::ManaSpendingRestriction::GenericManaByMinusOneCounters)) { return false; }
+
     if request.cost.has_waterbend_obligation() {
         return false;
     }
@@ -1781,6 +1807,7 @@ impl ManaPaymentPlanner {
 /// user-facing undo permission, this also covers repeatable fixed mana filters.
 /// Unknown effects, conditions and history observers retain full simulation.
 fn fixed_mana_filter_board(game: &GameState) -> bool {
+    if super::sources::has_live_activation_alternatives(game,None){return false;}
     let effects = &game.effect_store;
     if !effects.continuous_effects.effects().is_empty()
         || !effects.replacement_effects.effects().is_empty()
@@ -2528,7 +2555,8 @@ pub(super) fn prepare_owned_activation(
     // else, so when no continuous effect can observe a tap or a pool change the
     // parent's continuous state is still correct for the staged state.
     let merge_safe =
-        !super::sources::has_potential_mana_triggers(&staged, &DerivedGameView::new(&staged))
+        !super::sources::has_live_activation_alternatives(&staged,Some(choice.source))
+            && !super::sources::has_potential_mana_triggers(&staged, &DerivedGameView::new(&staged))
             && !super::sources::has_mana_modifying_replacements(&staged)
             && crate::game_loop::mana_ability_is_undo_safe(
                 &staged,
@@ -2730,7 +2758,8 @@ struct PaymentPipSlot {
 
 #[derive(Debug, Clone, Copy)]
 enum AlternativeKind {
-    Waterbend(u32),
+    Waterbend { maximum:u32, native_maximum:u32, native_only:bool },
+    PutMinusOneCounter,
     Convoke(crate::color::ColorSet),
     Improvise,
     Delve,
@@ -2937,9 +2966,10 @@ impl Iterator for AlternativeAssignments {
                             AlternativeKind::Delve => {
                                 super::PlannedPipPayment::Delve(source.source)
                             }
-                            AlternativeKind::Waterbend(_) => {
+                            AlternativeKind::Waterbend { .. } => {
                                 super::PlannedPipPayment::Waterbend(source.source)
                             }
+                            AlternativeKind::PutMinusOneCounter => super::PlannedPipPayment::PutMinusOneCounter(source.source),
                         };
                         allocations.push(PlannedPipAllocation {
                             pip: slot.pip,
@@ -2964,7 +2994,7 @@ impl Iterator for AlternativeAssignments {
             if selected
                 .iter()
                 .flatten()
-                .any(|other| other.source == source.source)
+                .any(|other| other.source == source.source && !matches!(other.kind, AlternativeKind::PutMinusOneCounter) && !matches!(source.kind, AlternativeKind::PutMinusOneCounter))
             {
                 continue;
             }
@@ -3106,7 +3136,9 @@ fn alternative_payment_selections(
     for source in super::waterbend_sources(game, request) {
         sources.push(AlternativeSource {
             source,
-            kind: AlternativeKind::Waterbend(request.cost.waterbend_capacity(request.x_value)),
+            kind: AlternativeKind::Waterbend { maximum:request.cost.waterbend_capacity(request.x_value),
+                native_maximum:request.cost.native_waterbend_capacity(request.x_value),
+                native_only:!super::waterbend::tap_payment_source_admitted(game,request,source) },
             required: alternative_is_required(request, source, ManaPaymentSourceKind::Waterbend),
         });
     }
@@ -3123,6 +3155,19 @@ fn alternative_payment_selections(
         )
     });
 
+    // Each substitution rechecks current characteristics after earlier costs.
+    // Counter replacements or counter-dependent bonuses can keep a donor
+    // eligible beyond its initial remaining toughness. The outstanding generic
+    // pips, rather than initial toughness, bound this finite candidate search.
+    let counter_slots=pips.iter().map(|pip|pip.alternatives.iter().copied().filter_map(|symbol|match symbol {
+        ManaSymbol::Generic(amount)=>Some(usize::from(amount)),_=>None,
+    }).max().unwrap_or(0)).sum::<usize>();
+    for (source, _) in counter_payment_sources(game, request) {
+        for _ in 0..counter_slots {
+            sources.push(AlternativeSource { source, kind: AlternativeKind::PutMinusOneCounter,
+                required: alternative_is_required(request, source, ManaPaymentSourceKind::PutMinusOneCounter) });
+        }
+    }
     let mut selections = Vec::new();
     for pips in preferred_hybrid_pip_shapes(&pips, !sources.is_empty()) {
         let mut selected = vec![None; pips.len()];
@@ -3150,7 +3195,8 @@ fn alternative_payment_selections(
                 super::PlannedPipPayment::Convoke(source)
                 | super::PlannedPipPayment::Waterbend(source)
                 | super::PlannedPipPayment::Improvise(source)
-                | super::PlannedPipPayment::Delve(source) => Some(source),
+                | super::PlannedPipPayment::Delve(source)
+                | super::PlannedPipPayment::PutMinusOneCounter(source) => Some(source),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -3265,7 +3311,8 @@ fn allocation_matches_required_alternative(
         (ManaPaymentSourceKind::Convoke, super::PlannedPipPayment::Convoke(source))
         | (ManaPaymentSourceKind::Improvise, super::PlannedPipPayment::Improvise(source))
         | (ManaPaymentSourceKind::Delve, super::PlannedPipPayment::Delve(source))
-        | (ManaPaymentSourceKind::Waterbend, super::PlannedPipPayment::Waterbend(source)) => {
+        | (ManaPaymentSourceKind::Waterbend, super::PlannedPipPayment::Waterbend(source))
+        | (ManaPaymentSourceKind::PutMinusOneCounter, super::PlannedPipPayment::PutMinusOneCounter(source)) => {
             *source == required.source
         }
         _ => false,
@@ -3306,12 +3353,13 @@ fn enumerate_alternative_selections(
                         super::PlannedPipPayment::Convoke(alternative.source)
                     }
                     AlternativeKind::Delve => super::PlannedPipPayment::Delve(alternative.source),
-                    AlternativeKind::Waterbend(_) => {
+                    AlternativeKind::Waterbend { .. } => {
                         super::PlannedPipPayment::Waterbend(alternative.source)
                     }
                     AlternativeKind::Improvise => {
                         super::PlannedPipPayment::Improvise(alternative.source)
                     }
+                    AlternativeKind::PutMinusOneCounter => super::PlannedPipPayment::PutMinusOneCounter(alternative.source),
                 };
                 allocations.push(PlannedPipAllocation {
                     pip: slot.pip,
@@ -3339,7 +3387,7 @@ fn enumerate_alternative_selections(
         if selected
             .iter()
             .flatten()
-            .any(|choice| choice.source == source.source)
+            .any(|choice| choice.source == source.source && !matches!(choice.kind, AlternativeKind::PutMinusOneCounter) && !matches!(source.kind, AlternativeKind::PutMinusOneCounter))
         {
             return;
         }
@@ -3390,13 +3438,10 @@ fn waterbend_selection_has_capacity(
     selected: &[Option<AlternativeSource>],
 ) -> bool {
     match kind {
-        AlternativeKind::Waterbend(maximum) => {
-            selected
-                .iter()
-                .flatten()
-                .filter(|source| matches!(source.kind, AlternativeKind::Waterbend(_)))
-                .count()
-                < maximum as usize
+        AlternativeKind::Waterbend {maximum,native_maximum,native_only} => {
+            let total=selected.iter().flatten().filter(|source|matches!(source.kind,AlternativeKind::Waterbend {..})).count();
+            let native=selected.iter().flatten().filter(|source|matches!(source.kind,AlternativeKind::Waterbend {native_only:true,..})).count();
+            total<maximum as usize && (!native_only || native<native_maximum as usize)
         }
         _ => true,
     }
@@ -3416,7 +3461,7 @@ fn alternative_can_pay(kind: AlternativeKind, pip: &[ManaSymbol]) -> bool {
         (AlternativeKind::Convoke(colors), ManaSymbol::Red) => colors.contains(Color::Red),
         (AlternativeKind::Convoke(colors), ManaSymbol::Green) => colors.contains(Color::Green),
         (
-            AlternativeKind::Improvise | AlternativeKind::Delve | AlternativeKind::Waterbend(_),
+            AlternativeKind::Improvise | AlternativeKind::Delve | AlternativeKind::Waterbend { .. } | AlternativeKind::PutMinusOneCounter,
             ManaSymbol::Generic(_),
         ) => true,
         _ => false,
@@ -4137,6 +4182,7 @@ fn build_plan(
     pool_after_activations: ManaPool,
     steps: Vec<PlannedManaActivation>,
 ) -> Option<ManaPaymentPlan> {
+    if !preview_counter_allocations(game, request, &selection.allocations) { return None; }
     let mut qualified_request = payment_request.clone();
     qualified_request.cost = payable_assignment_cost(game, payment_request, &payment_request.cost)?;
     let payment_request = &qualified_request;
@@ -4197,7 +4243,8 @@ fn build_plan(
             super::PlannedPipPayment::Convoke(source)
             | super::PlannedPipPayment::Waterbend(source)
             | super::PlannedPipPayment::Improvise(source)
-            | super::PlannedPipPayment::Delve(source) => Some(source),
+            | super::PlannedPipPayment::Delve(source)
+                | super::PlannedPipPayment::PutMinusOneCounter(source) => Some(source),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -5659,6 +5706,7 @@ mod tests {
                     vec![],
                     vec![ManaSymbol::Green],
                 )),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let source = game.new_object_id();
@@ -7543,6 +7591,7 @@ mod tests {
                         vec![ManaSymbol::Blue],
                     ),
                 ),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let source = game.new_object_id();
@@ -7590,6 +7639,7 @@ mod tests {
                         vec![ManaSymbol::Green],
                     ),
                 ),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let battery = game.create_object_from_card(&card, alice, Zone::Battlefield);
@@ -7610,6 +7660,7 @@ mod tests {
                         vec![ManaSymbol::Green],
                     ),
                 ),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let once = game.create_object_from_card(&card, alice, Zone::Battlefield);
@@ -7625,6 +7676,7 @@ mod tests {
                     )
                     .once_per_turn(),
                 ),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let source = game.new_object_id();
@@ -8222,4 +8274,59 @@ mod retained_payment_error_tests {
         assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
         assert!(game.object(spell).unwrap().keyword_payment_contributions_to_cast.is_empty());
     }
+}
+
+fn counter_payment_sources(game: &GameState, request: &ManaPaymentRequest) -> Vec<(ObjectId, u32)> {
+    if request.assist_completion.is_some() || !request.cost.spending_restrictions().iter().any(|rule|
+        matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::GenericManaByMinusOneCounters)) { return Vec::new(); }
+    game.battlefield.iter().filter_map(|id| {
+        let object = game.object(*id)?;
+        if game.controller_of(object) != request.payer || game.is_phased_out(*id)
+            || !game.can_have_counter_type_placed(*id, crate::CounterType::MinusOneMinusOne)
+            || request.preferences.excluded_sources.contains(id)
+            || !game.calculated_card_types(*id).contains(&crate::types::CardType::Creature) { return None; }
+        let toughness = game.calculated_toughness(*id)?;
+        let damage = i64::from(game.damage_on(*id));
+        let capacity = u32::try_from(i64::from(toughness).saturating_sub(damage)).ok()?;
+        (capacity > 0).then_some((*id, capacity))
+    }).collect()
+}
+/// The next nominal counter payment must be legal in the current payment
+/// state, after all earlier mana abilities and counter replacement effects.
+pub(crate) fn counter_payment_source_can_pay(game: &GameState, request: &ManaPaymentRequest, source: ObjectId) -> bool {
+    counter_payment_sources(game, request).iter().any(|(id, capacity)| *id == source && *capacity > 0)
+}
+
+fn validate_counter_allocations(game: &GameState, request: &ManaPaymentRequest, allocations: &[PlannedPipAllocation]) -> bool {
+    let legal = counter_payment_sources(game, request);
+    for allocation in allocations {
+        if let super::PlannedPipPayment::PutMinusOneCounter(source) = allocation.payment {
+            if !allocation.alternatives.iter().any(|symbol| *symbol == ManaSymbol::Generic(1))
+                || !legal.iter().any(|(id, _)| *id == source) { return false; }
+        }
+    }
+    true
+}
+
+/// Prove the cost against the post-mana-activation state, including ordinary
+/// counter replacements and characteristic changes caused by earlier counters.
+/// No actions or history are published on the authoritative game during preview.
+fn preview_counter_allocations(game: &GameState, request: &ManaPaymentRequest, allocations: &[PlannedPipAllocation]) -> bool {
+    if !validate_counter_allocations(game, request, allocations) { return false; }
+    if !allocations.iter().any(|allocation| matches!(allocation.payment, super::PlannedPipPayment::PutMinusOneCounter(_))) { return true; }
+    let mut staged = game.clone();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut context = crate::costs::CostContext::new(request.source, request.payer, &mut decision_maker).with_reason(request.reason);
+    for allocation in allocations {
+        let super::PlannedPipPayment::PutMinusOneCounter(source) = allocation.payment else { continue; };
+        if !counter_payment_sources(&staged, request).iter().any(|(id, capacity)| *id == source && *capacity > 0) { return false; }
+        let cost = crate::costs::Cost::validated_effect(crate::effect::Effect::put_counters(
+            crate::CounterType::MinusOneMinusOne, 1, crate::target::ChooseSpec::SpecificObject(source)));
+        match cost.pay_with_outputs(&mut staged, &mut context) {
+            Ok(receipt) if matches!(receipt.result, crate::costs::CostPaymentResult::Paid) => {},
+            Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => { game.record_token_resource_failure(&error); return false; },
+            _ => return false,
+        }
+    }
+    true
 }

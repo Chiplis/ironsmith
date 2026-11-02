@@ -1,0 +1,615 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Voyage complete source predicate composition",
+  "notes": [
+    "Original source cards preserved; pending generic predicate and group frontend integration."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-364",
+      "keyword": "Voyage",
+      "original_reminder": "If they aren't being targeted by another spell or ability, they phase out.",
+      "executable_reminder": "If {Subject} is a nonblocking permanent that isn't the target of a spell or ability on the stack, give {Subject} the voyaging status until it phases in, then it phases out.",
+      "source_cards": [
+        "Living Archipelago"
+      ],
+      "rule_reference": "701.93.",
+      "rule_text": [
+        {
+          "name": "701.93a",
+          "rule": "Voyage is a keyword action. \u201c(a permanent) voyages\u201d means \u201cIf this permanent isn't blocking or the target of a spell or ability other than this one, it phases out and becomes a voyaging permanent until it phases in.\u201d",
+          "custom": true
+        },
+        {
+          "name": "701.93b",
+          "rule": "A voyaging permanent \u201creturns from voyage\u201d when it phases in.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Adept Fisherman_DSS",
+          "name": "Adept Fisherman",
+          "original_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/2\n{T}: Adept Fisherman voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Adept Fisherman phases in, you gain 2 life.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/2\n{T}: If Adept Fisherman is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Adept Fisherman the voyaging status until it phases in, then phase it out.\nWhenever Adept Fisherman phases in, you gain 2 life.",
+          "source_card_key": "Adept Fisherman_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature \u2014 Human Pirate Scout",
+          "power": "3",
+          "toughness": "2",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Adept Fisherman",
+              "original_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/2\n{T}: Adept Fisherman voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Adept Fisherman phases in, you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Adept Fisherman",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/2\n{T}: If Adept Fisherman is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Adept Fisherman the voyaging status until it phases in, then phase it out.\nWhenever Adept Fisherman phases in, you gain 2 life.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{T}: Adept Fisherman voyages.\nWhenever Adept Fisherman phases in, you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{T}: Adept Fisherman voyages.\nWhenever Adept Fisherman phases in, you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Cryptozoologist_DSS",
+          "name": "Cryptozoologist",
+          "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}: Cryptozoologist voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield. *(It returns to your hand if it's still on the battlefield.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}: If Cryptozoologist is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Cryptozoologist the voyaging status until it phases in, then phase it out.\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield.",
+          "source_card_key": "Cryptozoologist_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature \u2014 Human Pirate Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cryptozoologist",
+              "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}: Cryptozoologist voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield. *(It returns to your hand if it's still on the battlefield.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cryptozoologist",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}: If Cryptozoologist is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Cryptozoologist the voyaging status until it phases in, then phase it out.\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{2}{G}: Cryptozoologist voyages.\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}{G}: Cryptozoologist voyages.\nWhenever Cryptozoologist phases in, you may put a creature card from your hand onto the battlefield until Cryptozoologist leaves the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Daybreak Wayfarers_DSS",
+          "name": "Daybreak Wayfarers",
+          "original_text": "Mana cost: {G}{U}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}{U}: Target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, draw a card.",
+          "executable_text": "Mana cost: {G}{U}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}{U}: If Target creature you control is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Target creature you control the voyaging status until it phases in, then phase it out.\nWhenever a creature you control phases in, draw a card.",
+          "source_card_key": "Daybreak Wayfarers_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{G}{U}",
+          "type_line": "Creature \u2014 Human Pirate Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Daybreak Wayfarers",
+              "original_text": "Mana cost: {G}{U}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}{U}: Target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Daybreak Wayfarers",
+              "executable_text": "Mana cost: {G}{U}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{2}{G}{U}: If Target creature you control is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Target creature you control the voyaging status until it phases in, then phase it out.\nWhenever a creature you control phases in, draw a card.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{2}{G}{U}: Target creature you control voyages.\nWhenever a creature you control phases in, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}{G}{U}: Target creature you control voyages.\nWhenever a creature you control phases in, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Eager Voyager_DSS",
+          "name": "Eager Voyager",
+          "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{4}{G}{G}: Eager Voyager voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{4}{G}{G}: If Eager Voyager is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Eager Voyager the voyaging status until it phases in, then phase it out.\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it.",
+          "source_card_key": "Eager Voyager_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature \u2014 Human Pirate Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Eager Voyager",
+              "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{4}{G}{G}: Eager Voyager voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Eager Voyager",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 2/2\n{4}{G}{G}: If Eager Voyager is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Eager Voyager the voyaging status until it phases in, then phase it out.\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{4}{G}{G}: Eager Voyager voyages.\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{4}{G}{G}: Eager Voyager voyages.\nWhenever Eager Voyager phases in, if it has no +1/+1 counters on it, put four +1/+1 counters on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Empyrean Griffin_DSS",
+          "name": "Empyrean Griffin",
+          "original_text": "Mana cost: {4}{W}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 5/5\nFlying\nWhenever Empyrean Griffin attacks, up to one target creature voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nPermanents your opponents control can't phase in.",
+          "executable_text": "Mana cost: {4}{W}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 5/5\nFlying\nWhenever Empyrean Griffin attacks, If up to one target creature is a nonblocking permanent that isn't the target of a spell or ability on the stack, give up to one target creature the voyaging status until it phases in, then phase it out.\nPermanents your opponents control can't phase in.",
+          "source_card_key": "Empyrean Griffin_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{4}{W}{W}",
+          "type_line": "Creature \u2014 Griffin",
+          "power": "5",
+          "toughness": "5",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Empyrean Griffin",
+              "original_text": "Mana cost: {4}{W}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 5/5\nFlying\nWhenever Empyrean Griffin attacks, up to one target creature voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nPermanents your opponents control can't phase in."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Empyrean Griffin",
+              "executable_text": "Mana cost: {4}{W}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 5/5\nFlying\nWhenever Empyrean Griffin attacks, If up to one target creature is a nonblocking permanent that isn't the target of a spell or ability on the stack, give up to one target creature the voyaging status until it phases in, then phase it out.\nPermanents your opponents control can't phase in.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhenever Empyrean Griffin attacks, up to one target creature voyages.\nPermanents your opponents control can't phase in."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhenever Empyrean Griffin attacks, up to one target creature voyages.\nPermanents your opponents control can't phase in.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Grievous Buccaneer_DSS",
+          "name": "Grievous Buccaneer",
+          "original_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/3\nWhen Grievous Buccaneer enters, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step.",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/3\nWhen Grievous Buccaneer enters, If it is a nonblocking permanent that isn't the target of a spell or ability on the stack, give it the voyaging status until it phases in, then phase it out.\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step.",
+          "source_card_key": "Grievous Buccaneer_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature \u2014 Human Pirate",
+          "power": "2",
+          "toughness": "3",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grievous Buccaneer",
+              "original_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/3\nWhen Grievous Buccaneer enters, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Grievous Buccaneer",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/3\nWhen Grievous Buccaneer enters, If it is a nonblocking permanent that isn't the target of a spell or ability on the stack, give it the voyaging status until it phases in, then phase it out.\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Grievous Buccaneer enters, it voyages.\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Grievous Buccaneer enters, it voyages.\nWhenever Grievous Buccaneer phases in, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Keen Seafarer_DSS",
+          "name": "Keen Seafarer",
+          "original_text": "Mana cost: {G}\nType: Creature \u2014 Human Pirate Warrior\nPower/Toughness: 1/1\n{1}{G}: Keen Seafarer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it.",
+          "executable_text": "Mana cost: {G}\nType: Creature \u2014 Human Pirate Warrior\nPower/Toughness: 1/1\n{1}{G}: If Keen Seafarer is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Keen Seafarer the voyaging status until it phases in, then phase it out.\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it.",
+          "source_card_key": "Keen Seafarer_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{G}",
+          "type_line": "Creature \u2014 Human Pirate Warrior",
+          "power": "1",
+          "toughness": "1",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Keen Seafarer",
+              "original_text": "Mana cost: {G}\nType: Creature \u2014 Human Pirate Warrior\nPower/Toughness: 1/1\n{1}{G}: Keen Seafarer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Keen Seafarer",
+              "executable_text": "Mana cost: {G}\nType: Creature \u2014 Human Pirate Warrior\nPower/Toughness: 1/1\n{1}{G}: If Keen Seafarer is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Keen Seafarer the voyaging status until it phases in, then phase it out.\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{1}{G}: Keen Seafarer voyages.\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{1}{G}: Keen Seafarer voyages.\nWhenever Keen Seafarer phases in, put a +1/+1 counter on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Opaline Drake_DSS",
+          "name": "Opaline Drake",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Creature \u2014 Drake\nPower/Toughness: 3/3\nFlying\nAt the beginning of your end step, up to one other target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, you may have it become a copy of target creature you control until end of turn.",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Creature \u2014 Drake\nPower/Toughness: 3/3\nFlying\nAt the beginning of your end step, up to one other target creature you control voyages. (If it isn't blocking or targeted by another spell or ability, it phases out.)\nWhenever a creature you control phases in, you may have it become a copy of target creature you control until end of turn.",
+          "source_card_key": "Opaline Drake_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Creature \u2014 Drake",
+          "power": "3",
+          "toughness": "3",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Opaline Drake",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature \u2014 Drake\nPower/Toughness: 3/3\nFlying\nAt the beginning of your end step, up to one other target creature you control voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever a creature you control phases in, you may have it become a copy of target creature you control until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Opaline Drake",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Creature \u2014 Drake\nPower/Toughness: 3/3\nFlying\nAt the beginning of your end step, up to one other target creature you control voyages. (If it isn't blocking or targeted by another spell or ability, it phases out.)\nWhenever a creature you control phases in, you may have it become a copy of target creature you control until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        },
+        {
+          "id": "Pale Courier_DSS",
+          "name": "Pale Courier",
+          "original_text": "Mana cost: {1}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 1/1\nFlying\nWhenever Pale Courier deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 1/1\nFlying\nWhenever Pale Courier deals combat damage to a player, If it is a nonblocking permanent that isn't the target of a spell or ability on the stack, give it the voyaging status until it phases in, then phase it out.\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token.",
+          "source_card_key": "Pale Courier_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature \u2014 Griffin",
+          "power": "1",
+          "toughness": "1",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pale Courier",
+              "original_text": "Mana cost: {1}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 1/1\nFlying\nWhenever Pale Courier deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Pale Courier",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature \u2014 Griffin\nPower/Toughness: 1/1\nFlying\nWhenever Pale Courier deals combat damage to a player, If it is a nonblocking permanent that isn't the target of a spell or ability on the stack, give it the voyaging status until it phases in, then phase it out.\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhenever Pale Courier deals combat damage to a player, it voyages.\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhenever Pale Courier deals combat damage to a player, it voyages.\nWhenever Pale Courier phases in, create a 1/1 white Dwarf creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Plucky Pickpocket_DSS",
+          "name": "Plucky Pickpocket",
+          "original_text": "Mana cost: {1}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 1/1\n{T}: Plucky Pickpocket voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card.",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 1/1\n{T}: If Plucky Pickpocket is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Plucky Pickpocket the voyaging status until it phases in, then phase it out.\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card.",
+          "source_card_key": "Plucky Pickpocket_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature \u2014 Human Pirate",
+          "power": "1",
+          "toughness": "1",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Plucky Pickpocket",
+              "original_text": "Mana cost: {1}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 1/1\n{T}: Plucky Pickpocket voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Plucky Pickpocket",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 1/1\n{T}: If Plucky Pickpocket is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Plucky Pickpocket the voyaging status until it phases in, then phase it out.\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{T}: Plucky Pickpocket voyages.\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{T}: Plucky Pickpocket voyages.\nWhenever Plucky Pickpocket phases in, draw a card, then discard a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Seasoned Lookout_DSS",
+          "name": "Seasoned Lookout",
+          "original_text": "Mana cost: {3}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/3\nWhenever Seasoned Lookout deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand.",
+          "executable_text": "Mana cost: {3}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/3\nWhenever Seasoned Lookout deals combat damage to a player, If it is a nonblocking permanent that isn't the target of a spell or ability on the stack, give it the voyaging status until it phases in, then phase it out.\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand.",
+          "source_card_key": "Seasoned Lookout_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{3}{G}",
+          "type_line": "Creature \u2014 Human Pirate Scout",
+          "power": "3",
+          "toughness": "3",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seasoned Lookout",
+              "original_text": "Mana cost: {3}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/3\nWhenever Seasoned Lookout deals combat damage to a player, it voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seasoned Lookout",
+              "executable_text": "Mana cost: {3}{G}\nType: Creature \u2014 Human Pirate Scout\nPower/Toughness: 3/3\nWhenever Seasoned Lookout deals combat damage to a player, If it is a nonblocking permanent that isn't the target of a spell or ability on the stack, give it the voyaging status until it phases in, then phase it out.\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever Seasoned Lookout deals combat damage to a player, it voyages.\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Seasoned Lookout deals combat damage to a player, it voyages.\nWhenever Seasoned Lookout phases in, reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it into your hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Skysail Rigger_DSS",
+          "name": "Skysail Rigger",
+          "original_text": "Mana cost: {3}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/3\n{1}{U}: Skysail Rigger voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Skysail Rigger phases in, put a flying counter on it.",
+          "executable_text": "Mana cost: {3}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/3\n{1}{U}: If Skysail Rigger is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Skysail Rigger the voyaging status until it phases in, then phase it out.\nWhenever Skysail Rigger phases in, put a flying counter on it.",
+          "source_card_key": "Skysail Rigger_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{3}{U}",
+          "type_line": "Creature \u2014 Human Pirate",
+          "power": "3",
+          "toughness": "3",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skysail Rigger",
+              "original_text": "Mana cost: {3}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/3\n{1}{U}: Skysail Rigger voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Skysail Rigger phases in, put a flying counter on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Skysail Rigger",
+              "executable_text": "Mana cost: {3}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/3\n{1}{U}: If Skysail Rigger is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Skysail Rigger the voyaging status until it phases in, then phase it out.\nWhenever Skysail Rigger phases in, put a flying counter on it.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{1}{U}: Skysail Rigger voyages.\nWhenever Skysail Rigger phases in, put a flying counter on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{1}{U}: Skysail Rigger voyages.\nWhenever Skysail Rigger phases in, put a flying counter on it.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Song of the Sea_DSS",
+          "name": "Song of the Sea",
+          "original_text": "Mana cost: {2}{G}\nType: Sorcery\nPut three +1/+1 counters on target creature you control. It voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*",
+          "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nPut three +1/+1 counters on target creature you control. If It is a nonblocking permanent that isn't the target of a spell or ability on the stack, give It the voyaging status until it phases in, then phase it out.",
+          "source_card_key": "Song of the Sea_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Song of the Sea",
+              "original_text": "Mana cost: {2}{G}\nType: Sorcery\nPut three +1/+1 counters on target creature you control. It voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Song of the Sea",
+              "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nPut three +1/+1 counters on target creature you control. If It is a nonblocking permanent that isn't the target of a spell or ability on the stack, give It the voyaging status until it phases in, then phase it out.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Put three +1/+1 counters on target creature you control. It voyages."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Put three +1/+1 counters on target creature you control. It voyages.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Twilight Privateer_DSS",
+          "name": "Twilight Privateer",
+          "original_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/2\n{1}{U}: Twilight Privateer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Twilight Privateer phases in, up to one other target creature voyages.",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/2\n{1}{U}: If Twilight Privateer is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Twilight Privateer the voyaging status until it phases in, then phase it out.\nWhenever Twilight Privateer phases in, up to one other target creature voyages.",
+          "source_card_key": "Twilight Privateer_DSS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature \u2014 Human Pirate",
+          "power": "2",
+          "toughness": "2",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Twilight Privateer",
+              "original_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/2\n{1}{U}: Twilight Privateer voyages. *(If it isn't blocking or targeted by another spell or ability, it phases out.)*\nWhenever Twilight Privateer phases in, up to one other target creature voyages."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Twilight Privateer",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 2/2\n{1}{U}: If Twilight Privateer is a nonblocking permanent that isn't the target of a spell or ability on the stack, give Twilight Privateer the voyaging status until it phases in, then phase it out.\nWhenever Twilight Privateer phases in, up to one other target creature voyages.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{1}{U}: Twilight Privateer voyages.\nWhenever Twilight Privateer phases in, up to one other target creature voyages."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{1}{U}: Twilight Privateer voyages.\nWhenever Twilight Privateer phases in, up to one other target creature voyages.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Living Archipelago_OTH",
+          "name": "Living Archipelago",
+          "original_text": "Mana cost: {4}{G}{G}\nType: Creature \u2014 Elder Turtle\nPower/Toughness: 6/6\nTrample\nWhenever Living Archipelago enters or attacks, up to two target lands you control voyage. *(If they aren't being targeted by another spell or ability, they phase out.)*\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land.",
+          "executable_text": "Mana cost: {4}{G}{G}\nType: Creature \u2014 Elder Turtle\nPower/Toughness: 6/6\nTrample\nWhenever Living Archipelago enters or attacks, If up to two target lands you control is a nonblocking permanent that isn't the target of a spell or ability on the stack, give up to two target lands you control the voyaging status until it phases in, then phase it out.\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land.",
+          "source_card_key": "Living Archipelago_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "mana_cost": "{4}{G}{G}",
+          "type_line": "Creature \u2014 Elder Turtle",
+          "power": "6",
+          "toughness": "6",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Living Archipelago",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Creature \u2014 Elder Turtle\nPower/Toughness: 6/6\nTrample\nWhenever Living Archipelago enters or attacks, up to two target lands you control voyage. *(If they aren't being targeted by another spell or ability, they phase out.)*\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Living Archipelago",
+              "executable_text": "Mana cost: {4}{G}{G}\nType: Creature \u2014 Elder Turtle\nPower/Toughness: 6/6\nTrample\nWhenever Living Archipelago enters or attacks, If up to two target lands you control is a nonblocking permanent that isn't the target of a spell or ability on the stack, give up to two target lands you control the voyaging status until it phases in, then phase it out.\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land.",
+              "custom_keyword_identities": [
+                "voyage"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Trample\nWhenever Living Archipelago enters or attacks, up to two target lands you control voyage.\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land."
+            }
+          ],
+          "custom_keyword_identities": [
+            "voyage"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Trample\nWhenever Living Archipelago enters or attacks, up to two target lands you control voyage.\nWhenever a land you control phases in, you may create a tapped token that's a copy of that land.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Voyage",
+          "template": "{Subject}",
+          "reminder": "If {Subject} is a nonblocking permanent that isn't the target of a spell or ability on the stack, give {Subject} the voyaging status until it phases in, then it phases out."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_next_wave_predicate_and_frontend_integration",
+      "remaining_obligations": [
+        "Integrate native not_targeted_on_stack predicate scratch patch",
+        "Integrate single-selection multi-subject frontend iteration patch",
+        "Run full source and negative behavioral tests"
+      ],
+      "expanded_source_cards": [
+        "Adept Fisherman",
+        "Cryptozoologist",
+        "Daybreak Wayfarers",
+        "Eager Voyager",
+        "Empyrean Griffin",
+        "Grievous Buccaneer",
+        "Keen Seafarer",
+        "Opaline Drake",
+        "Pale Courier",
+        "Plucky Pickpocket",
+        "Seasoned Lookout",
+        "Skysail Rigger",
+        "Song of the Sea",
+        "Twilight Privateer",
+        "Living Archipelago"
+      ]
+    }
+  ]
+}

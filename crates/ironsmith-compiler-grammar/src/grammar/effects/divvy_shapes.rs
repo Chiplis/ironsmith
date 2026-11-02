@@ -199,7 +199,6 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
         .iter()
         .map(|tokens| TokenWordView::new(tokens).to_word_refs())
         .collect::<Vec<_>>();
-    let first = sentence_words.first().map(Vec::as_slice).unwrap_or(&[]);
 
     // Both fixed shapes match every word of the sentences they consume.
     let fixed = crate::word_claims::speculative_keep_if(

@@ -3021,7 +3021,7 @@ fn reminder_identity_extended_operations_accept_legacy_unit_artifacts() {
     let decoded: ironsmith_core::UnearthEffect = serde_json::from_value(serde_json::to_value(generic).unwrap()).unwrap();
     assert!(decoded.descriptive);
     let generic = ironsmith_core::AscendEffect::designation_if_permanent_count(4, true, true);
-    let decoded: ironsmith_core::AscendEffect = serde_json::from_value(serde_json::to_value(generic).unwrap()).unwrap();
+    let decoded: ironsmith_core::AscendEffect = serde_json::from_value(serde_json::to_value(&generic).unwrap()).unwrap();
     assert_eq!(decoded, generic);
 }
 
@@ -6203,7 +6203,7 @@ fn reminder_identity_exile_preparation_preserves_visibility_timing_and_separate_
         game.turn.active_player = a; game.turn.priority_player = Some(a); game.turn.phase = ironsmith::Phase::FirstMain; game.turn.step = None;
         let hand = game.create_object_from_definition(&card, a, Zone::Hand);
         game.player_mut(a).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless, 2);
-        let action = if face_down { SpecialAction::Foretell { card_id: hand } } else { SpecialAction::Plot { card_id: hand } };
+        let action = if !native { SpecialAction::PrepareExile {card_id:hand,method_index:0,preparation:card.alternative_casts[0].exile_preparation().unwrap().clone()} } else if face_down { SpecialAction::Foretell { card_id: hand } } else { SpecialAction::Plot { card_id: hand } };
         assert!(can_perform_check(&action, &game, a).is_ok());
         game.turn.active_player = b;
         assert!(can_perform_check(&action, &game, a).is_err());

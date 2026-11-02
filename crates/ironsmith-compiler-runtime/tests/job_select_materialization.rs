@@ -1,7 +1,6 @@
 use ironsmith::ability::AbilityKind;
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::decision::DecisionMaker;
-use ironsmith::decisions::context::SelectObjectsContext;
 use ironsmith::events::{ZoneChangeEvent, cause::EventCause};
 use ironsmith::game_loop::{
     check_and_apply_sbas, put_triggers_on_stack, resolve_stack_entry, resolve_stack_entry_with,
@@ -217,22 +216,28 @@ fn job_select_materialization_doubled_tokens_offer_one_attachment_to_current_equ
             self.pending
         }
 
-        fn decide_objects(
+        fn decide_options(
             &mut self,
-            _game: &GameState,
-            context: &SelectObjectsContext,
-        ) -> Vec<ObjectId> {
+            game: &GameState,
+            context: &ironsmith::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
             assert_eq!(context.player, self.expected_player);
-            assert_eq!(context.candidates.len(), 2);
+            assert_eq!(context.options.len(), 2);
             assert_eq!(context.min, 1);
-            assert_eq!(context.max, Some(1));
+            assert_eq!(context.max, 1);
             if self.pause {
                 self.pending = true;
                 return Vec::new();
             }
-            let id = context.candidates.last().unwrap().id;
+            // Attachment destinations are a typed object/player menu. This
+            // case contains the two tokens in original creation order.
+            let candidates = game.battlefield.iter().copied().filter(|id| {
+                game.object(*id).is_some_and(|object| object.kind == ObjectKind::Token)
+            }).collect::<Vec<_>>();
+            assert_eq!(candidates.len(), 2);
+            let id = *candidates.last().unwrap();
             self.chosen = Some(id);
-            vec![id]
+            vec![context.options.len() - 1]
         }
     }
     let alice = PlayerId::from_index(0);

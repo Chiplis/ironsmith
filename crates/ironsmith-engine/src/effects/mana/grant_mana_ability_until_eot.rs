@@ -61,6 +61,7 @@ pub(crate) fn grant_player_mana_ability_until_end_of_turn(
     let carrier = game.new_object_id();
     let carried = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(ability.clone()),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Command],
     };
     game.add_object(crate::object::Object::new_emblem(

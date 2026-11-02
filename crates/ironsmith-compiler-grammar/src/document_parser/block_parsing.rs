@@ -307,13 +307,14 @@ pub(super) fn try_parse_modal_bullet_block(
         return Ok(Some(block));
     }
     let spree_header = crate::string_primitives::starts_with(&normalized_header, "spree") || normalized_header.trim_end_matches('.') == "choose one or more additional costs";
+    let cost_labelled_header = spree_header || crate::modal_support::paid_modal_choice_prefix(&line.tokens).is_some();
     let next_line_is_mode = preprocessed
         .items
         .get(idx + 1)
         .is_some_and(|item| match item {
             PreprocessedItem::Line(next_line) => {
                 is_bullet_line(next_line)
-                    || (spree_header
+                    || (cost_labelled_header
                         && next_line
                             .tokens
                             .first()
@@ -368,7 +369,7 @@ pub(super) fn try_parse_modal_bullet_block(
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
-        let is_spree_mode = spree_header
+        let is_spree_mode = cost_labelled_header
             && next_line
                 .tokens
                 .first()

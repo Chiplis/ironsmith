@@ -25,6 +25,37 @@ use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_fi
 use super::conditionals::parse_for_each_doesnt_control_lose_game;
 use super::dispatch_entry::replace_unbound_x_in_effects_anywhere;
 
+/// The participant is the iteration key; an explicit "you may" retains the
+/// controller as actor/decider. Read this owner before singular permission leaves.
+pub(crate) fn parse_imperative_optional_participant(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(participant) = for_each_shapes::parse_participant_clause_shape(tokens) else { return Ok(None); };
+    if participant.participant_is_actor
+        || !crate::lexer::token_word_refs(participant.inner_tokens).starts_with(&["you", "may"]) { return Ok(None); }
+    // The iterated participant owns the private zone; the explicit "you"
+    // remains the caster and chooser. Read the complete instruction before
+    // optional-action parsing erases its actor prefix.
+    let body = crate::util::trim_edge_punctuation_tokens(participant.inner_tokens);
+    let words = crate::lexer::parser_token_word_refs(body);
+    if words.starts_with(&["you", "may", "cast"])
+        && words.ends_with(&["without", "paying", "its", "mana", "cost"])
+        && let Some(from) = body.iter().position(|token| token.is_word("from"))
+        && matches!(crate::lexer::parser_token_word_refs(&body[from..]).as_slice(),
+            ["from", "that", "players" | "player's", "graveyard", "without", "paying", "its", "mana", "cost"])
+        && let Some(filter) = participant_scopes::player_filter(participant.scope)
+    {
+        let mut subject = &body[3..from];
+        if subject.first().is_some_and(|token| token.is_any_word(&["a", "an"])) { subject=&subject[1..]; }
+        let objects = parse_object_filter(subject, false)?;
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
+            filter, sequential:true, effects:vec![EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+                PlayerAst::You, PlayerAst::That, objects, crate::zone::Zone::Graveyard)],
+        })));
+    }
+    if let Some(effect) = parse_for_each_player_clause(tokens)? { return Ok(Some(effect)); }
+    parse_for_each_opponent_clause(tokens)
+}
+
 // Imperative “for each” scopes the whole body to one participant at a time.
 fn sequential_participant_body(effect: EffectAst) -> EffectAst {
     use crate::cards::builders::ForEachEffectAst;
@@ -217,6 +248,21 @@ pub(crate) fn parse_for_each_graveyard_effect(
     })))
 }
 
+pub(crate) fn parse_for_each_targeted_player_subject(subject: &[OwnedLexToken]) -> Result<Option<(ChoiceCount,crate::target::PlayerFilter)>,CardTextError> {
+    let Some(shape)=for_each_shapes::parse_for_each_target_subject_shape(subject) else{return Ok(None)};
+    let parsed=crate::grammar::leaf::parse_leaf_choice_count_prefix_tokens(shape.target_tokens);
+    let (count,rest)=parsed.as_ref().map(|parsed|(parsed.count,&shape.target_tokens[parsed.consumed..]))
+        .unwrap_or((ChoiceCount::exactly(1),shape.target_tokens));
+    let words=crate::lexer::parser_token_word_refs(rest);
+    let filter=match words.as_slice(){
+        ["target","player"|"players"]=>crate::target::PlayerFilter::Any,
+        ["target","opponent"|"opponents"]=>crate::target::PlayerFilter::Opponent,
+        _=>return Ok(None),
+    };
+    crate::word_claims::claim_tokens(subject);
+    Ok(Some((count,filter)))
+}
+
 pub fn parse_for_each_targeted_object_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
@@ -231,7 +277,7 @@ pub fn parse_for_each_targeted_object_subject(
         *word == "target"
             && !matches!(
                 words.get(index + 1).copied(),
-                Some("player" | "opponent" | "player's" | "opponent's")
+                Some("player" | "players" | "opponent" | "opponents" | "player's" | "opponent's")
             )
     });
     if !announces_object_target {

@@ -1111,6 +1111,18 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         return Some(value);
     }
     let words = crate::lexer::parser_token_word_refs(tokens);
+    // Completed-action histories are scalar expressions, not counted object
+    // filters. Read their complete typed expression before broad "number of"
+    // readers can capture "times ..." as though it named a permanent group.
+    if let Some(expression) = words.get(3..) {
+        let head = expression.strip_prefix(&["the"]).unwrap_or(expression);
+        if head.starts_with(&["number", "of", "times"])
+            && head.windows(3).any(|part| part == ["has", "performed", "the"])
+        {
+            return parse_value_expr_words(expression)
+                .and_then(|(value, used)| (used == expression.len()).then_some(value));
+        }
+    }
     if matches!(words.get(3..),
         Some(["the", "life", "paid", "as", "this", "artifact" | "creature" | "permanent", "entered"])
         | Some(["the", "life", "paid", "as", "it", "entered"])) {
@@ -4124,6 +4136,21 @@ fn parse_additional_counter_count_from_tokens(tokens: &[OwnedLexToken]) -> Value
 pub fn parse_as_enters_becomes_characteristics_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // Source-token recognition can retain a balanced reminder after a quoted
+    // filter operand. Remove only parenthetical groups with the checked
+    // shared helper; every executable token outside them still must match.
+    if let Some(without_reminders)=crate::util::strip_parenthetical_tokens_checked(tokens) {
+        let clean=crate::util::trim_edge_punctuation_tokens(&without_reminders);
+        if let Some(enter)=clean.iter().position(|token|token.is_any_word(&["enter","enters"])) {
+            let tail=crate::lexer::parser_token_word_refs(&clean[enter+1..]);
+            if tail == ["face", "down"] || tail == ["face-down"] {
+                let filter=parse_object_filter(&clean[..enter],false)?;
+                crate::word_claims::claim_tokens(&clean[enter..]);
+                return Ok(Some(StaticAbility::enters_face_down_for_filter(filter)));
+            }
+        }
+    }
+
     let clause_words = crate::lexer::token_word_refs(tokens);
     let Some(as_enters) = etb_grammar::parse_as_enters_tokens(tokens) else {
         return Ok(None);
@@ -4829,5 +4856,31 @@ mod investigate_count_binding_tests {
         assert_eq!(query.metric, ironsmith_core::EffectMetric::PlayersWithPositiveCount);
         assert_eq!(query.player, Some(PlayerFilter::Opponent));
         assert_eq!(parse_value_binding_clause(&tokens), parse_value_binding_clause_lexed(&tokens));
+    }
+}
+
+#[cfg(test)]
+mod named_action_history_binding_tests {
+    use super::*;
+
+    #[test]
+    fn action_histories_bind_before_object_counts_and_keep_arithmetic() {
+        for (text, sum) in [
+            ("where X is the number of times this permanent has performed the cadence action this turn", false),
+            ("where X is the number of times this permanent has performed the rekindle action", false),
+            ("where X is the number of times it has performed the cadence action this turn plus the number of times this permanent has performed the cadence action this turn", true),
+            ("where X is the number of times this permanent has performed the cadence action plus 2", true),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let value = parse_value_binding_clause(&tokens).expect("complete typed action history");
+            assert!(format!("{value:?}").contains("NamedActionCount"), "{text}: {value:?}");
+            assert_eq!(matches!(value, Value::Add(_, _)), sum, "{text}");
+        }
+    }
+
+    #[test]
+    fn history_binding_rejects_unconsumed_tails() {
+        let tokens = crate::lexer::lex_line("where X is the number of times this permanent has performed the cadence action this turn nonsense", 0).unwrap();
+        assert!(parse_value_binding_clause(&tokens).is_none());
     }
 }

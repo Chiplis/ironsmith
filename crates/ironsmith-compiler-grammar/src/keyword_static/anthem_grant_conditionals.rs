@@ -1025,8 +1025,10 @@ fn add_static_ability_ast_condition(
     Ok(match ability {
         StaticAbilityAst::Static(_)
         | StaticAbilityAst::KeywordAction(_)
+        | StaticAbilityAst::SourceSetupProgram { .. }
         | StaticAbilityAst::PregameRevealFromOpeningHand { .. }
         | StaticAbilityAst::TokenCreationTemplates { .. }
+        | StaticAbilityAst::NamedActionTokenAbilityGrant { .. }
         | StaticAbilityAst::LoseGameReplacement { .. } => {
             StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(ability),
@@ -1135,7 +1137,8 @@ fn add_static_ability_ast_condition(
         | StaticAbilityAst::EntryReplacementWithGrantedAbilities { .. }
         | StaticAbilityAst::SoulbondSharedObjectAbility { .. }
         | StaticAbilityAst::SourceHasFullTextOfTopGraveyardCard { .. }
-        | StaticAbilityAst::AttachmentRestriction { .. } => {
+        | StaticAbilityAst::CopySourceSelectionReplacement { .. }
+                | StaticAbilityAst::AttachmentRestriction { .. } => {
             return Err(CardTextError::ParseError(
                 "cannot apply leading static condition to unsupported static ability shape"
                     .to_string(),
@@ -1183,6 +1186,21 @@ fn grant_for_anthem_subject(
     clause: &ParsedAnthemClause,
     ability: StaticAbility,
 ) -> StaticAbilityAst {
+    let mut ability=ability;
+    // A recipient-local casting policy is acquired before that spell exists
+    // on the stack. Preserve the authored grant domain on the policy itself,
+    // rather than relying on a battlefield layer to discover the future spell.
+    if let AnthemSubjectAst::Filter(recipient)=&clause.subject
+        && let ironsmith_core::StaticAbilityPayload::GrantOptionalSpellCost{filter,..}=&mut ability.payload
+        && *filter==ObjectFilter::source()
+    {
+        *filter=recipient.clone();
+        let granted=match &clause.condition{
+            Some(condition)=>StaticAbilityAst::ConditionalStaticAbility{ability:Box::new(StaticAbilityAst::Static(ability)),condition:condition.clone()},
+            None=>StaticAbilityAst::Static(ability),
+        };
+        return with_anthem_set_quantifier_surface(granted,clause);
+    }
     let granted = match &clause.subject {
         AnthemSubjectAst::Source => match &clause.condition {
             Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
@@ -1326,6 +1344,7 @@ fn granted_object_ability_for_keyword_action(
                         PresentationKeyword::Afflict(*amount),
                     )),
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             };
             Some((parsed_ability_from_ability(ability), action.display_text()))
@@ -1511,6 +1530,7 @@ pub fn parse_equipment_you_control_have_equip_line(
                     is_loyalty_ability: false,
                 },
             ),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),
@@ -1547,6 +1567,7 @@ fn parsed_exploit_ability() -> ParsedAbility {
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     ParsedAbility {
@@ -1575,6 +1596,21 @@ pub(crate) fn parse_triggered_granted_ability(
     let trigger_tokens = trim_edge_punctuation(tokens);
     if trigger_tokens.is_empty() {
         return Ok(None);
+    }
+    // A quoted chapter is an ordinary chapter ability, just as on a source
+    // document line. Read its bounded header before ordinary grant labels can
+    // mistake a Roman numeral for an ability-word presentation heading.
+    if let Some(chapter) = crate::util::parse_saga_chapter_prefix_tokens(&trigger_tokens) {
+        let effects = crate::clause_support::parse_effect_sentences_lexed(chapter.body_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError("quoted chapter has no complete effect program".into()));
+        }
+        let label = chapter.presentation_label.map(crate::ability::PresentationLabel::AbilityWord);
+        crate::word_claims::claim_tokens(&trigger_tokens[..trigger_tokens.len() - chapter.body_tokens.len()]);
+        return Ok(Some(parsed_triggered_ability(
+            TriggerSpec::SagaChapter(chapter.chapters), effects, vec![Zone::Battlefield],
+            None, label.as_ref(), ReferenceImports::default(),
+        )));
     }
     let intro = crate::grammar::clause_support::parse_trigger_intro_tokens(&trigger_tokens);
     if intro.body_first == 0 {
@@ -1784,6 +1820,7 @@ fn compiler_soulshift_ability(amount: Value, label: String) -> Ability {
                 label,
             ))),
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -1834,6 +1871,7 @@ fn nonstatic_keyword_action_as_granted_object_ability(
                         PresentationKeyword::Casualty(power),
                     )),
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Stack],
             };
             Some((
@@ -1903,6 +1941,22 @@ fn parse_complete_single_quoted_object_ability_tail(
     let mut parsed = ParsedGrantedTailAst::default();
     parsed.granted_object_abilities.push((*ability, display));
     Ok(Some(parsed))
+}
+
+/// Several complete restriction clauses in one quoted static sentence
+/// are components of ONE granted ability, not separate ability occurrences.
+/// The ordinary typed restriction reader retains every player operand.
+/// Targeted restrictions belong to their existing object-subject owners.
+pub(super) fn parse_complete_quoted_static_restriction(tokens:&[OwnedLexToken])->Option<StaticAbility> {
+    // The generic restriction list reader also serves effect procedures and
+    // can skip a positive sibling. This static owner requires every authored
+    // conjunction member to be a complete negated clause of its own.
+    if split_lexed_slices_on_and(tokens).iter().any(|member|
+        crate::activation_and_restrictions::find_negation_span(member).is_none()) {return None;}
+    let restrictions=crate::activation_and_restrictions::parse_cant_restrictions(tokens).ok()??;
+    if restrictions.is_empty() || restrictions.iter().any(|rule|rule.target.is_some()) {return None;}
+    Some(StaticAbility::restrictions(restrictions.into_iter().map(|rule|rule.restriction).collect(),
+        display_text_for_tokens_in_mode(tokens,true,true)))
 }
 
 pub fn parse_heterogeneous_granted_tail(
@@ -2006,6 +2060,18 @@ fn parse_heterogeneous_granted_tail_remaining(
             parsed
                 .granted_static
                 .push(StaticAbility::can_block_as_though_no_landwalk().into());
+            continue;
+        }
+
+        // The quoted identity label is an opaque operand, not a quoted
+        // executable rule. Keep it out of speculative nested-ability parsing,
+        // whose word obligations would otherwise survive on the label.
+        if let Some(markers)=crate::effect_sentences::parse_custom_keyword_identity_grant_component(&segment)? {
+            for marker in markers {
+                if let GrantedAbilityAst::StaticAbility(ability)=marker {
+                    parsed.granted_static.push(*ability);
+                }
+            }
             continue;
         }
 
@@ -2117,6 +2183,16 @@ fn parse_heterogeneous_granted_tail_remaining(
         // nested under the outer affected-object filter.
         if let Some(ability) = parse_spells_cost_modifier_line(&segment)? {
             parsed.granted_static.push(ability.into());
+            continue;
+        }
+
+        // A quote-proven granted static rule uses the same complete typed
+        // restriction reader as a printed ability. Its player-relative `you`
+        // remains scoped to the recipient, not the Aura's controller.
+        if contains_token_kind(&raw_segment, TokenKind::Quote)
+            && let Some(ability)=parse_complete_quoted_static_restriction(&segment)
+        {
+            parsed.granted_static.push(StaticAbilityAst::Static(ability));
             continue;
         }
 
@@ -3620,8 +3696,15 @@ pub fn parse_anthem_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
             Ok(Some(split)) => Some(split.ability_tokens.len()),
             Ok(None) | Err(_) => None,
         };
+    // Possession inside an X binding belongs to that value expression, not
+    // to a sibling keyword grant (for example "has performed the ... action").
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let where_x_start = words.word_refs().windows(3)
+        .position(|part| part == ["where", "x", "is"])
+        .map(|index| words.token_start_indices()[index]);
     if keyword_head.is_some_and(|head| {
         trailing_condition_start.is_none_or(|condition_start| head.have_token < condition_start)
+            && where_x_start.is_none_or(|binding_start| head.have_token < binding_start)
     }) {
         // A late `get(s)` after a shared-subject keyword predicate belongs to
         // the complete compound grammar.  Letting the plain anthem parser
@@ -4232,9 +4315,45 @@ fn parse_per_item_conditional_grant_list_line(
     Ok(Some(abilities))
 }
 
+pub fn static_grant_has_outer_sentence_boundary(tokens: &[OwnedLexToken]) -> bool {
+    let mut quoted=false;
+    for (index,token) in tokens.iter().enumerate() {
+        if token.kind==crate::lexer::TokenKind::Quote {quoted=!quoted;continue;}
+        if !quoted && token.kind==crate::lexer::TokenKind::Period
+            && tokens[index+1..].iter().any(|tail| !matches!(tail.kind,crate::lexer::TokenKind::Period|crate::lexer::TokenKind::Comma|crate::lexer::TokenKind::Semicolon)) {return true;}
+    }
+    false
+}
+
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities)=parse_quoted_alternative_method_grant(tokens)? {return Ok(Some(abilities));}
+
+    if static_grant_has_outer_sentence_boundary(tokens)
+        && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
+    // A bare blitz declaration, with its optional complete mana-cost
+    // companion, grants an alternative casting method over card zones.
+    // The keyword owner normalizes the spell subject for that permission;
+    // the heterogeneous anthem owner must not produce a second keyword
+    // grant over the stack. Prove the COMPLETE narrower reading first.
+    // Leading-condition/type-addition clauses retain their existing owner
+    // (the narrower reader delegates those back here).
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !crate::word_primitives::parse_sequence_prefix(&words, &["as", "long", "as"])
+        && !crate::word_primitives::sequence_occurs(&words, &["in", "addition", "to"])
+        && let Some(head) = anthem_grant_grammar::parse_granted_keyword_verb_facts(tokens)
+    {
+        let tail = trim_edge_punctuation(&tokens[head.have_token + 1..]);
+        let sentences = crate::grammar::primitives::split_lexed_slices_on_period(&tail);
+        if sentences.first().is_some_and(|first|
+            anthem_grant_grammar::classify_granted_keyword_tokens(&trim_edge_punctuation(first))
+                == anthem_grant_grammar::GrantedKeywordTokenKind::Blitz)
+            && parse_granted_keyword_static_line_inner(tokens)?.is_some()
+        {
+            return Ok(None);
+        }
+    }
     // The complete compound reader separates granted keywords from a stated
     // blocking quality (CR 113.12). A broad grant must not consume both.
     if matches!(parse_subject_has_keywords_and_cant_be_blocked_line(tokens), Ok(Some(_)))
@@ -4644,12 +4763,11 @@ pub fn parse_filter_has_granted_ability_line(
                     UnionGrantSubject::PlayerYou => {
                         // The player half only models keywords with a
                         // player-level restriction form ("You have hexproof").
-                        if matches!(
-                            parse_ability_line(&ability_tokens).as_deref(),
-                            Some([KeywordAction::Hexproof])
-                        ) {
+                        if let Some([action]) = parse_ability_line(&ability_tokens).as_deref()
+                            && let Some(player_keyword) = player_you_granted_keyword_static(action)
+                        {
                             granted.push(conditional_static_ability(
-                                player_you_hexproof_static(),
+                                player_keyword,
                                 condition.clone(),
                             ));
                         } else {
@@ -6208,5 +6326,218 @@ mod filtered_block_anthem_tests {
         assert!(blockers.subtypes.contains(&Subtype::Eldrazi));
         let invalid = crate::lexer::lex_line("Equipped creature gets +3/+1 and must be blocked by an Eldrazi if able unless you pay {2}.", 0).unwrap();
         assert!(!matches!(crate::keyword_static::parse_static_ability_ast_line_lexed(&invalid), Ok(Some(_))));
+    }
+}
+
+#[test]
+fn generic_static_grants_do_not_own_outer_optional_resolution_siblings() {
+    let tokens=crate::lexer::lex_line("Target creature gains custom keyword \"growwise\", and \"Whenever this creature attacks, draw a card.\" until end of turn. You may have it fight another target creature.",0).unwrap();
+    assert!(static_grant_has_outer_sentence_boundary(&tokens));
+    assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_none());
+    assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_none());
+}
+
+#[cfg(test)]
+mod complete_custom_grant_boundary_diagnostics {
+    use super::*;
+    #[test]
+    fn complete_custom_grants_have_one_static_sentence_and_a_complete_static_reading() {
+        let cases=[
+            ("graveyard", "Creature and Aura cards with mana value 3 or less in your graveyard have custom keyword \"revive\", and \"{2}{W/B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost. Activate only as a sorcery.\"."),
+            ("counter_trigger", "Creatures you control have custom keyword \"growwise\", and \"Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.\""),
+            ("copy_trigger", "Creatures you control have custom keyword \"shimmer\", and \"Whenever this creature attacks, create a tapped and attacking token that's a copy of this creature. Exile that token at the beginning of the next end step.\"."),
+        ];
+        let mut failures=Vec::new();
+        for (label,text) in cases {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let family=crate::grammar::structure::classify_static_line_family_lexed(&tokens);
+            let sentences=crate::lexer::split_lexed_sentences(&tokens);
+            let rendered=sentences.iter().map(|tokens|crate::lexer::render_token_slice(tokens)).collect::<Vec<_>>();
+            let (reading,claims)=crate::word_claims::scoped(||parse_filter_has_granted_ability_line(&tokens));
+            let read_summary=match &reading {Ok(Some(abilities))=>format!("{}statics",abilities.len()),Ok(None)=>"NoMatch".into(),Err(error)=>format!("{error:?}")};
+            let state=format!("{label}: family={family:?}; sentences={rendered:?}; static_read={read_summary}; unread={:?}; obligations={:?}",crate::word_claims::unclaimed_words(&tokens,&claims),claims.obligations_debug());
+            println!("{state}");
+            if family!=Some(crate::grammar::structure::StaticLineFamily::GrantedQuotedAbility)||sentences.len()!=1||!matches!(reading,Ok(Some(_))) {failures.push(state);}
+        }
+        assert!(failures.is_empty(),"{}",failures.join("\n"));
+    }
+}
+
+#[cfg(test)]
+mod named_action_binding_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn possession_in_a_scalar_binding_is_not_a_keyword_grant() {
+        for label in ["cadence", "rekindle"] {
+            let text = format!("This creature gets +X/+0, where X is the number of times this permanent has performed the {label} action this turn.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let ability = parse_anthem_line(&tokens).unwrap().expect("scoped history scalar");
+            assert!(format!("{ability:?}").contains("NamedActionCount"));
+        }
+    }
+
+    #[test]
+    fn a_real_keyword_sibling_still_belongs_to_the_compound_reader() {
+        let tokens = crate::lexer::lex_line("This creature has flying and gets +X/+0, where X is the number of times this permanent has performed the cadence action this turn.", 0).unwrap();
+        assert!(parse_anthem_line(&tokens).unwrap().is_none());
+    }
+}
+
+/// A quoted ordinary casting-permission program grants a casting method,
+/// rather than being misclassified as a battlefield activated ability.
+fn parse_quoted_alternative_method_grant(tokens:&[OwnedLexToken])->Result<Option<Vec<StaticAbilityAst>>,CardTextError> {
+    let mut quoted=false;
+    let Some(verb)=tokens.iter().position(|token| {
+        if token.kind==TokenKind::Quote {quoted=!quoted;return false;}
+        !quoted && token.is_any_word(&["has","have"])
+    }) else{return Ok(None)};
+    // Recipient name/rules-text operands precede the grant verb and cannot
+    // serve as the executable grant's marker or opening quote.
+    let quotes=tokens.iter().enumerate().filter_map(|(index,token)|(index>verb && token.kind==TokenKind::Quote).then_some(index)).collect::<Vec<_>>();
+    let (open,close,marker)=match quotes.as_slice() {
+        [open,close] if *open==verb+1=>(*open,*close,None),
+        [marker_open,marker_close,open,close]
+            if crate::lexer::parser_token_word_refs(&tokens[verb+1..*marker_open])==["custom","keyword"]=>{
+            let prefix=&tokens[verb+1..=*marker_close];
+            let Some(parts)=crate::effect_sentences::parse_custom_keyword_identity_grant_component(prefix)? else{return Ok(None)};
+            let [GrantedAbilityAst::StaticAbility(marker)]=parts.as_slice() else{return Ok(None)};
+            let StaticAbilityAst::Static(marker)=marker.as_ref() else{return Ok(None)};
+            let connector=crate::lexer::token_word_refs(&tokens[*marker_close+1..*open]);
+            if connector!=["and"] {return Ok(None)};
+            (*open,*close,Some(marker.clone()))
+        }
+        _=>return Ok(None),
+    };
+    if tokens[close+1..].iter().any(|token|token.kind!=TokenKind::Period) {return Ok(None)};
+    let body=&tokens[open+1..close];
+    let mut method=crate::grammar::shared_util::alternative_cost_lines::parse_self_zone_alternative_cost(body)?;
+    // A complete quoted announcement is an ordinary recipient ability, not a
+    // cast-from-zone permission. Its own static program retains payer choice,
+    // price and outcome label under that receiving spell's source context.
+    let announcement=if method.is_none() {
+        crate::keyword_static::parse_casting_announcement_program_line(body)?
+    } else { None };
+    if method.is_none() && announcement.is_none() { return Ok(None); }
+    let mut filter=crate::object_filters::parse_object_filter(&tokens[..verb],false)?;
+    let zone=filter.zone.take().unwrap_or_else(||method.as_ref().map_or(Zone::Stack,|method|method.cast_from_zone()));
+    // A quoted "you" belongs to each recipient, while a grant's beneficiary
+    // is evaluated relative to the grantor. Admit this translation only when
+    // the filter proves the recipient's rules controller is the grantor.
+    let same_player=filter.source || if matches!(zone,Zone::Battlefield|Zone::Stack) {
+        filter.controller==Some(PlayerFilter::You)
+    }else{
+        filter.owner==Some(PlayerFilter::You)
+    };
+    if method.is_some() && !same_player {
+        return Err(CardTextError::ParseError("quoted casting permissions require recipients provably owned by the granting player, or battlefield recipients that player controls".into()));
+    }
+    let mut abilities=Vec::new();
+    if let Some(marker)=marker {
+        if let ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity {name}= &marker.payload {
+            if let Some(crate::model::CompilerAlternativeCastingMethod::FromZone {name:method_name,..}
+                | crate::model::CompilerAlternativeCastingMethod::Composed {name:method_name,..})=&mut method {*method_name=name.clone().into();}
+        }
+        let grant=crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::Ability(marker),filter.clone(),zone);
+        let grant=if method.is_some(){grant.with_beneficiary(PlayerFilter::You)}else{grant};
+        abilities.push(StaticAbilityAst::Static(StaticAbility::grants(grant)));
+    }
+    if let Some(method)=method {
+        abilities.push(StaticAbilityAst::Static(StaticAbility::grants(crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::AlternativeCast(method),filter,zone,
+        ).with_beneficiary(PlayerFilter::You))));
+    } else {
+        for rule in announcement.unwrap_or_default() {
+            let StaticAbilityAst::Static(rule)=rule else{return Err(CardTextError::ParseError("announcement reader returned a nonstatic program".into()))};
+            abilities.push(StaticAbilityAst::Static(StaticAbility::grants(crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::Ability(rule),filter.clone(),zone,
+            ))));
+        }
+    }
+    crate::word_claims::claim_tokens(&tokens[verb..open+1]);
+    crate::word_claims::claim_tokens(&tokens[close..]);
+    Ok(Some(abilities))
+}
+
+#[cfg(test)]
+mod quoted_method_grant_recipient_boundaries {
+    use super::*;
+    const BODY:&str="You may cast this card from your graveyard for {1} rather than pay its mana cost.";
+    #[test]
+    fn quoted_recipient_names_do_not_become_program_marker_quotes_or_grant_verbs(){
+        for name in ["Sample card","Have"] {
+            let line=format!("Creature cards named \"{name}\" in your graveyard have \"{BODY}\".");
+            let tokens=crate::lexer::lex_line(&line,0).unwrap();
+            assert!(parse_quoted_alternative_method_grant(&tokens).unwrap().is_some(),"{line}");
+        }
+    }
+    #[test]
+    fn foreign_and_unbounded_recipients_are_not_granted_the_authors_casting_permission(){
+        for subject in ["Creature cards in opponents' graveyards","Creature cards in graveyards"] {
+            let tokens=crate::lexer::lex_line(&format!("{subject} have \"{BODY}\"."),0).unwrap();
+            assert!(parse_quoted_alternative_method_grant(&tokens).is_err(),"a recipient-owned quoted permission cannot become the grantor's permission");
+        }
+    }
+}
+
+#[cfg(test)]
+mod quoted_player_static_rule_grant_tests {
+    use super::*;
+    #[test]
+    fn complete_quoted_player_restrictions_remain_recipient_static_rules() {
+        let text="Enchanted creature has \"You can't lose the game and your opponents can't win the game.\"";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        // The broad filter family intentionally declines attached grants;
+        // enter the actual typed attachment owner used by the source line.
+        let abilities=parse_enchanted_creature_has_line(&tokens).unwrap().expect("complete quoted recipient rule");
+        let [StaticAbilityAst::AttachedStaticAbilityGrant{ability,..}]=abilities.as_slice() else{panic!("one authored recipient ability: {abilities:?}");};
+        let StaticAbilityAst::Static(ability)=ability.as_ref()else{panic!("typed recipient static rule");};
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction{restriction,additional_restrictions,..}=&ability.payload else{panic!("compound typed restrictions");};
+        assert_eq!(restriction,&crate::effect::Restriction::lose_game(PlayerFilter::You));
+        assert_eq!(additional_restrictions,&vec![crate::effect::Restriction::win_game(PlayerFilter::Opponent)]);
+        assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_none(),"preserve disjoint attached/broad ownership");
+        let positive_sibling=crate::lexer::lex_line("You can't lose the game and draw a card.",0).unwrap();
+        assert!(parse_complete_quoted_static_restriction(&positive_sibling).is_none(),"a positive sibling cannot disappear into a static restriction");
+    }
+}
+
+#[cfg(test)]
+mod quoted_announcement_grant_boundaries {
+    use super::*;
+    #[test]
+    fn identity_and_complete_quoted_announcement_are_distinct_granted_abilities() {
+        let line="Spells you cast have custom keyword \"moon trial\", and \"As you cast this spell, an opponent of your choice may pay 2 life. If that player doesn't, they fail the moon trial.\".";
+        let tokens=crate::lexer::lex_line(line,0).unwrap();
+        let abilities=parse_quoted_alternative_method_grant(&tokens).unwrap().unwrap();
+        assert_eq!(abilities.len(),2);
+    }
+}
+
+#[cfg(test)]
+mod derived_blitz_owner_tests {
+    use super::*;
+    #[test]
+    fn complete_blitz_permission_has_one_owner_and_keeps_subject_qualifiers() {
+        for text in [
+            "Each creature spell you cast with mana value 4 or greater has blitz.",
+            "Each creature spell you cast with mana value 4 or greater has blitz. The blitz cost is equal to its mana cost.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_none());
+            let expected=parse_granted_keyword_static_line(&tokens).unwrap().unwrap();
+            assert_eq!(parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap(),expected);
+            assert_eq!(expected.len(),5,"spell permissions cover the ordinary card zones, not just the stack");
+            for ability in &expected {
+                let StaticAbilityAst::Static(rule)=ability else {panic!("ordinary unconditional grant")};
+                let ironsmith_core::StaticAbilityPayload::Grants(spec)=&rule.payload else {panic!("actual alternative casting permission")};
+                assert_eq!(spec.filter.card_types,vec![CardType::Creature]);
+                assert_eq!(spec.filter.mana_value,Some(crate::filter::Comparison::GreaterThanOrEqual(4)));
+                assert!(spec.filter.zone.is_none()&&spec.filter.stack_kind.is_none(),"card eligibility is normalized out of stack-only criteria");
+            }
+        }
+        let malformed=crate::lexer::lex_line("Each creature spell you cast has blitz. Draw a card.",0).unwrap();
+        assert!(!matches!(parse_granted_keyword_static_line(&malformed),Ok(Some(_))));
+        let ordinary=crate::lexer::lex_line("Creatures you control have haste.",0).unwrap();
+        assert!(parse_filter_has_granted_ability_line(&ordinary).unwrap().is_some());
     }
 }

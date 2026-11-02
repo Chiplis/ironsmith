@@ -740,6 +740,9 @@ fn read_lose_all_abilities_and_doesnt_untap_line(
             abilities.into_iter().map(StaticAbilityAst::from).collect(),
         ));
     }
+    if let Some(abilities) = parse_anthem_and_attached_control_line(tokens)? {
+        return Ok(Some(abilities.into_iter().map(StaticAbilityAst::from).collect()));
+    }
     if let Some(abilities) = parse_anthem_and_doesnt_untap_line(tokens)? {
         return Ok(Some(
             abilities.into_iter().map(StaticAbilityAst::from).collect(),

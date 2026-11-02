@@ -255,6 +255,20 @@ pub(super) fn read_demonstrative_descriptor(
         {
             let antecedent_surface = demonstrative_antecedent_surface(predicate_tokens);
             let descriptor_clause = LexedClause::new(&descriptor_tokens);
+            let history_words = crate::lexer::parser_token_word_refs(&descriptor_tokens);
+            if match_time == DemonstrativeMatchTime::LastKnown
+                && matches!(history_words.as_slice(),
+                    ["put", "there", "from", "battlefield", "this", "turn"]
+                    | ["put", "there", "from", "the", "battlefield", "this", "turn"])
+            {
+                let mut filter = ObjectFilter::default().in_zone(crate::zone::Zone::Graveyard);
+                filter.entered_graveyard_this_turn = true;
+                filter.entered_graveyard_from_battlefield_this_turn = true;
+                filter.set_graveyard_entry_history_surface(Some(ironsmith_core::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn));
+                crate::word_claims::claim_tokens(predicate_tokens);
+                let predicate = demonstrative_match_predicate(filter, match_time);
+                return Ok(Some(if negative { PredicateAst::Not(Box::new(predicate)) } else { predicate }));
+            }
             if surface::exact(descriptor_clause, &["renowned"]) {
                 let predicate = demonstrative_match_predicate(ObjectFilter {
                     renowned: true,
@@ -799,7 +813,27 @@ fn read_another_same_name_object_exists(
     Ok(Some(PredicateAst::ItMatches(filter)))
 }
 
+fn read_named_action_recipient_relation(input:&Predicate<'_>)->Result<Option<PredicateAst>,CardTextError>{
+ let tokens=input.predicate_tokens;let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+ let Some(rest)=words.strip_prefix(&["it","was","affected","by","the"]) else{return Ok(None)};
+ let Some(action)=rest.windows(3).position(|words|words==["action","performed","by"]).map(|at|at+5) else{return Ok(None)};
+ if action==5 || !words.ends_with(&["this","turn"]){return Ok(None)}
+ let actor_start=view.token_start_indices()[action+2]+1;let actor_end=view.token_start_indices()[words.len()-2];
+ let label_start=view.token_start_indices()[5];let label_end=view.token_start_indices()[action];
+ if tokens[label_start..label_end].iter().any(|token|token.kind!=crate::lexer::TokenKind::Word){return Ok(None)}
+ let label=words[5..action].join(" ");if label.len()>64{return Ok(None)}
+ let actor=crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[actor_start..actor_end],false)?;
+ let mut remainder=actor.clone();remainder.source=false;remainder.source_surface=None;remainder.card_types.clear();remainder.zone=None;remainder.tagged_constraints.clear();
+ if remainder!=ObjectFilter::default(){return Ok(None)}
+ let performer=if actor.source{crate::target::ChooseSpec::Source}else if let [constraint]=actor.tagged_constraints.as_slice(){
+  if constraint.relation!=crate::target::TaggedOpbjectRelation::IsTaggedObject{return Ok(None)}crate::target::ChooseSpec::Tagged(constraint.tag.clone())
+ }else{return Ok(None)};
+ let mut filter=ObjectFilter::default();filter.named_action_recipient_this_turn=Some(Box::new((label,performer)));
+ crate::word_claims::claim_tokens(tokens);Ok(Some(PredicateAst::ItMatches(filter)))
+}
+
 pub(super) const READINGS: &[Reading] = &[
+    Reading{id:RuleId::new("named-action-recipient-this-turn"),head:HeadDiscriminator::Any,admits:|_|true,read:|input|input.outcome(read_named_action_recipient_relation(input))},
     Reading {
         id: RuleId::new("another-same-name-object-exists"),
         head: HeadDiscriminator::Any,
@@ -1069,6 +1103,9 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                // A complete actor-owned named action relation carries its own
+                // recipient and performer; a loose demonstrative cannot rebind it.
+                && !input.read_by("named-action-recipient-this-turn")
                 && !input.read_by("triggering-object-keyword-predicate")
                 && !input.read_by("stack-object-would-destroy-predicate")
                 && !input.read_by("triggering-object-source-stat-predicate")
@@ -1317,3 +1354,20 @@ pub(super) const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_or_predicate(input)),
     },
 ];
+
+#[cfg(test)]
+mod named_action_recipient_source_surface_tests {
+    #[test]
+    fn performer_source_presentation_does_not_discard_the_typed_relation() {
+        use crate::cards::builders::PredicateAst;
+        for (noun, action) in [("this permanent", "encourage"), ("this creature", "encourage"), ("this artifact", "polish")] {
+            let text = format!("it was affected by the {action} action performed by {noun} this turn");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let predicate = crate::grammar::filters::parse_condition_predicate_lexed(&tokens).unwrap();
+            let PredicateAst::ItMatches(filter) = predicate else { panic!("{text}"); };
+            let (label, performer) = filter.named_action_recipient_this_turn.as_deref().unwrap();
+            assert_eq!(label, action);
+            assert!(matches!(performer, crate::target::ChooseSpec::Source));
+        }
+    }
+}

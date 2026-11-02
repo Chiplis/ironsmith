@@ -32,7 +32,66 @@ fn didnt_put_restatement_prefix(normalized: &[OwnedLexToken]) -> Option<&[OwnedL
     restates.then(|| &normalized[..subject_len + 1])
 }
 
+/// A bounded completed-creation result reads explicit destination evidence,
+/// never the optional payment's Accepted bit or unrelated replacement bodies.
+fn exact_creation_result(tokens:&[OwnedLexToken])->Option<IfResultPredicate> {
+    let words=crate::lexer::parser_token_word_refs(tokens);
+    let words=words.strip_prefix(&["if"]).or_else(||words.strip_prefix(&["when"])).unwrap_or(&words);
+    let tail=words.strip_prefix(&["you"])?;
+    let (negated,tail)=if let Some(tail)=tail.strip_prefix(&["dont"])
+        .or_else(||tail.strip_prefix(&["didnt"])) {(true,tail)}
+        else if let Some(tail)=tail.strip_prefix(&["do","not"]).or_else(||tail.strip_prefix(&["did","not"])) {(true,tail)}
+        else {(false,tail)};
+    let (verb,tail)=tail.split_first()?;
+    if !matches!(*verb,"create"|"created") {return None;}
+    let tail=tail.strip_prefix(&["a"]).or_else(||tail.strip_prefix(&["an"]))
+        .or_else(||tail.strip_prefix(&["any"])).unwrap_or(tail);
+    if !tail.ends_with(&["this", "way"]) {return None;}
+    let descriptor = &tail[..tail.len()-2];
+    // Unspecified or existential creation is a result-object predicate.
+    // Numeric quantities require a separately owned cardinality predicate.
+    if descriptor.is_empty() || descriptor.first().is_some_and(|word|
+        word.parse::<u32>().is_ok() || matches!(*word, "one"|"two"|"three"|"four"|"five"|"six"|"seven"|"eight"|"nine"|"ten")) {return None;}
+    let mut filter = if matches!(descriptor, ["token"|"tokens"]) {
+        crate::target::ObjectFilter::default()
+    } else {
+        let verb_index=tokens.iter().position(|token|token.is_any_word(&["create","created"]))?;
+        let end=tokens.iter().rposition(|token|token.is_word("this"))?;
+        let mut start = verb_index + 1;
+        // The result reader owns an existential determiner. The ordinary
+        // object-filter reader receives the complete descriptor alone, just
+        // as the word-level cardinality check above already does.
+        if tokens.get(start).is_some_and(|token|token.is_any_word(&["a","an","any"])) {
+            crate::word_claims::claim_tokens(&tokens[start..start+1]);
+            start += 1;
+        }
+        let operand=&tokens[start..end];
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(operand,false).ok()?
+    };
+    filter.token=true;
+    Some(IfResultPredicate::ResultObjectsMatch {filter,negated})
+}
+
+fn completed_named_program_receipt(tokens:&[OwnedLexToken])->Option<IfResultPredicate>{
+    if tokens.iter().any(OwnedLexToken::is_quote){return None;}
+    let words=crate::lexer::parser_token_word_refs(tokens);
+    let words=words.strip_prefix(&["if"]).or_else(||words.strip_prefix(&["when"])).unwrap_or(&words);
+    let tail=words.strip_prefix(&["the","preceding","program","included","the"])?;
+    let label=tail.strip_suffix(&["action"])?;
+    if label.is_empty() || label.len()>8 || !label.iter().all(|word|word.chars().all(|ch|ch.is_ascii_alphabetic()||matches!(ch,'-'|'\''))){return None;}
+    crate::word_claims::claim_tokens(tokens);
+    Some(IfResultPredicate::NamedActionCompleted{label:label.join(" ")})
+}
+
 pub fn parse_if_result_predicate_tokens(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let result_words = words.strip_prefix(&["when"]).or_else(|| words.strip_prefix(&["if"])).unwrap_or(&words);
+    if result_words == ["no", "choice", "was", "available", "this", "way"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Some(IfResultPredicate::ChoiceUnavailable);
+    }
+    if let Some(predicate)=completed_named_program_receipt(tokens){return Some(predicate);}
+    if let Some(predicate)=exact_creation_result(tokens) {return Some(predicate);}
     let normalized = normalized_word_tokens(tokens);
     if let Some(prefix) = cant_restatement_prefix(&normalized) {
         return parse_if_result_predicate_tokens(prefix);
@@ -59,6 +118,14 @@ pub fn parse_if_result_predicate_tokens(tokens: &[OwnedLexToken]) -> Option<IfRe
 pub fn parse_if_result_predicate_lexed_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let result_words = words.strip_prefix(&["when"]).or_else(|| words.strip_prefix(&["if"])).unwrap_or(&words);
+    if result_words == ["no", "choice", "was", "available", "this", "way"] {
+        crate::word_claims::claim_tokens(tokens);
+        return Some(IfResultPredicate::ChoiceUnavailable);
+    }
+    if let Some(predicate)=completed_named_program_receipt(tokens){return Some(predicate);}
+    if let Some(predicate)=exact_creation_result(tokens) {return Some(predicate);}
     let normalized = normalized_word_tokens(tokens);
     if let Some(prefix) = cant_restatement_prefix(&normalized) {
         return parse_if_result_predicate_lexed_tokens(prefix);
@@ -555,4 +622,21 @@ pub fn parse_if_result_predicate_lexed_tokens(
         return Some(IfResultPredicate::DidNot);
     }
     None
+}
+
+#[cfg(test)]
+mod unavailable_choice_result_tests {
+    use super::*;
+    #[test]
+    fn exact_unavailable_choice_phrase_is_a_distinct_result_predicate() {
+        for text in ["no choice was available this way", "when no choice was available this way"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert_eq!(parse_if_result_predicate_tokens(&tokens),Some(IfResultPredicate::ChoiceUnavailable));
+            assert_eq!(parse_if_result_predicate_lexed_tokens(&tokens),Some(IfResultPredicate::ChoiceUnavailable));
+        }
+        for text in ["no counter was put this way", "you declined a choice", "no choice was available this way except later"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert_ne!(parse_if_result_predicate_tokens(&tokens),Some(IfResultPredicate::ChoiceUnavailable));
+        }
+    }
 }

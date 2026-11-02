@@ -71,12 +71,13 @@ pub fn parse_for_each_opponent_clause(
         ));
     }
 
-    let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
+    let Some(mut outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
         return Ok(None);
     };
-    let Some(iteration_filter) = opponent_filter(outer.scope) else {
+    let Some(mut iteration_filter) = opponent_filter(outer.scope) else {
         return Ok(None);
     };
+    super::participant_scopes::read_matching_attachment_qualifier(&mut outer, &mut iteration_filter)?;
     let clause_text = LexedClause::new(tokens).text();
     let slot_chooser = if outer.participant_is_actor {
         PlayerAst::That

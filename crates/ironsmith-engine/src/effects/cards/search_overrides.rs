@@ -886,7 +886,7 @@ fn cast_from_library_while_searching(
         Zone::Library,
         ctx.provenance,
     )?;
-    game.defer_trigger_entries(captured.take_all());
+    captured.defer_into_game(game);
     game.queue_trigger_event(ctx.provenance, outputs.outcome.events[0].clone());
     outputs.retain_published_references([cast.outputs]);
 

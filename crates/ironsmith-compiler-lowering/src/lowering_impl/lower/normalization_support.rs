@@ -546,38 +546,7 @@ fn normalize_line_chunk(
 /// the preceding optional action.  The line fact above proves the pronoun
 /// surface; this traversal then retargets only the matching typed
 /// entry-counter grant.
-fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
-    for effect in effects {
-        if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                target,
-                abilities,
-                duration,
-                ..
-            }) = &subject_verb.action
-            && matches!(target, TargetAst::Tagged(_, _) | TargetAst::Source(_))
-            && *duration == ironsmith_core::Until::Forever
-            && let [GrantedAbilityAst::StaticAbility(static_ability)] = abilities.as_slice()
-            && let StaticAbilityAst::Static(ability) = static_ability.as_ref()
-            && let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } =
-                &ability.payload
-        {
-            // This program runs during entry preparation. Its source counter
-            // additions are transferred to the entering object; granting a
-            // future entry replacement to the source-zone card is too late.
-            *effect = EffectAst::subject_verb_put_counters(
-                *counter,
-                count.clone(),
-                TargetAst::Source(None),
-                None,
-                false,
-            );
-        }
-        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
-            resolve_as_enters_source_counter_grants(nested);
-        });
-    }
-}
+use ironsmith_compiler_resolve::reference_resolution::resolve_as_enters_source_counter_grants;
 
 fn normalize_modal_ast(
     modal: ParsedModalAst,
@@ -714,6 +683,7 @@ pub fn normalize_parsed_card_ast_for_lowering(
         items,
         overload_branch,
         cleave_branch,
+        optional_text_variants,
         allow_unsupported,
     } = ast;
     if let Some(diagnostic) = reference_resolution.diagnostics.first() {
@@ -758,6 +728,13 @@ pub fn normalize_parsed_card_ast_for_lowering(
     } else {
         None
     };
+    let optional_text_variants = optional_text_variants.map(|plan| {
+        let branches = plan.branches.into_iter().map(|branch| {
+            let mut state = initial_state.clone();
+            Ok(crate::model::OptionalTextVariantBranch { removed: branch.removed, items: normalize_items_with_followups(branch.items, &mut state)? })
+        }).collect::<Result<Vec<_>, CardTextError>>()?;
+        Ok::<_, CardTextError>(crate::model::OptionalTextVariants { labels: plan.labels, branches, casting_payment: plan.casting_payment })
+    }).transpose()?;
     let mut state = initial_state;
     let normalized_items = normalize_items_with_followups(items, &mut state)?;
 
@@ -770,6 +747,7 @@ pub fn normalize_parsed_card_ast_for_lowering(
         items: normalized_items,
         overload_branch,
         cleave_branch,
+        optional_text_variants,
         allow_unsupported,
     })
 }

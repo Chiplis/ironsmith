@@ -1,0 +1,1442 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "growth ordinary composed operations",
+  "notes": [
+    "Candidates pending native structural and behavior verification. Exact originals and linked faces retained. Official Ascend intentionally excluded."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-705",
+      "keyword": "Respawn",
+      "original_reminder": "When this creature dies, if it attacked this turn, return it to its owner's hand.",
+      "executable_reminder": "When this creature dies, if this creature attacked this turn, return this card to its owner's hand.",
+      "source_cards": [
+        "Determined Hero",
+        "Homeward Amulet",
+        "Mukal Butcher"
+      ],
+      "rule_reference": "702.251.",
+      "rule_text": [
+        {
+          "name": "702.251a",
+          "rule": "Respawn is a triggered ability. “Respawn” means “When this creature dies, if it attacked this turn, return it to its owner's hand.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Determined Hero_AKD",
+          "name": "Determined Hero",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Knight Avatar\nPower/Toughness: 2/1\nWhenever Determined Hero attacks, upgrade it. *(Give it one of the listed counters it doesn't already have.)*\n• +1/+1\n• Respawn *(When this creature dies, if it attacked this turn, return it to its owner's hand.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Knight Avatar\nPower/Toughness: 2/1\nWhenever Determined Hero attacks, Choose a kind of counter that it doesn't have on it from among +1/+1 and respawn. Put a counter of that kind on it.\n",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Knight Avatar",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Determined Hero_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Determined Hero",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Knight Avatar\nPower/Toughness: 2/1\nWhenever Determined Hero attacks, upgrade it. *(Give it one of the listed counters it doesn't already have.)*\n• +1/+1\n• Respawn *(When this creature dies, if it attacked this turn, return it to its owner's hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Determined Hero",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Knight Avatar\nPower/Toughness: 2/1\nWhenever Determined Hero attacks, Choose a kind of counter that it doesn't have on it from among +1/+1 and respawn. Put a counter of that kind on it.\n",
+              "custom_keyword_identities": [
+                "upgrade"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [
+                {
+                  "name": "respawn",
+                  "reminder": "When this creature dies, if this creature attacked this turn, return this card to its owner's hand."
+                }
+              ],
+              "original_display_text": "Whenever Determined Hero attacks, upgrade it.\n• +1/+1\n• Respawn",
+              "original_printed_rules_text": "Whenever Determined Hero attacks, upgrade it. (Give it one of the listed counters it doesn't already have.)\n• +1/+1\n• Respawn (When this creature dies, if it attacked this turn, return it to its owner's hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "upgrade"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [
+            {
+              "name": "respawn",
+              "reminder": "When this creature dies, if this creature attacked this turn, return this card to its owner's hand."
+            }
+          ],
+          "original_display_text": "Whenever Determined Hero attacks, upgrade it.\n• +1/+1\n• Respawn",
+          "original_printed_rules_text": "Whenever Determined Hero attacks, upgrade it. (Give it one of the listed counters it doesn't already have.)\n• +1/+1\n• Respawn (When this creature dies, if it attacked this turn, return it to its owner's hand.)"
+        }
+      ]
+    },
+    {
+      "id": "msem-706",
+      "keyword": "Respawn",
+      "original_reminder": "When one dies, if it attacked this turn, return it to its owner's hand.",
+      "executable_reminder": "When this creature dies, if this creature attacked this turn, return this card to its owner's hand.",
+      "source_cards": [
+        "Revela, Star-Touched"
+      ],
+      "rule_reference": "702.251.",
+      "rule_text": [
+        {
+          "name": "702.251a",
+          "rule": "Respawn is a triggered ability. “Respawn” means “When this creature dies, if it attacked this turn, return it to its owner's hand.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Revela, Star-Touched_AKD",
+          "name": "Revela, Star-Touched",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Legendary Planeswalker — Revela\nLoyalty: 4\n[+1]: Creatures you control get +1/+0 and gain respawn until end of turn. *(When one dies, if it attacked this turn, return it to its owner's hand.)*\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”",
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Legendary Planeswalker — Revela\nLoyalty: 4\n[+1]: Creatures you control get +1/+0 and gain custom keyword \"respawn\", and \"When this creature dies, if this creature attacked this turn, return this card to its owner's hand.\" until end of turn.\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”",
+          "mana_cost": "{1}{W}{W}",
+          "type_line": "Legendary Planeswalker — Revela",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Revela, Star-Touched_AKD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "4",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Revela, Star-Touched",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Legendary Planeswalker — Revela\nLoyalty: 4\n[+1]: Creatures you control get +1/+0 and gain respawn until end of turn. *(When one dies, if it attacked this turn, return it to its owner's hand.)*\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Revela, Star-Touched",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Legendary Planeswalker — Revela\nLoyalty: 4\n[+1]: Creatures you control get +1/+0 and gain custom keyword \"respawn\", and \"When this creature dies, if this creature attacked this turn, return this card to its owner's hand.\" until end of turn.\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "revela",
+                  "plural": "revelas",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "[+1]: Creatures you control get +1/+0 and gain respawn until end of turn.\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”",
+              "original_printed_rules_text": "[+1]: Creatures you control get +1/+0 and gain respawn until end of turn. (When one dies, if it attacked this turn, return it to its owner's hand.)\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "[+1]: Creatures you control get +1/+0 and gain respawn until end of turn.\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "revela",
+              "plural": "revelas",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "[+1]: Creatures you control get +1/+0 and gain respawn until end of turn. (When one dies, if it attacked this turn, return it to its owner's hand.)\n[0]: You get an emblem with “Whenever a creature you control attacks, you gain 1 life.”\n[-5]: Until end of turn, Revela becomes a legendary Human Cleric Avatar creature with lifelink, indestructible, and “This creature's power and toughness are each equal to your life total.”"
+        }
+      ]
+    },
+    {
+      "id": "msem-709",
+      "keyword": "Ascend",
+      "original_reminder": "{1}{B}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Bundan Firebrand//Kanlan Jaded"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bundan Firebrand//Kanlan Jaded_KLC",
+          "name": "Bundan Firebrand",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior\nPower/Toughness: 2/1\nFirst strike\nAscend {1}{B} *({1}{B}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior\nPower/Toughness: 2/1\nFirst strike\n{1}{B}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Warrior",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Bundan Firebrand//Kanlan Jaded_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bundan Firebrand",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior\nPower/Toughness: 2/1\nFirst strike\nAscend {1}{B} *({1}{B}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Kanlan Jaded",
+              "original_text": "Type: Creature — Human Warrior\nPower/Toughness: 2/3\nDeathtouch"
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Bundan Firebrand",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior\nPower/Toughness: 2/1\nFirst strike\n{1}{B}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nAscend {1}{B}",
+              "original_printed_rules_text": "First strike\nAscend {1}{B} ({1}{B}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Kanlan Jaded",
+              "executable_text": "Type: Creature — Human Warrior\nPower/Toughness: 2/3\nDeathtouch",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch",
+              "original_printed_rules_text": "Deathtouch"
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "First strike\nAscend {1}{B}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "First strike\nAscend {1}{B} ({1}{B}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-710",
+      "keyword": "Ascend",
+      "original_reminder": "{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Callous Ritualist//Heartless Angel"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Callous Ritualist//Heartless Angel_KLC",
+          "name": "Callous Ritualist",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\nAscend—{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard. *({W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\n{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Wizard",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Callous Ritualist//Heartless Angel_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Callous Ritualist",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\nAscend—{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard. *({W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Heartless Angel",
+              "original_text": "Type: Creature — Angel\nPower/Toughness: 4/4\nFlying, vigilance, deathtouch, lifelink"
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Callous Ritualist",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\n{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Ascend—{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard.",
+              "original_printed_rules_text": "Ascend—{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard. ({W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Heartless Angel",
+              "executable_text": "Type: Creature — Angel\nPower/Toughness: 4/4\nFlying, vigilance, deathtouch, lifelink",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, vigilance, deathtouch, lifelink",
+              "original_printed_rules_text": "Flying, vigilance, deathtouch, lifelink"
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Ascend—{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard.",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Ascend—{W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard. ({W}{B}, Discard a card, Sacrifice a creature, Exile a creature card from your graveyard: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-711",
+      "keyword": "Ascend",
+      "original_reminder": "{2}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Danawan Wanderer//Punan Trailblazer"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Danawan Wanderer//Punan Trailblazer_KLC",
+          "name": "Danawan Wanderer",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Human\nPower/Toughness: 2/1\nWhen Danawan Wanderer enters, you may tap or untap target creature.\nAscend {2}{G} *({2}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Human\nPower/Toughness: 2/1\nWhen Danawan Wanderer enters, you may tap or untap target creature.\n{2}{G}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Human",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Danawan Wanderer//Punan Trailblazer_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Danawan Wanderer",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human\nPower/Toughness: 2/1\nWhen Danawan Wanderer enters, you may tap or untap target creature.\nAscend {2}{G} *({2}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Punan Trailblazer",
+              "original_text": "Type: Creature — Human Warrior\nPower/Toughness: 3/3\nVigilance"
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Danawan Wanderer",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Human\nPower/Toughness: 2/1\nWhen Danawan Wanderer enters, you may tap or untap target creature.\n{2}{G}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Danawan Wanderer enters, you may tap or untap target creature.\nAscend {2}{G}",
+              "original_printed_rules_text": "When Danawan Wanderer enters, you may tap or untap target creature.\nAscend {2}{G} ({2}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Punan Trailblazer",
+              "executable_text": "Type: Creature — Human Warrior\nPower/Toughness: 3/3\nVigilance",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance",
+              "original_printed_rules_text": "Vigilance"
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Danawan Wanderer enters, you may tap or untap target creature.\nAscend {2}{G}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Danawan Wanderer enters, you may tap or untap target creature.\nAscend {2}{G} ({2}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-712",
+      "keyword": "Ascend",
+      "original_reminder": "{3}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Horizon Gazer//Weathered Pilgrim"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Horizon Gazer//Weathered Pilgrim_KLC",
+          "name": "Horizon Gazer",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Human Scout\nPower/Toughness: 2/1\nWhen Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\nAscend {3}{G} *({3}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Scout\nPower/Toughness: 2/1\nWhen Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\n{3}{G}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Human Scout",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Horizon Gazer//Weathered Pilgrim_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Horizon Gazer",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Scout\nPower/Toughness: 2/1\nWhen Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\nAscend {3}{G} *({3}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Weathered Pilgrim",
+              "original_text": "Type: Creature — Human Scout\nPower/Toughness: 3/2\nWhen Weathered Pilgrim enters, return target card from your graveyard to your hand."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Horizon Gazer",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Scout\nPower/Toughness: 2/1\nWhen Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\n{3}{G}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\nAscend {3}{G}",
+              "original_printed_rules_text": "When Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\nAscend {3}{G} ({3}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Weathered Pilgrim",
+              "executable_text": "Type: Creature — Human Scout\nPower/Toughness: 3/2\nWhen Weathered Pilgrim enters, return target card from your graveyard to your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Weathered Pilgrim enters, return target card from your graveyard to your hand.",
+              "original_printed_rules_text": "When Weathered Pilgrim enters, return target card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\nAscend {3}{G}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Horizon Gazer enters, reveal the top two cards of your library. Put a noncreature card revealed this way into your hand and the rest into your graveyard.\nAscend {3}{G} ({3}{G}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-713",
+      "keyword": "Ascend",
+      "original_reminder": "{1}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Kin of the Rainforest//Desperate Ravager"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Kin of the Rainforest//Desperate Ravager_KLC",
+          "name": "Kin of the Rainforest",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/1\nWhen Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\nAscend {1}{R} *({1}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/1\nWhen Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\n{1}{R}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Druid",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Kin of the Rainforest//Desperate Ravager_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kin of the Rainforest",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/1\nWhen Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\nAscend {1}{R} *({1}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Desperate Ravager",
+              "original_text": "Type: Creature — Human Warrior\nPower/Toughness: 3/1\nSacrifice a land: Desperate Ravager gets +2/+0 and gains haste until end of turn."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Kin of the Rainforest",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/1\nWhen Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\n{1}{R}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\nAscend {1}{R}",
+              "original_printed_rules_text": "When Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\nAscend {1}{R} ({1}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Desperate Ravager",
+              "executable_text": "Type: Creature — Human Warrior\nPower/Toughness: 3/1\nSacrifice a land: Desperate Ravager gets +2/+0 and gains haste until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Sacrifice a land: Desperate Ravager gets +2/+0 and gains haste until end of turn.",
+              "original_printed_rules_text": "Sacrifice a land: Desperate Ravager gets +2/+0 and gains haste until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\nAscend {1}{R}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Kin of the Rainforest enters, you may put a land card from your hand onto the battlefield.\nAscend {1}{R} ({1}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-714",
+      "keyword": "Ascend",
+      "original_reminder": "{B}, Discard two cards: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Leyline Tracer//Wanderer of Oblivion"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Leyline Tracer//Wanderer of Oblivion_KLC",
+          "name": "Leyline Tracer",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/1\nWhenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\nAscend—{B}, Discard two cards. *({B}, Discard two cards: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/1\nWhenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\n{B}, Discard two cards: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{1}{R}{R}",
+          "type_line": "Creature — Human Shaman",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Leyline Tracer//Wanderer of Oblivion_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Leyline Tracer",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/1\nWhenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\nAscend—{B}, Discard two cards. *({B}, Discard two cards: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Wanderer of Oblivion",
+              "original_text": "Type: Creature — Human Shaman\nPower/Toughness: 3/1\nWhenever Wanderer of Oblivion enters or attacks, exile target card from a graveyard.\nYou may play cards exiled with Wanderer of Oblivion."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Leyline Tracer",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/1\nWhenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\n{B}, Discard two cards: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\nAscend—{B}, Discard two cards.",
+              "original_printed_rules_text": "Whenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\nAscend—{B}, Discard two cards. ({B}, Discard two cards: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Wanderer of Oblivion",
+              "executable_text": "Type: Creature — Human Shaman\nPower/Toughness: 3/1\nWhenever Wanderer of Oblivion enters or attacks, exile target card from a graveyard.\nYou may play cards exiled with Wanderer of Oblivion.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Wanderer of Oblivion enters or attacks, exile target card from a graveyard.\nYou may play cards exiled with Wanderer of Oblivion.",
+              "original_printed_rules_text": "Whenever Wanderer of Oblivion enters or attacks, exile target card from a graveyard.\nYou may play cards exiled with Wanderer of Oblivion."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\nAscend—{B}, Discard two cards.",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Whenever Leyline Tracer attacks, exile the top card of your library. Until end of turn, you may play that card.\nAscend—{B}, Discard two cards. ({B}, Discard two cards: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-715",
+      "keyword": "Ascend",
+      "original_reminder": "{1}{W}{W}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Patient Ascetic//Graceful Angel"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Patient Ascetic//Graceful Angel_KLC",
+          "name": "Patient Ascetic",
+          "original_text": "Mana cost: {W}\nType: Creature — Human Monk\nPower/Toughness: 0/3\nDefender\nAscend {1}{W}{W} *({1}{W}{W}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {W}\nType: Creature — Human Monk\nPower/Toughness: 0/3\nDefender\n{1}{W}{W}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{W}",
+          "type_line": "Creature — Human Monk",
+          "power": "0",
+          "toughness": "3",
+          "source_card_key": "Patient Ascetic//Graceful Angel_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Patient Ascetic",
+              "original_text": "Mana cost: {W}\nType: Creature — Human Monk\nPower/Toughness: 0/3\nDefender\nAscend {1}{W}{W} *({1}{W}{W}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Graceful Angel",
+              "original_text": "Type: Creature — Angel\nPower/Toughness: 3/3\nFlying"
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Patient Ascetic",
+              "executable_text": "Mana cost: {W}\nType: Creature — Human Monk\nPower/Toughness: 0/3\nDefender\n{1}{W}{W}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Defender\nAscend {1}{W}{W}",
+              "original_printed_rules_text": "Defender\nAscend {1}{W}{W} ({1}{W}{W}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Graceful Angel",
+              "executable_text": "Type: Creature — Angel\nPower/Toughness: 3/3\nFlying",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying",
+              "original_printed_rules_text": "Flying"
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Defender\nAscend {1}{W}{W}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Defender\nAscend {1}{W}{W} ({1}{W}{W}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-716",
+      "keyword": "Ascend",
+      "original_reminder": "{4}{R}{R}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Savants of the Ley//Tyrants of Bundan"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Savants of the Ley//Tyrants of Bundan_KLC",
+          "name": "Savants of the Ley",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nUntap all creatures and lands you control during each other player's untap step.\nAscend {4}{R}{R}{R} *({4}{R}{R}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nUntap all creatures and lands you control during each other player's untap step.\n{4}{R}{R}{R}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Human Shaman",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Savants of the Ley//Tyrants of Bundan_KLC",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Savants of the Ley",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nUntap all creatures and lands you control during each other player's untap step.\nAscend {4}{R}{R}{R} *({4}{R}{R}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Tyrants of Bundan",
+              "original_text": "Type: Creature — Human Shaman\nPower/Toughness: 4/4\nTrample, haste\nWhen Tyrants of Bundan enters, tap all lands target player controls. They don't untap during their controller's next untap step."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Savants of the Ley",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nUntap all creatures and lands you control during each other player's untap step.\n{4}{R}{R}{R}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Untap all creatures and lands you control during each other player's untap step.\nAscend {4}{R}{R}{R}",
+              "original_printed_rules_text": "Untap all creatures and lands you control during each other player's untap step.\nAscend {4}{R}{R}{R} ({4}{R}{R}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Tyrants of Bundan",
+              "executable_text": "Type: Creature — Human Shaman\nPower/Toughness: 4/4\nTrample, haste\nWhen Tyrants of Bundan enters, tap all lands target player controls. They don't untap during their controller's next untap step.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample, haste\nWhen Tyrants of Bundan enters, tap all lands target player controls. They don't untap during their controller's next untap step.",
+              "original_printed_rules_text": "Trample, haste\nWhen Tyrants of Bundan enters, tap all lands target player controls. They don't untap during their controller's next untap step."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Untap all creatures and lands you control during each other player's untap step.\nAscend {4}{R}{R}{R}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Untap all creatures and lands you control during each other player's untap step.\nAscend {4}{R}{R}{R} ({4}{R}{R}{R}: Exile this creature, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-717",
+      "keyword": "Ascend",
+      "original_reminder": "{4}{W}: Exile this permanent, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Ethersketch Blueprints//Etherwrought Figurehead"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ethersketch Blueprints//Etherwrought Figurehead_OTH",
+          "name": "Ethersketch Blueprints",
+          "original_text": "Mana cost: {1}{U}\nType: Artifact — Clue\nWhen Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*\nAscend {4}{W} *({4}{W}: Exile this permanent, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Artifact — Clue\nWhen Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B}\n{4}{W}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Artifact — Clue",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ethersketch Blueprints//Etherwrought Figurehead_OTH",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ethersketch Blueprints",
+              "original_text": "Mana cost: {1}{U}\nType: Artifact — Clue\nWhen Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B} *(You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)*\nAscend {4}{W} *({4}{W}: Exile this permanent, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Etherwrought Figurehead",
+              "original_text": "Type: Artifact Creature — Angel Monument\nPower/Toughness: 4/4\nFlying, vigilance\nWhenever Etherwrought Figurehead attacks, you may pay 4 life. If you do, destroy target tapped creature.\nIf Etherwrought Figurehead would leave the battlefield, exile it instead."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Ethersketch Blueprints",
+              "executable_text": "Mana cost: {1}{U}\nType: Artifact — Clue\nWhen Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B}\n{4}{W}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B}\nAscend {4}{W}",
+              "original_printed_rules_text": "When Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B} (You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)\nAscend {4}{W} ({4}{W}: Exile this permanent, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Etherwrought Figurehead",
+              "executable_text": "Type: Artifact Creature — Angel Monument\nPower/Toughness: 4/4\nFlying, vigilance\nWhenever Etherwrought Figurehead attacks, you may pay 4 life. If you do, destroy target tapped creature.\nIf Etherwrought Figurehead would leave the battlefield, exile it instead.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, vigilance\nWhenever Etherwrought Figurehead attacks, you may pay 4 life. If you do, destroy target tapped creature.\nIf Etherwrought Figurehead would leave the battlefield, exile it instead.",
+              "original_printed_rules_text": "Flying, vigilance\nWhenever Etherwrought Figurehead attacks, you may pay 4 life. If you do, destroy target tapped creature.\nIf Etherwrought Figurehead would leave the battlefield, exile it instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B}\nAscend {4}{W}",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Ethersketch Blueprints enters, create a 1/1 blue Thopter artifact creature token with flying.\n{2}, Sacrifice Ethersketch Blueprints: Draw a card.\nMonument {5}{B}{B} (You may cast this transformed from your graveyard for its monument cost. Exile it if it would leave the battlefield or not resolve.)\nAscend {4}{W} ({4}{W}: Exile this permanent, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-718",
+      "keyword": "Ascend",
+      "original_reminder": "Tap ten untapped permanents you control: Exile this land, then return it to the battlefield transformed. Ascend only as a sorcery.",
+      "executable_reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+      "source_cards": [
+        "Humble Hamlet//Naxila, the Blessed City"
+      ],
+      "rule_reference": "702.253.",
+      "rule_text": [
+        {
+          "name": "702.253a",
+          "rule": "Ascend is an activated ability. “Ascend (cost)” means “(cost): Exile this creature, then return it to the battlefield transformed. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Humble Hamlet//Naxila, the Blessed City_OTH",
+          "name": "Humble Hamlet",
+          "original_text": "Type: Land\n{T}: Add {C}.\nAscend—Tap ten untapped permanents you control. *(Tap ten untapped permanents you control: Exile this land, then return it to the battlefield transformed. Ascend only as a sorcery.)*",
+          "executable_text": "Type: Land\n{T}: Add {C}.\nTap ten untapped permanents you control: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "mana_cost": "",
+          "type_line": "Land",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Humble Hamlet//Naxila, the Blessed City_OTH",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Humble Hamlet",
+              "original_text": "Type: Land\n{T}: Add {C}.\nAscend—Tap ten untapped permanents you control. *(Tap ten untapped permanents you control: Exile this land, then return it to the battlefield transformed. Ascend only as a sorcery.)*"
+            },
+            {
+              "face": "back",
+              "name": "Naxila, the Blessed City",
+              "original_text": "Type: Legendary Land\nNaxila, the Blessed City enters tapped.\nWhen Naxila, the Blessed City enters, you gain 2 life and draw two cards.\n{T}: Add {C}{C}."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Humble Hamlet",
+              "executable_text": "Type: Land\n{T}: Add {C}.\nTap ten untapped permanents you control: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "rise anew"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Add {C}.\nAscend—Tap ten untapped permanents you control.",
+              "original_printed_rules_text": "{T}: Add {C}.\nAscend—Tap ten untapped permanents you control. (Tap ten untapped permanents you control: Exile this land, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+            },
+            {
+              "name": "Naxila, the Blessed City",
+              "executable_text": "Type: Legendary Land\nNaxila, the Blessed City enters tapped.\nWhen Naxila, the Blessed City enters, you gain 2 life and draw two cards.\n{T}: Add {C}{C}.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Naxila, the Blessed City enters tapped.\nWhen Naxila, the Blessed City enters, you gain 2 life and draw two cards.\n{T}: Add {C}{C}.",
+              "original_printed_rules_text": "Naxila, the Blessed City enters tapped.\nWhen Naxila, the Blessed City enters, you gain 2 life and draw two cards.\n{T}: Add {C}{C}."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rise anew"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Add {C}.\nAscend—Tap ten untapped permanents you control.",
+          "original_printed_rules_text": "{T}: Add {C}.\nAscend—Tap ten untapped permanents you control. (Tap ten untapped permanents you control: Exile this land, then return it to the battlefield transformed. Ascend only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rise anew",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Exile this permanent, then return it to the battlefield transformed under its owner's control. Activate only as a sorcery.",
+          "officialCostDeclaration": true,
+          "sourceKeyword": "Ascend"
+        }
+      ],
+      "executable_keyword": "Rise anew"
+    },
+    {
+      "id": "msem-720",
+      "keyword": "Acquiesce",
+      "original_reminder": "If you cast this spell from your hand, exile it as it resolves. When one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost.",
+      "executable_reminder": "If you cast this spell from your hand, exile it.\nWhenever one or more creatures you control deal combat damage to an opponent, if this card is in exile, you may cast this card from exile without paying its mana cost.",
+      "source_cards": [
+        "A Sight Too Far"
+      ],
+      "rule_reference": "702.254.",
+      "rule_text": [
+        {
+          "name": "702.254a",
+          "rule": "Acquiesce appears on some instants and sorceries. It represents two abilities. The first is a spell ability that functions while the spell with acquiesce is on the stack. The second is a triggered ability that functions while the card with acquiesce is in the exile zone. “Acquiesce” means “If you cast this spell from your hand, exile it” and “Whenever one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.254b",
+          "rule": "An exiled card with acquiesce does not need to be cast at the first opportunity. If it is not, the ability will still trigger the next time combat damage is dealt.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "A Sight Too Far_BYK",
+          "name": "A Sight Too Far",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nEach opponent loses X life and you gain X life, where X is the number of Illusions you control.\nAcquiesce *(If you cast this spell from your hand, exile it as it resolves. When one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nEach opponent loses X life and you gain X life, where X is the number of Illusions you control.\nIf you cast this spell from your hand, exile it. Whenever one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost",
+          "mana_cost": "{1}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "A Sight Too Far_BYK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "A Sight Too Far",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nEach opponent loses X life and you gain X life, where X is the number of Illusions you control.\nAcquiesce *(If you cast this spell from your hand, exile it as it resolves. When one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "A Sight Too Far",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nEach opponent loses X life and you gain X life, where X is the number of Illusions you control.\nIf you cast this spell from your hand, exile it. Whenever one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost",
+              "custom_keyword_identities": [
+                "acquiesce"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each opponent loses X life and you gain X life, where X is the number of Illusions you control.\nAcquiesce",
+              "original_printed_rules_text": "Each opponent loses X life and you gain X life, where X is the number of Illusions you control.\nAcquiesce (If you cast this spell from your hand, exile it as it resolves. When one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "acquiesce"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Each opponent loses X life and you gain X life, where X is the number of Illusions you control.\nAcquiesce",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Each opponent loses X life and you gain X life, where X is the number of Illusions you control.\nAcquiesce (If you cast this spell from your hand, exile it as it resolves. When one or more creatures you control deal combat damage to an opponent, you may cast this card from exile without paying its mana cost.)"
+        }
+      ]
+    },
+    {
+      "id": "msem-722",
+      "keyword": "Successor",
+      "original_reminder": "{1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Succeed only as a sorcery.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Activate only as a sorcery.",
+      "source_cards": [
+        "Imitator of Success"
+      ],
+      "rule_reference": "702.256.",
+      "rule_text": [
+        {
+          "name": "702.256a",
+          "rule": "Successor is an activated ability that functions while the card with successor is in a graveyard. “Successor (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it has no mana cost and it has base power and toughness 1/1. Activate only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.256b",
+          "rule": "Successor will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Imitator of Success_MSC",
+          "name": "Imitator of Success",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 0/0\nYou may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\nSuccessor {1}{U}{U} *({1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Succeed only as a sorcery.)*",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 0/0\nYou may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\n{1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Activate only as a sorcery.",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Creature — Shapeshifter",
+          "power": "0",
+          "toughness": "0",
+          "source_card_key": "Imitator of Success_MSC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Imitator of Success",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 0/0\nYou may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\nSuccessor {1}{U}{U} *({1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Succeed only as a sorcery.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Imitator of Success",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 0/0\nYou may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\n{1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "successor"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\nSuccessor {1}{U}{U}",
+              "original_printed_rules_text": "You may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\nSuccessor {1}{U}{U} ({1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Succeed only as a sorcery.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "successor"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "You may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\nSuccessor {1}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "You may have Imitator of Success enter as a copy of any creature on the battlefield, except it has no mana cost and base power and toughness 1/1 if it's a token.\nSuccessor {1}{U}{U} ({1}{U}{U}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Succeed only as a sorcery.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Successor {Cost}",
+          "reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it has no mana cost and base power and toughness 1/1. Activate only as a sorcery."
+        }
+      ]
+    },
+    {
+      "id": "msem-725",
+      "keyword": "Simulacrum",
+      "original_reminder": "When this creature dies, exile it from your graveyard. If you do, create a token that is a copy of it except it is a colorless 1/1 Crystal Elf Rogue artifact creature.",
+      "executable_reminder": "When this permanent is put into a graveyard from the battlefield, exile this card from your graveyard. If you do, create a token that's a copy of this card, except it's colorless, it has base power and toughness 1/1, it has no mana cost, and it's a Crystal artifact in addition to its other types.",
+      "source_cards": [
+        "Voidtouched Nightblade"
+      ],
+      "rule_reference": "702.259.",
+      "rule_text": [
+        {
+          "name": "702.259a",
+          "rule": "Simulacrum is a triggered ability. “Simulacrum” means “When this permanent is put into a graveyard from the battlefield, exile it from your graveyard. If you do, create a token that's a copy of this card, except it's colorless, it's 1/1, it has no mana cost, and it's a Crystal artifact in addition to its other types.”",
+          "custom": true
+        },
+        {
+          "name": "702.259b",
+          "rule": "If a permanent with simulacrum is controlled by a player other than its owner when it dies, that player will be unable to exile it from their graveyard, and won't create the token copy.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Voidtouched Nightblade_OTH",
+          "name": "Voidtouched Nightblade",
+          "original_text": "Mana cost: {B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/1\nVoidtouched Nightblade can't block.\nSimulacrum *(When this creature dies, exile it from your graveyard. If you do, create a token that is a copy of it except it is a colorless 1/1 Crystal Elf Rogue artifact creature.)*",
+          "executable_text": "Mana cost: {B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/1\nVoidtouched Nightblade can't block.\nWhen this permanent is put into a graveyard from the battlefield, exile this card from your graveyard. If you do, create a token that's a copy of this card, except it's colorless, it has base power and toughness 1/1, it has no mana cost, and it's a Crystal artifact in addition to its other types",
+          "mana_cost": "{B}",
+          "type_line": "Creature — Elf Rogue",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Voidtouched Nightblade_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Voidtouched Nightblade",
+              "original_text": "Mana cost: {B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/1\nVoidtouched Nightblade can't block.\nSimulacrum *(When this creature dies, exile it from your graveyard. If you do, create a token that is a copy of it except it is a colorless 1/1 Crystal Elf Rogue artifact creature.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Voidtouched Nightblade",
+              "executable_text": "Mana cost: {B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/1\nVoidtouched Nightblade can't block.\nWhen this permanent is put into a graveyard from the battlefield, exile this card from your graveyard. If you do, create a token that's a copy of this card, except it's colorless, it has base power and toughness 1/1, it has no mana cost, and it's a Crystal artifact in addition to its other types",
+              "custom_keyword_identities": [
+                "simulacrum"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "crystal",
+                  "plural": "crystals",
+                  "family": "Artifact"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Voidtouched Nightblade can't block.\nSimulacrum",
+              "original_printed_rules_text": "Voidtouched Nightblade can't block.\nSimulacrum (When this creature dies, exile it from your graveyard. If you do, create a token that is a copy of it except it is a colorless 1/1 Crystal Elf Rogue artifact creature.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "simulacrum"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Voidtouched Nightblade can't block.\nSimulacrum",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "crystal",
+              "plural": "crystals",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Voidtouched Nightblade can't block.\nSimulacrum (When this creature dies, exile it from your graveyard. If you do, create a token that is a copy of it except it is a colorless 1/1 Crystal Elf Rogue artifact creature.)"
+        }
+      ]
+    },
+    {
+      "id": "msem-707",
+      "keyword": "Align",
+      "original_reminder": "Choose modes with total ★ less than or equal to X. You may choose modes multiple times.",
+      "executable_reminder": "Choose up to {Number} ⭐ worth of modes. You may choose the same mode more than once.",
+      "source_cards": [
+        "Bloodstained Calamity"
+      ],
+      "rule_reference": "702.252.",
+      "rule_text": [
+        {
+          "name": "702.252a",
+          "rule": "Align is a static ability that functions while the spell or ability with align is on the stack. “Align X” means “Choose up to X ⭐ worth of modes. You may choose the same mode more than once.” See rule 700.2i.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bloodstained Calamity_RVO",
+          "name": "Bloodstained Calamity",
+          "original_text": "Mana cost: {X}{R}{R}\nType: Sorcery\nAlign X *(Choose modes with total ★ less than or equal to X. You may choose modes multiple times.)*\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target.",
+          "executable_text": "Mana cost: {X}{R}{R}\nType: Sorcery\nChoose up to X ⭐ worth of modes. You may choose the same mode more than once.\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target.",
+          "mana_cost": "{X}{R}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Bloodstained Calamity_RVO",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloodstained Calamity",
+              "original_text": "Mana cost: {X}{R}{R}\nType: Sorcery\nAlign X *(Choose modes with total ★ less than or equal to X. You may choose modes multiple times.)*\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bloodstained Calamity",
+              "executable_text": "Mana cost: {X}{R}{R}\nType: Sorcery\nChoose up to X ⭐ worth of modes. You may choose the same mode more than once.\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target.",
+              "custom_keyword_identities": [
+                "align"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Align X\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target.",
+              "original_printed_rules_text": "Align X (Choose modes with total ★ less than or equal to X. You may choose modes multiple times.)\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target."
+            }
+          ],
+          "custom_keyword_identities": [
+            "align"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Align X\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Align X (Choose modes with total ★ less than or equal to X. You may choose modes multiple times.)\n• ★ — Bloodstained Calamity deals 1 damage to each creature, player, and planeswalker.\n• ★★ — Return target instant or sorcery card from your graveyard to your hand. Exile Bloodstained Calamity.\n• ★★★★★ — Bloodstained Calamity deals 10 damage to any target."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Align",
+          "template": "{Number}",
+          "reminder": "Choose up to {Number} ⭐ worth of modes. You may choose the same mode more than once."
+        }
+      ]
+    },
+    {
+      "id": "msem-708",
+      "keyword": "Align",
+      "original_reminder": "Choose modes with total ★ less than or equal to the number of Forests you control. You may choose modes multiple times.",
+      "executable_reminder": "Choose up to {Number} ⭐ worth of modes. You may choose the same mode more than once.",
+      "source_cards": [
+        "Sower of Sabne's Harvest"
+      ],
+      "rule_reference": "702.252.",
+      "rule_text": [
+        {
+          "name": "702.252a",
+          "rule": "Align is a static ability that functions while the spell or ability with align is on the stack. “Align X” means “Choose up to X ⭐ worth of modes. You may choose the same mode more than once.” See rule 700.2i.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sower of Sabne's Harvest_OTH",
+          "name": "Sower of Sabne's Harvest",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Treefolk Avatar\nPower/Toughness: 5/5\nWhenever Sower of Sabne's Harvest enters or attacks, align X, where X is your fealty to Forests. *(Choose modes with total ★ less than or equal to the number of Forests you control. You may choose modes multiple times.)*\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life.",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Treefolk Avatar\nPower/Toughness: 5/5\nWhenever Sower of Sabne's Harvest enters or attacks, Choose up to X ⭐ worth of modes, where X is your fealty to Forests. You may choose the same mode more than once.\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Treefolk Avatar",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Sower of Sabne's Harvest_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sower of Sabne's Harvest",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Treefolk Avatar\nPower/Toughness: 5/5\nWhenever Sower of Sabne's Harvest enters or attacks, align X, where X is your fealty to Forests. *(Choose modes with total ★ less than or equal to the number of Forests you control. You may choose modes multiple times.)*\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sower of Sabne's Harvest",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Treefolk Avatar\nPower/Toughness: 5/5\nWhenever Sower of Sabne's Harvest enters or attacks, Choose up to X ⭐ worth of modes, where X is your fealty to Forests. You may choose the same mode more than once.\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life.",
+              "custom_keyword_identities": [
+                "align"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Sower of Sabne's Harvest enters or attacks, align X, where X is your fealty to Forests.\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life.",
+              "original_printed_rules_text": "Whenever Sower of Sabne's Harvest enters or attacks, align X, where X is your fealty to Forests. (Choose modes with total ★ less than or equal to the number of Forests you control. You may choose modes multiple times.)\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "align"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever Sower of Sabne's Harvest enters or attacks, align X, where X is your fealty to Forests.\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Whenever Sower of Sabne's Harvest enters or attacks, align X, where X is your fealty to Forests. (Choose modes with total ★ less than or equal to the number of Forests you control. You may choose modes multiple times.)\n• ★★ — Put a +1/+1 counter on target creature.\n• ★★★ — Exile target artifact or enchantment.\n• ★★★★★ — You gain 5 life."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Align",
+          "template": "{Number}",
+          "reminder": "Choose up to {Number} ⭐ worth of modes. You may choose the same mode more than once."
+        }
+      ]
+    }
+  ]
+}

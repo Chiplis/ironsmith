@@ -18,6 +18,8 @@ pub(super) fn describe_source_exiled_retyped_keyword_token_copy(
         || copy.exile_at_end_of_combat
         || copy.exile_at_end_of_combat_reference_surface.is_some()
         || copy.loses_soulbond
+        || copy.ability_loss_until.is_some()
+        || !copy.removed_ability_designations.is_empty()
         || copy.sacrifice_at_next_end_step
         || copy.sacrifice_at_next_end_step_reference_surface.is_some()
         || copy.sacrifice_at_next_end_step_ability_text.is_some()
@@ -190,6 +192,8 @@ pub(super) fn describe_retyped_token_copy_with_granted_activated_ability(
         || copy.exile_at_end_of_combat
         || copy.exile_at_end_of_combat_reference_surface.is_some()
         || copy.loses_soulbond
+        || copy.ability_loss_until.is_some()
+        || !copy.removed_ability_designations.is_empty()
         || copy.sacrifice_at_next_end_step
         || copy.sacrifice_at_next_end_step_reference_surface.is_some()
         || copy.sacrifice_at_next_end_step_ability_text.is_some()
@@ -455,7 +459,7 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
-        || permission.while_player_controls.is_some()
+        || (permission.while_player_controls.is_some() || permission.control_duration.is_some())
         || permission.permanents_enter_tapped
         || !permission.lands_enter_tapped
         || !matches!(
@@ -8526,6 +8530,8 @@ pub(in crate::compiled_text) fn describe_target_player_draw_exile_then_copy_resu
         || copy.attack_target_mode.is_some()
         || copy.exile_at_end_of_combat
         || copy.loses_soulbond
+        || copy.ability_loss_until.is_some()
+        || !copy.removed_ability_designations.is_empty()
         || copy.sacrifice_at_next_end_step
         || copy.sacrifice_at_next_end_step_ability_text.is_some()
         || copy.exile_at_next_end_step
@@ -14251,7 +14257,7 @@ pub(in crate::compiled_text) fn describe_opponent_top_exile_and_play(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
-        || permission.while_player_controls.is_some()
+        || (permission.while_player_controls.is_some() || permission.control_duration.is_some())
         || permission.permanents_enter_tapped
         || permission.max_plays.is_some()
         || permission.lands_enter_tapped
@@ -14324,7 +14330,7 @@ pub(in crate::compiled_text) fn describe_hand_choice_exile_permission(
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
         || permission.during_turns_cast_another_spell
-        || permission.while_player_controls.is_some()
+        || (permission.while_player_controls.is_some() || permission.control_duration.is_some())
         || permission.permanents_enter_tapped
     {
         return None;

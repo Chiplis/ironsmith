@@ -103,6 +103,15 @@ pub(super) fn parse_player_achievement(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerAchievementConditionAst> {
     let tokens = trim_clause(tokens);
+    let words = TokenWordView::new(tokens).word_refs();
+    let (designation, negated) = match words.as_slice() {
+        ["you", "are", "in", "a", rest @ ..] | ["you're", "in", "a", rest @ ..] | ["youre", "in", "a", rest @ ..] | ["you", "are", "in", "your", rest @ ..] | ["you're", "in", "your", rest @ ..] | ["youre", "in", "your", rest @ ..] if rest.len() == 1 => (Some(rest.join(" ")), false),
+        ["you", "are", "not", "in", "a", rest @ ..] | ["you're", "not", "in", "a", rest @ ..] | ["youre", "not", "in", "a", rest @ ..] | ["you", "are", "not", "in", "your", rest @ ..] if rest.len() == 1 => (Some(rest.join(" ")), true),
+        _ => (None, false),
+    };
+    // Every word of this complete player/status operand was matched above.
+    // Do not claim a parent conditional or an unparsed conjunction tail.
+    if let Some(designation) = designation { crate::word_claims::claim_tokens(tokens); return Some(PlayerAchievementConditionAst { player: PlayerAst::You, achievement: PlayerAchievementAst::NamedDesignation(designation), negated }); }
     let (tail, negated) = parse_achievement_head(tokens)?;
     Some(PlayerAchievementConditionAst {
         player: PlayerAst::You,

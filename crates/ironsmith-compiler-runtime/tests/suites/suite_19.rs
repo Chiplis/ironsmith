@@ -26,6 +26,15 @@ mod r#counted_untap_steps;
 #[path = "../counter_linked_animation.rs"]
 mod r#counter_linked_animation;
 
+#[path = "../custom_endgame_source_readers.rs"]
+mod r#custom_endgame_source_readers;
+
+#[path = "../custom_token_simultaneous_tap.rs"]
+mod r#custom_token_simultaneous_tap;
+
+#[path = "../custom_voyage_stack_targets.rs"]
+mod r#custom_voyage_stack_targets;
+
 #[path = "../damaged_by_source_this_turn.rs"]
 mod r#damaged_by_source_this_turn;
 

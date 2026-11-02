@@ -48,7 +48,7 @@ pub use ironsmith_compiler_semantic::cards::builders::GrantedAbilityAst;
 pub use ironsmith_compiler_syntax::OwnedLexToken;
 
 pub use crate::model::ast::{
-    CharacteristicActionAst, ChoiceActionAst, ChooseOneModeAst, ConditionalEffectAst,
+    CardCreationSelectionAst, CharacteristicActionAst, ChoiceActionAst, ChooseOneModeAst, ConditionalEffectAst,
     ControlActionAst, CounterActionAst, DamageActionAst, DamagePreventionActionAst,
     DelayedEffectAst, EffectAst, ExchangeActionAst, ForEachEffectAst, GameActionAst,
     GrantActionAst, KeywordActionAst, LibraryActionAst, LifeResourceActionAst, ManaActionAst,
@@ -211,9 +211,10 @@ impl CardDefinitionBuilder {
     /// Retain a user-defined keyword's identity separately from its compiled
     /// rules. In particular, a custom restriction does not grant Defender.
     pub fn with_custom_keyword(self, name: impl Into<String>) -> Self {
+        let name = name.into();
         self.with_ability(crate::ability::Ability::static_ability(
-            crate::static_abilities::StaticAbility::custom_keyword_identity(name),
-        ))
+            crate::static_abilities::StaticAbility::custom_keyword_identity(name.clone()),
+        ).with_designation(name))
     }
 
     pub fn with_ability(mut self, ability: crate::ability::Ability) -> Self {
@@ -314,17 +315,18 @@ impl CardDefinitionBuilder {
                     Some(crate::target::ObjectFilter::noncreature_spell()),
                     crate::target::PlayerFilter::You,
                 ),
-                effects: vec![crate::effect::Effect::pump(
+                effects: { let mut program: ironsmith_core::ResolutionProgram<crate::effect::Effect> = vec![crate::effect::Effect::pump(
                     1,
                     1,
                     crate::target::ChooseSpec::Source,
                     crate::effect::Until::EndOfTurn,
                 )]
-                .into(),
+                .into(); program.keyword=Some("prowess".into()); program },
                 choices: vec![],
                 intervening_if: None,
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Prowess)),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -402,6 +404,7 @@ impl CardDefinitionBuilder {
                     PresentationKeyword::Poisonous(amount),
                 )),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -440,6 +443,7 @@ impl CardDefinitionBuilder {
                     amount,
                 ))),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -584,6 +588,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: Some(crate::ability::PresentationLabel::Keyword(crate::ability::PresentationKeyword::Storm)),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
     }
@@ -612,6 +617,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
     }
@@ -658,6 +664,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Melee)),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -695,6 +702,7 @@ impl CardDefinitionBuilder {
                     PresentationKeyword::Firebending(presentation),
                 )),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -791,6 +799,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -867,6 +876,7 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -899,6 +909,7 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -1003,6 +1014,7 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: Vec::new(),
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Graveyard],
         })
     }
@@ -1077,6 +1089,7 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: Vec::new(),
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Graveyard],
         })
     }
@@ -1175,6 +1188,7 @@ impl CardDefinitionBuilder {
                 mana_usage_restrictions: Vec::new(),
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Graveyard],
         })
     }
@@ -1247,6 +1261,7 @@ impl CardDefinitionBuilder {
                 ))),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -1316,6 +1331,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         }
     }
@@ -1391,6 +1407,7 @@ impl CardDefinitionBuilder {
                     cost_text,
                 ))),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Graveyard],
         })
     }
@@ -1499,6 +1516,7 @@ impl CardDefinitionBuilder {
                 }),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Exile],
         })
         .with_ability(crate::ability::Ability {
@@ -1527,6 +1545,7 @@ impl CardDefinitionBuilder {
                 )),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Exile],
         })
     }
@@ -1616,6 +1635,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Hand],
         })
     }
@@ -1665,6 +1685,7 @@ impl CardDefinitionBuilder {
                 ),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -1694,6 +1715,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::effect::Condition::SourceIsInZone(crate::zone::Zone::Battlefield)),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -1734,6 +1756,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_ref)),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
     }
@@ -1766,6 +1789,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(cost_ref)),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
     }
@@ -1860,6 +1884,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(reference)),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Stack],
         })
     }
@@ -1881,6 +1906,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::XValueAtLeast(5)),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -1961,6 +1987,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones,
         })
     }
@@ -2005,6 +2032,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Provoke)),
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2066,6 +2094,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2382,6 +2411,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2422,6 +2452,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2468,6 +2499,7 @@ impl CardDefinitionBuilder {
                 }),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2604,6 +2636,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2625,6 +2658,7 @@ impl CardDefinitionBuilder {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield],
         })
     }
@@ -2684,6 +2718,7 @@ impl CardDefinitionBuilder {
                 ))),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
         })
     }
@@ -2737,6 +2772,7 @@ impl CardDefinitionBuilder {
                 ))),
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![crate::zone::Zone::Battlefield, crate::zone::Zone::Graveyard],
         })
     }
@@ -2839,6 +2875,7 @@ impl CardDefinitionBuilder {
             optional_costs: self.optional_costs,
             additional_cost: self.additional_cost,
             refers_to_ante,
+            ability_counter_definitions: std::collections::BTreeMap::new(),
         }
     }
 }

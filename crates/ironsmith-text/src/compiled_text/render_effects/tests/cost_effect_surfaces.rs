@@ -701,6 +701,7 @@ fn graveyard_permission_survives_sacrificing_its_provider_during_payment() {
                 .build();
         let other = game.create_object_from_card(&other, alice, Zone::Battlefield);
         let expensive = crate::alternative_cast::AlternativeCastingMethod::FromZone {
+        preparation_total_cost: None,
             name: "Other graveyard permission".into(),
             zone: Zone::Graveyard,
             total_cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(vec![

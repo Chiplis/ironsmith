@@ -199,6 +199,10 @@ impl EffectExecutor for RevealObjects {
                         )
                     })
                     .collect::<Vec<_>>();
+                for event in &events {
+                    super::process_public_reveal_action_offers(game, event, ctx.decision_maker)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                }
                 Ok(EffectOutcome::count(objects.len() as i32)
                     .with_events(events)
                     .with_chosen_object_memory(objects.clone())

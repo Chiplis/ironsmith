@@ -320,6 +320,13 @@ fn enter_as_copy(spec: &ironsmith_core::EnterAsCopyAsEntersSpec<
     use ironsmith_core::EnterAsCopyFollowup as Followup;
     for followup in &spec.copy_followups {
         match followup {
+            Followup::RemoveManaCost => exceptions.push("it has no mana cost".into()),
+            Followup::ConditionalCharacteristics{entering_filter,remove_mana_cost,set_base_power_toughness} => {
+                let mut parts=Vec::new();
+                if *remove_mana_cost {parts.push("it has no mana cost".to_string());}
+                if let Some((power,toughness))=set_base_power_toughness {parts.push(format!("it has base power and toughness {power}/{toughness}"));}
+                exceptions.push(format!("{} if it's {}",parts.join(" and "),objects(entering_filter)));
+            }
             Followup::RetainOwnColors => exceptions.push("it doesn't copy that creature's color".to_string()),
             Followup::RetainEmbalmCharacteristics => exceptions.push(
                 "if this creature was embalmed, the token has no mana cost, it's white, and it's a Zombie in addition to its other types"
@@ -355,7 +362,8 @@ fn enter_as_copy(spec: &ironsmith_core::EnterAsCopyAsEntersSpec<
     let mut sentences = Vec::new();
     for followup in &spec.copy_followups {
         sentences.push(match followup {
-            Followup::RetainOwnColors | Followup::RetainEmbalmCharacteristics => continue,
+            Followup::RetainOwnColors | Followup::RetainEmbalmCharacteristics
+            | Followup::RemoveManaCost | Followup::ConditionalCharacteristics{..} => continue,
             Followup::ExileCopiedObject => "When you do, exile that card".to_string(),
             Followup::GainsHasteUntilEndOfTurn => "If you do, it gains haste until end of turn".to_string(),
             Followup::TapCopiedObjectFrozenWhileYouControlSource => {
@@ -1239,6 +1247,35 @@ pub(crate) fn audit_payload_reading(
     model: &crate::static_abilities::CompiledStaticAbility,
 ) -> Option<String> {
     Some(match &model.payload {
+        P::OptionalTextFragments(spec) => if spec.casting_payment.is_some() {
+            "For each time you pay this spell's optional additional cost, remove one bracketed text fragment from it".to_string()
+        } else { String::new() },
+        P::NamedActionPaymentAlternative { label, effects: body, .. } => format!("You may pay the cost \"{}\" rather than the cost of performing the {label} action.", effects(body)),
+        P::NamedActionTokenAbilityGrant { display, .. } => display.clone(),
+        P::ActivateAbilitiesAsThoughZone { display, .. } => display.clone(),
+        P::PhaseBoundaryPlayerAction { boundary, label, condition } => {
+            let boundary = match boundary {
+                ironsmith_core::static_ability_model::PlayerActionBoundary::EndStep => "end step",
+                ironsmith_core::static_ability_model::PlayerActionBoundary::BeginCombat => "combat",
+            };
+            format!("As your {boundary} begins, if {}, you perform the {label} action once rather than once for each permanent with this ability", describe_condition(condition))
+        },
+        P::GrantOptionalSpellCost { filter, price, reference, effects: body, timing, generic_reduction, .. } => {
+            let price = match price {
+                ironsmith_core::static_ability_model::GrantedOptionalCostPrice::Fixed(cost) => cost.display(),
+                ironsmith_core::static_ability_model::GrantedOptionalCostPrice::GenericManaValue => "mana equal to this spell's mana value".into(),
+            };
+            let consequence = match timing {
+                ironsmith_core::static_ability_model::GrantedOptionalCostTiming::DuringCasting => "If you do, ",
+                ironsmith_core::static_ability_model::GrantedOptionalCostTiming::CastTrigger => "When you cast that spell, if you paid this additional cost, ",
+            };
+            let reduction = generic_reduction.as_ref().map(|amount| format!(". That spell costs {} less to cast", value_words(amount))).unwrap_or_default();
+            format!("As an additional cost to cast {}, you may pay {} for {}. {}{}{}", objects(filter), price, reference.display_label(), consequence, effects(body), reduction)
+        }
+        P::OptionalCostPaymentAlternative { filter, reference, replacement } => format!(
+            "You may pay {} rather than pay the {} cost for {}",
+            replacement.display(), reference.custom_keyword.clone().unwrap_or_else(||reference.display_label()), objects(filter)
+        ),
         P::Grants(_) => crate::static_abilities::StaticAbility::from_model(model.clone())
             .grant_spec()
             .map(|grant| {
@@ -1527,6 +1564,29 @@ pub(crate) fn audit_payload_reading(
                 )
             }
         }
+        P::TriggerClassEventChoice { class, official_keyword, event, sources, include_event_source, destination_subject, maximum, optional, automatic, caused_by_event } => {
+            format!("At the event {}, {}select {} {} triggered program{} from {}{} and trigger the selected programs due to {}",
+                event.display(), if *automatic {"automatically "} else if *optional {"you may "} else {""}, maximum, if *official_keyword {format!("official keyword {class}")} else {class.clone()},
+                if *maximum==1 {""} else {"s"}, sources.as_ref().map(objects).unwrap_or_default(),
+                if *include_event_source {if *destination_subject {" or the event arrival"} else {" or the event source"}} else {""},
+                if *caused_by_event {"the observed event"} else {"the selection"})
+        }
+        P::IntrinsicImmediateAction { cost, timing, source_zone, player: actor, condition, shared_turn_group, effects: program, once } => {
+            let timing = match timing {
+                ironsmith_core::static_ability_model::ImmediateActionTiming::Priority => "Any time you have priority",
+                ironsmith_core::static_ability_model::ImmediateActionTiming::Sorcery => "Any time you could cast a sorcery",
+                ironsmith_core::static_ability_model::ImmediateActionTiming::Attacking => "Any time you have priority and this permanent is attacking",
+            };
+            let zone = if *source_zone == Zone::Battlefield { String::new() }
+                else { format!(" Take this action only while this card is in your {}.", source_zone.name()) };
+            let pronoun = if *actor == PlayerFilter::You { "you" } else { "they" };
+            let actor = if *actor == PlayerFilter::You { "you".to_string() } else { player(actor) };
+            let condition = condition.as_ref().map(|condition| format!(" Take this action only if {}.", describe_condition(condition))).unwrap_or_default();
+            let group = shared_turn_group.as_ref().map(|group| format!(" Actions of this permanent in group \"{group}\" share one use each turn.")).unwrap_or_default();
+            format!("{timing}, {actor} may pay {} to take a special action. If {pronoun} do, {}.{}{zone}{condition}{group}",
+                cost.display(), lowercase_first(&effects(program)),
+                if *once { " Take this action only once." } else { "" })
+        }
         P::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn { cost, .. } => format!(
             "Any player may pay {} to ignore this permanent's effect until end of turn",
             cost.to_oracle()
@@ -1654,6 +1714,11 @@ pub(crate) fn audit_payload_reading(
         P::SourceLandIsChosenType(_) => "This land is the chosen land type".into(),
         P::AttachedIsCopyOfChosenObject(_) => {
             "The permanent this is attached to is a copy of the chosen object".into()
+        }
+        P::AdditionalSpellTargets { filter, amount } => format!("As you choose targets for {}, choose up to {amount} additional targets",objects(filter)),
+        P::AttachedIsCopyOfSource { retain_original_types } => {
+            let tail = if *retain_original_types { " except for its card types, supertypes, and subtypes" } else { "" };
+            format!("The permanent this is attached to is a copy of this permanent{tail}")
         }
         P::NoteLifeTotalAsEnters(_) => "As this permanent enters, note your life total".into(),
         P::DiscardHandAsEnters(_) => "As this permanent enters, discard your hand".into(),
@@ -1854,7 +1919,26 @@ pub(crate) fn audit_payload_reading(
             )
         }
         P::EnterAsCopyAsEnters { spec, .. } => enter_as_copy(spec),
-        P::AsEntersEffectProgram { program, also_turns_face_up, turns_face_up_only, transforms_into, .. } => {
+        P::CastAnnouncementProgram {program} => format!("As you cast this spell, {}",effects(program.flattened_default_effects())),
+        P::SpellResolutionDestinationProgram { origin_zone, destination, follow_up, multiplicity } => {
+            let occurrence=match multiplicity {
+                ironsmith_core::static_ability_model::SpellResolutionProgramMultiplicity::PerInstance=>String::new(),
+                ironsmith_core::static_ability_model::SpellResolutionProgramMultiplicity::OncePerDeclaredKey{key}=>format!(" once for the resolution recipe named {key:?}"),
+            };
+            let condition = origin_zone.map(|zone| format!("If this spell was cast from your {}, ", zone_phrase(&zone))).unwrap_or_default();
+            let movement = if *destination == Zone::Exile { "exile it".to_string() }
+                else { format!("put it into your {}", zone_phrase(destination)) };
+            format!("{condition}instead of putting it into your graveyard as it resolves, {movement}{occurrence} and {}", effects(follow_up.flattened_default_effects()))
+        }
+        P::AsEntersEffectProgram { program, also_turns_face_up, turns_face_up_only, transforms_into, transform_characteristics, .. } => {
+            if let Some(adjustment) = transform_characteristics {
+                use ironsmith_core::static_ability_model::TransformCharacteristicAdjustment as Adjustment;
+                let body = match adjustment {
+                    Adjustment::CounterKind(kind) => format!("counters on it become {} counters instead", kind.description()),
+                    Adjustment::ColorsFromNamedActivationPayment(label) => format!("for each color of mana spent to {label} it, it becomes that color"),
+                };
+                return Some(format!("As this permanent transforms into this face, {body}"));
+            }
             let event = if *turns_face_up_only {
                 "is turned face up"
             } else if *also_turns_face_up {
@@ -2069,6 +2153,15 @@ pub(crate) fn audit_payload_reading(
         }
         // "If a creature you control would explore, instead you scry 1, then
         // that creature explores."
+        P::NamedActionReplacement { label, source_filter, performer_filter, object_requirement, replacement_effects, optional, .. } => {
+            let subject = match performer_filter {
+                Some(performer) if *source_filter == ObjectFilter::default() => player(performer),
+                Some(performer) => format!("{} with {}", player(performer), article(&objects(source_filter))),
+                None => article(&objects(source_filter)),
+            };
+            let subjects=object_requirement.as_ref().map(|requirement|format!(" with at least {} {}",requirement.minimum,objects(&requirement.filter))).unwrap_or_default();
+            format!("If {subject} would perform the {label} action{subjects}, {}instead {}", may(*optional), effects(replacement_effects))
+        }
         P::KeywordActionReplacement { action, source_filter, performer_filter: None, replacement_effects, optional, .. } => {
             let effects_text = effects(replacement_effects);
             let effects_text = effects_text.replacen(". It ", ", then it ", 1);
@@ -2277,10 +2370,11 @@ pub(crate) fn audit_payload_reading(
                 sr(method).to_ascii_lowercase()
             )
         }
-        P::AddLifeGainReplacement { player: who, additional, .. } => format!(
-            "If {} would gain life, they gain that much plus {additional} instead",
-            player(who)
-        ),
+        P::AddLifeGainReplacement { player: who, additional, loss, .. } => {
+            let verb=if *loss { "lose" } else { "gain" };
+            let quantity=if *loss { "that much life" } else { "that much" };
+            format!("If {} would {verb} life, they {verb} {quantity} plus {additional} instead", player(who))
+        },
         P::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, .. } => {
             // AppendOnce adds one of each template to the event; the other
             // modes add (AppendForEach) or substitute (ReplaceEach) one per
@@ -2334,6 +2428,14 @@ pub(crate) fn audit_payload_reading(
                 .collect::<Vec<_>>();
             format!("Spend only {} mana on X", or_list(&names))
         }
+        P::GenericManaTapPayment { spells, activated_abilities, exclude_source, name, .. } => {
+            let mut programs = Vec::new();
+            if *spells { programs.push("For each generic mana in this spell's total cost, you may tap an untapped creature you control rather than pay that mana".to_string()); }
+            if *activated_abilities { programs.push(format!("For each generic mana in the total cost of this permanent's abilities, you may tap {} untapped creature you control rather than pay that mana", if *exclude_source {"another"} else {"an"})); }
+            if let Some(name)=name { programs.push(format!("This generic tap payment is named {name}")); }
+            programs.join(". ")
+        }
+        P::GenericManaTapPaymentProhibition { name } => format!("This creature can't be tapped to pay the generic tap payment named {name}"),
         P::SpellManaSpendingRestriction(ironsmith_core::mana::ManaSpendingRestriction::NoMana) => {
             "You can't spend mana to cast this spell".to_string()
         }
@@ -2435,6 +2537,25 @@ pub(crate) fn audit_payload_reading(
             "This has the full text of the top {} of your graveyard",
             objects(filter)
         ),
+        P::RevealActionOffer { label, source_zones, max_per_player_turn, arrival_zone, effects: program, .. } => {
+            let zones = if source_zones.len() == 2 && source_zones.contains(&Zone::Hand) && source_zones.contains(&Zone::Library) {
+                "a hidden zone".to_string()
+            } else { source_zones.iter().map(zone_phrase).collect::<Vec<_>>().join(" or ") };
+            let limit = max_per_player_turn.map_or(String::new(), |maximum| if maximum == 1 { " once each turn".into() } else { format!(" at most {maximum} times each turn") });
+            format!("As you reveal this card from {zones}, you may perform the {label} action{limit} ending in {arrival_zone} as follows: [{}]", effects(program))
+        },
+        P::CopySourceSelectionReplacement {player:actor,replacement,..} => {
+            let mut operand=replacement;while let Some(child)=operand.transparent_child_effect(){operand=child;}
+            let copy=operand.downcast_ref::<crate::effects::CopyFromDefinitionEffect>()?;
+            format!("If {} would copy a spell or cast a copy, they copy the card named {} instead of anything else",player(actor),copy.definition.card.name)
+        },
+        P::CardCreationSelectionReplacement {operation_label,player:actor,replacement,..} => {
+            let mut template=replacement;
+            while let Some(tagged)=template.downcast_ref::<crate::effects::TaggedEffect>(){template=&tagged.effect;}
+            let Some(create)=template.downcast_ref::<crate::effects::CreateCardsEffect>() else{return None;};
+            let ironsmith_core::CardCreationSelection::Named(name)=&create.selection else{return None;};
+            format!("If {} would create real cards{}, use the supplied card definition named {} instead",player(actor),operation_label.as_ref().map_or(String::new(),|label|format!(" as part of the named {label} action")),name)
+        },
         P::MaySkipDrawStepWithFollowup { if_you_do, .. } => format!(
             "You may skip your draw step; if you do, {}",
             effects(if_you_do)
@@ -2599,7 +2720,9 @@ pub(crate) fn audit_payload_reading(
                 M::TapCreaturesForMana => "Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.".into(),
                 M::DestroyAttachmentInstead => "If enchanted permanent would be destroyed, instead remove all damage from it and destroy this Aura.".into(),
                 M::AttachWhileCreature => "This permanent can be attached while it's a creature.".into(),
-                M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story } => format!("If you control {minimum} or more {}, you {} for the rest of the game.", if *historic_only { "artifacts, legendaries, and/or Sagas" } else { "permanents" }, if *enduring_story { "have an enduring story" } else { "get the city's blessing" }),
+                M::ClassTriggerChoiceAdjustment { action,class,.. } => format!("As you {action}, you may choose another {class} ability to trigger."),
+                M::ClassTriggerMultiplication { class,once_each_turn,.. } => format!("{}If you would trigger a {class} ability of a permanent you control, you may have that ability trigger twice instead.",if *once_each_turn { "Once each turn, " } else { "" }),
+                M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story, tapped_only, named_designation, history_requirements } => if !history_requirements.is_empty() { format!("If you {}, you are in your {} for the rest of the game.", history_requirements.iter().map(|requirement| requirement.clause()).collect::<Vec<_>>().join(", "), named_designation.as_deref().unwrap_or("designation")) } else { format!("If you control {minimum} or more {}, you {} for the rest of the game.", if *historic_only { "artifacts, legendaries, and/or Sagas" } else if *tapped_only { "tapped permanents" } else { "permanents" }, if let Some(name) = named_designation { format!("are in your {name}") } else if *enduring_story { "have an enduring story".into() } else { "get the city's blessing".into() }) },
                 M::ExileOnStackExitIfCastFrom { zone } => format!("If this spell was cast from your {}, exile it instead of putting it anywhere else any time it would leave the stack.", format!("{zone:?}").to_ascii_lowercase()),
                 M::TapArtifactsForGenericMana => "Each artifact you tap after you're done activating mana abilities pays for {1}.".into(),
                 M::PhaseDuringUntap => "This phases in or out before you untap during each of your untap steps.".to_string(),
@@ -2610,6 +2733,7 @@ pub(crate) fn audit_payload_reading(
                     "This deals damage to creatures in the form of -1/-1 counters.".to_string()
                 },
                 M::DamageGrantsControllerLife => "Damage dealt by this creature also causes you to gain that much life.".to_string(),
+                M::DamageCausesRecipientControllerLifeLoss => "Damage dealt to this creature also causes its controller to lose that much life.".to_string(),
                 M::EarlyCombatDamage { also_regular } => if *also_regular {
                     "This creature deals both first-strike and regular combat damage".to_string()
                 } else { "This creature deals combat damage before creatures without first strike".to_string() },
@@ -2621,6 +2745,8 @@ pub(crate) fn audit_payload_reading(
                 M::CombatBandsAndDamageChoice => "As you declare attackers, you may group one or more attacking creatures with this ability and up to one other attacking creature into a band. Each creature can belong to only one band, and all members must attack the same player, planeswalker, or battle. The band lasts for the rest of combat even if this ability is lost; creatures removed from combat leave the band. Members don't share abilities. A creature blocking any member blocks all members, and an effect that blocks one member blocks the whole band. If this creature is blocking an attacker, you choose how that attacker divides its combat damage among its blockers. If this creature is blocked, you choose how its blockers divide their combat damage among the creatures they block.".into(),
                 M::AssignCreatureSectors => "As a state-based action, each creature without a sector designation is assigned alpha, beta, or gamma sector by its controller. Players who don't control a permanent with this ability assign first, then the other players assign, in active-player order within each group. A permanent keeps its sector until no player controls a permanent with this ability or an ability whose source has this ability. Sector designations aren't copiable.".into(),
                 M::InitializeControllerSpeed => "If you have no speed while you control this permanent, your speed becomes 1 as a state-based action. Whenever one or more opponents lose life during your turn, if your speed is less than 4, your speed increases by 1. This inherent ability has no source and triggers only once each turn. Your speed remains after this permanent leaves the battlefield. Max speed is 4.".into(),
+                M::PrecombatLoreProgression { stop_at_final_chapter } => format!("As your precombat main phase begins, put a lore counter on this permanent as a turn-based action{}.", if *stop_at_final_chapter { ", unless it has at least as many lore counters as its final chapter number" } else { "" }),
+                M::FinalChapterResolutionRemovesCounters { counter_name } => format!("As this Saga's final chapter ability resolves, remove all {counter_name} counters from it."),
                 M::ChooseSagaEntryChapter => "As this Saga enters, choose a number between one and its final chapter number. It enters with the chosen number of lore counters. Chapter abilities of this Saga can't trigger the turn it entered unless it has exactly the number of lore counters specified in that chapter's symbol.".into(),
                 M::AnotherPlayerPaysGeneric => "As you cast this spell, before activating mana abilities, you may choose another player. That player may activate mana abilities before you do and may pay any amount of the generic mana in this spell's total cost before you pay the rest.".into(),
                 M::EntryLoyaltyReductionPerLifePip => "For each Phyrexian mana symbol paid with life, this planeswalker enters with two fewer loyalty counters.".into(),

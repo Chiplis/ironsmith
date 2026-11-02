@@ -407,7 +407,17 @@ fn attack(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
 }
 use ironsmith::static_abilities::{StaticAbility, StaticAbilityId};
 fn rule(game: &GameState, object: ObjectId) -> bool {
-    game.current_has_static_ability_id(
+    // A source-owned CR 510.1a assignment rule is not an ability the
+    // receiver gains. Query the same refreshed tracker that both combat
+    // damage paths read, while retaining direct self/granted ability rules.
+    // Refresh a read-only copy so this diagnostic cannot warm the tested
+    // game's caches before its real combat-damage instruction runs.
+    let mut view = game.clone();
+    view.refresh_continuous_state().unwrap();
+    view.effect_store.cant_effects.object_has_rule(
+        object,
+        &ironsmith_core::ObjectRule::AssignsCombatDamageUsingToughness,
+    ) || view.current_has_static_ability_id(
         object,
         StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness,
     )
@@ -942,5 +952,31 @@ fn tapestry_combat_subset_uses_the_same_rule_without_claiming_its_station_body()
         game.create_object_from_definition(&definition, A, Zone::Battlefield);
         let target = creature(&mut game, A, 2, 5, "Human");
         assert_eq!(damage(&mut game, target, false), 5);
+    }
+}
+
+#[test]
+fn source_owned_assignment_is_not_a_receiver_ability_and_survives_receiver_ability_loss() {
+    for definition in definitions("Ancient Lumberknot") {
+        for general in [false, true] {
+            let mut game = self::game();
+            let provider=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+            let body=compile_to_runtime_definition("Vigilant receiver", "Type: Creature — Human\nPower/Toughness: 2/5\nVigilance",false).unwrap();
+            let receiver=game.create_object_from_definition(&body,A,Zone::Battlefield);
+            assert!(!game.current_has_static_ability_id(receiver,StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness),"the source changes assignment, not receiver characteristics");
+            assert!(game.current_has_static_ability_id(receiver,StaticAbilityId::Vigilance));
+            assert!(rule(&game,receiver));
+            assert_eq!(damage(&mut game,receiver,general),5);
+            apply(&mut game,provider,Effect::new(ironsmith::effects::ApplyContinuousEffect::with_spec(
+                ChooseSpec::SpecificObject(receiver),ironsmith::continuous::Modification::RemoveAllAbilities,Until::EndOfTurn,
+            )));
+            assert!(!game.current_has_static_ability_id(receiver,StaticAbilityId::Vigilance));
+            assert!(!game.current_has_static_ability_id(receiver,StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness));
+            assert!(rule(&game,receiver),"losing receiver abilities cannot erase another source's rule");
+            assert_eq!(damage(&mut game,receiver,general),5);
+            game.move_object_by_game_rule(provider,Zone::Graveyard).unwrap();
+            assert!(!rule(&game,receiver),"the rule ends when its source departs");
+            assert_eq!(damage(&mut game,receiver,general),2);
+        }
     }
 }

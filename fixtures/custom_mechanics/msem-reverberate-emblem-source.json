@@ -1,0 +1,597 @@
+{
+  "version": 1,
+  "scope": "msem",
+  "source_fixture": "fixtures/custom_mechanics/msem-casting-costs.json",
+  "mechanics": [
+    {
+      "id": "msem-455",
+      "keyword": "Reverberate",
+      "original_reminder": "When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.",
+      "executable_reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+      "source_cards": [
+        "Merkurio Zellurys"
+      ],
+      "rule_reference": "702.206.",
+      "rule_text": [
+        {
+          "name": "702.206a",
+          "rule": "Reverberate is a keyword that represents a static ability and a triggered ability that function while the spell with reverberate is on the stack. “Reverberate (cost)” means “As an additional cost to cast this spell, you may pay (cost),” and “When you cast this spell, if you paid its reverberate cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        },
+        {
+          "name": "702.206b",
+          "rule": "A spell is “reverberated” if it's a copy and it has reverberate.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Merkurio Zellurys_KZD",
+          "name": "Merkurio Zellurys",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has custom keyword 'reverberate', and 'As an additional cost to cast this spell, you may pay mana equal to this spell's mana value. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy. This optional additional cost is named reverberate.'.”",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Legendary Planeswalker — Merkurio",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Merkurio Zellurys_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "3",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Merkurio Zellurys",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*"
+            }
+          ],
+          "candidate_executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has custom keyword 'Reverberate', and 'As an additional cost to cast this spell, you may pay mana equal to this spell's mana value. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy. This optional additional cost is named Reverberate.'.”",
+          "executable_faces": [
+            {
+              "name": "Merkurio Zellurys",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has custom keyword 'reverberate', and 'As an additional cost to cast this spell, you may pay mana equal to this spell's mana value. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy. This optional additional cost is named reverberate.'.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "merkurio",
+                  "plural": "merkurios",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.”",
+              "original_printed_rules_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” (When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "merkurio",
+              "plural": "merkurios",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.”",
+          "original_printed_rules_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” (When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Lafterii Ingenuity_AFM",
+          "name": "Lafterii Ingenuity",
+          "source_card_key": "Lafterii Ingenuity_AFM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{U}{R}\nType: Enchantment\nInstant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+          "executable_text": "Mana cost: {2}{U}{R}\nType: Enchantment\nInstant and sorcery spells you cast cost {1} less to cast.\nAs you cast an instant or sorcery spell, you may exile this card from your graveyard and pay and reverberate costs you activate cost up to {1} less. If you do, add this card's effects to that spell. You may exile only one card this way per spell.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+          "reviewed_source_corrections": [
+            {
+              "original": "Reprise and reverberate costs you activate cost up to {1} less.",
+              "replacement": "Additional casting costs named reprise or reverberate you pay cost up to {1} less.",
+              "source_context": "Reprise and reverberate costs you activate cost up to {1} less.",
+              "evidence": "Formal702.205a(Reprise) and702.206a(Reverberate) explicitly make both named additional casting prices. Canonicalize the source category verb activate to pay, preserving optional0or1 generic reduction on each selected named price component, all nonmana children, and the independent total spell cost.",
+              "review_status": "source_context_reviewed"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lafterii Ingenuity",
+              "executable_text": "Mana cost: {2}{U}{R}\nType: Enchantment\nInstant and sorcery spells you cast cost {1} less to cast.\nAs you cast an instant or sorcery spell, you may exile this card from your graveyard and pay and reverberate costs you activate cost up to {1} less. If you do, add this card's effects to that spell. You may exile only one card this way per spell.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+              "custom_keyword_identities": [
+                "reprise"
+              ],
+              "custom_keyword_payments": [
+                "reprise"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+              "original_printed_rules_text": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprise"
+          ],
+          "custom_keyword_payments": [
+            "reprise"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+          "original_printed_rules_text": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Controlled Decisions_KZD",
+          "name": "Controlled Decisions",
+          "source_card_key": "Controlled Decisions_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nReverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "executable_faces": [
+            {
+              "name": "Controlled Decisions",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {3}\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+              "original_printed_rules_text": "Reverberate {3} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {3}\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "original_printed_rules_text": "Reverberate {3} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Elementalize_KZD",
+          "name": "Elementalize",
+          "source_card_key": "Elementalize_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nReverberate {1}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {1}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+          "executable_faces": [
+            {
+              "name": "Elementalize",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {1}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {1}{U}\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+              "original_printed_rules_text": "Reverberate {1}{U} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {1}{U}\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+          "original_printed_rules_text": "Reverberate {1}{U} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Lafterii Trickery_KZD",
+          "name": "Lafterii Trickery",
+          "source_card_key": "Lafterii Trickery_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nReverberate {2}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {2}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Lafterii Trickery",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {2}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}{U}\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+              "original_printed_rules_text": "Reverberate {2}{U} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nTarget creature gets +0/+3 and gains hexproof until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}{U}\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+          "original_printed_rules_text": "Reverberate {2}{U} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Memories Reignited_KZD",
+          "name": "Memories Reignited",
+          "source_card_key": "Memories Reignited_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{U}{R}\nType: Instant\nReverberate {2}{U}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+          "executable_text": "Mana cost: {3}{U}{R}\nType: Instant\nAs an additional cost to cast this spell, you may pay {2}{U}{R}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Memories Reignited",
+              "executable_text": "Mana cost: {3}{U}{R}\nType: Instant\nAs an additional cost to cast this spell, you may pay {2}{U}{R}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}{U}{R}\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+              "original_printed_rules_text": "Reverberate {2}{U}{R} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}{U}{R}\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+          "original_printed_rules_text": "Reverberate {2}{U}{R} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mirror Image_KZD",
+          "name": "Mirror Image",
+          "source_card_key": "Mirror Image_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Instant\nReverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nCreate a token that's a copy of target creature you control.",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {3}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nCreate a token that's a copy of target creature you control.",
+          "executable_faces": [
+            {
+              "name": "Mirror Image",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {3}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nCreate a token that's a copy of target creature you control.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {3}{U}\nCreate a token that's a copy of target creature you control.",
+              "original_printed_rules_text": "Reverberate {3}{U} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nCreate a token that's a copy of target creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {3}{U}\nCreate a token that's a copy of target creature you control.",
+          "original_printed_rules_text": "Reverberate {3}{U} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nCreate a token that's a copy of target creature you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Quiet Meditation_KZD",
+          "name": "Quiet Meditation",
+          "source_card_key": "Quiet Meditation_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nReverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card.",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {2}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nDraw a card.",
+          "executable_faces": [
+            {
+              "name": "Quiet Meditation",
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {2}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nDraw a card.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}\nDraw a card.",
+              "original_printed_rules_text": "Reverberate {2} (When you cast this spell, copy it if you paid its reverberate cost.)\nDraw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}\nDraw a card.",
+          "original_printed_rules_text": "Reverberate {2} (When you cast this spell, copy it if you paid its reverberate cost.)\nDraw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Searing Pulse_KZD",
+          "name": "Searing Pulse",
+          "source_card_key": "Searing Pulse_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {R}\nType: Sorcery\nReverberate {3}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nSearing Pulse deals 2 damage to any target.",
+          "executable_text": "Mana cost: {R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}{R}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nSearing Pulse deals 2 damage to any target.",
+          "executable_faces": [
+            {
+              "name": "Searing Pulse",
+              "executable_text": "Mana cost: {R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}{R}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nSearing Pulse deals 2 damage to any target.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {3}{R}\nSearing Pulse deals 2 damage to any target.",
+              "original_printed_rules_text": "Reverberate {3}{R} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nSearing Pulse deals 2 damage to any target."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {3}{R}\nSearing Pulse deals 2 damage to any target.",
+          "original_printed_rules_text": "Reverberate {3}{R} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nSearing Pulse deals 2 damage to any target.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Unstable Experiment_KZD",
+          "name": "Unstable Experiment",
+          "source_card_key": "Unstable Experiment_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{U}\nType: Instant\nReverberate {2}{R} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn.",
+          "executable_text": "Mana cost: {2}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {2}{R}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nCreatures your opponents control get -2/-0 until end of turn. If this spell is a copy with custom keyword \"reverberate\", creatures you control get +1/+0 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Unstable Experiment",
+              "executable_text": "Mana cost: {2}{U}\nType: Instant\nAs an additional cost to cast this spell, you may pay {2}{R}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nCreatures your opponents control get -2/-0 until end of turn. If this spell is a copy with custom keyword \"reverberate\", creatures you control get +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}{R}\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn.",
+              "original_printed_rules_text": "Reverberate {2}{R} (When you cast this spell, copy it if you paid its reverberate cost.)\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}{R}\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn.",
+          "original_printed_rules_text": "Reverberate {2}{R} (When you cast this spell, copy it if you paid its reverberate cost.)\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Violent Spasm_KZD",
+          "name": "Violent Spasm",
+          "source_card_key": "Violent Spasm_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nReverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nIf this spell is a copy with custom keyword \"reverberate\", creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+          "executable_faces": [
+            {
+              "name": "Violent Spasm",
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}{U}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nIf this spell is a copy with custom keyword \"reverberate\", creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {3}{U}\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+              "original_printed_rules_text": "Reverberate {3}{U} (When you cast this spell, copy it if you paid its reverberate cost.)\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {3}{U}\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+          "original_printed_rules_text": "Reverberate {3}{U} (When you cast this spell, copy it if you paid its reverberate cost.)\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Noxious Upwelling_HZN",
+          "name": "Noxious Upwelling",
+          "source_card_key": "Noxious Upwelling_HZN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nReverberate—Sacrifice a Swamp. *(When you cast this spell, copy it if you paid its reverberate cost.)*\nAll creatures get -2/-2 until end of turn.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nAs an additional cost to cast this spell, you may sacrifice a Swamp. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nAll creatures get -2/-2 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Noxious Upwelling",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nAs an additional cost to cast this spell, you may sacrifice a Swamp. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nAll creatures get -2/-2 until end of turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate—Sacrifice a Swamp.\nAll creatures get -2/-2 until end of turn.",
+              "original_printed_rules_text": "Reverberate—Sacrifice a Swamp. (When you cast this spell, copy it if you paid its reverberate cost.)\nAll creatures get -2/-2 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate—Sacrifice a Swamp.\nAll creatures get -2/-2 until end of turn.",
+          "original_printed_rules_text": "Reverberate—Sacrifice a Swamp. (When you cast this spell, copy it if you paid its reverberate cost.)\nAll creatures get -2/-2 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mystical Echo_OTH",
+          "name": "Mystical Echo",
+          "source_card_key": "Mystical Echo_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nReverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nAs an additional cost to cast this spell, you may pay {2}{G}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Mystical Echo",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nAs an additional cost to cast this spell, you may pay {2}{G}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}{G}\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+              "original_printed_rules_text": "Reverberate {2}{G} (When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}{G}\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "original_printed_rules_text": "Reverberate {2}{G} (When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "implementation_status": "pending_parent_verification",
+      "boundary_reason": "Needs generic scoped grant of one-time custom optional payment/copy trigger; existing granted replicate would change payment repeatability and official keyword identity.",
+      "executable_definitions": [
+        {
+          "keyword": "Reverberate",
+          "template": "{Cost}",
+          "reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+          "statusPredicate": {
+            "spellCopy": true,
+            "customKeyword": "reverberate"
+          }
+        }
+      ],
+      "test_status": "unexecuted",
+      "semantic_equivalence": {
+        "status": "candidate",
+        "evidence": "Recipient-relative optional generic mana equal to mana value, one payment with named receipt and actual cast-trigger copy. Exact planeswalker and emblem sources retained. Whole physical corpus inventory appended; parent materialization/strict routes remain pending. Formal702.206b explicitly binds the derived designation to an actual spell copy with the exact keyword identity; paid originals do not qualify, and copies of unpaid spells can qualify."
+      }
+    }
+  ]
+}

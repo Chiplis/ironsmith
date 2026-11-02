@@ -348,14 +348,27 @@ pub(super) fn named_card_name_parts(tokens: &[OwnedLexToken]) -> Option<(String,
         return None;
     }
 
-    let name_start = pieces[named_idx + 1].span.start;
     let clause_start = pieces[named_idx].span.start;
-    let name_end = pieces[end - 1].span.end;
-    let name_tokens = tokens
-        .iter()
-        .filter(|token| token.span.end > name_start && token.span.start < name_end)
-        .cloned()
-        .collect::<Vec<_>>();
+    let mut name_end = pieces[end - 1].span.end;
+    // Rewritten tokens can share source spans with terminal punctuation.
+    // Ownership follows lexical token boundaries, not span overlap: the
+    // sentence's final period is not part of an unquoted proper name.
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let token_start = view.token_start_indices()[named_idx + 1];
+    // `token_index_after_words(end)` points at the next WORD (or the
+    // entire slice end), so it also includes a period before that word.
+    // Own through the final name word's lexical token, not its successor.
+    let last_name_token = *view.token_start_indices().get(end.checked_sub(1)?)?;
+    let mut token_end = last_name_token + 1;
+    // An explicitly quoted name may itself end in punctuation. Preserve the
+    // complete authored interior rather than trimming the rendered string.
+    if token_start > 0 && tokens[token_start - 1].is_quote() {
+        if let Some(close) = (token_start..tokens.len()).find(|index| tokens[*index].is_quote()) {
+            token_end = close;
+            name_end = tokens[close].span.end;
+        }
+    }
+    let name_tokens = tokens[token_start..token_end].to_vec();
     if !name_tokens.is_empty() {
         let raw_name = render_token_slice(&name_tokens);
         let titled = title_case_phrase_preserving_punctuation(raw_name.as_str());
@@ -438,3 +451,53 @@ pub(super) use core_programs::{
 #[path = "names/condition.rs"]
 mod condition_programs;
 pub(super) use condition_programs::artifact_surface_name;
+
+#[cfg(test)]
+mod explicit_name_token_boundary_tests {
+    use super::*;
+    #[test]
+    fn terminal_sentence_period_is_not_owned_by_named_token_even_with_overlapping_spans(){
+        let mut tokens=crate::util::tokenize_line("a colorless artifact token named Keepsake.",0);
+        let last=tokens.len()-1;assert!(tokens[last].is_period());
+        tokens[last].span=tokens[last-1].span;
+        assert_eq!(named_card_name_parts(&tokens).unwrap().0,"Keepsake");
+    }
+    #[test]
+    fn internal_and_explicit_quoted_punctuation_are_preserved(){
+        for (text,expected) in [("a token named Canvas, Dusk.","Canvas, Dusk"),("a token named \"Keepsake.\".","Keepsake.")]{
+            let tokens=crate::util::tokenize_line(text,0);
+            assert_eq!(named_card_name_parts(&tokens).unwrap().0,expected);
+        }
+    }
+}
+
+#[cfg(test)]
+mod quoted_name_complete_shape_tests {
+    #[test]
+    fn complete_token_shape_owns_quoted_stop_words_as_name_not_rule(){
+        let tokens=crate::util::tokenize_line("a colorless artifact token named \"Sage with Wings\".",0);
+        let shape=crate::grammar::token_definitions::parse_token_definition_shape_tokens(&tokens).unwrap();
+        let crate::model::token_definition::TokenDefinitionSpec::Artifact(shape)=shape else{panic!("named artifact descriptor changed shape")};
+        assert_eq!(shape.name,"Sage with Wings");
+        assert!(shape.token_rules.parsed_abilities.is_empty() && shape.token_rules.unread_rules.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod named_token_sentence_boundary_regressions {
+    use super::*;
+    #[test]
+    fn next_word_index_does_not_own_the_terminal_period_or_next_instruction(){
+        for text in ["a colorless artifact token named Keepsake.","a colorless artifact token named Record. Draw a card."] {
+            let tokens=crate::util::tokenize_line(text,0);
+            let (name,_) = named_card_name_parts(&tokens).unwrap();
+            assert_eq!(name,if text.contains("Keepsake"){ "Keepsake" }else{"Record"});
+        }
+    }
+    #[test]
+    fn quoted_terminal_punctuation_and_internal_punctuation_remain_name_data(){
+        for (text,expected) in [(r#"a token named "Record."."#,"Record."),("a token named Mr. Record.","Mr. Record"),("a token named Canvas, Dusk.","Canvas, Dusk")] {
+            let tokens=crate::util::tokenize_line(text,0);assert_eq!(named_card_name_parts(&tokens).unwrap().0,expected);
+        }
+    }
+}

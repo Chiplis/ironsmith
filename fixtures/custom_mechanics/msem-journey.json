@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "complete_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "scope": "All5MSEMJourney physical source cards, all4 exact reminder variants; event-only ownership gate per formal701.79b"
+  },
+  "mechanics": [
+    {
+      "id": "msem-279",
+      "keyword": "Journey",
+      "original_reminder": "Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "source_cards": [
+        "Crossing the Fog"
+      ],
+      "rule_reference": "701.79.",
+      "rule_text": [
+        {
+          "name": "701.79a",
+          "rule": "Journey is a keyword action. To journey, exile the top card of your library face up and it becomes journeyed.",
+          "custom": true
+        },
+        {
+          "name": "701.79b",
+          "rule": "There is an inherent triggered ability associated with owning journeyed cards in exile. This triggered ability has no source and is controlled by the player whose creature triggered it. The full text of this ability is “Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own from exile into your hand.”",
+          "custom": true
+        },
+        {
+          "name": "701.79c",
+          "rule": "The triggered ability will trigger once for each creature that dealt combat damage, regardless of how many journeyed cards that player owns in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "msem:Crossing the Fog_MS1",
+          "source_card_key": "Crossing the Fog_MS1",
+          "name": "Crossing the Fog",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nJourney three times. *(Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "Crossing the Fog",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nJourney three times. *(Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "executable_faces": [
+            {
+              "name": "Crossing the Fog",
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Journey three times.",
+              "original_printed_rules_text": "Journey three times. (Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Journey three times.",
+          "original_printed_rules_text": "Journey three times. (Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "implemented_candidate_unverified",
+      "semantic_equivalence": "MSEM701.79a-c: exile-incarnation designation and one source-free player rule, ownership gates event capture only; no new resolution-time intervening condition. Formal opponent restriction governs the older a-player printed reminder; complete original source remains preserved."
+    },
+    {
+      "id": "msem-280",
+      "keyword": "Journey",
+      "original_reminder": "Exile the top two cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "source_cards": [
+        "Skypath Pilgrimage"
+      ],
+      "rule_reference": "701.79.",
+      "rule_text": [
+        {
+          "name": "701.79a",
+          "rule": "Journey is a keyword action. To journey, exile the top card of your library face up and it becomes journeyed.",
+          "custom": true
+        },
+        {
+          "name": "701.79b",
+          "rule": "There is an inherent triggered ability associated with owning journeyed cards in exile. This triggered ability has no source and is controlled by the player whose creature triggered it. The full text of this ability is “Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own from exile into your hand.”",
+          "custom": true
+        },
+        {
+          "name": "701.79c",
+          "rule": "The triggered ability will trigger once for each creature that dealt combat damage, regardless of how many journeyed cards that player owns in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "msem:Skypath Pilgrimage_MS3",
+          "source_card_key": "Skypath Pilgrimage_MS3",
+          "name": "Skypath Pilgrimage",
+          "original_text": "Mana cost: {W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, journey twice. *(Exile the top two cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "Skypath Pilgrimage",
+              "original_text": "Mana cost: {W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, journey twice. *(Exile the top two cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "executable_faces": [
+            {
+              "name": "Skypath Pilgrimage",
+              "executable_text": "Mana cost: {W}{U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, journey twice.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, journey twice. (Exile the top two cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, journey twice.",
+          "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +1/+1 and has flying.\nWhen Skypath Pilgrimage enters, journey twice. (Exile the top two cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "implemented_candidate_unverified",
+      "semantic_equivalence": "MSEM701.79a-c: exile-incarnation designation and one source-free player rule, ownership gates event capture only; no new resolution-time intervening condition. Formal opponent restriction governs the older a-player printed reminder; complete original source remains preserved."
+    },
+    {
+      "id": "msem-281",
+      "keyword": "Journey",
+      "original_reminder": "To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to a player, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "source_cards": [
+        "Journey to Elrayin"
+      ],
+      "rule_reference": "701.79.",
+      "rule_text": [
+        {
+          "name": "701.79a",
+          "rule": "Journey is a keyword action. To journey, exile the top card of your library face up and it becomes journeyed.",
+          "custom": true
+        },
+        {
+          "name": "701.79b",
+          "rule": "There is an inherent triggered ability associated with owning journeyed cards in exile. This triggered ability has no source and is controlled by the player whose creature triggered it. The full text of this ability is “Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own from exile into your hand.”",
+          "custom": true
+        },
+        {
+          "name": "701.79c",
+          "rule": "The triggered ability will trigger once for each creature that dealt combat damage, regardless of how many journeyed cards that player owns in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "msem:Journey to Elrayin_OTH",
+          "source_card_key": "Journey to Elrayin_OTH",
+          "name": "Journey to Elrayin",
+          "original_text": "Mana cost: {G}\nType: Enchantment\nWhen Journey to Elrayin enters, journey, then choose a creature card name. *(To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to a player, put a journeyed card you own into your hand.)*\nWhenever a creature you control with the chosen name deals combat damage to a player, journey.",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "Journey to Elrayin",
+              "original_text": "Mana cost: {G}\nType: Enchantment\nWhen Journey to Elrayin enters, journey, then choose a creature card name. *(To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to a player, put a journeyed card you own into your hand.)*\nWhenever a creature you control with the chosen name deals combat damage to a player, journey."
+            }
+          ],
+          "executable_text": "Mana cost: {G}\nType: Enchantment\nWhen Journey to Elrayin enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Then choose a creature card name.\nWhenever a creature you control with the chosen name deals combat damage to a player, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "executable_faces": [
+            {
+              "name": "Journey to Elrayin",
+              "executable_text": "Mana cost: {G}\nType: Enchantment\nWhen Journey to Elrayin enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Then choose a creature card name.\nWhenever a creature you control with the chosen name deals combat damage to a player, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Journey to Elrayin enters, journey, then choose a creature card name.\nWhenever a creature you control with the chosen name deals combat damage to a player, journey.",
+              "original_printed_rules_text": "When Journey to Elrayin enters, journey, then choose a creature card name. (To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to a player, put a journeyed card you own into your hand.)\nWhenever a creature you control with the chosen name deals combat damage to a player, journey."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Journey to Elrayin enters, journey, then choose a creature card name.\nWhenever a creature you control with the chosen name deals combat damage to a player, journey.",
+          "original_printed_rules_text": "When Journey to Elrayin enters, journey, then choose a creature card name. (To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to a player, put a journeyed card you own into your hand.)\nWhenever a creature you control with the chosen name deals combat damage to a player, journey.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "implemented_candidate_unverified",
+      "semantic_equivalence": "MSEM701.79a-c: exile-incarnation designation and one source-free player rule, ownership gates event capture only; no new resolution-time intervening condition. Formal opponent restriction governs the older a-player printed reminder; complete original source remains preserved."
+    },
+    {
+      "id": "msem-282",
+      "keyword": "Journey",
+      "original_reminder": "Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "source_cards": [
+        "The Ardent Prodigy",
+        "The River Treader"
+      ],
+      "rule_reference": "701.79.",
+      "rule_text": [
+        {
+          "name": "701.79a",
+          "rule": "Journey is a keyword action. To journey, exile the top card of your library face up and it becomes journeyed.",
+          "custom": true
+        },
+        {
+          "name": "701.79b",
+          "rule": "There is an inherent triggered ability associated with owning journeyed cards in exile. This triggered ability has no source and is controlled by the player whose creature triggered it. The full text of this ability is “Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own from exile into your hand.”",
+          "custom": true
+        },
+        {
+          "name": "701.79c",
+          "rule": "The triggered ability will trigger once for each creature that dealt combat damage, regardless of how many journeyed cards that player owns in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "msem:The Ardent Prodigy_MSL",
+          "source_card_key": "The Ardent Prodigy_MSL",
+          "name": "The Ardent Prodigy",
+          "original_text": "Mana cost: {U}{R}{W}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/3\nHaste, prowess\nWhenever you cast a noncreature spell, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "The Ardent Prodigy",
+              "original_text": "Mana cost: {U}{R}{W}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/3\nHaste, prowess\nWhenever you cast a noncreature spell, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {U}{R}{W}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/3\nHaste, prowess\nWhenever you cast a noncreature spell, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "executable_faces": [
+            {
+              "name": "The Ardent Prodigy",
+              "executable_text": "Mana cost: {U}{R}{W}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/3\nHaste, prowess\nWhenever you cast a noncreature spell, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste, prowess\nWhenever you cast a noncreature spell, journey.",
+              "original_printed_rules_text": "Haste, prowess\nWhenever you cast a noncreature spell, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Haste, prowess\nWhenever you cast a noncreature spell, journey.",
+          "original_printed_rules_text": "Haste, prowess\nWhenever you cast a noncreature spell, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "msem:The River Treader_MSL",
+          "source_card_key": "The River Treader_MSL",
+          "name": "The River Treader",
+          "original_text": "Mana cost: {1}{B}\nType: Legendary Creature — Spirit\nPower/Toughness: 1/2\nFlying\nWhenever one or more other creatures die for the first time each turn, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "source_faces": [
+            {
+              "name": "The River Treader",
+              "original_text": "Mana cost: {1}{B}\nType: Legendary Creature — Spirit\nPower/Toughness: 1/2\nFlying\nWhenever one or more other creatures die for the first time each turn, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Legendary Creature — Spirit\nPower/Toughness: 1/2\nFlying\nWhenever one or more other creatures die for the first time each turn, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "executable_faces": [
+            {
+              "name": "The River Treader",
+              "executable_text": "Mana cost: {1}{B}\nType: Legendary Creature — Spirit\nPower/Toughness: 1/2\nFlying\nWhenever one or more other creatures die for the first time each turn, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with event condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever one or more other creatures die for the first time each turn, journey.",
+              "original_printed_rules_text": "Flying\nWhenever one or more other creatures die for the first time each turn, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhenever one or more other creatures die for the first time each turn, journey.",
+          "original_printed_rules_text": "Flying\nWhenever one or more other creatures die for the first time each turn, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "implemented_candidate_unverified",
+      "semantic_equivalence": "MSEM701.79a-c: exile-incarnation designation and one source-free player rule, ownership gates event capture only; no new resolution-time intervening condition. Formal opponent restriction governs the older a-player printed reminder; complete original source remains preserved."
+    }
+  ]
+}

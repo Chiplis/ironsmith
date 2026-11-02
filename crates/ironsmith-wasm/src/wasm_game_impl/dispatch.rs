@@ -1601,6 +1601,8 @@ impl WasmGame {
             active_resolving_stack_object: None,
             loaded_decks: Vec::new(),
             external_parse_sources: HashMap::new(),
+            original_printed_card_sources: HashMap::new(),
+            pending_setup_shuffles: Vec::new(),
             external_compile_errors: HashMap::new(),
             external_semantic_scores: HashMap::new(),
             last_snapshot_perf: None,
@@ -4980,7 +4982,14 @@ impl WasmGame {
         let compiled = self.compile_custom_card_faces(&payload.draft)?;
         // A token is not a card: it never joins the card catalog.
         if !payload.draft.token {
-            for definition in &compiled {
+            for (index, definition) in compiled.iter().enumerate() {
+                if let Some(face) = payload.draft.faces.get(index) {
+                    let original = face.original_printed_rules_text.as_ref().or(face.display_oracle_text.as_ref())
+                        .or_else(|| face.custom_keyword_identities.is_empty().then_some(&face.oracle_text));
+                    if let Some(original) = original {
+                        self.original_printed_card_sources.insert(definition.card.id, original.clone());
+                    }
+                }
                 self.registry.register(definition.clone());
                 self.game.register_linked_face_definition(definition);
             }
@@ -5273,17 +5282,23 @@ impl WasmGame {
             return self.dispatch_pregame_decision(pending_ctx, command);
         }
 
+        let private_cost_reservation = match self.private_cost_reservation_for_command(&pending_ctx, &command) {
+            Ok(reservation)=>reservation,
+            Err(error)=>{self.pending_decision=Some(pending_ctx);return Err(error);}
+        };
+        let is_private_cost_action = private_cost_reservation.is_some();
+        if is_private_cost_action { self.runner_pending_decision=false; }
         // If this decision came from the TurnRunner, route through runner.respond_*()
-        if self.runner_pending_decision {
+        if self.runner_pending_decision && !is_private_cost_action {
             self.runner_pending_decision = false;
             return self.dispatch_runner_decision(pending_ctx, command);
         }
 
-        if self.pending_live_continuation.is_some() {
+        if self.pending_live_continuation.is_some() && !is_private_cost_action {
             return self.dispatch_live_priority_continuation(pending_ctx, command);
         }
 
-        if self.pending_replay_action.is_none()
+        if self.pending_replay_action.is_none() && !is_private_cost_action
             && self.decision_uses_live_priority_response(&pending_ctx)
         {
             return self.dispatch_live_priority_response(pending_ctx, command);
@@ -5399,7 +5414,7 @@ impl WasmGame {
                     &replay.nested_answers,
                 );
             let live_checkpoint = self.capture_replay_checkpoint();
-            let progress = if self.decision_requires_root_reexecution(&pending_ctx) {
+            let progress = if matches!(&replay.root, ReplayRoot::PrivateHandSpecialAction(_)) || self.decision_requires_root_reexecution(&pending_ctx) {
                 match self.execute_with_replay(
                     &replay.checkpoint,
                     &replay.root,
@@ -5529,7 +5544,9 @@ impl WasmGame {
         } else {
             dispatch_perf.route_kind = "fresh_response".to_string();
             let command_to_response_started_at = PerfTimer::start();
-            let response = match self.command_to_response(&pending_ctx, command) {
+            let response = match if is_private_cost_action {
+                Ok(PriorityResponse::PriorityAction(LegalAction::PassPriority))
+            } else { self.command_to_response(&pending_ctx, command) } {
                 Ok(response) => response,
                 Err(err) => {
                     self.pending_decision = Some(pending_ctx);
@@ -5544,8 +5561,9 @@ impl WasmGame {
             let checkpoint = self.capture_replay_checkpoint();
             dispatch_perf.checkpoint_capture_ms = checkpoint_started_at.elapsed_ms();
             let should_track_action_checkpoint = self.pending_action_checkpoint.is_none()
-                && Self::response_starts_cancelable_action_chain(&response);
-            let root = ReplayRoot::Response(response);
+                && (is_private_cost_action || Self::response_starts_cancelable_action_chain(&response));
+            let root = private_cost_reservation.map(ReplayRoot::PrivateHandSpecialAction)
+                .unwrap_or(ReplayRoot::Response(response));
             let execute_started_at = PerfTimer::start();
             let outcome = match self.execute_with_replay(&checkpoint, &root, &[]) {
                 Ok(outcome) => outcome,

@@ -647,6 +647,7 @@ impl Effect {
     }
 
     pub fn target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        if let Some(action)=self.downcast_ref::<crate::effects::PerformNamedActionEffect>() {return action.performer.as_ref().or(action.objects.as_ref());}
         if let Some(payload) = self.as_tagged() {
             return payload.effect.target_spec();
         }
@@ -1179,6 +1180,7 @@ impl Effect {
 
     pub fn may(_effects: Vec<Effect>) -> Self {
         Self::new(crate::effects::MayEffect {
+            payment_receipt:None,
             decider: None,
             effects: _effects,
             pay_as_cost: false,
@@ -1187,6 +1189,7 @@ impl Effect {
 
     pub fn may_player(_player: crate::target::PlayerFilter, _effects: Vec<Effect>) -> Self {
         Self::new(crate::effects::MayEffect {
+            payment_receipt:None,
             decider: Some(_player),
             effects: _effects,
             pay_as_cost: false,
@@ -2535,6 +2538,7 @@ impl Effect {
             mana_spend_mode,
             alternative_payment,
             alternative_cost,
+            alternative_cost_label: None,
             caster_land_mana_abilities_only: false,
             control_caster_while_spell_resolves: false,
             required_zone: None,

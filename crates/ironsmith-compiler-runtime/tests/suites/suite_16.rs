@@ -17,6 +17,18 @@ mod r#chosen_type_domain_regressions;
 #[path = "../coordinated_stat_continuations.rs"]
 mod r#coordinated_stat_continuations;
 
+#[path = "../custom_msem_creation_receipts.rs"]
+mod r#custom_msem_creation_receipts;
+
+#[path = "../custom_recruit_full_sources.rs"]
+mod r#custom_recruit_full_sources;
+
+#[path = "../custom_spell_resolution_events.rs"]
+mod r#custom_spell_resolution_events;
+
+#[path = "../custom_token_cost_choices.rs"]
+mod r#custom_token_cost_choices;
+
 #[path = "../discard_cost_values.rs"]
 mod r#discard_cost_values;
 
@@ -28,9 +40,6 @@ mod r#each_opponent_exile_until_total;
 
 #[path = "../each_player_additional_land_plays.rs"]
 mod r#each_player_additional_land_plays;
-
-#[path = "../effect_refactoring_wiring.rs"]
-mod r#effect_refactoring_wiring;
 
 #[path = "../elliptical_conditions.rs"]
 mod r#elliptical_conditions;

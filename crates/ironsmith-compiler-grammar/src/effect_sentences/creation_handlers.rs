@@ -233,6 +233,40 @@ pub fn trailing_create_at_next_end_step_clause(
         .map(|spec| (spec.start_word, spec.player))
 }
 
+fn parse_copy_modifiers_from_tokens(
+    tail_tokens: &[OwnedLexToken],
+) -> Result<
+    (
+        Option<ColorSet>,
+        Option<Vec<CardType>>,
+        Option<Vec<Subtype>>,
+        Vec<CardType>,
+        Vec<Subtype>,
+        Vec<Supertype>,
+        Option<(i32, i32)>,
+        bool,
+        Option<u32>,
+        Vec<StaticAbility>,
+        bool,
+    ),
+    CardTextError,
+> {
+    let parsed = creation_grammar::parse_copy_modifier_tokens(tail_tokens)?;
+    Ok((
+        parsed.set_colors,
+        parsed.set_card_types,
+        parsed.set_subtypes,
+        parsed.added_card_types,
+        parsed.added_subtypes,
+        parsed.removed_supertypes,
+        parsed.set_base_power_toughness,
+        parsed.set_base_power_toughness_to_source_totals,
+        parsed.starting_loyalty,
+        parsed.granted_abilities,
+        parsed.loses_soulbond,
+    ))
+}
+
 fn parse_create_equal_to_dynamic_count(
     tail_tokens: &[OwnedLexToken],
 ) -> Result<Option<(Value, usize)>, CardTextError> {
@@ -275,13 +309,14 @@ fn parse_create_equal_to_dynamic_count(
 
 fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     let mut bodies = Vec::new();
-    let mut open = None;
+    let mut open: Option<usize> = None;
     for (idx, token) in tokens.iter().enumerate() {
         if token.kind != TokenKind::Quote {
             continue;
         }
         if let Some(start) = open.take() {
-            if start < idx {
+            let quoted_name = start >= 2 && tokens[start - 2].is_word("named");
+            if start < idx && !quoted_name {
                 bodies.push(&tokens[start..idx]);
             }
         } else {
@@ -318,6 +353,16 @@ fn inline_quoted_token_creation_sentence(tokens: &[OwnedLexToken]) -> Option<&[O
 fn inline_quoted_token_creation_sentence_with_ordinal(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], usize, usize)> {
+    // A period inside one quoted ability does not end the creation while
+    // another ability in that same explicit list follows its closing quote.
+    fn continues_ability_list(tokens:&[OwnedLexToken])->bool {
+        if !tokens.first().is_some_and(|token|token.kind==TokenKind::Comma || token.is_any_word(&["and","or"])){return false}
+        let tokens=crate::lexer::trim_lexed_commas(tokens);
+        let Some(first)=tokens.first() else{return false};
+        let tokens=if first.is_any_word(&["and","or"]){crate::lexer::trim_lexed_commas(&tokens[1..])}else{tokens};
+        if tokens.first().is_some_and(|token|token.kind==TokenKind::Quote){return true}
+        !tokens.is_empty() && crate::word_claims::probe_only(||crate::clause_support::parse_ability_line_lexed(tokens)).is_some()
+    }
     let mut sentence_start = 0usize;
     let mut inside_quote = false;
     let mut saw_create = false;
@@ -334,7 +379,8 @@ fn inline_quoted_token_creation_sentence_with_ordinal(
             let closes_sentence = !inside_quote
                 && idx > 0
                 && tokens[idx - 1].kind == TokenKind::Period
-                && tokens.get(idx + 1).is_some();
+                && tokens.get(idx + 1).is_some()
+                && !continues_ability_list(&tokens[idx + 1..]);
             if closes_sentence {
                 if saw_create {
                     last_create_sentence =
@@ -395,17 +441,23 @@ fn tokens_outside_double_quoted_rules(tokens: &[OwnedLexToken]) -> Vec<OwnedLexT
 fn parse_unquoted_token_dynamic_power_toughness(
     tokens: &[OwnedLexToken],
 ) -> Option<(Value, Value)> {
-    let mut in_quote = false;
-    let unquoted = tokens
-        .iter()
-        .filter_map(|token| {
-            if token.kind == TokenKind::Quote {
-                in_quote = !in_quote;
-                return None;
+    let mut in_quote=false;let mut unquoted=Vec::new();let mut index=0;
+    while index<tokens.len() {
+        let token=&tokens[index];
+        if token.kind==TokenKind::Quote {
+            // A quoted ability designation is the literal operand of the
+            // entry reference, not an independently granted token rule.
+            let designation=!in_quote && index>=5 && tokens[index-5..index].iter()
+                .zip(["by","its","ability","with","designation"])
+                .all(|(token,word)|token.is_word(word));
+            if designation {
+                let close=(index+1..tokens.len()).find(|end|tokens[*end].kind==TokenKind::Quote)?;
+                unquoted.extend_from_slice(&tokens[index..=close]);index=close+1;continue;
             }
-            (!in_quote).then(|| token.clone())
-        })
-        .collect::<Vec<_>>();
+            in_quote=!in_quote;
+        } else if !in_quote {unquoted.push(token.clone());}
+        index+=1;
+    }
     (0..unquoted.len()).find_map(|start| {
         token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&unquoted[start..])
     })
@@ -535,6 +587,23 @@ pub fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[Owned
         .then_some(rules)
 }
 
+// The inline `token with ...` tail is one complete grant list, including
+// quoted identity operands and independently executable ability programs.
+fn inline_token_with_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let mut quoted=false;
+    for (index,token) in tokens.iter().enumerate() {
+        if token.kind==TokenKind::Quote {quoted=!quoted;continue;}
+        if quoted || !token.is_any_word(&["token","tokens"])
+            || !tokens.get(index+1).is_some_and(|next|next.is_word("with"))
+            || !tokens[..index].iter().any(|word|word.is_word("create")) {continue;}
+        let rules=&tokens[index+2..];
+        if rules.iter().filter(|token|token.kind==TokenKind::Quote).count()>=4 {
+            return Some(rules);
+        }
+    }
+    None
+}
+
 fn parse_inline_token_granted_abilities(
     definition: &mut crate::model::token_definition::TokenDefinitionSpec,
     tokens: &[OwnedLexToken],
@@ -577,7 +646,7 @@ fn parse_inline_token_granted_abilities(
     }
 
     let mut abilities = Vec::new();
-    if let Some(rule_tokens) = mixed_pronoun_token_rule_list(tokens)
+    if let Some(rule_tokens) = mixed_pronoun_token_rule_list(tokens).or_else(||inline_token_with_rule_list(tokens))
         && let Ok(parsed) =
             super::parse_granted_abilities_for_token_definition(definition, rule_tokens)
     {
@@ -937,6 +1006,18 @@ fn incorporate_quoted_dynamic_power_toughness(
 
 fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<GrantedAbilityAst> {
     let mut abilities = Vec::new();
+    // A copied token's mixed grant list is one operand. In particular the
+    // quoted name after `custom keyword` is identity data, while a following
+    // quoted rule is an independently executable intrinsic ability.
+    if let Some(rules) = mixed_pronoun_token_rule_list(tokens) {
+        if let Ok((granted, false)) = super::parse_granted_abilities_for_gain_clause(
+            rules, &token_word_refs(rules), false,
+        ) {
+            let start = tokens.len() - rules.len();
+            crate::word_claims::claim_tokens(&tokens[start.saturating_sub(2)..start]);
+            abilities.extend(granted);
+        }
+    }
     for rule_tokens in double_quoted_rule_bodies(tokens) {
         if token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens)
             .sacrifice_at_next_end_step
@@ -1539,10 +1620,16 @@ pub fn lower_complete_simple_create_shape(
 ) -> Result<EffectAst, CardTextError> {
     if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
         let create = lower_complete_simple_create_shape(&prefix)?;
+        // Claim the validated entry-counter frame only after its complete
+        // underlying creation has also been accepted.
+        crate::word_claims::claim_tokens(&tokens[prefix.len()..]);
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
     }
     if let Some((prefix, counter_type, amount)) = split_token_entry_counters(tokens) {
         let create = lower_complete_simple_create_shape(&prefix)?;
+        // Claim the validated entry-counter frame only after its complete
+        // underlying creation has also been accepted.
+        crate::word_claims::claim_tokens(&tokens[prefix.len()..]);
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
     }
     let head = creation_grammar::parse_create_head_tokens(tokens).ok_or_else(|| {
@@ -1631,7 +1718,13 @@ fn claim_token_copy_head(tail_tokens: &[OwnedLexToken]) {
 pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
-) -> Result<EffectAst, CardTextError> {
+ ) -> Result<EffectAst, CardTextError> {
+    if subject.is_none() && tokens.iter().any(|token|token.is_word("real")) {
+        let mut complete=Vec::new();
+        if !tokens.first().is_some_and(|token|token.is_word("create")){complete.extend(crate::lexer::lex_line("Create",0)?);}
+        complete.extend_from_slice(tokens);
+        if let Some(effect)=super::dispatch_entry::real_card_creation::read(&complete)?{return Ok(effect);}
+    }
     // A power/toughness prefix on a token copy is a copy exception,
     // not a separate token definition.
     if let Some(index) = tokens.iter().position(|token| token.is_word("token"))
@@ -1647,10 +1740,16 @@ pub fn parse_create(
     }
     if let Some((prefix, counter_type, amount)) = split_token_copy_entry_counter_exception(tokens) {
         let create = parse_create(&prefix, subject)?;
+        // Claim the validated entry-counter frame only after its complete
+        // underlying creation has also been accepted.
+        crate::word_claims::claim_tokens(&tokens[prefix.len()..]);
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
     }
     if let Some((prefix, counter_type, amount)) = split_token_entry_counters(tokens) {
         let create = parse_create(&prefix, subject)?;
+        // Claim the validated entry-counter frame only after its complete
+        // underlying creation has also been accepted.
+        crate::word_claims::claim_tokens(&tokens[prefix.len()..]);
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
     }
     if let Some(index) = tokens.iter().position(|token| token.is_word("if")) {
@@ -1976,11 +2075,11 @@ pub fn parse_create(
         let named_words = token_word_refs(&named_token_tokens[named.name.clone()]);
         if !named_words.is_empty() {
             let authored_name = crate::lexer::render_literal_token_slice(&named_token_tokens[named.name.clone()])
-                .trim()
+                .trim().trim_matches(|ch| matches!(ch, '"' | '“' | '”'))
                 .to_string();
             if named_token_tokens[named.name.clone()]
                 .iter()
-                .any(OwnedLexToken::is_comma)
+                .any(|token| token.is_comma() || token.is_quote() || matches!(token.kind, TokenKind::Period))
             {
                 raw_name_override = Some(authored_name);
             }
@@ -2018,9 +2117,9 @@ pub fn parse_create(
                 starting_loyalty,
                 granted_abilities,
                 loses_soulbond,
-            ) = parse_copy_modifiers_from_tail(&tail_words)?;
+            ) = parse_copy_modifiers_from_tokens(&tail_tokens)?;
             // CR 707.9b: name and supertype exceptions of the copy.
-            let copy_identity = creation_grammar::parse_copy_modifier_words(&tail_words)?;
+            let copy_identity = creation_grammar::parse_copy_modifier_tokens(&tail_tokens)?;
             let copy_name = match copy_identity.name_words.as_deref() {
                 Some(words) => Some(copy_exception_name_surface(&tail_tokens, words).ok_or_else(
                     || {
@@ -2181,6 +2280,8 @@ pub fn parse_create(
                             exile_at_end_of_combat: quoted_exile_at_end_of_combat,
                             exile_at_end_of_combat_reference_surface: None,
                             loses_soulbond,
+                            removed_ability_designations: copy_identity.removed_ability_designations.clone(),
+                            ability_loss_until: copy_identity.ability_loss_until.clone(),
                             sacrifice_at_next_end_step,
                             sacrifice_at_next_end_step_reference_surface: None,
                             sacrifice_at_next_end_step_ability_surface,
@@ -2191,6 +2292,7 @@ pub fn parse_create(
                             added_colors: copy_identity.added_colors,
                             set_card_types,
                             set_subtypes,
+                            preserve_noncreature_subtypes: copy_identity.preserve_noncreature_subtypes,
                             added_card_types,
                             added_subtypes,
                             removed_supertypes,
@@ -2234,6 +2336,8 @@ pub fn parse_create(
                     exile_at_end_of_combat: quoted_exile_at_end_of_combat,
                     exile_at_end_of_combat_reference_surface: None,
                     loses_soulbond,
+                    removed_ability_designations: copy_identity.removed_ability_designations.clone(),
+                            ability_loss_until: copy_identity.ability_loss_until.clone(),
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_reference_surface: None,
                     sacrifice_at_next_end_step_ability_surface,
@@ -2244,6 +2348,7 @@ pub fn parse_create(
                     added_colors: copy_identity.added_colors,
                     set_card_types,
                     set_subtypes,
+                    preserve_noncreature_subtypes: copy_identity.preserve_noncreature_subtypes,
                     added_card_types,
                     added_subtypes,
                     removed_supertypes,
@@ -4419,3 +4524,70 @@ mod mana_spent_token_count_tests {
     }
 }
 
+
+#[cfg(test)]
+mod custom_token_trigger_claim_diagnostics {
+    use super::*;
+    #[test]
+    fn complete_token_list_and_its_independent_trigger_keep_authored_claim_spans() {
+        let trigger="Whenever this creature deals combat damage to a player, remove all -1/-1 counters from it.";
+        let list=format!("custom keyword \"burden\", and \"This permanent enters with 1 -1/-1 counters on it.\", and \"{trigger}\"");
+        let create=format!("Create three 2/2 red Noble creature tokens with {list}.");
+        for (kind,text) in [("trigger",trigger.to_string()),("list",list),("create",create.clone()),("document",create)] {
+            let tokens=crate::lexer::lex_line(&text,0).unwrap();
+            let (result,claims)=crate::word_claims::scoped(|| match kind {
+                "trigger"=>crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(&tokens,&crate::lexer::token_word_refs(&tokens)).map(|ability|ability.is_some()),
+                "list"=>crate::effect_sentences::parse_granted_abilities_for_gain_clause(&tokens,&crate::lexer::token_word_refs(&tokens),false).map(|(abilities,choice)|!choice&&abilities.len()==3),
+                "create"=>parse_create(&tokens,None).map(|_|true),
+                _=>crate::clause_support::parse_effect_sentences_lexed(&tokens).map(|effects|!effects.is_empty()),
+            });
+            println!("{kind}: result={result:?}; unread={:?}; obligations={:?}; claimed_spans={:?}",crate::word_claims::unclaimed_words(&tokens,&claims),claims.obligations_debug(),claims.claimed_spans());
+            assert!(matches!(result,Ok(true)),"{kind}: {result:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod complete_quoted_token_list_boundary_tests {
+    use super::*;
+    #[test]
+    fn internal_static_period_does_not_end_the_outer_token_ability_list(){
+        let text="Create three 2/2 red Noble creature tokens with custom keyword \"burden\", and \"This permanent enters with 1 -1/-1 counters on it.\", and \"Whenever this creature deals combat damage to a player, remove all -1/-1 counters from it.\".";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        let (creation,ordinal,count)=inline_quoted_token_creation_sentence_with_ordinal(&tokens).unwrap();
+        assert_eq!(ordinal,0);assert_eq!(count,1);assert_eq!(double_quoted_rule_bodies(creation).len(),3);
+        assert!(crate::lexer::token_word_refs(creation).ends_with(&["from","it"]));
+        let text="Create a 1/1 white Soldier creature token with \"When this creature enters, draw a card.\". Draw two cards.";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();let (creation,_,_)=inline_quoted_token_creation_sentence_with_ordinal(&tokens).unwrap();
+        assert!(!crate::lexer::token_word_refs(creation).windows(3).any(|words|words==["draw","two","cards"]),"an unrelated outer sibling stays outside the token rule");
+    }
+}
+
+#[cfg(test)]
+mod mixed_copy_identity_program_tests {
+    #[test]
+    fn copied_custom_identity_and_complete_trigger_are_separate_grants() {
+        let tokens=crate::util::tokenize_line("Create a token that's a copy of it except it's an artifact instead of its other types and it has custom keyword \"authored identity\", and \"Whenever this permanent becomes tapped, you gain 1 life. Draw a card.\".",0);
+        let abilities=super::parse_inline_copy_granted_abilities(&tokens);
+        assert_eq!(abilities.len(),2,"identity plus complete triggered ability");
+        let debug=format!("{abilities:?}");
+        assert!(debug.contains("authored identity"));
+        assert!(debug.contains("GainLife") && debug.contains("Draw"));
+    }
+}
+
+#[cfg(test)]
+mod producer_qualified_stat_literal_tests {
+    #[test]
+    fn designation_quotes_are_operands_but_printed_name_quotes_remain_opaque() {
+        let text="Create a black Zombie creature token with power equal to the power of the card exiled as this creature entered by its ability with designation \"doctor's star\" and toughness equal to the toughness of the card exiled as this creature entered by its ability with designation \"doctor's star\".";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        let (power,toughness)=super::parse_unquoted_token_dynamic_power_toughness(&tokens).unwrap();
+        let crate::effect::Value::TotalPower(power)=power else {panic!("wrong power")};
+        let crate::effect::Value::TotalToughness(toughness)=toughness else {panic!("wrong toughness")};
+        assert_eq!(power.tagged_constraints[0].tag.as_str(),"__entry_reference_exiled_by__:doctor's star");
+        assert_eq!(toughness.tagged_constraints[0].tag,power.tagged_constraints[0].tag);
+        let literal=crate::lexer::lex_line("Create a token named \"with power equal to the power of the card exiled as this creature entered and toughness equal to the toughness of the card exiled as this creature entered\".",0).unwrap();
+        assert!(super::parse_unquoted_token_dynamic_power_toughness(&literal).is_none());
+    }
+}

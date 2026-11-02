@@ -781,13 +781,10 @@ fn source_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
             )
             .void()
             .take()
-            .map(|subject: &[OwnedLexToken]| {
-                // "until this Aura leaves": a source reference subject.
-                let words = crate::lexer::token_word_refs(subject);
-                if crate::util::this_source_surface_for_words(&words).is_some() {
-                    crate::word_claims::claim_tokens(subject);
-                }
-            }),
+            .verify(|subject: &&[OwnedLexToken]| {
+                crate::util::this_source_surface_for_words(&crate::lexer::token_word_refs(subject)).is_some()
+            })
+            .map(|subject: &[OwnedLexToken]| crate::word_claims::claim_tokens(subject)),
             primitives::phrase(&["leaves", "the", "battlefield"]),
             primitives::sentence_end(),
         )
@@ -821,7 +818,7 @@ fn opponent_becomes_monarch_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()>
 fn target_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
     primitives::kw("until").parse_next(input)?;
     let target = (
-        primitives::kw("target"),
+        alt((primitives::kw("target"), primitives::kw("that"), primitives::kw("it"))),
         repeat_till::<_, _, (), _, _, _, _>(
             0..,
             any.void(),

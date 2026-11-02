@@ -32,7 +32,10 @@ impl DelayedTriggerPrepayment {
 /// Effect that schedules a delayed trigger.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduleDelayedTriggerEffect {
+    pub source_collection_scope: Option<ironsmith_core::effect::SourceCollectionScope>,
     pub trigger: Trigger,
+    pub persistent_player_rule: Option<String>,
+    pub intervening_if: Option<crate::effect::Condition>,
     pub effects: ResolutionProgram,
     pub one_shot: bool,
     pub start_next_turn: bool,
@@ -73,6 +76,8 @@ impl ScheduleDelayedTriggerEffect {
     ) -> Self {
         Self {
             trigger,
+            persistent_player_rule: None,
+            intervening_if: None,
             effects: effects.into(),
             one_shot,
             start_next_turn: false,
@@ -84,6 +89,7 @@ impl ScheduleDelayedTriggerEffect {
             watch_all_object_targets: false,
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
+            source_collection_scope: None,
             target_objects,
             ability_source: None,
             target_tag: None,
@@ -111,6 +117,8 @@ impl ScheduleDelayedTriggerEffect {
     ) -> Self {
         Self {
             trigger,
+            persistent_player_rule: None,
+            intervening_if: None,
             effects: effects.into(),
             one_shot,
             start_next_turn: false,
@@ -122,6 +130,7 @@ impl ScheduleDelayedTriggerEffect {
             watch_all_object_targets: false,
             either_of_watched_objects: false,
             while_any_tagged_object_in_zone: None,
+            source_collection_scope: None,
             target_objects: Vec::new(),
             ability_source: None,
             target_tag: Some(target_tag.into()),
@@ -204,6 +213,10 @@ impl ScheduleDelayedTriggerEffect {
         self
     }
 
+    pub fn with_source_collection_scope(mut self, scope: Option<ironsmith_core::effect::SourceCollectionScope>) -> Self {
+        self.source_collection_scope = scope; self
+    }
+
     pub fn while_any_tagged_object_in_zone(
         mut self,
         tag: impl Into<TagKey>,
@@ -278,6 +291,13 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .map(crate::combat_state::DefendingPlayerReference::Selected))
         } else { None };
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
+        if let Some(name) = &self.persistent_player_rule {
+            super::trigger_queue::try_queue_delayed_trigger(game,
+                super::trigger_queue::DelayedTriggerConfig::new(self.trigger.clone(), self.effects.clone(), false, Vec::new(), controller_id)
+                    .as_persistent_player_rule(name.clone(), self.intervening_if.clone()))?;
+            return Ok(EffectOutcome::resolved());
+        }
+
         // Watching the ability source means this exact incarnation. A
         // source that left before registration must not turn a blinked new
         // permanent into the delayed event's subject. Explicit source moves
@@ -382,6 +402,36 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             }
         }
 
+        if let Some(scope) = &self.source_collection_scope {
+            let outcome = ctx.get_outcome(scope.capture_from).ok_or_else(|| ExecutionError::IncompleteEvidence("source collection lacks its exact producing action receipt".into()))?;
+            let expected=match scope.capture_action {
+                ironsmith_core::PriorEffectAction::Exiled=>crate::zone::Zone::Exile,
+                ironsmith_core::PriorEffectAction::Returned|ironsmith_core::PriorEffectAction::PutIntoHand=>crate::zone::Zone::Hand,
+                ironsmith_core::PriorEffectAction::PutIntoGraveyard=>crate::zone::Zone::Graveyard,
+                ironsmith_core::PriorEffectAction::PutOntoBattlefield=>crate::zone::Zone::Battlefield,
+                _=>return Err(ExecutionError::IncompleteEvidence("source collection requires a movement-arrival action".into())),
+            };
+            let facts=&outcome.instruction_result().execution_facts;
+            let mut originals=Vec::new();let mut known=false;
+            for fact in facts {
+                if let crate::effect::ExecutionFact::OriginalZoneMoveObjects(moves)=fact {
+                    known=true;
+                    originals.extend(moves.iter().map(|(_,_,arrival)|arrival.clone()));
+                }
+            }
+            if !known {
+                for fact in facts {
+                    if let crate::effect::ExecutionFact::OriginalZoneMoveCards(cards)=fact {known=true;originals.extend(cards.iter().cloned());}
+                }
+            }
+            if !known {return Err(ExecutionError::IncompleteEvidence("source collection lacks exact original movement arrivals".into()));}
+            let mut seen=std::collections::HashSet::new();
+            let objects=originals.into_iter().filter(|snapshot|snapshot.zone==expected && snapshot.zone==scope.zone
+                && game.object(snapshot.object_id).is_some_and(|object|object.zone==scope.zone && object.stable_id==snapshot.stable_id && game.find_object_by_stable_id(snapshot.stable_id)==Some(snapshot.object_id))
+                && seen.insert(snapshot.object_id)).collect::<Vec<_>>();
+            if objects.is_empty() { return Ok(EffectOutcome::count(0)); }
+            tagged_objects.insert(scope.tag.clone(), objects);
+        }
         if let Some((tag, zone)) = &self.while_any_tagged_object_in_zone
             && !tagged_collection_has_object_in_zone(game, &tagged_objects, tag, *zone)
         {
@@ -420,11 +470,14 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 );
                 let delayed = DelayedTriggerTemplate::new(
                     bound_trigger.clone(),
-                    self.effects.clone(),
+                    ctx.bind_definition_scope_program(self.effects.clone()),
                     self.one_shot,
                     controller_id,
                 )
-                .with_ability_source(Some(ability_source))
+                // A tagged watched subject owns a declared collection. This
+                // also makes its ordinary source-relative body and live controller
+                // references refer to that exact recipient incarnation.
+                .with_ability_source(Some(if self.source_collection_scope.is_some() { snapshot.object_id } else { ability_source }))
                 .with_linked_exile_owner(ctx.linked_exile_owner.clone())
                 .with_source_number_owner(ctx.source_number_owner.clone())
         .with_x_value(ctx.x_value)
@@ -454,6 +507,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                         .flatten(),
                 )
                 .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
+        .with_source_collection_scope(self.source_collection_scope.clone())
                 .while_source_tapped(while_source_tapped)
                 .with_tagged_objects(delayed_tagged_objects)
                 .with_tagged_players(tagged_players.clone())
@@ -462,7 +516,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .with_prevention_shield(prevention_shield);
                 queue_delayed_from_template(
                     game,
-                    DelayedWatcherIdentity::combined(if self.watch_ability_source {
+                    DelayedWatcherIdentity::combined(if self.watch_ability_source && self.source_collection_scope.is_none() {
                         vec![ability_source]
                     } else {
                         vec![snapshot.object_id]
@@ -478,7 +532,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         crate::effects::helpers::pin_tagged_objects_to_current(game, ctx, &mut tagged_objects);
         let delayed = DelayedTriggerTemplate::new(
             bound_trigger.clone(),
-            self.effects.clone(),
+            ctx.bind_definition_scope_program(self.effects.clone()),
             self.one_shot,
             controller_id,
         )
@@ -514,6 +568,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .flatten(),
         )
         .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
+        .with_source_collection_scope(self.source_collection_scope.clone())
         .while_source_tapped(while_source_tapped)
         .with_tagged_objects(tagged_objects)
         .with_tagged_players(tagged_players)

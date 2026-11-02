@@ -22,6 +22,8 @@ pub use ironsmith_core::UntapEffect;
 /// let effect = UntapEffect::all(ObjectFilter::creature().you_control());
 /// ```
 impl EffectExecutor for UntapEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
+
     fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
         crate::effects::CostChoiceBindings::from_spec(&self.target)
     }
@@ -229,7 +231,7 @@ impl crate::effects::SimultaneousEffectProposal for UntapInstructionProposal {
             objects,
             actor,
             before,
-            single_target: self.effect.target.is_target() && self.effect.target.is_single(),
+            single_target: self.effect.target.is_target() && self.effect.target.is_single() && !crate::effects::target_packets::multiple(ctx,&self.effect.target),
         });
         Ok(())
     }

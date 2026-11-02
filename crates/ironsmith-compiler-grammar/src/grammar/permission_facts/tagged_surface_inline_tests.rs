@@ -294,3 +294,12 @@ fn copy_operand_modifies_an_independently_read_tagged_card_reference() {
         assert_eq!(crate::lexer::parser_token_word_refs(fact.rest_tokens),["without","paying","its","mana","cost"]);
     }
 }
+
+#[test]
+fn explicit_any_type_rider_keeps_colorless_payment_permission() {
+    let tokens = lex("for as long as it remains exiled and you may spend mana as though it were mana of any type to cast that spell");
+    let parsed = parse_allow_any_color_for_cast_suffix_tokens(&tokens).unwrap();
+    assert_eq!(parsed.mana_spend_mode, ironsmith_core::value_model::ManaSpendMode::AnyType);
+    assert_eq!(parsed.reference, ManaSpendCastReference::ThatSpell);
+    assert_eq!(crate::lexer::token_word_refs(parsed.body_tokens), ["for", "as", "long", "as", "it", "remains", "exiled"]);
+}

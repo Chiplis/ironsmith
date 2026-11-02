@@ -213,12 +213,16 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
                     || self.each_damaged_player
                     || self.first_matching_hit_to_player_in_batch(damaged_player, ctx));
         }
-        let Some(obj) = ctx.game.object(e.source) else {
-            return false;
+        // A singular damage event keeps its original participant. Grouped
+        // one-or-more triggers retain their existing batch owner/coalescing path.
+        let snapshot = (!self.one_or_more).then(|| event.source_snapshot()).flatten()
+            .filter(|snapshot| snapshot.object_id == e.source);
+        let object = ctx.game.object(e.source);
+        let source_matches = match snapshot {
+            Some(snapshot) => self.filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game),
+            None => object.is_some_and(|object| self.filter.matches(object, &ctx.filter_ctx, ctx.game)),
         };
-        if !self.filter.matches(obj, &ctx.filter_ctx, ctx.game) {
-            return false;
-        }
+        if !source_matches { return false; }
         // "... deals combat damage to its owner": the player filter is
         // relative to the damage source (the filter candidate).
         let player_matches = if matches!(
@@ -227,7 +231,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
                 | PlayerFilter::ControllerOf(crate::filter::ObjectRef::FilterCandidate)
         ) {
             let mut player_ctx = ctx.filter_ctx.clone();
-            player_ctx.filter_candidate_players = Some((ctx.game.controller_of(obj), obj.owner));
+            player_ctx.filter_candidate_players = snapshot.map(|snapshot| (snapshot.controller, snapshot.owner))
+                .or_else(|| object.map(|object| (ctx.game.controller_of(object), object.owner)));
             self.player.matches_player(damaged_player, &player_ctx)
         } else {
             self.player.matches_player(damaged_player, &ctx.filter_ctx)

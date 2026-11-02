@@ -9,7 +9,7 @@ pub use ironsmith_core::{
     GrantTapUncontrolledLandsForManaEffect, LoyaltyActivationAllowance, LoyaltyActivationScope,
     BecomeSaddledUntilEotEffect, BeholdEffect, BidLifeEffect as CoreBidLifeEffect, BolsterEffect,
     CantEffect, CastSourceEffect, CastTaggedEffect as CoreCastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
-    ChangeTextEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
+    RemoveOptionalTextFragmentEffect, ChangeTextEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseModeEffect as CoreChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
     RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClearGoadEffect, ClearSuspectedEffect,
@@ -23,7 +23,7 @@ pub use ironsmith_core::{
     DetainEffect, DevourEffect, DirectionalAdjacentPlayerControlEffect, DiscardEffect,
     DiscardHandEffect, DiscoverEffect, DoubleCountersEffect, DoubleManaPoolEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect, EmitGiftGivenEffect,
-    EmitKeywordActionEffect, EmptyManaPoolEffect, ActivateManaAbilityOfEachLandEffect,
+    EmitKeywordActionEffect, PerformNamedActionEffect, EmptyManaPoolEffect, ActivateManaAbilityOfEachLandEffect,
     EndCombatPhaseEffect, EndTurnEffect,
     EnergyCountersEffect, EvolveEffect, ExchangeControlEffect, ExchangeLifeTotalsEffect,
     ExchangeTextBoxesEffect, ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect,
@@ -52,7 +52,7 @@ pub use ironsmith_core::{
     ManaRetentionDuration, ManaTypeSource, ManifestCardFromHandEffect, ManifestDreadEffect,
     ManifestObjectsEffect, ManifestTopCardOfLibraryEffect, MayCastForMiracleCostEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
-    SetPermanentDesignationEffect, PermanentDesignation, MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
+    GrantExileControllerInspectionEffect, SetPermanentDesignationEffect, PermanentDesignation, MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode,
     NewTargetRestriction, NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect,
@@ -73,7 +73,7 @@ pub use ironsmith_core::{
     ReflexiveTriggerEffect as CoreReflexiveTriggerEffect,
     RegenerateEffect as CoreRegenerateEffect, RegisterCounterPlacementReplacementEffect,
     RegisterDamagedBySourceZoneReplacementEffect,
-    RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
+    RegisterEventReplacementEffect, RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
     RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterAsCopyEffect, RegisterNextBatchEnterWithCountersEffect,
@@ -104,10 +104,10 @@ pub use ironsmith_core::{
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipScheduledEffect, ScheduledSkipKind, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SneakCostEffect, SolveCaseEffect,
-    SoulbondPairEffect, SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
+    LinkPermanentsEffect, SoulbondPairEffect, SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect,
     TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TagSplicedCardsEffect, TagLastDamageSourceEffect,
+    TagSplicedCardsEffect, TagLastDamageSourceEffect, LinkObjectsToGroupEffect,
     TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
     TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
@@ -266,3 +266,7 @@ pub type GrantPlayTaggedEffect = CoreGrantPlayTaggedEffect<crate::costs::Cost>;
 pub use ironsmith_core::DealDamageToRecipientsEffect;
 
 pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect<crate::continuous::Modification>;
+
+pub type NamedActionProgramEffect = ironsmith_core::NamedActionProgramEffect<Effect>;
+
+pub use ironsmith_core::NoteObjectNamesEffect;

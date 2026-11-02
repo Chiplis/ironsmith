@@ -41,6 +41,7 @@ pub(crate) fn resolve_zone_move_objects(
         });
     }
     if spec.is_target()
+        && !crate::effects::target_packets::retained(ctx,spec)
         && let Some(max) = spec.count().max
     {
         objects.truncate(max);
@@ -469,6 +470,7 @@ pub(crate) fn group_zone_move_observations_with_cause(
     if removed.is_empty() {
         return;
     }
+    crate::effects::player::regroup_hand_reveal_windows(game,&removed);
     let mut lookback = Vec::new();
     for snapshot in removed
         .iter()

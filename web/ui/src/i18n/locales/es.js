@@ -353,6 +353,7 @@ export const messages = {
 };
 
 export const ui = {
+  "Remember my choice for future coin flips": "Recordar mi elección para futuros lanzamientos de moneda",
   "Coming soon!": "¡Próximamente!",
   "Learn": "Aprender",
   "Build": "Crear",

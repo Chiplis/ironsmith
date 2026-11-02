@@ -114,6 +114,16 @@ fn observe_action_completions_with_grouping(
                         );
                         game.stage_turn_history_event(event);
                     }
+                    // An exile-until duration ends on the actual completed
+                    // departure even when this owner publishes it directly.
+                    // Queue its one-shot return; the normal duration owner
+                    // still performs entry choices after prior events match.
+                    let departed = events.iter().filter_map(|event|
+                        event.downcast::<crate::events::ZoneChangeEvent>())
+                        .filter(|change| matches!(change.from, crate::zone::Zone::Battlefield | crate::zone::Zone::Stack)
+                            && change.to != crate::zone::Zone::Battlefield)
+                        .flat_map(|change|change.original_objects()).collect::<Vec<_>>();
+                    if !departed.is_empty() {game.return_exiled_for_sources_leave(&departed);}
                     Ok::<_, ExecutionError>(events)
                 })();
                 game.close_simultaneous_action(opened);
@@ -249,4 +259,45 @@ pub(crate) fn observe_lifecycle_completions_with_observations(
 ) -> Result<(), ExecutionError> {
     crate::events::other::retain_departed_lifecycle_snapshots(game, events, observations);
     observe_lifecycle_completions(game, events)
+}
+
+#[cfg(test)]
+mod completed_departure_duration_tests {
+    use super::*;
+    use crate::{CardId,CardType,PlayerId,Zone};
+    fn object(game:&mut GameState,name:&str,owner:PlayerId,zone:Zone)->crate::ObjectId {
+        let card=crate::card::CardBuilder::new(CardId::new(),name).card_types(vec![CardType::Artifact]).build();
+        game.create_object_from_card(&card,owner,zone)
+    }
+    #[test]
+    fn directly_completed_source_departure_ends_duration_without_pending_event_republication() {
+        let a=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let source=object(&mut game,"Independent duration source",a,Zone::Stack);
+        let exiled=object(&mut game,"Independent duration member",a,Zone::Exile);
+        let stable=game.object(exiled).unwrap().stable_id;
+        game.add_exiled_with_source_link_returning_to(source,exiled,Zone::Battlefield);
+        game.mark_return_exiled_when_source_leaves(source);
+        game.take_pending_trigger_events();
+        game.move_object_by_effect(source,Zone::Graveyard).unwrap();
+        let events=game.take_pending_trigger_events();
+        assert!(events.iter().any(|event|event.downcast::<crate::events::ZoneChangeEvent>().is_some_and(|event|event.original_objects().contains(&source))));
+        observe_lifecycle_completions_with_outputs(&mut game,events).unwrap();
+        assert!(game.take_pending_trigger_events().is_empty(),"completion does not republish the physical departure");
+        assert!(game.has_pending_duration_end_returns());
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker).unwrap();
+        let returned=game.find_object_by_stable_id(stable).unwrap();assert_ne!(returned,exiled);assert_eq!(game.object(returned).unwrap().zone,Zone::Battlefield);
+    }
+    #[test]
+    fn published_return_child_is_visible_inside_exact_action_observation_scope() {
+        let a=PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let source=object(&mut game,"Independent return source",a,Zone::Battlefield);
+        let old=object(&mut game,"Independent returned member",a,Zone::Graveyard);
+        let mut ctx=crate::effects::ExecutionContext::new_default(source,a);
+        let (_,observations)=with_action_observations(&mut game,|game|crate::effects::execute_effect(game,
+            &crate::Effect::new(crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(crate::ChooseSpec::SpecificObject(old),false)),&mut ctx)).unwrap();
+        let movement=observations.iter().find_map(|event|event.downcast::<crate::events::ZoneChangeEvent>()
+            .filter(|movement|movement.original_objects().contains(&old)&&movement.to==Zone::Battlefield)).expect("completed return retains the exact original target");
+        assert!(!movement.objects.contains(&old),"the real publisher names the destination, not the old graveyard object");
+        assert!(!movement.result_objects.is_empty());assert!(movement.result_objects.iter().all(|id|game.object(*id).is_some_and(|object|object.zone==Zone::Battlefield)));
+    }
 }

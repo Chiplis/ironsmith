@@ -36,8 +36,22 @@ export function booleanChoice(decision, yes) {
   return option ? { type: 'select_options', option_indices: [index] } : null;
 }
 
+export function isCoinCallDecision(decision) {
+  const options = decision?.options || [];
+  return decision?.kind === 'select_options'
+    && (decision.min ?? 1) === 1 && (decision.max ?? 1) === 1
+    && !decision.repeatable && options.length === 2
+    && options.every(option => !option.repeatable)
+    && options.some(option => option.description === 'Heads')
+    && options.some(option => option.description === 'Tails');
+}
+
 export function createPriorityPolicy({ stops, storage = playPreferenceStorage() } = {}) {
   const modesKey = 'ironsmith.stackPriorityModes';
+  const coinKey = 'ironsmith.coinCallChoices';
+  const savedCoins = readPlayPreference(coinKey, storage);
+  const coinChoices = new Map(savedCoins && typeof savedCoins === 'object' && !Array.isArray(savedCoins)
+    ? Object.entries(savedCoins).filter(([, face]) => ['Heads', 'Tails'].includes(face)) : []);
   const combatKey = 'ironsmith.combatParticipationStops';
   const savedCombat = readPlayPreference(combatKey, storage) || {};
   const saved = readPlayPreference(modesKey, storage);
@@ -52,7 +66,7 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
     const key = id(player);
     if (!seats.has(key)) seats.set(key, { yield: null, fullControl: false, held: null,
       stopWithAttackers: savedCombat[key]?.attackers !== false, stopWithBlockers: savedCombat[key]?.blockers !== false,
-      stackMode: savedModes.get(key) || 'hold', maintain: false, holdNextAction: false, rules: [], groupTriggers: false, resolveGroup: null });
+      coinChoice: coinChoices.get(key) || null, stackMode: savedModes.get(key) || 'hold', maintain: false, holdNextAction: false, rules: [], groupTriggers: false, resolveGroup: null });
     return seats.get(key);
   };
   const observe = state => {
@@ -120,7 +134,11 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
       if (decision.kind === 'blockers' && !same(state.active_player, state.perspective)
         && current.stopWithBlockers
         && decision.blocker_options?.some(option => option.valid_blockers?.length > 0)) return null;
-      // Only an explicitly saved Boolean preference can answer a resolution.
+      if (isCoinCallDecision(decision) && current.coinChoice) {
+        const option = decision.options.find(option => option.description === current.coinChoice && option.legal !== false);
+        if (option) return { type: 'select_options', option_indices: [option.index] };
+      }
+      // Explicit ability preferences can answer Boolean resolutions.
       const resolving = state.resolving_stack_object;
       if (resolving && same(decision.source_id, resolving.inspect_object_id)) {
         const rule = ruleFor(state, resolving, 'answer');
@@ -167,6 +185,13 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
     status(state) { observe(state); return seat(state?.perspective); },
     observe,
     evaluate,
+    setCoinChoice(face, state) {
+      if (face !== null && !['Heads', 'Tails'].includes(face)) return;
+      seat(state?.perspective).coinChoice = face;
+      coinChoices.set(id(state?.perspective), face);
+      writePlayPreference(coinKey, Object.fromEntries(coinChoices), storage);
+      publish();
+    },
     setCombatParticipationStop(kind, enabled, state) {
       if (!['attackers', 'blockers'].includes(kind)) return;
       const current = seat(state?.perspective);
@@ -223,6 +248,9 @@ export function createPriorityPolicy({ stops, storage = playPreferenceStorage() 
     rollback(checkpoint, state) { if (checkpoint) seats.set(id(state.perspective), checkpoint); publish(); },
     clear(state) {
       const current = seat(state?.perspective);
+      current.coinChoice = null;
+      coinChoices.delete(id(state?.perspective));
+      writePlayPreference(coinKey, Object.fromEntries(coinChoices), storage);
       current.resolveGroup = null; current.yield = null; current.rules = []; current.groupTriggers = false; current.maintain = false; current.holdNextAction = false;
       current.held = state ? windowKey(state) : null;
       stops?.holdCurrentPriority(state);

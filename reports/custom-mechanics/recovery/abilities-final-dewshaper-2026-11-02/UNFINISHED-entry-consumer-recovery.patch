@@ -1,0 +1,835 @@
+--- a/crates/ironsmith-compiler-runtime/tests/custom_counter_producer_exclusion.rs
++++ b/crates/ironsmith-compiler-runtime/tests/custom_counter_producer_exclusion.rs
+@@ -57,6 +57,7 @@
+   let card=&fixture["mechanics"].as_array().unwrap().iter().find(|row|row["id"]=="msem-919").unwrap()["representative_cards"][0];
+   // A currently visible Siphon ability on the source is not the event producer.
+   let spell=source_support::definitions(card).unwrap().into_iter().next().unwrap();
++  assert!(spell.abilities.iter().any(|ability|ability.has_designation("siphon")&&matches!(&ability.kind,ironsmith::ability::AbilityKind::Static(value)if value.id()==ironsmith::static_abilities::StaticAbilityId::SpellManaSpendingRestriction)),"actual source must classify the static spending rule, not only the permanent keyword marker");
+   let producer=game.create_object_from_definition(&spell,A,Zone::Stack);
+   let mut dm=Allocations{counts:vec![1].into(),asked:vec![]};
+   apply(&mut game,watcher,watcher,EventCause::from_effect(producer,A),1,&mut dm);
+@@ -92,3 +93,58 @@
+   for kind in [CounterType::Flying,CounterType::Vigilance,CounterType::Stun]{assert_eq!(count(watcher,kind)+count(contributor,kind),0,"Dewshaper cannot rewrite a cost as an effect");}
+  }
+ }
++#[test]
++fn actual_dewshaper_changes_authored_and_intrinsic_effect_entry_counters_before_the_entry_snapshot(){
++ for watcher_definition in definitions(){
++  for mode in ["native-entry","entry-program","starting-loyalty"]{
++   let mut game=GameState::new(vec!["A".into(),"B".into()],20);
++   let watcher=game.create_object_from_definition(&watcher_definition,A,Zone::Battlefield);
++   let body=match mode{
++    "native-entry"=>"Type: Creature — Human\nPower/Toughness: 8/8\nThis creature enters with three +1/+1 counters.",
++    "entry-program"=>"Type: Creature — Human\nPower/Toughness: 8/8\nAs this creature enters, put three +1/+1 counters on it.",
++    _=>"Type: Planeswalker\nLoyalty: 3",
++   };
++   let entrant=ironsmith_compiler_runtime::compile_to_runtime_definition("Entry counter recipient",body,false).unwrap();
++   let source=game.create_object_from_definition(&entrant,A,Zone::Hand);let stable=game.object(source).unwrap().stable_id;
++   let mut dm=Allocations{counts:vec![1,1,0].into(),asked:vec![]};
++   let mut ctx=ExecutionContext::new(watcher,A,&mut dm);
++   let outcome=execute_effect(&mut game,&Effect::move_to_zone(ironsmith::target::ChooseSpec::SpecificObject(source),Zone::Battlefield,false),&mut ctx).unwrap();
++   drop(ctx);
++   let entered=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.object(entered).unwrap().zone,Zone::Battlefield);
++   if mode=="starting-loyalty"{
++    assert_eq!(game.counter_count(entered,CounterType::Loyalty),1);assert_eq!(game.counter_count(entered,CounterType::Flying),1);assert_eq!(game.counter_count(entered,CounterType::Vigilance),1);assert_eq!(dm.asked,vec![A;3]);
++   }else{
++    assert_eq!(game.counter_count(entered,CounterType::PlusOnePlusOne),1,"{mode}");assert_eq!(game.counter_count(entered,CounterType::Flying),1,"{mode}");assert_eq!(game.counter_count(entered,CounterType::Vigilance),1,"{mode}");
++    assert_eq!(dm.asked,vec![A;3],"{mode}");
++    let event=outcome.events.iter().find_map(|event|event.downcast::<ironsmith::events::EnterBattlefieldEvent>()).expect("entry notification");
++    let snapshot=event.completed_snapshot.as_ref().expect("entry-time snapshot");assert_eq!(snapshot.counter_count(CounterType::Flying),1);assert_eq!(snapshot.counter_count(CounterType::Vigilance),1);assert_eq!(snapshot.counter_count(CounterType::PlusOnePlusOne),1);
++   }
++  }
++ }
++}
++#[test]
++fn actual_dewshaper_reports_missing_effect_producer_as_incomplete_and_rolls_back(){
++ for definition in definitions(){
++  let mut game=GameState::new(vec!["A".into(),"B".into()],20);let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
++  game.take_pending_trigger_events();
++  let mut dm=Allocations::default();let mut ctx=ExecutionContext::new(source,A,&mut dm);ctx.cause=EventCause::effect();
++  let error=execute_effect(&mut game,&Effect::put_counters(CounterType::PlusOnePlusOne,1,ironsmith::target::ChooseSpec::SpecificObject(source)),&mut ctx).unwrap_err();drop(ctx);
++  assert!(matches!(error,ironsmith::effects::ExecutionError::IncompleteEvidence(_)),"unknown ownership/class is not proof of an ineligible producer");
++  assert_eq!(game.counter_count(source,CounterType::PlusOnePlusOne),0);assert!(dm.asked.is_empty());assert!(game.take_pending_trigger_events().is_empty());
++ }
++}
++#[test]
++fn actual_dewshaper_cannot_rescue_a_prohibited_entry_counter_by_changing_its_kind(){
++ for definition in definitions(){
++  let mut game=GameState::new(vec!["A".into(),"B".into()],20);let watcher=game.create_object_from_definition(&definition,A,Zone::Battlefield);
++  let prohibition=Effect::new(ironsmith::effects::CantEffect::new(ironsmith::effect::Restriction::have_counter_type_placed(ironsmith::target::ObjectFilter::creature(),CounterType::MinusOneMinusOne),ironsmith::effect::Until::EndOfTurn));
++  execute_effect(&mut game,&prohibition,&mut ExecutionContext::new_default(watcher,A)).unwrap();
++  let entrant=ironsmith_compiler_runtime::compile_to_runtime_definition("Prohibited entry counter","Type: Creature — Human\nPower/Toughness: 8/8\nThis creature enters with three -1/-1 counters.",false).unwrap();
++  let source=game.create_object_from_definition(&entrant,A,Zone::Hand);let stable=game.object(source).unwrap().stable_id;
++  let mut dm=Allocations::default();let mut ctx=ExecutionContext::new(watcher,A,&mut dm);
++  execute_effect(&mut game,&Effect::move_to_zone(ironsmith::target::ChooseSpec::SpecificObject(source),Zone::Battlefield,false),&mut ctx).unwrap();drop(ctx);
++  let entered=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.object(entered).unwrap().zone,Zone::Battlefield);
++  for kind in [CounterType::MinusOneMinusOne,CounterType::Flying,CounterType::Vigilance,CounterType::Stun]{assert_eq!(game.counter_count(entered,kind),0);}
++  assert!(dm.asked.is_empty(),"a prohibited original cannot acquire an ordinary replacement menu (CR614.17c)");
++ }
++}
+--- a/crates/ironsmith-engine/src/effects/context.rs
++++ b/crates/ironsmith-engine/src/effects/context.rs
+@@ -327,6 +327,8 @@
+     /// Source counter additions being proposed during battlefield entry.
+     /// Their replacements run on the combined ETB event, not the source-zone card.
+     pub entry_counter_source: Option<ObjectId>,
++    /// Exact successful producer packets; rollback follows the enclosing context.
++    pub entry_counter_receipts: Vec<crate::events::zones::EntryCounterProducerReceipt>,
+     /// Prospective characteristics, including earlier copy replacements.
+     pub entry_event: Option<Box<crate::events::EnterBattlefieldEvent>>,
+     /// CR614.13: source objects reserved by simultaneous battlefield entry.
+@@ -355,6 +357,7 @@
+         Self {
+             original_zone_event: None,
+             entry_counter_source: None,
++            entry_counter_receipts: Vec::new(),
+             entry_event: None,
+             entry_reserved_objects: HashSet::new(),
+             additional_replacement_effects: Vec::new(),
+--- a/crates/ironsmith-engine/src/effects/counters/object_counter_placement.rs
++++ b/crates/ironsmith-engine/src/effects/counters/object_counter_placement.rs
+@@ -254,6 +254,15 @@
+             let actual = game
+                 .counter_count(object, resolved.counter_type)
+                 .saturating_sub(before);
++            if actual > 0 && ctx.replacement.entry_counter_source == Some(object) {
++                ctx.replacement.entry_counter_receipts.push(
++                    crate::events::zones::EntryCounterProducerReceipt {
++                        kind: resolved.counter_type,
++                        count: actual,
++                        cause: resolved.cause.clone(),
++                    },
++                );
++            }
+             // "a land that a mire counter was put onto with this artifact":
+             // a lasting per-source record that survives the source leaving.
+             if actual > 0
+@@ -685,3 +694,53 @@
+         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+     }
+ }
++
++#[cfg(test)]
++mod staged_entry_counter_producer_tests {
++    use super::*;
++
++    #[test]
++    fn successful_entry_placements_keep_distinct_frozen_producers() {
++        let actor = crate::ids::PlayerId::from_index(0);
++        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
++        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Entering witness")
++            .card_types(vec![crate::types::CardType::Creature]).build();
++        let entering = game.create_object_from_card(&card, actor, crate::zone::Zone::Hand);
++        let kind = crate::object::CounterType::PlusOnePlusOne;
++        let mut ctx = ExecutionContext::new_default(entering, actor);
++        ctx.replacement.entry_counter_source = Some(entering);
++        for (amount, labels) in [(2, vec!["growth".to_string()]), (3, Vec::new())] {
++            let mut cause = crate::events::cause::EventCause::from_effect(entering, actor);
++            cause.resolving_ability_designations = labels;
++            let event = Event::put_counters(entering, kind, amount, cause);
++            let output = execute_object_counter_placement(&mut game, &mut ctx, event).unwrap();
++            assert_eq!(output.count_or_zero(), i64::from(amount));
++        }
++        assert_eq!(ctx.replacement.entry_counter_receipts.len(), 2);
++        let mut entry = crate::events::EnterBattlefieldEvent::new(entering, crate::zone::Zone::Hand)
++            .with_counters(kind, 5);
++        entry.counter_producer_receipts = ctx.replacement.entry_counter_receipts.clone();
++        entry.validate_counter_producer_receipts().unwrap();
++        let receipts = &entry.counter_producer_receipts;
++        assert_eq!((receipts[0].count, receipts[1].count), (2, 3));
++        assert_eq!(receipts[0].cause.resolving_ability_designations, vec!["growth"]);
++        assert!(receipts[1].cause.resolving_ability_designations.is_empty());
++        // Enrichment/reconciliation in a sibling proposal cannot mutate this
++        // original receipt or its explicit empty producer designation.
++        let mut sibling = entry.clone();
++        sibling.counter_producer_receipts[0].cause.resolving_ability_designations.clear();
++        assert_eq!(entry.counter_producer_receipts[0].cause.resolving_ability_designations, vec!["growth"]);
++        sibling.enters_with_counters[0].1 = 4;
++        assert!(matches!(sibling.validate_counter_producer_receipts(),
++            Err(ExecutionError::IncompleteEvidence(_))));
++        sibling.counter_producer_receipts.clear();
++        assert!(matches!(sibling.validate_counter_producer_receipts(),
++            Err(ExecutionError::IncompleteEvidence(_))));
++        ctx.replacement.entry_counter_source = None;
++        let cause = crate::events::cause::EventCause::from_effect(entering, actor);
++        execute_object_counter_placement(&mut game, &mut ctx,
++            Event::put_counters(entering, kind, 1, cause)).unwrap();
++        assert_eq!(ctx.replacement.entry_counter_receipts.len(), 2,
++            "ordinary placements do not contaminate staged entry provenance");
++    }
++}
+--- a/crates/ironsmith-engine/src/effects/replacement/apply_replacement.rs
++++ b/crates/ironsmith-engine/src/effects/replacement/apply_replacement.rs
+@@ -45,22 +45,23 @@
+         game: &mut GameState,
+         _ctx: &mut ExecutionContext,
+     ) -> Result<EffectOutcome, ExecutionError> {
++        let effect=self.effect.clone().with_producer_cause(_ctx.cause.clone());
+         match self.mode {
+             ReplacementApplyMode::OneShot => {
+                 game.effect_store
+                     .replacement_effects
+-                    .add_one_shot_effect(self.effect.clone());
++                    .add_one_shot_effect(effect.clone());
+             }
+             ReplacementApplyMode::UntilEndOfTurn => {
+                 game.effect_store
+                     .replacement_effects
+-                    .add_until_end_of_turn_effect(self.effect.clone());
++                    .add_until_end_of_turn_effect(effect.clone());
+             }
+             ReplacementApplyMode::UntilYourNextTurn => {
+                 game.effect_store
+                     .replacement_effects
+                     .add_until_next_turn_effect(
+-                        self.effect.clone(),
++                        effect.clone(),
+                         _ctx.controller,
+                         game.turn.turn_number,
+                     );
+@@ -68,7 +69,7 @@
+             ReplacementApplyMode::Resolution => {
+                 game.effect_store
+                     .replacement_effects
+-                    .add_resolution_effect(self.effect.clone());
++                    .add_resolution_effect(effect.clone());
+             }
+         }
+ 
+--- a/crates/ironsmith-engine/src/events/mod.rs
++++ b/crates/ironsmith-engine/src/events/mod.rs
+@@ -340,6 +340,7 @@
+                 enters_tapped,
+                 enters_face_down:false,
+                 enters_with_counters,
++                counter_producer_receipts: Vec::new(),
+                 linked_exile_with_entering: Vec::new(),
+                 enters_as_copy_of: None,
+                 copy_followups: Vec::new(),
+--- a/crates/ironsmith-engine/src/events/processing/application.rs
++++ b/crates/ironsmith-engine/src/events/processing/application.rs
+@@ -332,18 +332,37 @@
+         }
+ 
+         ReplacementAction::RewriteCounterKinds {selected,..} => {
+-            let Some(original)=crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner()) else{return Ok(TraitApplyResult::Unchanged(event));};
++            use crate::replacement::CounterKindRewriteSelection as Selection;
+             let Some(selected)=selected else{return Err(crate::effects::ExecutionError::IncompleteEvidence("counter kind replacement has no retained allocation".into()));};
+-            if selected.len()==1 && selected[0]==(original.counter_type,original.count) {
+-                TraitApplyResult::Unchanged(event)
+-            }else{
+-                let target=match original.target {
+-                    crate::game_state::Target::Object(object)=>crate::target::ChooseSpec::SpecificObject(object),
+-                    crate::game_state::Target::Player(_)=>return Err(crate::effects::ExecutionError::IncompleteEvidence("counter-kind continuation currently requires a permanent proposal".into())),
+-                };
+-                TraitApplyResult::Replaced(vec![crate::effect::Effect::new(crate::effects::PutCounterBatchEffect {
+-                    target,counters:selected.clone(),use_replaced_event_cause:true,
+-                })])
++            match selected {
++                Selection::Placement(selected)=>{
++                    let Some(original)=crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner()) else{return Err(crate::effects::ExecutionError::IncompleteEvidence("counter allocation proposal changed kind".into()));};
++                    if !selected.applied {
++                        TraitApplyResult::Unchanged(event)
++                    }else{
++                        let target=match original.target {
++                            crate::game_state::Target::Object(object)=>crate::target::ChooseSpec::SpecificObject(object),
++                            crate::game_state::Target::Player(_)=>return Err(crate::effects::ExecutionError::IncompleteEvidence("counter-kind continuation requires a permanent proposal".into())),
++                        };
++                        TraitApplyResult::Replaced(vec![crate::effect::Effect::new(crate::effects::PutCounterBatchEffect {
++                            target,counters:selected.counters.clone(),use_replaced_event_cause:true,
++                        })])
++                    }
++                }
++                Selection::Entry{receipts,applied}=>{
++                    let Some(original)=crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())else{return Err(crate::effects::ExecutionError::IncompleteEvidence("entry counter allocation proposal changed kind".into()));};
++                    original.validate_counter_producer_receipts()?;
++                    if !applied{TraitApplyResult::Unchanged(event)}else{
++                        let mut modified=original.clone();let mut counters:Vec<(CounterType,u32)>=Vec::new();
++                        for receipt in receipts {
++                            if let Some((_,count))=counters.iter_mut().find(|(kind,_)|*kind==receipt.kind){
++                                *count=count.checked_add(receipt.count).ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence("entry counter allocation exceeds count range".into()))?;
++                            }else if receipt.count>0{counters.push((receipt.kind,receipt.count));}
++                        }
++                        modified.enters_with_counters=counters;modified.counter_producer_receipts=receipts.clone();
++                        modified.validate_counter_producer_receipts()?;TraitApplyResult::Modified(event.rewrap(modified))
++                    }
++                }
+             }
+         }
+ 
+@@ -504,7 +523,7 @@
+                     "intrinsic entry counter contribution overflow".into(),
+                 )
+             })?;
+-            match apply_trait_enter_with_counters(&event, counter, count, &[], &[]) {
++            match apply_trait_enter_with_counter_entries_from_producer(&event,&[(counter,count)],&[],&[],Some(effect.producer_cause())) {
+                 Some(modified) => TraitApplyResult::Modified(modified),
+                 None => {
+                     return Err(crate::effects::ExecutionError::InternalError(
+@@ -605,8 +624,8 @@
+                 crate::effects::counters::kind_selection::kinds_on(game, &objects)
+                     .into_iter().map(|kind| (kind, resolved_count)).collect::<Vec<_>>()
+             } else { vec![(counter_type, resolved_count)] };
+-            let modified = apply_trait_enter_with_counter_entries(
+-                &event, &entries, added_subtypes, added_abilities,
++            let modified = apply_trait_enter_with_counter_entries_from_producer(
++                &event, &entries, added_subtypes, added_abilities,Some(effect.producer_cause()),
+             );
+             match modified {
+                 Some(e) => TraitApplyResult::Modified(e),
+@@ -1931,6 +1950,13 @@
+     event: &Event, counters: &[(CounterType, u32)],
+     added_subtypes: &[crate::types::Subtype], added_abilities: &[crate::ability::Ability],
+ ) -> Option<Event> {
++    apply_trait_enter_with_counter_entries_from_producer(event,counters,added_subtypes,added_abilities,None)
++}
++pub(super) fn apply_trait_enter_with_counter_entries_from_producer(
++    event: &Event, counters: &[(CounterType, u32)],
++    added_subtypes: &[crate::types::Subtype], added_abilities: &[crate::ability::Ability],
++    cause:Option<crate::events::cause::EventCause>,
++) -> Option<Event> {
+     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
+     let mut entering = match event.kind() {
+         EventKind::EnterBattlefield => downcast_event::<EnterBattlefieldEvent>(event.inner())?.clone(),
+@@ -1941,7 +1967,10 @@
+         },
+         _ => return None,
+     };
+-    for (kind, count) in counters { entering = entering.with_counters(*kind, *count); }
++    for (kind, count) in counters {
++        entering = entering.with_counters(*kind, *count);
++        if let Some(cause)=&cause {if *count>0{entering.counter_producer_receipts.push(crate::events::zones::EntryCounterProducerReceipt{kind:*kind,count:*count,cause:cause.clone()});}}
++    }
+     Some(event.rewrap(entering.with_added_subtypes(added_subtypes).with_added_abilities(added_abilities)))
+ }
+ 
+--- a/crates/ironsmith-engine/src/events/processing/mod.rs
++++ b/crates/ironsmith-engine/src/events/processing/mod.rs
+@@ -112,6 +112,7 @@
+     paid_label: &str,
+     paid_labels: &mut Vec<String>,
+     dm: &mut dyn DecisionMaker,
++    producer_cause:&crate::events::cause::EventCause,
+ ) -> Event {
+     let response = resolve_tribute_response(game, response, source, controller, count, dm);
+     if !matches!(response, InteractiveReplacementResponse::Accept) {
+@@ -123,7 +124,7 @@
+     {
+         paid_labels.push(paid_label.to_string());
+     }
+-    apply_trait_enter_with_counters(&event, counter_type, count, &[], &[]).unwrap_or(event)
++    application::apply_trait_enter_with_counter_entries_from_producer(&event,&[(counter_type,count)],&[],&[],Some(producer_cause.clone())).unwrap_or(event)
+ }
+ 
+ fn apply_enter_counter_choice_response(
+@@ -134,6 +135,7 @@
+     counter_types: &[CounterType],
+     count: &crate::effect::Value,
+     kinds: u32,
++    producer_cause:&crate::events::cause::EventCause,
+ ) -> Event {
+     // "your choice of two different counters ... from among" (Grimdancer):
+     // every selected kind is distinct, and each gets `count` counters.
+@@ -163,8 +165,7 @@
+     let resolved_count = application::resolve_value_for_etb_for_choice(count, game, source);
+     let mut current = event;
+     for counter_type in chosen {
+-        current = apply_trait_enter_with_counters(&current, counter_type, resolved_count, &[], &[])
+-            .unwrap_or(current);
++        current = application::apply_trait_enter_with_counter_entries_from_producer(&current,&[(counter_type,resolved_count)],&[],&[],Some(producer_cause.clone())).unwrap_or(current);
+     }
+     current
+ }
+@@ -2828,6 +2829,7 @@
+     if matches!(
+         effect.replacement,
+         ReplacementAction::DoubleCounters { .. }
++            | ReplacementAction::RewriteCounterKinds { .. }
+             | ReplacementAction::HalveCounters { .. }
+             | ReplacementAction::AddCountersToPlacement { .. }
+     ) && let Some(etb) =
+@@ -2856,6 +2858,16 @@
+             .matches_event(event.inner(), &ctx)
+             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+     };
++    if matched&&matches!(effect.replacement,ReplacementAction::RewriteCounterKinds{..}) {
++        if let Some(entry)=crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner()) {
++            if entry.prepared_choices.is_some() {entry.validate_counter_producer_receipts()?;}
++        }
++        if let Some(placement)=crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner()) {
++            if placement.cause.cause_type.is_effect_like()&&(placement.cause.source.is_none()||placement.cause.source_controller.is_none()){
++                return Err(crate::effects::ExecutionError::IncompleteEvidence("counter effect lacks captured producer identity/control".into()));
++            }
++        }
++    }
+     if !matched {
+         // Discard includes a move out of the hand. Zone replacements must
+         // compete with discard replacements before that move, and must see
+@@ -7981,6 +7993,7 @@
+         .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
+     let mut effects = Vec::new();
+     for (index, ability) in chars.abilities.iter().enumerate() {
++        let producer_designations=ability.designations.clone();
+         let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+             continue;
+         };
+@@ -8026,7 +8039,7 @@
+             let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
+             effect.id = *ids.entry((parent.clone(), usize::MAX)).or_insert(next_id);
+             effect.static_ability_instance = Some(ability.instance_id());
+-            effects.push(effect.with_ability_origin(origin.clone(), face, usize::MAX));
++            effects.push(effect.with_ability_origin(origin.clone(), face, usize::MAX).with_producer_designations(producer_designations.clone()));
+         }
+         if let Some(mut effect) = ability.generate_replacement_effect(etb.object, controller)
+             && effect
+@@ -8036,7 +8049,7 @@
+         {
+             let next_id = ReplacementEffectId(u64::MAX - 250_000 + ids.len() as u64);
+             effect.id = *ids.entry((parent.clone(), 0)).or_insert(next_id);
+-            effects.push(effect.with_ability_origin(origin.clone(), face, 0));
++            effects.push(effect.with_ability_origin(origin.clone(), face, 0).with_producer_designations(producer_designations.clone()));
+         }
+         if let Some(spec) = ability.enter_as_copy_as_enters()
+             && spec.affected_filter.is_none()
+@@ -10585,6 +10598,8 @@
+         // (such as entering untapped) modify it.
+         let enters_tapped = initial_enters_tapped;
+         let enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
++        let counter_producer_receipts=zone_context.as_ref().and_then(|context|crate::events::downcast_event::<crate::events::ZoneChangeEvent>(context.event.inner()).map(|event|&event.cause).or_else(||context.event.inner().cause())).map(|cause|
++            enters_with_counters.iter().filter(|(_,count)|*count>0).map(|(kind,count)|crate::events::zones::EntryCounterProducerReceipt{kind:*kind,count:*count,cause:cause.clone()}).collect()).unwrap_or_default();
+ 
+         // Gather ETB replacement effects from the object's abilities.
+         let mut object_etb_effects: Vec<ReplacementEffect> = Vec::new();
+@@ -10614,7 +10629,7 @@
+                         .as_ref()
+                         .is_some_and(|matcher| matcher.applies_from_entering_source())
+                 {
+-                    object_etb_effects.push(effect.with_ability_origin(origin.clone(), face, 0));
++                    object_etb_effects.push(effect.with_ability_origin(origin.clone(), face, 0).with_producer_designations(ability.designations.clone()));
+                 }
+                 if let Some(spec) = s.enter_as_copy_as_enters()
+                     && spec.affected_filter.is_none()
+@@ -10732,6 +10747,7 @@
+                 enters_tapped,
+                 enters_face_down: false,
+                 enters_with_counters,
++                counter_producer_receipts,
+                 linked_exile_with_entering: Vec::new(),
+                 enters_as_copy_of: None,
+                 copy_followups: Vec::new(),
+@@ -10825,6 +10841,7 @@
+                 for (kind, count) in choices.as_enters_counters.drain(..) {
+                     resumed = resumed.with_counters(kind, count);
+                 }
++                resumed.counter_producer_receipts.append(&mut choices.as_enters_counter_receipts);
+                 resumed.program_choices.as_enters_designations.append(&mut choices.as_enters_designations);
+                 resumed.program_choices.as_enters_named_actions.append(&mut choices.as_enters_named_actions);
+                 if choices.as_enters_tapped {
+@@ -11028,6 +11045,9 @@
+                             prepared_event
+                                 .enters_with_counters
+                                 .append(&mut choices.as_enters_counters);
++                            prepared_event.counter_producer_receipts.append(
++                                &mut choices.as_enters_counter_receipts,
++                            );
+                             let mut combined: Vec<(CounterType, u32)> = Vec::new();
+                             for (counter, count) in prepared_event.enters_with_counters.drain(..) {
+                                 if let Some((_, total)) =
+@@ -11284,7 +11304,9 @@
+                                     paid_label,
+                                     &mut paid_labels,
+                                     dm,
+-                                );
++                                
++&chosen_effect.producer_cause(),
++);
+                                 if dm.awaiting_choice() {
+                                     return Ok(EtbEventResult {
+                                         prevented: true,
+@@ -11337,7 +11359,9 @@
+                                     counter_types,
+                                     count,
+                                     *kinds,
+-                                );
++                                
++&chosen_effect.producer_cause(),
++);
+                                 if dm.awaiting_choice() {
+                                     return Ok(EtbEventResult {
+                                         prevented: true,
+@@ -11472,7 +11496,9 @@
+                             &paid_label,
+                             &mut paid_labels,
+                             dm,
+-                        );
++                        
++&find_effect_for_choice(game,&current_additional_effects,effect_id).ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence("entry counter choice lost its acquired producer".into()))?.producer_cause(),
++);
+                         if dm.awaiting_choice() {
+                             return Ok(EtbEventResult {
+                                 prevented: true,
+@@ -11528,7 +11554,9 @@
+                             &counter_types,
+                             &count,
+                             kinds,
+-                        );
++                        
++&find_effect_for_choice(game,&current_additional_effects,effect_id).ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence("entry counter choice lost its acquired producer".into()))?.producer_cause(),
++);
+                         if dm.awaiting_choice() {
+                             return Ok(EtbEventResult {
+                                 prevented: true,
+@@ -16041,24 +16069,66 @@
+ /// without allocating a prompt or a vector element for every nominal counter.
+ fn choose_counter_kind_allocation(
+     game:&GameState,dm:&mut(impl DecisionMaker+?Sized),effect:&ReplacementEffect,event:&Event,
+-)->Result<Option<Vec<(CounterType,u32)>>,crate::effects::ExecutionError>{
+-    let ReplacementAction::RewriteCounterKinds{kinds,..}=&effect.replacement else{return Ok(None)};
+-    let Some(original)=crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner())else{return Ok(None)};
+-    let crate::game_state::Target::Object(target)=original.target else{return Ok(None)};
+-    let mut remaining=original.count;let mut allocations=Vec::new();let mut seen=std::collections::HashSet::new();
++)->Result<Option<crate::replacement::CounterKindRewriteSelection>,crate::effects::ExecutionError>{
++    use crate::replacement::CounterKindRewriteSelection as Selection;
++    use crate::events::cause::CauseFilterRuntimeExt as _;
++    let ReplacementAction::RewriteCounterKinds{kinds,cause,..}=&effect.replacement else{return Ok(None)};
++    if let Some(original)=crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner()){
++        let crate::game_state::Target::Object(target)=original.target else{return Ok(None)};
++        return allocate_counter_kinds(game,dm,effect,target,original.counter_type,original.count,kinds).map(|value|value.map(Selection::Placement));
++    }
++    let Some(entry)=crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())else{return Ok(None)};
++    entry.validate_counter_producer_receipts()?;
++    let Some(mut prospective)=entry.try_prospective_game_state(game).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?else{
++        return Err(crate::effects::ExecutionError::IncompleteEvidence("entry counter choice has no prospective permanent".into()));
++    };
++    prospective.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
++    let mut selected=Vec::new();let mut applied=false;
++    for receipt in &entry.counter_producer_receipts {
++        if receipt.count==0{continue;}
++        if !prospective.can_have_counter_type_placed(entry.object,receipt.kind)||!cause.matches(&receipt.cause,game,effect.controller){selected.push(receipt.clone());continue;}
++        let Some(allocations)=allocate_counter_kinds(&prospective,dm,effect,entry.object,receipt.kind,receipt.count,kinds)?else{return Ok(None)};
++        applied|=allocations.applied;
++        selected.extend(allocations.counters.into_iter().map(|(kind,count)|crate::events::zones::EntryCounterProducerReceipt{kind,count,cause:receipt.cause.clone()}));
++    }
++    Ok(Some(Selection::Entry{receipts:selected,applied}))
++}
++fn allocate_counter_kinds(
++    game:&GameState,dm:&mut(impl DecisionMaker+?Sized),effect:&ReplacementEffect,target:crate::ids::ObjectId,
++    original_kind:CounterType,original_count:u32,kinds:&[CounterType],
++)->Result<Option<crate::replacement::CounterKindAllocation>,crate::effects::ExecutionError>{
++    let mut applied=false;let mut remaining=original_count;let mut allocations=Vec::new();let mut seen=std::collections::HashSet::new();
+     for &kind in kinds {
+         if remaining==0{break;}
+         if !seen.insert(kind)||!game.can_have_counter_type_placed(target,kind){continue;}
+         let question=crate::decisions::context::NumberContext::new(effect.controller,Some(effect.source),0,remaining,
+-            format!("How many of these {} counters should become {} counters?",original.count,kind.description()));
++            format!("How many of these {} counters should become {} counters?",original_count,kind.description()));
+         let count=dm.decide_number(game,&question);
+         if dm.awaiting_choice(){return Ok(None);}
+         if count>remaining{return Err(crate::effects::ExecutionError::IncompleteEvidence("counter-kind allocation exceeds the remaining proposal".into()));}
+-        if count>0{allocations.push((kind,count));remaining-=count;}
++        if count>0{applied=true;allocations.push((kind,count));remaining-=count;}
+     }
+     if remaining>0 {
+-        if let Some((_,count))=allocations.iter_mut().find(|(kind,_)|*kind==original.counter_type){*count+=remaining;}
+-        else{allocations.push((original.counter_type,remaining));}
+-    }
+-    Ok(Some(allocations))
+-}
++        if let Some((_,count))=allocations.iter_mut().find(|(kind,_)|*kind==original_kind){*count+=remaining;}
++        else{allocations.push((original_kind,remaining));}
++    }
++    Ok(Some(crate::replacement::CounterKindAllocation{counters:allocations,applied}))
++}
++#[cfg(test)]
++mod counter_kind_same_choice_tests{
++ use super::*;
++ struct SameKind;impl crate::decision::DecisionMaker for SameKind{fn decide_number(&mut self,_:&GameState,c:&crate::decisions::context::NumberContext)->u32{c.max}}
++ #[test]
++ fn explicitly_replacing_with_same_kind_consumes_the_occurrence_instead_of_declining(){
++  let mut game=crate::tests::test_helpers::setup_two_player_game();let a=PlayerId::from_index(0);
++  let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Counter choice provider").card_types(vec![crate::types::CardType::Artifact]).build();
++  let source=game.create_object_from_definition(&definition,a,Zone::Battlefield);
++  let cause=crate::events::cause::CauseFilter::effect_like();
++  let replacement=ReplacementEffect::with_matcher(source,a,crate::events::counters::WouldPutCountersMatcher::any(),ReplacementAction::RewriteCounterKinds{kinds:vec![CounterType::Flying],cause,selected:None});
++  let id=game.effect_store.replacement_effects.add_one_shot_effect(replacement);
++  let event=Event::put_counters(source,CounterType::Flying,1,crate::events::cause::EventCause::from_effect(source,a));
++  let result=process_with_dm(&mut game,event,&mut SameKind).unwrap();
++  assert!(matches!(result,TraitEventResult::Replaced{..}),"same-kind application is still a replacement");
++  assert!(game.effect_store.replacement_effects.get_effect(id).is_none(),"applied one-shot consumed exactly once");
++ }
++}
+--- a/crates/ironsmith-engine/src/events/zones/enter_battlefield.rs
++++ b/crates/ironsmith-engine/src/events/zones/enter_battlefield.rs
+@@ -10,6 +10,16 @@
+ use crate::object::CounterType;
+ use crate::types::{CardType, Subtype, Supertype};
+ use crate::zone::Zone;
++
++/// One successful authored placement staged for an entering incarnation.
++/// Empty designations are explicit producer evidence; absence of a receipt is
++/// unknown provenance, never evidence of an ordinary non-keyword producer.
++#[derive(Debug, Clone, PartialEq)]
++pub struct EntryCounterProducerReceipt {
++    pub kind: CounterType,
++    pub count: u32,
++    pub cause: crate::events::cause::EventCause,
++}
+ 
+ /// An enter battlefield event with ETB-specific modifiers.
+ ///
+@@ -31,6 +41,8 @@
+     pub enters_face_down: bool,
+     /// Counters it enters with (may be modified by replacement effects)
+     pub enters_with_counters: Vec<(CounterType, u32)>,
++    /// Original producer packets remain distinct even when equal-kind counts merge.
++    pub counter_producer_receipts: Vec<EntryCounterProducerReceipt>,
+     /// Objects exiled and linked to this permanent as part of an as-enters choice.
+     pub linked_exile_with_entering: Vec<ObjectId>,
+     /// If set, the object enters as a copy of this source object.
+@@ -89,6 +101,41 @@
+ }
+ 
+ impl EnterBattlefieldEvent {
++    /// Complete per-producer evidence is required before a consumer separates
++    /// equal-kind entry counters by cause. Net removals or untracked initial
++    /// counters cannot be classified from a partial journal.
++    pub(crate) fn validate_counter_producer_receipts(
++        &self,
++    ) -> Result<(), crate::effects::ExecutionError> {
++        let totals = |groups: Vec<(CounterType, u32)>| {
++            let mut totals = std::collections::HashMap::<CounterType, u64>::new();
++            for (kind, count) in groups {
++                if count == 0 { continue; }
++                let total = totals.entry(kind).or_default();
++                *total = total.checked_add(u64::from(count)).ok_or_else(|| {
++                    crate::effects::ExecutionError::IncompleteEvidence(
++                        "entry counter producer totals overflow".into(),
++                    )
++                })?;
++            }
++            Ok::<_, crate::effects::ExecutionError>(totals)
++        };
++        if self.counter_producer_receipts.iter().any(|receipt|receipt.count>0
++            &&receipt.cause.cause_type.is_effect_like()
++            &&(receipt.cause.source.is_none()||receipt.cause.source_controller.is_none())) {
++            return Err(crate::effects::ExecutionError::IncompleteEvidence("effect entry counters lack captured producer identity/control".into()));
++        }
++        let proposed = totals(self.enters_with_counters.clone())?;
++        let producers = totals(self.counter_producer_receipts.iter()
++            .map(|receipt| (receipt.kind, receipt.count)).collect())?;
++        if proposed != producers {
++            return Err(crate::effects::ExecutionError::IncompleteEvidence(
++                "entry counters lack exact matching producer receipts".into(),
++            ));
++        }
++        Ok(())
++    }
++
+     /// CR 707.9e: when another copy effect applies, the exceptions and
+     /// additional effects of the earlier copy choice no longer happen.
+     pub(crate) fn discard_prior_copy_exceptions(&mut self) {
+@@ -149,6 +196,7 @@
+             enters_tapped: false,
+             enters_face_down: false,
+             enters_with_counters: Vec::new(),
++            counter_producer_receipts: Vec::new(),
+             linked_exile_with_entering: Vec::new(),
+             enters_as_copy_of: None,
+             copy_followups: Vec::new(),
+@@ -180,6 +228,7 @@
+             enters_tapped: true,
+             enters_face_down: false,
+             enters_with_counters: Vec::new(),
++            counter_producer_receipts: Vec::new(),
+             linked_exile_with_entering: Vec::new(),
+             enters_as_copy_of: None,
+             copy_followups: Vec::new(),
+--- a/crates/ironsmith-engine/src/events/zones/mod.rs
++++ b/crates/ironsmith-engine/src/events/zones/mod.rs
+@@ -5,7 +5,7 @@
+ mod zone_change;
+ mod leaves_game;
+ 
+-pub use enter_battlefield::EnterBattlefieldEvent;
++pub use enter_battlefield::{EnterBattlefieldEvent, EntryCounterProducerReceipt};
+ pub(crate) use enter_battlefield::CopyExceptionContribution;
+ pub use zone_change::ZoneChangeEvent;
+ pub use leaves_game::ObjectLeavesGameEvent;
+--- a/crates/ironsmith-engine/src/game_state/zones_and_characteristics.rs
++++ b/crates/ironsmith-engine/src/game_state/zones_and_characteristics.rs
+@@ -31,6 +31,7 @@
+     pub(crate) battle_protector: Option<PlayerId>,
+     pub(crate) discard_hand: bool,
+     pub(crate) as_enters_counters: Vec<(crate::object::CounterType, u32)>,
++    pub(crate) as_enters_counter_receipts: Vec<crate::events::zones::EntryCounterProducerReceipt>,
+     pub(crate) as_enters_tagged_objects:
+         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+     pub(crate) transfer_as_enters_source_links: bool,
+@@ -188,6 +189,7 @@
+     entry_tapped: bool,
+     entry_designations: Vec<ironsmith_core::PermanentDesignation>,
+     entry_named_actions: Vec<(String,crate::player::ManaPool)>,
++    entry_counter_receipts: Vec<crate::events::zones::EntryCounterProducerReceipt>,
+     continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
+     tagged_objects:
+         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+@@ -634,6 +636,7 @@
+             execution.entry_tapped |= std::mem::take(&mut context.replacement.entry_tapped);
+             execution.entry_designations.append(&mut context.replacement.entry_designations);
+             execution.entry_named_actions.append(&mut context.replacement.entry_named_actions);
++            execution.entry_counter_receipts.append(&mut context.replacement.entry_counter_receipts);
+             if awaiting_choice {
+                 return Ok(execution);
+             }
+@@ -740,6 +743,9 @@
+             as_enters_designations: execution.entry_designations,
+             as_enters_named_actions: execution.entry_named_actions,
+             as_enters_counters: counters,
++            // Do not derive provenance from the net count: later removals can
++            // make it differ from the successful original producer packets.
++            as_enters_counter_receipts: execution.entry_counter_receipts,
+             as_enters_tagged_objects: execution.tagged_objects,
+             transfer_as_enters_source_links: execution.ran,
+             as_enters_linked_exile: execution.linked_exile,
+@@ -819,6 +825,7 @@
+                 combined.entry_redirect = combined.entry_redirect.or(execution.entry_redirect);
+                 combined.entry_designations.extend(execution.entry_designations.iter().cloned());
+                 combined.entry_named_actions.extend(execution.entry_named_actions.iter().cloned());
++                combined.entry_counter_receipts.extend(execution.entry_counter_receipts.iter().cloned());
+                 combined
+                     .continuous_effects
+                     .extend(execution.continuous_effects.iter().copied());
+--- a/crates/ironsmith-engine/src/replacement.rs
++++ b/crates/ironsmith-engine/src/replacement.rs
+@@ -62,6 +62,9 @@
+     /// The replacement's controller chooses whether to apply it after the
+     /// affected player has selected its place in replacement ordering.
+     pub optional_by_controller: bool,
++    /// Frozen from the exact acquired ability or registering programme.
++    /// Empty is explicit; no current source keyword lookup is permitted.
++    pub producer_cause: crate::events::cause::EventCause,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+@@ -107,6 +110,14 @@
+ 
+ 
+ impl ReplacementEffect {
++    pub fn with_producer_designations(mut self,designations:Vec<String>)->Self{self.producer_cause.resolving_ability_designations=designations;self}
++    pub fn with_producer_cause(mut self,mut cause:crate::events::cause::EventCause)->Self{
++        // Registering an effect retains the actual instruction producer even
++        // inside a temporary source/controller operand scope.
++        cause.cause_type=crate::events::cause::CauseType::Effect;
++        self.producer_cause=cause;self
++    }
++    pub fn producer_cause(&self)->crate::events::cause::EventCause{self.producer_cause.clone()}
+     pub fn with_ability_origin(mut self, ability: crate::continuous::AbilityOrigin,
+         printed_face: Option<crate::ids::CardId>, branch: usize) -> Self {
+         let origin = ReplacementAbilityOrigin { ability, printed_face, branch };
+@@ -481,10 +492,25 @@
+     ConvertUnspentMana(crate::mana::ManaSymbol),
+     /// A controller may change any subset of the proposed counters. The
+     /// selected counts are frozen before a simultaneous continuation commits.
+-    RewriteCounterKinds { kinds: Vec<CounterType>, selected: Option<Vec<(CounterType,u32)>> },
+-
+-}
+-
++    RewriteCounterKinds { kinds: Vec<CounterType>, cause: crate::events::cause::CauseFilter, selected: Option<CounterKindRewriteSelection> },
++
++}
++
++
++/// An allocation is retained against its original proposal shape. Entry
++/// groups keep their individual immutable producer receipts.
++#[derive(Debug,Clone,PartialEq)]
++pub enum CounterKindRewriteSelection {
++    Placement(CounterKindAllocation),
++    Entry {receipts:Vec<crate::events::zones::EntryCounterProducerReceipt>,applied:bool},
++}
++
++#[derive(Debug,Clone,PartialEq)]
++pub struct CounterKindAllocation {
++    pub counters:Vec<(CounterType,u32)>,
++    /// Choosing the same kind is still applying the replacement.
++    pub applied:bool,
++}
+ 
+ /// How to modify an event.
+ #[derive(Debug, Clone, PartialEq)]
+@@ -1334,6 +1360,7 @@
+             ability_origin: None,
+             optional: false,
+             optional_by_controller: false,
++            producer_cause: crate::events::cause::EventCause::from_effect(source,controller),
+         }
+     }
+ 
+@@ -1356,6 +1383,7 @@
+             ability_origin: None,
+             optional: false,
+             optional_by_controller: false,
++            producer_cause: crate::events::cause::EventCause::from_effect(source,controller),
+         }
+     }
+ 
+@@ -1481,6 +1509,7 @@
+             ability_origin: self.ability_origin.clone(),
+             optional: false,
+             optional_by_controller: false,
++            producer_cause: self.producer_cause.clone(),
+         })
+     }
+ 
+--- a/crates/ironsmith-engine/src/replacement_ability_processor.rs
++++ b/crates/ironsmith-engine/src/replacement_ability_processor.rs
+@@ -131,7 +131,7 @@
+                 if let Some(effect) =
+                     static_ability.generate_replacement_effect(object_id, controller)
+                 {
+-                    effects.push(effect.with_ability_origin(origin.clone(), face, 0));
++                    effects.push(effect.with_ability_origin(origin.clone(), face, 0).with_producer_designations(ability.designations.clone()));
+                 }
+                 // Ability-grant instructions are not replacement sources.
+                 // Existing recipients are scanned through calculated abilities;
+--- a/crates/ironsmith-engine/src/static_abilities/misc/replacements_and_rules.rs
++++ b/crates/ironsmith-engine/src/static_abilities/misc/replacements_and_rules.rs
+@@ -5513,9 +5513,33 @@
+     fn id(&self)->StaticAbilityId{StaticAbilityId::CounterKindReplacement}
+     fn display(&self)->String{self.display.clone()}
+     fn generate_replacement_effect(&self,source:ObjectId,controller:PlayerId)->Option<ReplacementEffect>{
+-        Some(ReplacementEffect::with_matcher(source,controller,WouldPutCountersOrEnterWithCountersMatcher{
+-            ability_source:source,controller,filter:self.filter.clone(),player_filter:None,counter_type:None,
+-            actor:None,includes_permanents:false,effect_only:false,cause_filter:Some(self.cause.clone()),
+-        },ReplacementAction::RewriteCounterKinds{kinds:self.kinds.clone(),selected:None}))
+-    }
+-}
++        Some(ReplacementEffect::with_matcher(source,controller,CounterKindProducerMatcher{
++            source,controller,filter:self.filter.clone(),cause:self.cause.clone(),
++        },ReplacementAction::RewriteCounterKinds{kinds:self.kinds.clone(),cause:self.cause.clone(),selected:None}))
++    }
++}
++
++#[derive(Debug,Clone)]
++struct CounterKindProducerMatcher{source:ObjectId,controller:PlayerId,filter:ObjectFilter,cause:crate::events::cause::CauseFilter}
++impl ReplacementMatcher for CounterKindProducerMatcher {
++ fn applies_from_entering_source(&self)->bool{self.filter.source}
++ fn matches_prepared_event(&self,event:&dyn crate::events::traits::GameEventType,ctx:&crate::events::context::PreparedEventContext)->bool{
++  use crate::events::cause::CauseFilterRuntimeExt as _;
++  if let Some(placement)=downcast_event::<crate::events::PutCountersEvent>(event){
++   if placement.count==0{return false;}
++   // Missing effect producer facts are a possible match, not a false one;
++   // the fallible admission boundary reports incomplete after recipient scope.
++   let unknown=placement.cause.cause_type.is_effect_like()&&(placement.cause.source.is_none()||placement.cause.source_controller.is_none());
++   return WouldPutCountersOrEnterWithCountersMatcher{ability_source:self.source,controller:self.controller,filter:self.filter.clone(),player_filter:None,counter_type:None,actor:None,includes_permanents:false,effect_only:false,cause_filter:if unknown{None}else{Some(self.cause.clone())}}.matches_prepared_event(event,ctx);
++  }
++  let Some(entry)=downcast_event::<EnterBattlefieldEvent>(event)else{return false};
++  if (entry.object==self.source&&!self.filter.source)||entry.prepared_choices.is_none(){return false;}
++  let Some(world)=ctx.prospective_entry_world(entry.object)else{return false};
++  // CR614.17c: an ordinary replacement cannot rescue a prohibited placement.
++  if !entry.enters_with_counters.iter().any(|(kind,count)|*count>0&&world.can_have_counter_type_placed(entry.object,*kind)){return false;}
++  (entry.validate_counter_producer_receipts().is_err()||entry.counter_producer_receipts.iter().any(|receipt|receipt.count>0&&world.can_have_counter_type_placed(entry.object,receipt.kind)&&self.cause.matches(&receipt.cause,ctx.game,self.controller)))
++   &&crate::events::zones::matchers::WouldEnterBattlefieldMatcher::new(self.filter.clone()).matches_prepared_event(event,ctx)
++ }
++ fn priority(&self)->ReplacementPriority{ReplacementPriority::Other}
++ fn display(&self)->String{"cause-scoped counter-kind replacement".into()}
++}

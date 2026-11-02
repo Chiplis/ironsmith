@@ -554,6 +554,7 @@ fn non_named_token<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 
 fn token_name_boundary<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
+        primitives::token_kind(TokenKind::Period).void(),
         (primitives::comma(), primitives::kw("where")).void(),
         primitives::kw("where").void(),
         primitives::kw("with").void(),
@@ -578,7 +579,13 @@ fn parse_named_token_clause(input: &mut LexStream<'_>) -> WResult<NamedTokenClau
     let marker_start = initial_len.saturating_sub(input.len());
     primitives::kw("named").parse_next(input)?;
     let name_start = initial_len.saturating_sub(input.len());
-    repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(token_name_boundary))
+    // A terminal statement period is outside the name operand. Quoted
+    // names own their complete interior, including periods and boundary words.
+    repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        alt((quoted_token_group, any.void())),
+        peek(token_name_boundary),
+    )
         .void()
         .parse_next(input)?;
     let name_end = initial_len.saturating_sub(input.len());

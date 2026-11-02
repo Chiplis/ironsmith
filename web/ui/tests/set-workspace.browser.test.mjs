@@ -48,6 +48,19 @@ test('set cards and mechanics can be revised and persisted independently of the 
     assert.equal(await page.getByRole('button', { name: /Set mechanics/ }).getAttribute('aria-pressed'), 'true');
     await button('Back to card').click();
     assert.equal(await page.getByLabel('Card name', { exact: true }).inputValue(), 'Unsaved set draft');
+    await page.getByRole('tab', { name: 'Subtypes', exact: true }).click();
+    await page.getByLabel('Singular', { exact: true }).fill('Emberkin');
+    await page.getByLabel('Plural', { exact: true }).fill('Emberkin');
+    await button('Add subtype').click();
+    await page.getByText('emberkin', { exact: true }).waitFor();
+    await page.screenshot({ path: 'test-results/set-workspace/subtypes.png' });
+    await page.getByRole('tab', { name: 'Mechanics', exact: true }).click();
+    await button('kindle').waitFor();
+    await page.getByRole('tab', { name: 'Card', exact: true }).click();
+    assert.equal(await page.getByLabel('Card name', { exact: true }).inputValue(), 'Unsaved set draft');
+    await button('Set subtypes').click();
+    await page.getByRole('button', { name: /Set cards/ }).click();
+    assert.equal(await page.getByLabel('Card name', { exact: true }).inputValue(), 'Unsaved set draft');
     await button('Back to set').click();
     await button('Edit Emberwake Insight').click();
     await page.getByLabel('Card name', { exact: true }).fill('Rekindled Insight');
@@ -72,6 +85,8 @@ test('set cards and mechanics can be revised and persisted independently of the 
     });
     assert.equal(library.community.sets[0].cards.length, 1);
     assert.equal(library.community.sets[0].cards[0].draft.customMechanics[0].reminder, 'Draw two cards.');
+    assert.equal(library.community.sets[0].customSubtypes[0].singular, 'emberkin');
+    assert.equal(await page.evaluate(() => localStorage.getItem('ironsmith-custom-subtypes-v1')), null);
     assert.deepEqual(library.cards, []);
     assert.deepEqual(library.mechanics, []);
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -79,6 +94,9 @@ test('set cards and mechanics can be revised and persisted independently of the 
     await page.getByRole('tab', { name: 'Sets', exact: true }).click();
     await page.getByLabel('Saved sets', { exact: true }).selectOption('0');
     await button('Edit Rekindled Insight').waitFor();
+    await page.getByRole('tab', { name: 'Subtypes', exact: true }).click();
+    await page.getByText('emberkin', { exact: true }).waitFor();
+    await page.getByRole('tab', { name: 'Card', exact: true }).click();
     await page.screenshot({ path: 'test-results/set-workspace/overview.png' });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: 'test-results/set-workspace/mobile.png' });

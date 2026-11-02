@@ -72,6 +72,8 @@ pub struct GrantPlayTaggedEffect {
     /// permission usable only while its player controls a matching
     /// permanent.
     pub while_player_controls: Option<ObjectFilter>,
+    /// A resolving effect duration: ends permanently when its player no longer controls a match.
+    pub control_duration: Option<ObjectFilter>,
     /// "If you do, it enters tapped" (Kaldring, the Rimestaff): the land
     /// played or permanent spell cast through this permission enters tapped.
     pub permanents_enter_tapped: bool,
@@ -113,6 +115,7 @@ impl GrantPlayTaggedEffect {
             during_your_turns: false,
             alternative_cost_x_is_mana_value: false,
             while_player_controls: None,
+            control_duration: None,
             permanents_enter_tapped: false,
         }
     }
@@ -328,7 +331,7 @@ impl GrantPlayTaggedEffect {
                 }
             }
             GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
-            GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
+            GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => u32::MAX,
         }
@@ -348,6 +351,10 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         ctx.last_play_permissions.clear();
+        // A rider on a control-duration permission cannot outlive that
+        // permission or authorize another independently granted cast.
+        let permission_bound_mana = self.permission_bound_mana
+            || (self.control_duration.is_some() && !self.mana_spend_mode.is_normal());
         if self.alternative_cost.as_ref().is_some_and(|cost| cost.as_all().is_none()
             || cost.as_all().is_some_and(|components| components.iter().any(|cost| cost.dynamic_mana_cost_ref().is_some()))) {
             return Err(ExecutionError::InternalError("temporary casting price requires an announced flat cost".into()));
@@ -361,7 +368,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 || game.is_phased_out(ctx.source)
             { return Ok(EffectOutcome::count(0)); }
         }
-        if self.permission_bound_mana && (self.mana_spend_mode.is_normal()
+        if permission_bound_mana && (self.mana_spend_mode.is_normal()
             || self.alternative_cost.is_some() || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
             || self.during_turns_attacked_with.is_some() || self.during_turns_cast_another_spell
             || matches!(self.duration, GrantPlayTaggedDuration::UntilSourceExilesAnother
@@ -378,11 +385,11 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         } else {
             Some(resolve_player_filter(game, &self.player, ctx)?)
         };
-        if (self.permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield)
+        if (permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield)
             && (self.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG || ctx.get_tagged_all(self.tag.as_str()).is_none())
         { return Err(ExecutionError::IncompleteEvidence("source-lifetime permission lost its exact exile antecedent".into())); }
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
-            if self.permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield { return None; }
+            if permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield { return None; }
 
             (self.tag.as_str() == "__source_exiled__").then(|| {
                 let linked = game
@@ -413,7 +420,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         // after a zone change; the characteristic filter keeps the named zone.
         let snapshots = snapshots.or_else(|| {
             (self.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
-                && !self.permission_bound_mana
+                && !permission_bound_mana
                 && self.duration != GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield)
                 .then(|| {
                     game.object(ctx.source)
@@ -453,7 +460,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             // An open-ended exile permission names this exile incarnation.
             // Leaving and later reentering exile must not revive it, and a
             // card that left before this instruction resolves gets no grant.
-            if (self.permission_bound_mana || matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
+            if (permission_bound_mana || matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
                 && (snapshot.zone != crate::zone::Zone::Exile
                     || !game.object(snapshot.object_id).is_some_and(|object|
                         object.zone == crate::zone::Zone::Exile))
@@ -507,13 +514,20 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let duration_player = self.duration_player(ctx.controller, player_id);
             let expires_end_of_turn = self.expires_end_of_turn(game, duration_player);
 
-            if !self.permission_bound_mana && !self.mana_spend_mode.is_normal() && !object_is_land {
+            if !permission_bound_mana && !self.mana_spend_mode.is_normal() && !object_is_land {
                 mana_permission_stable_ids
                     .entry(player_id)
                     .or_default()
                     .push(object_stable_id);
             }
 
+            if let Some(filter) = &self.control_duration {
+                let filter_ctx = crate::filter::FilterContext::new(player_id).with_source(ctx.source);
+                if !game.battlefield.iter().any(|id| game.object(*id).is_some_and(|object|
+                    game.controller_of(object) == player_id && !game.is_phased_out(*id) && filter.matches(object, &filter_ctx, game))) {
+                    continue;
+                }
+            }
             let source = if let Some(counter_type) = self.during_turns_counter_put_on_source {
                 GrantSource::EffectDuringTurnsCounterPutOnSource {
                     source_id: ctx.source,
@@ -535,12 +549,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     source_id: ctx.source,
                     player: player_id,
                 }
-            } else if let Some(filter) = &self.while_player_controls
+            } else if let Some(filter) = self.control_duration.as_ref().or(self.while_player_controls.as_ref())
                 && self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
             {
                 // "... if you control a Wizard": the player is fixed now;
                 // what they control is read whenever the permission is used.
                 GrantSource::EffectWhilePlayerControls {
+                    expires_when_false: self.control_duration.is_some(),
                     source_id: ctx.source,
                     player: player_id,
                     filter: filter.clone(),
@@ -605,7 +620,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 lands_enter_tapped: self.lands_enter_tapped,
                 top_card_only: false, instant_timing: false, may_look_at_top: false,
                 requires_cast_receipt: false,
-                cast_mana_spend_mode: if self.permission_bound_mana { self.mana_spend_mode } else { ironsmith_core::value_model::ManaSpendMode::Normal },
+                cast_mana_spend_mode: if permission_bound_mana { self.mana_spend_mode } else { ironsmith_core::value_model::ManaSpendMode::Normal },
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {
                 *shared_usage_by_player.entry(player_id).or_insert_with(|| {
@@ -671,8 +686,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             }
             if let Some(shared_usage_id) = shared_usage_id {
                 let target_stable_id = ((constraints != PlayFromConstraints::default()
-                    && !self.permission_bound_mana
-                    && !matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
+                    && !permission_bound_mana
+                    && !matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
                     || self.during_turns_counter_put_on_source.is_some()
                     || self.during_turns_attacked_with.is_some()
                     || self.during_turns_cast_another_spell)
@@ -689,7 +704,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                         shared_usage_id,
                     );
             } else if constraints != PlayFromConstraints::default() {
-                if self.permission_bound_mana || matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
+                if permission_bound_mana || matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
                     game.effect_store.grant_registry.grant_play_from_to_card(
                         object_id,
                         object_zone,
@@ -709,7 +724,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                             source,
                         );
                 }
-            } else if matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
+            } else if matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
                 game.effect_store.grant_registry.grant_to_card(
                     object_id,
                     object_zone,
@@ -748,6 +763,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             granted += 1;
         }
 
+        if self.duration == GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled {
+            // Existing registry queries enforce this exact grant's start turn,
+            // including ordinary/exact selection and hidden exile admission.
+            for grant in &mut game.effect_store.grant_registry.grants[first_grant..] {
+                grant.available_starting_turn = Some(game.turn.turn_number.saturating_add(1));
+            }
+        }
         if self.permanents_enter_tapped {
             // "If you do, it enters tapped": the land played through this
             // permission enters tapped, and so does the permanent a spell

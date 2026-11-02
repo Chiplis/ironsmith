@@ -305,6 +305,10 @@ pub(crate) fn replacement_effect_choice_description(
     effect: &ReplacementEffect,
 ) -> String {
     match &effect.replacement {
+        ReplacementAction::Instead(effects) if effects.len() == 1 => {
+            effects[0].0.replacement_choice_description()
+                .unwrap_or_else(|| replacement_option_description(game, effect.source))
+        }
         ReplacementAction::DiscardWithMadness => {
             "Exile this discarded card with Madness".to_string()
         }
@@ -1002,10 +1006,7 @@ fn process_event_direct_inner(
                 match result {
                     TraitApplyResult::Modified(modified_event)
                         if state.yield_after_etb_replacement
-                            && crate::events::downcast_event::<
-                                crate::events::EnterBattlefieldEvent,
-                            >(modified_event.inner())
-                            .is_some() =>
+                            && is_native_entry_continuation_event(&modified_event) =>
                     {
                         TraitEventResult::Modified(modified_event)
                     }
@@ -1104,10 +1105,7 @@ fn process_event_direct_inner(
         return Ok(match result {
             TraitApplyResult::Modified(modified_event)
                 if state.yield_after_etb_replacement
-                    && crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
-                        modified_event.inner(),
-                    )
-                    .is_some() =>
+                    && is_native_entry_continuation_event(&modified_event) =>
             {
                 TraitEventResult::Modified(modified_event)
             }
@@ -1319,9 +1317,9 @@ fn continue_interactive_replacement(
     if let Some(filter) = filter
         && redirect_zone == Zone::Battlefield
     {
-        return Ok(handle_reveal_card_or_enter_tapped(
-            game, response, object_id, controller, filter, provenance,
-        ));
+        return handle_reveal_card_or_enter_tapped(
+            game, response, object_id, controller, filter, provenance, decision_maker,
+        );
     }
 
     // Handle discard-or-redirect (Mox Diamond pattern)
@@ -1537,12 +1535,13 @@ fn handle_reveal_card_or_enter_tapped(
     controller: crate::ids::PlayerId,
     filter: &crate::target::ObjectFilter,
     provenance: crate::provenance::ProvNodeId,
-) -> InteractiveReplacementResult {
+    decisions: &mut dyn DecisionMaker,
+) -> Result<InteractiveReplacementResult, crate::effects::ExecutionError> {
     let InteractiveReplacementResponse::Objects(cards) = response else {
-        return InteractiveReplacementResult::enters_tapped();
+        return Ok(InteractiveReplacementResult::enters_tapped());
     };
     let Some(&card_id) = cards.first() else {
-        return InteractiveReplacementResult::enters_tapped();
+        return Ok(InteractiveReplacementResult::enters_tapped());
     };
     // A hidden hand card was opened on every peer before this answer
     // replayed; the claim is checked like any other.
@@ -1554,7 +1553,7 @@ fn handle_reveal_card_or_enter_tapped(
     );
     let matching_cards = find_matching_cards_in_hand(game, controller, filter);
     if !matching_cards.contains(&card_id) {
-        return InteractiveReplacementResult::enters_tapped();
+        return Ok(InteractiveReplacementResult::enters_tapped());
     }
     game.mark_hidden_cards_publicly_revealed(&[card_id]);
     let snapshot = game
@@ -1570,8 +1569,10 @@ fn handle_reveal_card_or_enter_tapped(
         None,
         provenance,
     );
+    crate::effects::cards::process_public_reveal_action_offers(game, &revealed, decisions)?;
+    if decisions.awaiting_choice() { return Ok(InteractiveReplacementResult::enters_battlefield()); }
     game.queue_trigger_event(provenance, revealed);
-    InteractiveReplacementResult::enters_battlefield()
+    Ok(InteractiveReplacementResult::enters_battlefield())
 }
 
 /// Handle a pay-life-or-enter-tapped interactive replacement.
@@ -2785,11 +2786,17 @@ fn trait_effect_matches_event(
     // to another permanent or player": redirection replacements don't apply.
     if matches!(
         effect.replacement,
-        ReplacementAction::Redirect { .. } | ReplacementAction::RedirectDamageAmount { .. }
+        ReplacementAction::Redirect { .. } | ReplacementAction::RedirectDamageAmount { .. } | ReplacementAction::RedirectExcessDamage { .. }
     ) && let Some(damage) =
         crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
         && (!game.can_redirect_damage_to(damage.target)
             || !game.can_redirect_damage_from_to(damage.source, damage.target, damage.is_combat))
+    {
+        return Ok(None);
+    }
+
+    if matches!(effect.replacement, ReplacementAction::RedirectExcessDamage { .. })
+        && application::excess_redirect_amount(game, event) == 0
     {
         return Ok(None);
     }
@@ -2871,7 +2878,8 @@ fn trait_effect_matches_event(
                 crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
             {
                 retained.objects = vec![entry.object];
-                retained.from = entry.from;
+                let Some(from) = entry.from else { return Ok(None); };
+                retained.from = from;
                 retained.to = Zone::Battlefield;
             } else if let Some(change) =
                 crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event.inner())
@@ -4567,6 +4575,9 @@ impl std::fmt::Debug for ZoneDrawContinuations {
 /// consumes this record; it must not reconstruct an entry from `final_zone`.
 #[derive(Debug, Clone)]
 pub struct PreparedZoneChange {
+    /// Unpublished hand permissions belong to this exact prepared original,
+    /// not to a global object-id slot during tentative replacement matching.
+    pub(crate) hand_reveal_frame:Option<crate::effects::HandRevealFrame>,
     pub(crate) final_zone: Zone,
     pub(crate) entry: Option<crate::game_state::PreparedEtbEntry>,
     pub(crate) context: ReplacementEventContext,
@@ -4712,6 +4723,9 @@ pub(crate) fn commit_prepared_zone_change_with_outputs(
     let checkpoint = game.clone();
     let mut published_outputs = Vec::new();
     let result = (|| -> Result<PreparedEventOutcome<ObjectId>, crate::effects::ExecutionError> {
+        if let Some(frame)=prepared.hand_reveal_frame {
+            game.effect_store.departure_hand_reveal_frames.insert(object,frame);
+        }
         if let Some(entry) = prepared.entry {
             let committed = game.commit_prepared_etb_with_cause_and_options_and_dm(
                 object, entry, None, cause, true, dm,
@@ -4756,6 +4770,7 @@ pub(crate) fn commit_prepared_zone_change_with_outputs(
             }))
         }
     })();
+    game.effect_store.departure_hand_reveal_frames.remove(&object);
     if result.is_err() || dm.awaiting_choice() {
         game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
     }
@@ -5046,6 +5061,7 @@ fn complete_zone_entry_proposal(
     entry.zone_entry_lookback = Some(pre_event_lookback.clone());
     Ok(PreparedEventOutcome {
         original: EventOutcome::Proceed(PreparedZoneChange {
+            hand_reveal_frame:None,
             final_zone,
             entry: Some(entry),
             context,
@@ -5069,6 +5085,9 @@ fn prepare_zone_change_with_context_inner(
     inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
     mut draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<PreparedEventOutcome<PreparedZoneProposal>, crate::effects::ExecutionError> {
+    if game.is_originless_card_entry_pending(object) {
+        return Ok(PreparedEventOutcome::pure(EventOutcome::NotApplicable));
+    }
     use crate::effects::{ExecutionContext, ExecutionError};
     use crate::events::{ZoneChangeEvent, downcast_event};
     if !game
@@ -5076,6 +5095,9 @@ fn prepare_zone_change_with_context_inner(
         .is_some_and(|object| object.zone == from)
     {
         return Ok(PreparedEventOutcome::pure(EventOutcome::NotApplicable));
+    }
+    if game.zone_move_is_prohibited(object, to) {
+        return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
     }
     // Ordinary same-zone instructions do not create a movement or an entry.
     // Exile and command renew identity even without changing zones (400.8/400.10).
@@ -5266,8 +5288,12 @@ fn prepare_zone_change_with_context_inner(
                     game.prepare_merged_component_destinations(object, final_zone, dm);
                 }
                 game.prepare_merged_sticker_component(object, final_zone, dm);
+                let hand_reveal_frame=if !game.action_observations_suppressed() && change.from==Zone::Battlefield && final_zone!=Zone::Battlefield {
+                    Some(crate::effects::freeze_hand_reveal_frame(game,&context.event.0)?)
+                } else {None};
                 Ok(EventOutcome::Proceed(PreparedZoneProposal::Ready(
                     PreparedZoneChange {
+                        hand_reveal_frame,
                         final_zone,
                         entry: None,
                         context,
@@ -7845,6 +7871,12 @@ fn apply_trait_replacement_retaining_damage_branches(
     Ok(result)
 }
 
+fn is_native_entry_continuation_event(event: &Event) -> bool {
+    crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner()).is_some()
+        || crate::events::downcast_event::<crate::events::CreateCardsEvent>(event.inner())
+            .is_some_and(|creation| creation.selection_finalized)
+}
+
 /// An entry an interactive replacement redirected ("If you don't, put it into
 /// its owner's graveyard") is a new zone-change event. Other replacements still
 /// apply to it (CR 614.6, 616.1f), so the entry driver reconsiders it rather
@@ -7857,10 +7889,16 @@ fn interactive_redirect_event(
     controller: PlayerId,
     to: Zone,
 ) -> Option<Event> {
+    if let Some(entry) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(current_event.inner())
+        && let Some(mut creation) = entry.creation.clone()
+    {
+        creation.amount = 1; creation.zone = to; creation.selection_finalized = true;
+        return Some(current_event.rewrap(creation));
+    }
     let from = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
         current_event.inner(),
     )
-    .map(|etb| etb.from)
+    .and_then(|etb| etb.from)
     .or_else(|| {
         state
             .zone_change_context
@@ -8092,6 +8130,7 @@ pub struct EtbEventResult {
     pub(crate) completed_program_outputs: Vec<crate::effects::PublishedEffectOutputs>,
     /// Whether the permanent enters tapped
     pub enters_tapped: bool,
+    pub enters_face_down: bool,
     /// Counters the permanent enters with (counter_type, count)
     pub enters_with_counters: Vec<(CounterType, u32)>,
     /// Objects exiled and linked to the entering permanent by an as-enters choice.
@@ -10177,6 +10216,21 @@ pub(crate) fn process_etb_with_event_and_dm_with_initial_counters_and_controller
 /// Prepare one member of a simultaneous ETB event without committing its zone
 /// change. Reserved objects are already changing zones in this event (or were
 /// selected by another entry replacement) and cannot be selected again.
+pub(crate) fn process_originless_card_entry_with_dm(
+    game: &mut GameState, object: ObjectId,
+    mut creation: crate::events::CreateCardsEvent, dm: &mut dyn DecisionMaker,
+) -> Result<EtbEventResult, crate::effects::ExecutionError> {
+    creation.amount = 1;
+    let checkpoint = game.clone();
+    let player = creation.player;
+    let result = prepare_etb_replacements_inner(
+        game, object, None, dm, Vec::new(), false, Some(player),
+        &std::collections::HashSet::new(), None, &[], &[], None, Some(creation),
+    );
+    if result.is_err() || dm.awaiting_choice() { *game = checkpoint; }
+    result
+}
+
 pub(crate) fn process_etb_batch_proposal_with_initial_counters(
     game: &mut GameState,
     object: crate::ids::ObjectId,
@@ -10258,7 +10312,7 @@ pub(crate) fn process_etb_batch_proposal_with_scope_and_draws(
     let result = prepare_etb_replacements_inner(
         game,
         object,
-        from,
+        Some(from),
         dm,
         counters,
         tapped,
@@ -10268,6 +10322,7 @@ pub(crate) fn process_etb_batch_proposal_with_scope_and_draws(
         &additional,
         original_source_faces,
         draws,
+        None,
     );
     if result.is_err() || dm.awaiting_choice() {
         *game = checkpoint;
@@ -10338,7 +10393,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
     let result = prepare_etb_replacements_inner(
         game,
         object,
-        from,
+        Some(from),
         dm,
         initial_enters_with_counters,
         initial_enters_tapped,
@@ -10347,6 +10402,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         Some(scope),
         &[],
         &[],
+        None,
         None,
     );
     if result.is_err() {
@@ -10418,7 +10474,7 @@ fn process_etb_from_zone_change_context_with_options_and_draws(
     let result = prepare_etb_replacements_inner(
         game,
         change.objects[0],
-        change.from,
+        Some(change.from),
         dm,
         initial_counters,
         false,
@@ -10428,6 +10484,7 @@ fn process_etb_from_zone_change_context_with_options_and_draws(
         additional_effects,
         &[],
         draws,
+        None,
     );
     if result.is_err() || dm.awaiting_choice() {
         *game = checkpoint;
@@ -10517,7 +10574,7 @@ fn restore_source_presentations_for_replaced_entry(
 fn prepare_etb_replacements_inner(
     game: &mut GameState,
     object: crate::ids::ObjectId,
-    from: Zone,
+    from: Option<Zone>,
     dm: &mut dyn DecisionMaker,
     initial_enters_with_counters: Vec<(CounterType, u32)>,
     initial_enters_tapped: bool,
@@ -10527,9 +10584,13 @@ fn prepare_etb_replacements_inner(
     zone_additional_effects: &[ReplacementEffect],
     original_source_faces: &[crate::object::Object],
     mut draws: Option<&mut ZoneDrawContinuations>,
+    creation: Option<crate::events::CreateCardsEvent>,
 ) -> Result<EtbEventResult, crate::effects::ExecutionError> {
     use crate::ability::AbilityKind;
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
+    if game.zone_move_is_prohibited(object, Zone::Battlefield) {
+        return Ok(EtbEventResult { prevented: true, ..Default::default() });
+    }
     let mut deferred_programs = Vec::new();
     let mut completed_program_outputs = Vec::new();
     let outcome = (|| -> Result<EtbEventResult, crate::effects::ExecutionError> {
@@ -10696,7 +10757,9 @@ fn prepare_etb_replacements_inner(
                 completed_snapshot: None,
                 emerge_sacrifice: None,
                 from,
+                creation: creation.clone(),
                 enters_tapped,
+                enters_face_down: false,
                 enters_with_counters,
                 linked_exile_with_entering: Vec::new(),
                 enters_as_copy_of: None,
@@ -10737,6 +10800,13 @@ fn prepare_etb_replacements_inner(
         let mut prepared_ability_ids = std::collections::HashMap::new();
 
         loop {
+            if let Some(redirected) = downcast_event::<crate::events::CreateCardsEvent>(current_event.inner()) {
+                if !redirected.selection_finalized || redirected.amount != 1 {
+                    return Err(crate::effects::ExecutionError::IncompleteEvidence("originless entry redirect lost its finalized single-card descriptor".into()));
+                }
+                return Ok(EtbEventResult { prevented: true, new_destination: Some(redirected.zone), ..Default::default() });
+            }
+
             if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner()) {
                 reserved_objects.extend(etb.linked_exile_with_entering.iter().copied());
                 if etb.copy_duration.is_some()
@@ -10791,6 +10861,8 @@ fn prepare_etb_replacements_inner(
                 for (kind, count) in choices.as_enters_counters.drain(..) {
                     resumed = resumed.with_counters(kind, count);
                 }
+                resumed.program_choices.as_enters_designations.append(&mut choices.as_enters_designations);
+                resumed.program_choices.as_enters_named_actions.append(&mut choices.as_enters_named_actions);
                 if choices.as_enters_tapped {
                     resumed.program_choices.as_enters_tapped = true;
                     resumed.enters_tapped = true;
@@ -10831,7 +10903,7 @@ fn prepare_etb_replacements_inner(
             )?;
             let original_object_effects_still_apply =
                 downcast_event::<EnterBattlefieldEvent>(current_event.inner())
-                    .map(|etb| etb.enters_as_copy_of.is_none())
+                    .map(|etb| etb.enters_as_copy_of.is_none() && !etb.enters_face_down)
                     .unwrap_or(false);
             let copied_object_etb_effects = copied_object_etb_replacement_effects(
                 game,
@@ -10936,6 +11008,7 @@ fn prepare_etb_replacements_inner(
                                 &state,
                             ))),
                             enters_tapped: etb.enters_tapped,
+                            enters_face_down: etb.enters_face_down,
                             enters_with_counters: etb.enters_with_counters.clone(),
                             linked_exile_with_entering: etb.linked_exile_with_entering.clone(),
                             prevented: false,
@@ -11600,6 +11673,7 @@ pub fn process_zone_change_full(
     to: Zone,
     cause: crate::events::cause::EventCause,
 ) -> Result<ZoneChangeResult, crate::effects::ExecutionError> {
+    if game.is_originless_card_entry_pending(object) { return Ok(TraitEventResult::Prevented); }
     game.update_replacement_effects()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let snapshot = game
@@ -11999,6 +12073,7 @@ mod tests {
                 alice,
                 crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any(),
                 ReplacementAction::EnterWithCharacteristics {
+                    face_down: false,
                     added_card_types: vec![CardType::Creature],
                     added_subtypes: Vec::new(),
                     set_base_power_toughness: Some((2, 2)),

@@ -32,7 +32,7 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectGroupId, EffectSourceType,
     EffectTarget, Layer, Modification, PtSublayer, enforce_ability_gain_prohibitions,
-    replace_card_types_and_prune_subtypes, replace_subtypes_for_set,
+    replace_card_types_and_prune_subtypes_in_game, replace_subtypes_for_set_in_game,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilterExt;
@@ -90,6 +90,16 @@ fn effect_depends_on_with_baseline_and_started_groups(
     let bound_b = crate::continuous::bind_effect_controller_to_layer_frame(b, baseline);
     let a = bound_a.as_ref();
     let b = bound_b.as_ref();
+    // An ongoing copy reads its donor's layer-1 values. A copy that writes
+    // that donor must therefore precede it; cycles use the existing timestamp
+    // ordering of dependency-loop components (CR 613.8).
+    if let Some(donor) = a.live_copy_source
+        && b.modification.layer() == Layer::Copy
+        && let (Some(object), Some(chars)) = (objects.get(&donor), baseline.get(&donor))
+        && effect_applies_with_chars(b, object, chars, game)
+    {
+        return true;
+    }
     if source_controller_context_changes_output(a, b, baseline, objects, game) {
         return true;
     }
@@ -444,6 +454,8 @@ fn effect_output_changed(
     }
 
     if let Modification::CopyStaticAbilityVariants {
+        excluded_ability_designations,
+        copy_all,
         filter,
         selectors,
         exclude_source_id,
@@ -472,6 +484,7 @@ fn effect_output_changed(
     }
 
     if let Modification::CopyTriggeredAbilities {
+        excluded_ability_designations,
         filter,
         exclude_source_name,
         exclude_source_id,
@@ -1095,7 +1108,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::HasMoreLifeThanYou { .. }
             | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
             | PlayerFilter::ControlsMost { .. }
-            | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
+            | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
             | PlayerFilter::OpponentOf(_)
             | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. }
@@ -1367,6 +1380,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
     object: &crate::object::Object,
     game: &GameState,
 ) {
+    crate::continuous::canonicalize_subtype_associations(&mut chars.subtypes,game);
     let modification = &effect.modification;
     match modification {
         Modification::CopyOf { .. } | Modification::MergeComponent { .. } => {}
@@ -1384,20 +1398,18 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             }
         }
         Modification::RemoveCardTypes(types) => {
-            chars.card_types.retain(|t| !types.contains(t));
+            crate::continuous::remove_card_types_and_prune_subtypes_in_game(&mut chars.card_types,&mut chars.subtypes,types,game);
         }
         Modification::SetCardTypes(types) => {
-            replace_card_types_and_prune_subtypes(
+            replace_card_types_and_prune_subtypes_in_game(
                 &mut chars.card_types,
                 &mut chars.subtypes,
                 types,
-            );
+             game);
         }
         Modification::AddSubtypes(types) => {
-            for t in types {
-                if !chars.subtypes.contains(t) {
-                    chars.subtypes.push(*t);
-                }
+            for subtype in types {let subtype=game.admitted_subtype(*subtype);
+                if crate::continuous::card_types_support_subtype(&chars.card_types,subtype) {crate::continuous::merge_characteristic_subtype(&mut chars.subtypes,subtype);}
             }
         }
         Modification::RemoveSubtypes(types) => {
@@ -1407,7 +1419,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             // CR 205.1a: setting subtypes replaces the subtypes of the same
             // family (land types replace land types, creature types replace
             // creature types) and leaves the other families alone.
-            replace_subtypes_for_set(&mut chars.subtypes, types);
+            replace_subtypes_for_set_in_game(&mut chars.subtypes, types, game);
 
             // Setting a land's subtype to basic land types also replaces its
             // abilities with the corresponding intrinsic mana abilities. We
@@ -1431,11 +1443,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             chars.supertypes.retain(|t| !types.contains(t));
         }
         Modification::AddAllSubtypesOfFamily(family) => {
-            for subtype in &game.subtypes_in_family(*family) {
-                if !chars.subtypes.contains(subtype) {
-                    chars.subtypes.push(*subtype);
-                }
-            }
+            for subtype in game.subtypes_in_family(*family) {crate::continuous::merge_characteristic_subtype(&mut chars.subtypes,subtype);}
         }
         Modification::RemoveAllSubtypesOfFamily(family) => {
             chars.subtypes.retain(|t| !t.belongs_to_family(*family));
@@ -1601,6 +1609,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
             std::mem::swap(&mut chars.power, &mut chars.toughness);
         }
         Modification::RewriteText(change) => crate::continuous::text_changes::apply_text_change(chars, *change, object),
+        Modification::RemoveOptionalTextFragments(mask) => crate::continuous::optional_text_fragments::apply_removed_mask(chars,*mask,object),
         Modification::ChangeText { .. }
         | Modification::SetTextBox(_)
         | Modification::SetName(_)
@@ -1731,6 +1740,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
         | Value::KicksPaidOf(_)
+        | Value::TimesPaidLabelOf { .. }
         | Value::ModeSelectionsOf(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::ColorsOfManaSpentToCastTriggeringObject
@@ -1806,6 +1816,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::KickCount
         | Value::PlayerCounters(_, _)
         | Value::CountersOnSource(_)
+        | Value::NamedActionCount {..}
         | Value::CountersOn(_, _)
         | Value::CountersOnFilterCandidate(_)
         | Value::WasPaid(_)
@@ -1901,6 +1912,7 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
                 Modification::ChangeText { .. }
                     | Modification::RewriteText(_)
                     | Modification::SetTextBox(_)
+                    | Modification::RemoveOptionalTextFragments(_)
                     | Modification::SetName(_)
                     | Modification::InsertNameWords { .. }
             )
@@ -2150,6 +2162,10 @@ pub(crate) fn condition_could_be_affected_by(
                 || condition_could_be_affected_by(right, modification)
         }
 
+        C::EachCurrentDesignatedAbilityActivatedByYou { .. } =>
+            modification_can_change_abilities_or_matching_characteristics(modification)
+                || modification.layer() == Layer::Control,
+
         // Object-inspecting conditions expressed through a filter.
         C::YouControl(filter)
         | C::OpponentControls(filter)
@@ -2233,10 +2249,12 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerIsYou { .. }
         | C::PlayerHasInitiative { .. }
         | C::PlayerHasCitysBlessing { .. }
+        | C::PlayerNamedActionHistory { .. } | C::PlayerHasDesignation { .. }
         | C::PlayerHasEnduringStory { .. }
         | C::SourceIsRingBearer { .. }
         | C::YouChoseAnotherRingBearer
         | C::CombatParticipant(_)
+        | C::PlayerSpentManaToCastSpellsThisTurnAtLeast { .. }
         | C::PlayerRingTemptedThisGameOrMore { .. }
         | C::PlayerCommittedCrimeThisTurn { .. }
         | C::PlayerRolledResultThisTurn { .. }
@@ -2300,10 +2318,12 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringSpellColoredManaSpentToCastAtLeast(_)
         | C::TriggeringSpellWasKicked
         | C::ItIsNight
+        | C::InEndingPhase
         | C::FirstCombatPhaseOfTurn
         | C::FirstEndStepOfTurn
         | C::FirstUpkeepStepOfTurn
         | C::SecondMainPhaseOfTurn
+        | C::FirstMainPhaseOfTurn
         | C::SourceControllersMainPhase
         | C::SourceControllersCombatPhase
         | C::SourceControllersEndStep
@@ -2352,6 +2372,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TriggeringObjectBecameTappedFirstTimeThisTurn
         | C::TriggeringObjectTappedForAttack
         | C::TriggeringObjectWasSacrificed
+        | C::TriggeringNamedActionPaidMana {..}
         | C::TriggeringKeywordActionIs(_)
         | C::YouCycledCardNamedThisGameAtLeast { .. }
         | C::YouCastSpellNamedThisGameAtLeast { .. }
@@ -2502,6 +2523,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
         | Value::KicksPaidOf(_)
+        | Value::TimesPaidLabelOf { .. }
         | Value::ModeSelectionsOf(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::ColorsOfManaSpentToCastTriggeringObject
@@ -2516,6 +2538,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::KickCount
         | Value::PlayerCounters(_, _)
         | Value::CountersOnSource(_)
+        | Value::NamedActionCount {..}
         | Value::CountersOn(_, _)
         | Value::CountersOnFilterCandidate(_)
         | Value::WasPaid(_)
@@ -2659,6 +2682,7 @@ fn modification_can_change_static_ability_presence(modification: &Modification) 
         modification,
         Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::SetTextBox(_)
+                    | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetSubtypes(_)
             | Modification::SetAbilities(_)
             | Modification::AddAbility(_)
@@ -2732,6 +2756,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
         Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeController(_) | Modification::ChangeControllerToEffectController
             | Modification::SetTextBox(_)
+                    | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }
             | Modification::AddCardTypes(_)
@@ -2805,7 +2830,8 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                 filter_uses_ability_characteristics(filter)
                     || (change.changes_type_words() && filter_uses_type_characteristics(filter))
             }
-            Modification::ChangeText { .. } | Modification::SetTextBox(_) => {
+            Modification::ChangeText { .. } | Modification::SetTextBox(_)
+                    | Modification::RemoveOptionalTextFragments(_) => {
                 filter_uses_ability_characteristics(filter)
             }
             Modification::SetName(_) | Modification::InsertNameWords { .. } => {
@@ -2815,6 +2841,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.nameless
                     || filter.distinct_names
                     || filter.shares_name
+                    || filter.shares_name_with_named_action_objects.is_some() || filter.name_noted_for.is_some()
                     || filter.tagged_constraints.iter().any(|constraint| matches!(
                         constraint.relation,
                         crate::filter::TaggedOpbjectRelation::SameNameAsTagged
@@ -3504,6 +3531,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         }
     }
 
@@ -3511,6 +3539,7 @@ mod tests {
     fn exiled_ability_donors_are_independent_of_battlefield_ability_grants() {
         let game = GameState::new(vec!["Alice".into()], 20);
         let mut copy = create_test_effect(1, 1, Modification::CopyActivatedAbilities {
+            excluded_ability_designations: Vec::new(),
             filter: ObjectFilter::default().in_zone(crate::zone::Zone::Exile),
             counter: None, include_mana: true, only_loyalty: false,
             exclude_source_name: false, exclude_source_id: false, force_once_each_turn: false,
@@ -3614,6 +3643,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         };
 
         let b = ContinuousEffect {
@@ -3632,6 +3662,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         };
 
         let card = CardBuilder::new(CardId(1), "Test Artifact")
@@ -3755,6 +3786,7 @@ mod tests {
             controller: PlayerId::from_index(0),
             applies_to: EffectTarget::Source,
             modification: Modification::CopyActivatedAbilities {
+                excluded_ability_designations: Vec::new(),
                 filter: ObjectFilter::land(),
                 counter: None,
                 include_mana: true,
@@ -3774,6 +3806,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         };
 
         let granted_ability = Ability::activated(
@@ -3798,6 +3831,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         };
 
         assert!(effect_depends_on_with_baseline_and_started_groups(
@@ -3845,6 +3879,7 @@ mod tests {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -3892,6 +3927,7 @@ mod tests {
             controller: PlayerId::from_index(0),
             applies_to: EffectTarget::Source,
             modification: Modification::CopyActivatedAbilities {
+                excluded_ability_designations: Vec::new(),
                 filter: ObjectFilter::land(),
                 counter: None,
                 include_mana: true,
@@ -3911,6 +3947,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         };
 
         let remove_effect = ContinuousEffect {
@@ -3929,6 +3966,7 @@ mod tests {
             originating_ability: None,
             linked_exile_self_grant_owner: None,
             registration_id: None,
+            live_copy_source: None,
         };
 
         assert!(effect_depends_on_with_baseline_and_started_groups(
@@ -4812,6 +4850,7 @@ mod tests {
             1,
             10,
             Modification::CopyTriggeredAbilities {
+                excluded_ability_designations: Vec::new(),
                 filter: ObjectFilter::creature(),
                 exclude_source_name: false,
                 exclude_source_id: true,

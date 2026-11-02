@@ -1,0 +1,2077 @@
+{
+  "schema_version": 1,
+  "description": "All26 exact rule-matched Bless source cards, with all linked faces and explicit typed player/object declaration variants. Native verification pending.",
+  "mechanics": [
+    {
+      "id": "rev-bless-015",
+      "keyword": "Bless",
+      "scope": "revolution",
+      "rule_reference": "701.75.",
+      "rule_text": {
+        "name": "701.75.",
+        "rule": "Bless",
+        "subrules": [
+          {
+            "name": "701.75a",
+            "rule": "Bless is a keyword action. “You may bless [an object]” means “If this object's back face is a Blessing, create a token that's a copy of its back face and attach it to [object].”",
+            "custom": true
+          },
+          {
+            "name": "701.75b",
+            "rule": "If the back face of the object performing the bless object is not a Blessing, nothing will occur.\r\nExample Bringer of Heliod’s Light says “When Bringer of Heliod’s Light enters, you may bless target creature.” If a non-double-faced permanent enters the battlefield as a copy of it, the ability will trigger, but no token will be created.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Archon of Condemnation//Confine to Eternity",
+          "Basilo, Lion of Valor//The Lion's Charisma",
+          "Bringer of Heliod's Light//Blinded by Divinity",
+          "Callaphe the Mariner//Blessing of the Sea",
+          "Caller of Ferocity//Ferocity of Nature",
+          "Canopy of the Winter Nexus",
+          "Charging Brightmare//Blessings of the Flock",
+          "Charming Siren//Left to the Sea",
+          "Chosen of Heliod//Heliod's Glory",
+          "Dakran Shipcrusher//Depths of the Sea",
+          "Daybreak Rider//The Sun's Blessing",
+          "Furies of the Natural Order//Tether to Reality",
+          "Kynaios, Blade-Bound",
+          "Lykaretos, Harvest's Bounty//The Miraculous Field",
+          "Mogis's Raider//Raider's Blessing",
+          "Oracle of Zakros//Ocular Insight",
+          "Pharika's Harbinger//Poison in the Blood",
+          "Pyros Rider//Consuming Flames",
+          "Reaper of Fields//Fields of Ilysia",
+          "Secluded Gorgon//Glare of the Gorgon",
+          "Seeker of New Horizons//Ilysian Guardian",
+          "Seismic Chimera//Tectonic Rage",
+          "Spikemane Lion//Spikemane Cloak",
+          "Star-Studded Sagittaur//Equinox Mark",
+          "Wolf-Whistle Satyr//Fable of Tooth and Fur",
+          "Zygos, Edge of the Bull//Blessing of Slaughter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Create a token copy of this creature's blessing attached to that permanent.",
+      "executable_reminder": "If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to {Object}.",
+      "semantic_equivalence": {
+        "status": "pending_native_verification",
+        "evidence": "Generic conditional physical back-face copy and exact object attachment; complete fronts/backs retained. Reference-only sources preserve their complete original rules and do not gain Bless ability."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Archon of Condemnation//Confine to Eternity_TRX",
+          "name": "Archon of Condemnation",
+          "source_card_key": "Archon of Condemnation//Confine to Eternity_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Type: Creature — Archon \nMana cost: {3}{W}{B}\nPower/Toughness: 4/4\nFlying\nWhen Archon of Condemnation enters, you may bless target creature.\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "name": "Archon of Condemnation",
+              "original_text": "Type: Creature — Archon \nMana cost: {3}{W}{B}\nPower/Toughness: 4/4\nFlying\nWhen Archon of Condemnation enters, you may bless target creature.\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "name": "Confine to Eternity",
+              "original_text": "Type: Enchantment — Aura Blessing \nMana cost: {1}{W}{B}\n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated unless they're mana abilities.\nEnchanted creature has “At the beginning of your upkeep, you lose 1 life.”"
+            }
+          ],
+          "executable_text": "Type: Creature — Archon \nMana cost: {3}{W}{B}\nPower/Toughness: 4/4\nFlying\nWhen Archon of Condemnation enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Archon of Condemnation//Confine to Eternity_TRX",
+            "full_name": "Archon of Condemnation//Confine to Eternity",
+            "source_field_values": {
+              "cardName": "Archon of Condemnation",
+              "manaCost": "{3}{W}{B}",
+              "typeLine": "Creature — Archon ",
+              "rulesText": "Flying\nWhen Archon of Condemnation enters, you may bless target creature.\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "4",
+              "toughness": "4",
+              "loyalty": "",
+              "cardName2": "Confine to Eternity",
+              "manaCost2": "{1}{W}{B}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated unless they're mana abilities.\nEnchanted creature has “At the beginning of your upkeep, you lose 1 life.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Archon of Condemnation",
+              "executable_text": "Type: Creature — Archon \nMana cost: {3}{W}{B}\nPower/Toughness: 4/4\nFlying\nWhen Archon of Condemnation enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Flying\nWhen Archon of Condemnation enters, you may bless target creature.\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, bless target creature."
+            },
+            {
+              "name": "Confine to Eternity",
+              "executable_text": "Type: Enchantment — Aura Blessing \nMana cost: {1}{W}{B}\n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated unless they're mana abilities.\nEnchanted creature has “At the beginning of your upkeep, you lose 1 life.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Basilo, Lion of Valor//The Lion's Charisma_TRX",
+          "name": "Basilo, Lion of Valor",
+          "source_card_key": "Basilo, Lion of Valor//The Lion's Charisma_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nLifelink, ward {1}\nWhenever Basilo, Lion of Valor attacks, you may bless target nonenchanted creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Basilo, Lion of Valor",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nLifelink, ward {1}\nWhenever Basilo, Lion of Valor attacks, you may bless target nonenchanted creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "The Lion's Charisma",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +1/+1 for each enchantment you control."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nLifelink, ward {1}\nWhenever Basilo, Lion of Valor attacks, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target nonenchanted creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Basilo, Lion of Valor//The Lion's Charisma_TRX",
+            "full_name": "Basilo, Lion of Valor//The Lion's Charisma",
+            "source_field_values": {
+              "cardName": "Basilo, Lion of Valor",
+              "manaCost": "{1}{W}{W}",
+              "typeLine": "Legendary Creature — Human Soldier ",
+              "rulesText": "Lifelink, ward {1}\nWhenever Basilo, Lion of Valor attacks, you may bless target nonenchanted creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "The Lion's Charisma",
+              "manaCost2": "{1}{W}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +1/+1 for each enchantment you control.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Basilo, Lion of Valor",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nLifelink, ward {1}\nWhenever Basilo, Lion of Valor attacks, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target nonenchanted creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Lifelink, ward {1}\nWhenever Basilo, Lion of Valor attacks, you may bless target nonenchanted creature."
+            },
+            {
+              "name": "The Lion's Charisma",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature gets +1/+1 for each enchantment you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Bringer of Heliod's Light//Blinded by Divinity_TRX",
+          "name": "Bringer of Heliod's Light",
+          "source_card_key": "Bringer of Heliod's Light//Blinded by Divinity_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhen Bringer of Heliod's Light enters, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bringer of Heliod's Light",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhen Bringer of Heliod's Light enters, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Blinded by Divinity",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature can't attack or block."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhen Bringer of Heliod's Light enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Bringer of Heliod's Light//Blinded by Divinity_TRX",
+            "full_name": "Bringer of Heliod's Light//Blinded by Divinity",
+            "source_field_values": {
+              "cardName": "Bringer of Heliod's Light",
+              "manaCost": "{2}{W}{W}",
+              "typeLine": "Creature — Archon ",
+              "rulesText": "Flying\nWhen Bringer of Heliod's Light enters, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "1",
+              "loyalty": "",
+              "cardName2": "Blinded by Divinity",
+              "manaCost2": "{1}{W}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature can't attack or block.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Bringer of Heliod's Light",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhen Bringer of Heliod's Light enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Flying\nWhen Bringer of Heliod's Light enters, you may bless target creature."
+            },
+            {
+              "name": "Blinded by Divinity",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature can't attack or block.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Caller of Ferocity//Ferocity of Nature_TRX",
+          "name": "Caller of Ferocity",
+          "source_card_key": "Caller of Ferocity//Ferocity of Nature_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Satyr Bard \nPower/Toughness: 2/2\nWhen Caller of Ferocity enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Caller of Ferocity",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Satyr Bard \nPower/Toughness: 2/2\nWhen Caller of Ferocity enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Ferocity of Nature",
+              "original_text": "Mana cost: {G}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +1/+1 and has vigilance and trample."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Satyr Bard \nPower/Toughness: 2/2\nWhen Caller of Ferocity enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Caller of Ferocity//Ferocity of Nature_TRX",
+            "full_name": "Caller of Ferocity//Ferocity of Nature",
+            "source_field_values": {
+              "cardName": "Caller of Ferocity",
+              "manaCost": "{2}{G}",
+              "typeLine": "Creature — Satyr Bard ",
+              "rulesText": "When Caller of Ferocity enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Ferocity of Nature",
+              "manaCost2": "{G}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +1/+1 and has vigilance and trample.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Caller of Ferocity",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Satyr Bard \nPower/Toughness: 2/2\nWhen Caller of Ferocity enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "When Caller of Ferocity enters, bless target creature."
+            },
+            {
+              "name": "Ferocity of Nature",
+              "executable_text": "Mana cost: {G}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature gets +1/+1 and has vigilance and trample.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Canopy of the Winter Nexus_TRX",
+          "name": "Canopy of the Winter Nexus",
+          "source_card_key": "Canopy of the Winter Nexus_TRX",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Enchantment\nWhenever you attack, you may cast an Aura card or a Blessing from your graveyard if that spell targets an attacking creature.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Canopy of the Winter Nexus",
+              "original_text": "Mana cost: {1}{G}\nType: Enchantment\nWhenever you attack, you may cast an Aura card or a Blessing from your graveyard if that spell targets an attacking creature."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{G}\nType: Enchantment\nWhenever you attack, you may cast an Aura card or a Blessing from your graveyard if that spell targets an attacking creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Canopy of the Winter Nexus_TRX",
+            "full_name": "Canopy of the Winter Nexus",
+            "source_field_values": {
+              "cardName": "Canopy of the Winter Nexus",
+              "manaCost": "{1}{G}",
+              "typeLine": "Enchantment",
+              "rulesText": "Whenever you attack, you may cast an Aura card or a Blessing from your graveyard if that spell targets an attacking creature.",
+              "power": "",
+              "toughness": "",
+              "loyalty": "",
+              "shape": "normal"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Canopy of the Winter Nexus",
+              "executable_text": "Mana cost: {1}{G}\nType: Enchantment\nWhenever you attack, you may cast an Aura card or a Blessing from your graveyard if that spell targets an attacking creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Charging Brightmare//Blessings of the Flock_TRX",
+          "name": "Charging Brightmare",
+          "source_card_key": "Charging Brightmare//Blessings of the Flock_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\n{3}{W}, Exile Charging Brightmare from your graveyard: Bless target creature. Activate only as a sorcery. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Charging Brightmare",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\n{3}{W}, Exile Charging Brightmare from your graveyard: Bless target creature. Activate only as a sorcery. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Blessings of the Flock",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Enchantment — Aura Blessing\n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +2/+2 and has flying.\nWhenever enchanted creature dies, create a 2/2 white Pegasus creature token with flying."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\n{3}{W}, Exile Charging Brightmare from your graveyard: If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature. Activate only as a sorcery.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Charging Brightmare//Blessings of the Flock_TRX",
+            "full_name": "Charging Brightmare//Blessings of the Flock",
+            "source_field_values": {
+              "cardName": "Charging Brightmare",
+              "manaCost": "{1}{W}",
+              "typeLine": "Enchantment Creature — Unicorn",
+              "rulesText": "{3}{W}, Exile Charging Brightmare from your graveyard: Bless target creature. Activate only as a sorcery. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Blessings of the Flock",
+              "manaCost2": "{1}{W}{W}",
+              "typeLine2": "Enchantment — Aura Blessing",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +2/+2 and has flying.\nWhenever enchanted creature dies, create a 2/2 white Pegasus creature token with flying.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Charging Brightmare",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\n{3}{W}, Exile Charging Brightmare from your graveyard: If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "{3}{W}, Exile Charging Brightmare from your graveyard: Bless target creature. Activate only as a sorcery."
+            },
+            {
+              "name": "Blessings of the Flock",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Enchantment — Aura Blessing\n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature gets +2/+2 and has flying.\nWhenever enchanted creature dies, create a 2/2 white Pegasus creature token with flying.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Charming Siren//Left to the Sea_TRX",
+          "name": "Charming Siren",
+          "source_card_key": "Charming Siren//Left to the Sea_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {U}\nType: Creature — Siren Wizard\nPower/Toughness: 1/1\nFlying\nWhen Charming Siren dies, if it wasn't blocking, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Charming Siren",
+              "original_text": "Mana cost: {U}\nType: Creature — Siren Wizard\nPower/Toughness: 1/1\nFlying\nWhen Charming Siren dies, if it wasn't blocking, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Left to the Sea",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Enchantment — Aura Blessing\n*(You may also cast this side from your hand.)*\nEnchant creature\nWhen Left to the Sea enters, tap enchanted creature.\nEnchanted creature doesn't untap during its controller's untap step."
+            }
+          ],
+          "executable_text": "Mana cost: {U}\nType: Creature — Siren Wizard\nPower/Toughness: 1/1\nFlying\nWhen Charming Siren dies, if it wasn't blocking, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Charming Siren//Left to the Sea_TRX",
+            "full_name": "Charming Siren//Left to the Sea",
+            "source_field_values": {
+              "cardName": "Charming Siren",
+              "manaCost": "{U}",
+              "typeLine": "Creature — Siren Wizard",
+              "rulesText": "Flying\nWhen Charming Siren dies, if it wasn't blocking, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "1",
+              "toughness": "1",
+              "loyalty": "",
+              "cardName2": "Left to the Sea",
+              "manaCost2": "{1}{U}{U}",
+              "typeLine2": "Enchantment — Aura Blessing",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nWhen Left to the Sea enters, tap enchanted creature.\nEnchanted creature doesn't untap during its controller's untap step.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Charming Siren",
+              "executable_text": "Mana cost: {U}\nType: Creature — Siren Wizard\nPower/Toughness: 1/1\nFlying\nWhen Charming Siren dies, if it wasn't blocking, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Flying\nWhen Charming Siren dies, if it wasn't blocking, you may bless target creature."
+            },
+            {
+              "name": "Left to the Sea",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Enchantment — Aura Blessing\n(You may also cast this side from your hand.)\nEnchant creature\nWhen Left to the Sea enters, tap enchanted creature.\nEnchanted creature doesn't untap during its controller's untap step.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Chosen of Heliod//Heliod's Glory_TRX",
+          "name": "Chosen of Heliod",
+          "source_card_key": "Chosen of Heliod//Heliod's Glory_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Archer \nPower/Toughness: 3/2\nFirst strike\nWhen Chosen of Heliod enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*\n{4}{W}{W}: Bless target creature you control. Activate only as a sorcery.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chosen of Heliod",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Archer \nPower/Toughness: 3/2\nFirst strike\nWhen Chosen of Heliod enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*\n{4}{W}{W}: Bless target creature you control. Activate only as a sorcery."
+            },
+            {
+              "face": "back",
+              "name": "Heliod's Glory",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +1/+1 and has protection from creatures. *(This creature can't be blocked, targeted or dealt damage by creatures.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Archer \nPower/Toughness: 3/2\nFirst strike\nWhen Chosen of Heliod enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.\n{4}{W}{W}: If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature you control. Activate only as a sorcery.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Chosen of Heliod//Heliod's Glory_TRX",
+            "full_name": "Chosen of Heliod//Heliod's Glory",
+            "source_field_values": {
+              "cardName": "Chosen of Heliod",
+              "manaCost": "{2}{W}{W}",
+              "typeLine": "Creature — Human Archer ",
+              "rulesText": "First strike\nWhen Chosen of Heliod enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*\n{4}{W}{W}: Bless target creature you control. Activate only as a sorcery.",
+              "power": "3",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Heliod's Glory",
+              "manaCost2": "{1}{W}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets +1/+1 and has protection from creatures. *(This creature can't be blocked, targeted or dealt damage by creatures.)*",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Chosen of Heliod",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Archer \nPower/Toughness: 3/2\nFirst strike\nWhen Chosen of Heliod enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.\n{4}{W}{W}: If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature you control. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "First strike\nWhen Chosen of Heliod enters, bless target creature.\n{4}{W}{W}: Bless target creature you control. Activate only as a sorcery."
+            },
+            {
+              "name": "Heliod's Glory",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature gets +1/+1 and has protection from creatures. (This creature can't be blocked, targeted or dealt damage by creatures.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Dakran Shipcrusher//Depths of the Sea_TRX",
+          "name": "Dakran Shipcrusher",
+          "source_card_key": "Dakran Shipcrusher//Depths of the Sea_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {5}{U}{U}\nType: Creature — Crab Octopus \nPower/Toughness: 6/6\nHexproof\nWhen Dakran Shipcrusher enters, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dakran Shipcrusher",
+              "original_text": "Mana cost: {5}{U}{U}\nType: Creature — Crab Octopus \nPower/Toughness: 6/6\nHexproof\nWhen Dakran Shipcrusher enters, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Depths of the Sea",
+              "original_text": "Mana cost: {1}{U}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets -4/-0 and loses flying."
+            }
+          ],
+          "executable_text": "Mana cost: {5}{U}{U}\nType: Creature — Crab Octopus \nPower/Toughness: 6/6\nHexproof\nWhen Dakran Shipcrusher enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Dakran Shipcrusher//Depths of the Sea_TRX",
+            "full_name": "Dakran Shipcrusher//Depths of the Sea",
+            "source_field_values": {
+              "cardName": "Dakran Shipcrusher",
+              "manaCost": "{5}{U}{U}",
+              "typeLine": "Creature — Crab Octopus ",
+              "rulesText": "Hexproof\nWhen Dakran Shipcrusher enters, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "6",
+              "toughness": "6",
+              "loyalty": "",
+              "cardName2": "Depths of the Sea",
+              "manaCost2": "{1}{U}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature gets -4/-0 and loses flying.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Dakran Shipcrusher",
+              "executable_text": "Mana cost: {5}{U}{U}\nType: Creature — Crab Octopus \nPower/Toughness: 6/6\nHexproof\nWhen Dakran Shipcrusher enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Hexproof\nWhen Dakran Shipcrusher enters, you may bless target creature."
+            },
+            {
+              "name": "Depths of the Sea",
+              "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature gets -4/-0 and loses flying.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Daybreak Rider//The Sun's Blessing_TRX",
+          "name": "Daybreak Rider",
+          "source_card_key": "Daybreak Rider//The Sun's Blessing_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Archon \nPower/Toughness: 3/3\nFlying\nWhen Daybreak Rider enters, you may bless another target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Daybreak Rider",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Archon \nPower/Toughness: 3/3\nFlying\nWhen Daybreak Rider enters, you may bless another target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "The Sun's Blessing",
+              "original_text": "Mana cost: {2}{W}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nFlash\nEnchant creature\nEnchanted creature gets +2/+2."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Archon \nPower/Toughness: 3/3\nFlying\nWhen Daybreak Rider enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to another target creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Daybreak Rider//The Sun's Blessing_TRX",
+            "full_name": "Daybreak Rider//The Sun's Blessing",
+            "source_field_values": {
+              "cardName": "Daybreak Rider",
+              "manaCost": "{4}{W}",
+              "typeLine": "Creature — Archon ",
+              "rulesText": "Flying\nWhen Daybreak Rider enters, you may bless another target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "3",
+              "loyalty": "",
+              "cardName2": "The Sun's Blessing",
+              "manaCost2": "{2}{W}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nFlash\nEnchant creature\nEnchanted creature gets +2/+2.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Daybreak Rider",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Archon \nPower/Toughness: 3/3\nFlying\nWhen Daybreak Rider enters, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to another target creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Flying\nWhen Daybreak Rider enters, you may bless another target creature."
+            },
+            {
+              "name": "The Sun's Blessing",
+              "executable_text": "Mana cost: {2}{W}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nFlash\nEnchant creature\nEnchanted creature gets +2/+2.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Kynaios, Blade-Bound_TRX",
+          "name": "Kynaios, Blade-Bound",
+          "source_card_key": "Kynaios, Blade-Bound_TRX",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 2/4\nWard {1}\nWhenever Kynaios, Blade-Bound attacks, reveal the top five cards of your library. You may put an Aura card or a card with a Blessing from among them into your hand. Put the rest on the bottom of your library in any order.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kynaios, Blade-Bound",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 2/4\nWard {1}\nWhenever Kynaios, Blade-Bound attacks, reveal the top five cards of your library. You may put an Aura card or a card with a Blessing from among them into your hand. Put the rest on the bottom of your library in any order."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 2/4\nWard {1}\nWhenever Kynaios, Blade-Bound attacks, reveal the top five cards of your library. You may put an Aura card or a card with a Blessing from among them into your hand. Put the rest on the bottom of your library in any order.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Kynaios, Blade-Bound_TRX",
+            "full_name": "Kynaios, Blade-Bound",
+            "source_field_values": {
+              "cardName": "Kynaios, Blade-Bound",
+              "manaCost": "{1}{G}{W}",
+              "typeLine": "Legendary Creature — Human Soldier",
+              "rulesText": "Ward {1}\nWhenever Kynaios, Blade-Bound attacks, reveal the top five cards of your library. You may put an Aura card or a card with a Blessing from among them into your hand. Put the rest on the bottom of your library in any order.",
+              "power": "2",
+              "toughness": "4",
+              "loyalty": "",
+              "shape": "normal"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Kynaios, Blade-Bound",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 2/4\nWard {1}\nWhenever Kynaios, Blade-Bound attacks, reveal the top five cards of your library. You may put an Aura card or a card with a Blessing from among them into your hand. Put the rest on the bottom of your library in any order.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Lykaretos, Harvest's Bounty//The Miraculous Field_TRX",
+          "name": "Lykaretos, Harvest's Bounty",
+          "source_card_key": "Lykaretos, Harvest's Bounty//The Miraculous Field_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Cat Druid \nPower/Toughness: 3/3\nAt the beginning of combat on your turn, up to one target creature you control has base power and toughness X/X until end of turn, where X is the number of enchantments you control.\nWhen Lykaretos dies, bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lykaretos, Harvest's Bounty",
+              "original_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Cat Druid \nPower/Toughness: 3/3\nAt the beginning of combat on your turn, up to one target creature you control has base power and toughness X/X until end of turn, where X is the number of enchantments you control.\nWhen Lykaretos dies, bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "The Miraculous Field",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant land\nEnchanted land has “{T}: Add two mana in any combination of colors. You gain 1 life.”"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Cat Druid \nPower/Toughness: 3/3\nAt the beginning of combat on your turn, up to one target creature you control has base power and toughness X/X until end of turn, where X is the number of enchantments you control.\nWhen Lykaretos dies, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target land.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Lykaretos, Harvest's Bounty//The Miraculous Field_TRX",
+            "full_name": "Lykaretos, Harvest's Bounty//The Miraculous Field",
+            "source_field_values": {
+              "cardName": "Lykaretos, Harvest's Bounty",
+              "manaCost": "{2}{G}{W}",
+              "typeLine": "Legendary Creature — Cat Druid ",
+              "rulesText": "At the beginning of combat on your turn, up to one target creature you control has base power and toughness X/X until end of turn, where X is the number of enchantments you control.\nWhen Lykaretos dies, bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "3",
+              "loyalty": "",
+              "cardName2": "The Miraculous Field",
+              "manaCost2": "{1}{G}{W}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant land\nEnchanted land has “{T}: Add two mana in any combination of colors. You gain 1 life.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Lykaretos, Harvest's Bounty",
+              "executable_text": "Mana cost: {2}{G}{W}\nType: Legendary Creature — Cat Druid \nPower/Toughness: 3/3\nAt the beginning of combat on your turn, up to one target creature you control has base power and toughness X/X until end of turn, where X is the number of enchantments you control.\nWhen Lykaretos dies, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target land.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "At the beginning of combat on your turn, up to one target creature you control has base power and toughness X/X until end of turn, where X is the number of enchantments you control.\nWhen Lykaretos dies, bless target land."
+            },
+            {
+              "name": "The Miraculous Field",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant land\nEnchanted land has “{T}: Add two mana in any combination of colors. You gain 1 life.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Mogis's Raider//Raider's Blessing_TRX",
+          "name": "Mogis's Raider",
+          "source_card_key": "Mogis's Raider//Raider's Blessing_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Human Berserker \nPower/Toughness: 2/2\nMogis's Raider has first strike as long as it is attacking.\nWhen Mogis's Raider enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mogis's Raider",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Human Berserker \nPower/Toughness: 2/2\nMogis's Raider has first strike as long as it is attacking.\nWhen Mogis's Raider enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Raider's Blessing",
+              "original_text": "Mana cost: {R}\nType: Enchantment — Aura Blessing \nEnchant creature\nEnchanted creature has menace and “Whenever this creature deals combat damage to a player, create a Treasure token.”"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Berserker \nPower/Toughness: 2/2\nMogis's Raider has first strike as long as it is attacking.\nWhen Mogis's Raider enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Mogis's Raider//Raider's Blessing_TRX",
+            "full_name": "Mogis's Raider//Raider's Blessing",
+            "source_field_values": {
+              "cardName": "Mogis's Raider",
+              "manaCost": "{2}{R}",
+              "typeLine": "Creature — Human Berserker ",
+              "rulesText": "Mogis's Raider has first strike as long as it is attacking.\nWhen Mogis's Raider enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Raider's Blessing",
+              "manaCost2": "{R}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "Enchant creature\nEnchanted creature has menace and “Whenever this creature deals combat damage to a player, create a Treasure token.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Mogis's Raider",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Berserker \nPower/Toughness: 2/2\nMogis's Raider has first strike as long as it is attacking.\nWhen Mogis's Raider enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Mogis's Raider has first strike as long as it is attacking.\nWhen Mogis's Raider enters, bless target creature."
+            },
+            {
+              "name": "Raider's Blessing",
+              "executable_text": "Mana cost: {R}\nType: Enchantment — Aura Blessing \nEnchant creature\nEnchanted creature has menace and “Whenever this creature deals combat damage to a player, create a Treasure token.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Oracle of Zakros//Ocular Insight_TRX",
+          "name": "Oracle of Zakros",
+          "source_card_key": "Oracle of Zakros//Ocular Insight_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Cyclops Shaman \nPower/Toughness: 3/5\nVigilance\nWhenever you attack, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Oracle of Zakros",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Cyclops Shaman \nPower/Toughness: 3/5\nVigilance\nWhenever you attack, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Ocular Insight",
+              "original_text": "Mana cost: {U}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature has “Whenever this creature deals combat damage to a player or planeswalker, scry 1, then draw a card.”"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Cyclops Shaman \nPower/Toughness: 3/5\nVigilance\nWhenever you attack, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Oracle of Zakros//Ocular Insight_TRX",
+            "full_name": "Oracle of Zakros//Ocular Insight",
+            "source_field_values": {
+              "cardName": "Oracle of Zakros",
+              "manaCost": "{4}{U}",
+              "typeLine": "Creature — Cyclops Shaman ",
+              "rulesText": "Vigilance\nWhenever you attack, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "5",
+              "loyalty": "",
+              "cardName2": "Ocular Insight",
+              "manaCost2": "{U}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature has “Whenever this creature deals combat damage to a player or planeswalker, scry 1, then draw a card.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Oracle of Zakros",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Cyclops Shaman \nPower/Toughness: 3/5\nVigilance\nWhenever you attack, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Vigilance\nWhenever you attack, bless target creature."
+            },
+            {
+              "name": "Ocular Insight",
+              "executable_text": "Mana cost: {U}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature has “Whenever this creature deals combat damage to a player or planeswalker, scry 1, then draw a card.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Pharika's Harbinger//Poison in the Blood_TRX",
+          "name": "Pharika's Harbinger",
+          "source_card_key": "Pharika's Harbinger//Poison in the Blood_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/4\nDeathtouch\nWhenever Pharika's Harbinger deals combat damage to a player, bless target creature that player controls. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pharika's Harbinger",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/4\nDeathtouch\nWhenever Pharika's Harbinger deals combat damage to a player, bless target creature that player controls. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Poison in the Blood",
+              "original_text": "Mana cost: {2}{B}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature has “At the beginning of your upkeep, sacrifice a creature. If you can't, you lose 3 life.”"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/4\nDeathtouch\nWhenever Pharika's Harbinger deals combat damage to a player, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature that player controls.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Pharika's Harbinger//Poison in the Blood_TRX",
+            "full_name": "Pharika's Harbinger//Poison in the Blood",
+            "source_field_values": {
+              "cardName": "Pharika's Harbinger",
+              "manaCost": "{3}{B}",
+              "typeLine": "Creature — Gorgon Cleric ",
+              "rulesText": "Deathtouch\nWhenever Pharika's Harbinger deals combat damage to a player, bless target creature that player controls. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "4",
+              "loyalty": "",
+              "cardName2": "Poison in the Blood",
+              "manaCost2": "{2}{B}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature has “At the beginning of your upkeep, sacrifice a creature. If you can't, you lose 3 life.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Pharika's Harbinger",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/4\nDeathtouch\nWhenever Pharika's Harbinger deals combat damage to a player, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature that player controls.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Deathtouch\nWhenever Pharika's Harbinger deals combat damage to a player, bless target creature that player controls."
+            },
+            {
+              "name": "Poison in the Blood",
+              "executable_text": "Mana cost: {2}{B}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature has “At the beginning of your upkeep, sacrifice a creature. If you can't, you lose 3 life.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Pyros Rider//Consuming Flames_TRX",
+          "name": "Pyros Rider",
+          "source_card_key": "Pyros Rider//Consuming Flames_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhenever you cast a spell that targets a single creature you control, bless that creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pyros Rider",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhenever you cast a spell that targets a single creature you control, bless that creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Consuming Flames",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nWhenever enchanted creature deals combat damage to a player or planeswalker, you may sacrifice it. If you do, untap all creatures you control and after this phase, there is an additional combat phase."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhenever you cast a spell that targets a single creature you control, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Pyros Rider//Consuming Flames_TRX",
+            "full_name": "Pyros Rider//Consuming Flames",
+            "source_field_values": {
+              "cardName": "Pyros Rider",
+              "manaCost": "{2}{R}",
+              "typeLine": "Creature — Archon ",
+              "rulesText": "Flying\nWhenever you cast a spell that targets a single creature you control, bless that creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "1",
+              "loyalty": "",
+              "cardName2": "Consuming Flames",
+              "manaCost2": "{1}{R}{R}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nWhenever enchanted creature deals combat damage to a player or planeswalker, you may sacrifice it. If you do, untap all creatures you control and after this phase, there is an additional combat phase.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Pyros Rider",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Archon \nPower/Toughness: 3/1\nFlying\nWhenever you cast a spell that targets a single creature you control, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that creature.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Flying\nWhenever you cast a spell that targets a single creature you control, bless that creature."
+            },
+            {
+              "name": "Consuming Flames",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nWhenever enchanted creature deals combat damage to a player or planeswalker, you may sacrifice it. If you do, untap all creatures you control and after this phase, there is an additional combat phase.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Reaper of Fields//Fields of Ilysia_TRX",
+          "name": "Reaper of Fields",
+          "source_card_key": "Reaper of Fields//Fields of Ilysia_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {G}\nType: Creature — Human Druid \nPower/Toughness: 1/1\nWhenever Reaper of Fields attacks, bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reaper of Fields",
+              "original_text": "Mana cost: {G}\nType: Creature — Human Druid \nPower/Toughness: 1/1\nWhenever Reaper of Fields attacks, bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Fields of Ilysia",
+              "original_text": "Mana cost: {G}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant land\nEnchanted land has “{T}: Add one mana of any color.”"
+            }
+          ],
+          "executable_text": "Mana cost: {G}\nType: Creature — Human Druid \nPower/Toughness: 1/1\nWhenever Reaper of Fields attacks, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target land.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Reaper of Fields//Fields of Ilysia_TRX",
+            "full_name": "Reaper of Fields//Fields of Ilysia",
+            "source_field_values": {
+              "cardName": "Reaper of Fields",
+              "manaCost": "{G}",
+              "typeLine": "Creature — Human Druid ",
+              "rulesText": "Whenever Reaper of Fields attacks, bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "1",
+              "toughness": "1",
+              "loyalty": "",
+              "cardName2": "Fields of Ilysia",
+              "manaCost2": "{G}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant land\nEnchanted land has “{T}: Add one mana of any color.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Reaper of Fields",
+              "executable_text": "Mana cost: {G}\nType: Creature — Human Druid \nPower/Toughness: 1/1\nWhenever Reaper of Fields attacks, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target land.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Whenever Reaper of Fields attacks, bless target land."
+            },
+            {
+              "name": "Fields of Ilysia",
+              "executable_text": "Mana cost: {G}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant land\nEnchanted land has “{T}: Add one mana of any color.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Secluded Gorgon//Glare of the Gorgon_TRX",
+          "name": "Secluded Gorgon",
+          "source_card_key": "Secluded Gorgon//Glare of the Gorgon_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/1\nLifelink\nWhenever Secluded Gorgon dies, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Secluded Gorgon",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/1\nLifelink\nWhenever Secluded Gorgon dies, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Glare of the Gorgon",
+              "original_text": "Mana cost: {1}{B}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nFlash\nEnchant creature\nEnchanted creature gets +0/+2 and has deathtouch."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/1\nLifelink\nWhenever Secluded Gorgon dies, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Secluded Gorgon//Glare of the Gorgon_TRX",
+            "full_name": "Secluded Gorgon//Glare of the Gorgon",
+            "source_field_values": {
+              "cardName": "Secluded Gorgon",
+              "manaCost": "{1}{B}",
+              "typeLine": "Creature — Gorgon Cleric ",
+              "rulesText": "Lifelink\nWhenever Secluded Gorgon dies, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "1",
+              "loyalty": "",
+              "cardName2": "Glare of the Gorgon",
+              "manaCost2": "{1}{B}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nFlash\nEnchant creature\nEnchanted creature gets +0/+2 and has deathtouch.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Secluded Gorgon",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Gorgon Cleric \nPower/Toughness: 2/1\nLifelink\nWhenever Secluded Gorgon dies, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Lifelink\nWhenever Secluded Gorgon dies, you may bless target creature."
+            },
+            {
+              "name": "Glare of the Gorgon",
+              "executable_text": "Mana cost: {1}{B}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nFlash\nEnchant creature\nEnchanted creature gets +0/+2 and has deathtouch.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Seeker of New Horizons//Ilysian Guardian_TRX",
+          "name": "Seeker of New Horizons",
+          "source_card_key": "Seeker of New Horizons//Ilysian Guardian_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {G}\nType: Creature — Satyr Scout\nPower/Toughness: 0/1\nWhenever a Forest you control enters, put a +1/+1 counter on Seeker of New Horizons. Then you may remove four +1/+1 counters from among creatures you control. If you do, bless that land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seeker of New Horizons",
+              "original_text": "Mana cost: {G}\nType: Creature — Satyr Scout\nPower/Toughness: 0/1\nWhenever a Forest you control enters, put a +1/+1 counter on Seeker of New Horizons. Then you may remove four +1/+1 counters from among creatures you control. If you do, bless that land. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Ilysian Guardian",
+              "original_text": "Mana cost: {2}{G}\nType: Enchantment — Aura Blessing\nEnchant land\nEnchanted land is a 4/4 Dryad creature with reach, vigilance, and haste. It's still a land.\nWhen enchanted land dies, return it to its owner's hand."
+            }
+          ],
+          "executable_text": "Mana cost: {G}\nType: Creature — Satyr Scout\nPower/Toughness: 0/1\nWhenever a Forest you control enters, put a +1/+1 counter on Seeker of New Horizons. Then you may remove four +1/+1 counters from among creatures you control. If you do, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that land.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Seeker of New Horizons//Ilysian Guardian_TRX",
+            "full_name": "Seeker of New Horizons//Ilysian Guardian",
+            "source_field_values": {
+              "cardName": "Seeker of New Horizons",
+              "manaCost": "{G}",
+              "typeLine": "Creature — Satyr Scout",
+              "rulesText": "Whenever a Forest you control enters, put a +1/+1 counter on Seeker of New Horizons. Then you may remove four +1/+1 counters from among creatures you control. If you do, bless that land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "0",
+              "toughness": "1",
+              "loyalty": "",
+              "cardName2": "Ilysian Guardian",
+              "manaCost2": "{2}{G}",
+              "typeLine2": "Enchantment — Aura Blessing",
+              "rulesText2": "Enchant land\nEnchanted land is a 4/4 Dryad creature with reach, vigilance, and haste. It's still a land.\nWhen enchanted land dies, return it to its owner's hand.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Seeker of New Horizons",
+              "executable_text": "Mana cost: {G}\nType: Creature — Satyr Scout\nPower/Toughness: 0/1\nWhenever a Forest you control enters, put a +1/+1 counter on Seeker of New Horizons. Then you may remove four +1/+1 counters from among creatures you control. If you do, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that land.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Whenever a Forest you control enters, put a +1/+1 counter on Seeker of New Horizons. Then you may remove four +1/+1 counters from among creatures you control. If you do, bless that land."
+            },
+            {
+              "name": "Ilysian Guardian",
+              "executable_text": "Mana cost: {2}{G}\nType: Enchantment — Aura Blessing\nEnchant land\nEnchanted land is a 4/4 Dryad creature with reach, vigilance, and haste. It's still a land.\nWhen enchanted land dies, return it to its owner's hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Seismic Chimera//Tectonic Rage_TRX",
+          "name": "Seismic Chimera",
+          "source_card_key": "Seismic Chimera//Tectonic Rage_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Chimera \nPower/Toughness: 2/2\nTrample\nWhen Seismic Chimera enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seismic Chimera",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Chimera \nPower/Toughness: 2/2\nTrample\nWhen Seismic Chimera enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Tectonic Rage",
+              "original_text": "Mana cost: {1}{R}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nAs long as you control enchanted creature, it gets +2/+2.\nEnchanted creature can't block."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Chimera \nPower/Toughness: 2/2\nTrample\nWhen Seismic Chimera enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Seismic Chimera//Tectonic Rage_TRX",
+            "full_name": "Seismic Chimera//Tectonic Rage",
+            "source_field_values": {
+              "cardName": "Seismic Chimera",
+              "manaCost": "{3}{R}",
+              "typeLine": "Creature — Chimera ",
+              "rulesText": "Trample\nWhen Seismic Chimera enters, bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Tectonic Rage",
+              "manaCost2": "{1}{R}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nAs long as you control enchanted creature, it gets +2/+2.\nEnchanted creature can't block.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Seismic Chimera",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Chimera \nPower/Toughness: 2/2\nTrample\nWhen Seismic Chimera enters, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Trample\nWhen Seismic Chimera enters, bless target creature."
+            },
+            {
+              "name": "Tectonic Rage",
+              "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nAs long as you control enchanted creature, it gets +2/+2.\nEnchanted creature can't block.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Spikemane Lion//Spikemane Cloak_TRX",
+          "name": "Spikemane Lion",
+          "source_card_key": "Spikemane Lion//Spikemane Cloak_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {R}{G}\nType: Creature — Cat \nPower/Toughness: 3/3\nWhenever Spikemane Lion dies, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spikemane Lion",
+              "original_text": "Mana cost: {R}{G}\nType: Creature — Cat \nPower/Toughness: 3/3\nWhenever Spikemane Lion dies, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Spikemane Cloak",
+              "original_text": "Mana cost: {R}{G}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nWhenever enchanted creature becomes the target of a spell or ability, put a +1/+1 counter on it and that creature deals 1 damage to each opponent. This ability triggers no more than twice each turn."
+            }
+          ],
+          "executable_text": "Mana cost: {R}{G}\nType: Creature — Cat \nPower/Toughness: 3/3\nWhenever Spikemane Lion dies, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Spikemane Lion//Spikemane Cloak_TRX",
+            "full_name": "Spikemane Lion//Spikemane Cloak",
+            "source_field_values": {
+              "cardName": "Spikemane Lion",
+              "manaCost": "{R}{G}",
+              "typeLine": "Creature — Cat ",
+              "rulesText": "Whenever Spikemane Lion dies, you may bless target creature. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "3",
+              "loyalty": "",
+              "cardName2": "Spikemane Cloak",
+              "manaCost2": "{R}{G}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nWhenever enchanted creature becomes the target of a spell or ability, put a +1/+1 counter on it and that creature deals 1 damage to each opponent. This ability triggers no more than twice each turn.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Spikemane Lion",
+              "executable_text": "Mana cost: {R}{G}\nType: Creature — Cat \nPower/Toughness: 3/3\nWhenever Spikemane Lion dies, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Whenever Spikemane Lion dies, you may bless target creature."
+            },
+            {
+              "name": "Spikemane Cloak",
+              "executable_text": "Mana cost: {R}{G}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nWhenever enchanted creature becomes the target of a spell or ability, put a +1/+1 counter on it and that creature deals 1 damage to each opponent. This ability triggers no more than twice each turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Star-Studded Sagittaur//Equinox Mark_TRX",
+          "name": "Star-Studded Sagittaur",
+          "source_card_key": "Star-Studded Sagittaur//Equinox Mark_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{G}\nType: Enchantment Creature — Centaur Archer \nPower/Toughness: 2/2\nReach\nWhenever Star-Studded Sagittaur deals combat damage to a player, you may bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Star-Studded Sagittaur",
+              "original_text": "Mana cost: {1}{G}\nType: Enchantment Creature — Centaur Archer \nPower/Toughness: 2/2\nReach\nWhenever Star-Studded Sagittaur deals combat damage to a player, you may bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Equinox Mark",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant land\nEnchanted land has “{T}: Add {G}{G}.”"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{G}\nType: Enchantment Creature — Centaur Archer \nPower/Toughness: 2/2\nReach\nWhenever Star-Studded Sagittaur deals combat damage to a player, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target land].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Star-Studded Sagittaur//Equinox Mark_TRX",
+            "full_name": "Star-Studded Sagittaur//Equinox Mark",
+            "source_field_values": {
+              "cardName": "Star-Studded Sagittaur",
+              "manaCost": "{1}{G}",
+              "typeLine": "Enchantment Creature — Centaur Archer ",
+              "rulesText": "Reach\nWhenever Star-Studded Sagittaur deals combat damage to a player, you may bless target land. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Equinox Mark",
+              "manaCost2": "{1}{G}{G}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant land\nEnchanted land has “{T}: Add {G}{G}.”",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Star-Studded Sagittaur",
+              "executable_text": "Mana cost: {1}{G}\nType: Enchantment Creature — Centaur Archer \nPower/Toughness: 2/2\nReach\nWhenever Star-Studded Sagittaur deals combat damage to a player, You may do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target land].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Reach\nWhenever Star-Studded Sagittaur deals combat damage to a player, you may bless target land."
+            },
+            {
+              "name": "Equinox Mark",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant land\nEnchanted land has “{T}: Add {G}{G}.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Wolf-Whistle Satyr//Fable of Tooth and Fur_TRX",
+          "name": "Wolf-Whistle Satyr",
+          "source_card_key": "Wolf-Whistle Satyr//Fable of Tooth and Fur_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {3}{G}\nType: Creature — Satyr Druid \nPower/Toughness: 3/3\nTrample\nWhenever Wolf-Whistle Satyr deals combat damage to a player or planeswalker, you may sacrifice it. If you do, bless target creature you control. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wolf-Whistle Satyr",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Satyr Druid \nPower/Toughness: 3/3\nTrample\nWhenever Wolf-Whistle Satyr deals combat damage to a player or planeswalker, you may sacrifice it. If you do, bless target creature you control. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Fable of Tooth and Fur",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nWhen Fable of Tooth and Fur enters, create three 2/2 green Wolf creature tokens.\nEnchanted creature gets +1/+1 for each creature you control and gains trample."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{G}\nType: Creature — Satyr Druid \nPower/Toughness: 3/3\nTrample\nWhenever Wolf-Whistle Satyr deals combat damage to a player or planeswalker, you may sacrifice it. If you do, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature you control.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Wolf-Whistle Satyr//Fable of Tooth and Fur_TRX",
+            "full_name": "Wolf-Whistle Satyr//Fable of Tooth and Fur",
+            "source_field_values": {
+              "cardName": "Wolf-Whistle Satyr",
+              "manaCost": "{3}{G}",
+              "typeLine": "Creature — Satyr Druid ",
+              "rulesText": "Trample\nWhenever Wolf-Whistle Satyr deals combat damage to a player or planeswalker, you may sacrifice it. If you do, bless target creature you control. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "3",
+              "toughness": "3",
+              "loyalty": "",
+              "cardName2": "Fable of Tooth and Fur",
+              "manaCost2": "{4}{G}{G}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nWhen Fable of Tooth and Fur enters, create three 2/2 green Wolf creature tokens.\nEnchanted creature gets +1/+1 for each creature you control and gains trample.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Wolf-Whistle Satyr",
+              "executable_text": "Mana cost: {3}{G}\nType: Creature — Satyr Druid \nPower/Toughness: 3/3\nTrample\nWhenever Wolf-Whistle Satyr deals combat damage to a player or planeswalker, you may sacrifice it. If you do, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target creature you control.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Trample\nWhenever Wolf-Whistle Satyr deals combat damage to a player or planeswalker, you may sacrifice it. If you do, bless target creature you control."
+            },
+            {
+              "name": "Fable of Tooth and Fur",
+              "executable_text": "Mana cost: {4}{G}{G}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nWhen Fable of Tooth and Fur enters, create three 2/2 green Wolf creature tokens.\nEnchanted creature gets +1/+1 for each creature you control and gains trample.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Zygos, Edge of the Bull//Blessing of Slaughter_TRX",
+          "name": "Zygos, Edge of the Bull",
+          "source_card_key": "Zygos, Edge of the Bull//Blessing of Slaughter_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nWard—Pay 2 life.\nWhenever Zygos attacks, bless target legendary creature you control. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Zygos, Edge of the Bull",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nWard—Pay 2 life.\nWhenever Zygos attacks, bless target legendary creature you control. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Blessing of Slaughter",
+              "original_text": "Mana cost: {2}{R}\nType: Enchantment — Aura Blessing \n*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature has double strike."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nWard—Pay 2 life.\nWhenever Zygos attacks, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target legendary creature you control.",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Zygos, Edge of the Bull//Blessing of Slaughter_TRX",
+            "full_name": "Zygos, Edge of the Bull//Blessing of Slaughter",
+            "source_field_values": {
+              "cardName": "Zygos, Edge of the Bull",
+              "manaCost": "{1}{R}{R}",
+              "typeLine": "Legendary Creature — Human Soldier ",
+              "rulesText": "Ward—Pay 2 life.\nWhenever Zygos attacks, bless target legendary creature you control. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "cardName2": "Blessing of Slaughter",
+              "manaCost2": "{2}{R}",
+              "typeLine2": "Enchantment — Aura Blessing ",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant creature\nEnchanted creature has double strike.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Zygos, Edge of the Bull",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Soldier \nPower/Toughness: 2/2\nWard—Pay 2 life.\nWhenever Zygos attacks, If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to target legendary creature you control.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Ward—Pay 2 life.\nWhenever Zygos attacks, bless target legendary creature you control."
+            },
+            {
+              "name": "Blessing of Slaughter",
+              "executable_text": "Mana cost: {2}{R}\nType: Enchantment — Aura Blessing \n(You may also cast this side from your hand.)\nEnchant creature\nEnchanted creature has double strike.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Archon of Condemnation//Confine to Eternity",
+        "Basilo, Lion of Valor//The Lion's Charisma",
+        "Bringer of Heliod's Light//Blinded by Divinity",
+        "Callaphe the Mariner//Blessing of the Sea",
+        "Caller of Ferocity//Ferocity of Nature",
+        "Charging Brightmare//Blessings of the Flock",
+        "Charming Siren//Left to the Sea",
+        "Chosen of Heliod//Heliod's Glory",
+        "Dakran Shipcrusher//Depths of the Sea",
+        "Daybreak Rider//The Sun's Blessing",
+        "Furies of the Natural Order//Tether to Reality",
+        "Lykaretos, Harvest's Bounty//The Miraculous Field",
+        "Mogis's Raider//Raider's Blessing",
+        "Oracle of Zakros//Ocular Insight",
+        "Pharika's Harbinger//Poison in the Blood",
+        "Pyros Rider//Consuming Flames",
+        "Reaper of Fields//Fields of Ilysia",
+        "Secluded Gorgon//Glare of the Gorgon",
+        "Seeker of New Horizons//Ilysian Guardian",
+        "Seismic Chimera//Tectonic Rage",
+        "Spikemane Lion//Spikemane Cloak",
+        "Star-Studded Sagittaur//Equinox Mark",
+        "Wolf-Whistle Satyr//Fable of Tooth and Fur",
+        "Zygos, Edge of the Bull//Blessing of Slaughter"
+      ],
+      "behavioral_assertions": [],
+      "executable_definitions": [
+        {
+          "keyword": "Bless",
+          "reminder": "If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to {Object}.",
+          "template": "{Object}"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "full_source_native_unverified",
+      "source_catalog_cards": [
+        "Archon of Condemnation//Confine to Eternity",
+        "Basilo, Lion of Valor//The Lion's Charisma",
+        "Bringer of Heliod's Light//Blinded by Divinity",
+        "Callaphe the Mariner//Blessing of the Sea",
+        "Caller of Ferocity//Ferocity of Nature",
+        "Canopy of the Winter Nexus",
+        "Charging Brightmare//Blessings of the Flock",
+        "Charming Siren//Left to the Sea",
+        "Chosen of Heliod//Heliod's Glory",
+        "Dakran Shipcrusher//Depths of the Sea",
+        "Daybreak Rider//The Sun's Blessing",
+        "Furies of the Natural Order//Tether to Reality",
+        "Kynaios, Blade-Bound",
+        "Lykaretos, Harvest's Bounty//The Miraculous Field",
+        "Mogis's Raider//Raider's Blessing",
+        "Oracle of Zakros//Ocular Insight",
+        "Pharika's Harbinger//Poison in the Blood",
+        "Pyros Rider//Consuming Flames",
+        "Reaper of Fields//Fields of Ilysia",
+        "Secluded Gorgon//Glare of the Gorgon",
+        "Seeker of New Horizons//Ilysian Guardian",
+        "Seismic Chimera//Tectonic Rage",
+        "Spikemane Lion//Spikemane Cloak",
+        "Star-Studded Sagittaur//Equinox Mark",
+        "Wolf-Whistle Satyr//Fable of Tooth and Fur",
+        "Zygos, Edge of the Bull//Blessing of Slaughter"
+      ]
+    },
+    {
+      "id": "rev-bless-015-player",
+      "keyword": "Bless",
+      "scope": "revolution",
+      "rule_reference": "701.75.",
+      "rule_text": {
+        "name": "701.75.",
+        "rule": "Bless",
+        "subrules": [
+          {
+            "name": "701.75a",
+            "rule": "Bless is a keyword action. “You may bless [an object]” means “If this object's back face is a Blessing, create a token that's a copy of its back face and attach it to [object].”",
+            "custom": true
+          },
+          {
+            "name": "701.75b",
+            "rule": "If the back face of the object performing the bless object is not a Blessing, nothing will occur.\r\nExample Bringer of Heliod’s Light says “When Bringer of Heliod’s Light enters, you may bless target creature.” If a non-double-faced permanent enters the battlefield as a copy of it, the ability will trigger, but no token will be created.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Archon of Condemnation//Confine to Eternity",
+          "Basilo, Lion of Valor//The Lion's Charisma",
+          "Bringer of Heliod's Light//Blinded by Divinity",
+          "Callaphe the Mariner//Blessing of the Sea",
+          "Caller of Ferocity//Ferocity of Nature",
+          "Canopy of the Winter Nexus",
+          "Charging Brightmare//Blessings of the Flock",
+          "Charming Siren//Left to the Sea",
+          "Chosen of Heliod//Heliod's Glory",
+          "Dakran Shipcrusher//Depths of the Sea",
+          "Daybreak Rider//The Sun's Blessing",
+          "Furies of the Natural Order//Tether to Reality",
+          "Kynaios, Blade-Bound",
+          "Lykaretos, Harvest's Bounty//The Miraculous Field",
+          "Mogis's Raider//Raider's Blessing",
+          "Oracle of Zakros//Ocular Insight",
+          "Pharika's Harbinger//Poison in the Blood",
+          "Pyros Rider//Consuming Flames",
+          "Reaper of Fields//Fields of Ilysia",
+          "Secluded Gorgon//Glare of the Gorgon",
+          "Seeker of New Horizons//Ilysian Guardian",
+          "Seismic Chimera//Tectonic Rage",
+          "Spikemane Lion//Spikemane Cloak",
+          "Star-Studded Sagittaur//Equinox Mark",
+          "Wolf-Whistle Satyr//Fable of Tooth and Fur",
+          "Zygos, Edge of the Bull//Blessing of Slaughter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Create a token copy of this creature's blessing attached to that permanent.",
+      "executable_reminder": "If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to {Player}.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Callaphe the Mariner//Blessing of the Sea_TRX",
+          "name": "Callaphe the Mariner",
+          "original_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "executable_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, Choose target player. If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that player.",
+          "source_faces": [
+            {
+              "name": "Callaphe the Mariner",
+              "original_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "name": "Blessing of the Sea",
+              "original_text": "Type: Enchantment — Aura Blessing\nMana cost: {6}{U}{U}\n*(You may also cast this side from your hand.)*\nEnchant player\nEnchanted player may cast blue spells with mana value less than or equal to their devotion to blue without paying their mana costs. *(Each {U} in the mana costs of permanents you control counts toward your devotion to blue.)*"
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Callaphe the Mariner",
+              "executable_text": "Type: Legendary Creature — Human Scout\nMana cost: {U}\nPower/Toughness: 1/2\nCallaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, Choose target player. If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that player.",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Callaphe can't be blocked by creatures with mana value 3 or greater.\nWhenever Callaphe the Mariner deals combat damage to a player, you get an experience counter. Then if you have three or more experience counters, bless target player."
+            },
+            {
+              "name": "Blessing of the Sea",
+              "executable_text": "Type: Enchantment — Aura Blessing\nMana cost: {6}{U}{U}\n(You may also cast this side from your hand.)\nEnchant player\nEnchanted player may cast blue spells with mana value less than or equal to their devotion to blue without paying their mana costs. (Each {U} in the mana costs of permanents you control counts toward your devotion to blue.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "source_card_key": "Callaphe the Mariner//Blessing of the Sea_TRX",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Furies of the Natural Order//Tether to Reality_TRX",
+          "name": "Furies of the Natural Order",
+          "source_card_key": "Furies of the Natural Order//Tether to Reality_TRX",
+          "source_layout": "doubleface",
+          "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 5/5\nMenace, deathtouch\nWhen Furies of the Natural Order enters, bless any number of target players. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Furies of the Natural Order",
+              "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 5/5\nMenace, deathtouch\nWhen Furies of the Natural Order enters, bless any number of target players. *(Create a token copy of this creature's blessing attached to that permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Tether to Reality",
+              "original_text": "Mana cost: {2}{B}\nType: Enchantment — Aura Blessing Curse\n*(You may also cast this side from your hand.)*\nEnchant player\nEnchanted player can't gain life.\nAt the beginning of your upkeep, enchanted player loses 1 life and you gain 1 life."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 5/5\nMenace, deathtouch\nWhen Furies of the Natural Order enters, For each of any number of target players, do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that player].",
+          "source_catalog_provenance": {
+            "path": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+            "physical_key": "Furies of the Natural Order//Tether to Reality_TRX",
+            "full_name": "Furies of the Natural Order//Tether to Reality",
+            "source_field_values": {
+              "cardName": "Furies of the Natural Order",
+              "manaCost": "{4}{B}{B}",
+              "typeLine": "Creature — Horror",
+              "rulesText": "Menace, deathtouch\nWhen Furies of the Natural Order enters, bless any number of target players. *(Create a token copy of this creature's blessing attached to that permanent.)*",
+              "power": "5",
+              "toughness": "5",
+              "loyalty": "",
+              "cardName2": "Tether to Reality",
+              "manaCost2": "{2}{B}",
+              "typeLine2": "Enchantment — Aura Blessing Curse",
+              "rulesText2": "*(You may also cast this side from your hand.)*\nEnchant player\nEnchanted player can't gain life.\nAt the beginning of your upkeep, enchanted player loses 1 life and you gain 1 life.",
+              "power2": "",
+              "toughness2": "",
+              "loyalty2": "",
+              "shape": "doubleface"
+            }
+          },
+          "executable_faces": [
+            {
+              "name": "Furies of the Natural Order",
+              "executable_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 5/5\nMenace, deathtouch\nWhen Furies of the Natural Order enters, For each of any number of target players, do the following: [If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to that player].",
+              "custom_keyword_identities": [
+                "bless"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ],
+              "original_display_text": "Menace, deathtouch\nWhen Furies of the Natural Order enters, bless any number of target players."
+            },
+            {
+              "name": "Tether to Reality",
+              "executable_text": "Mana cost: {2}{B}\nType: Enchantment — Aura Blessing Curse\n(You may also cast this side from your hand.)\nEnchant player\nEnchanted player can't gain life.\nAt the beginning of your upkeep, enchanted player loses 1 life and you gain 1 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "blessing",
+                  "plural": "blessings",
+                  "family": "Enchantment"
+                }
+              ]
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Archon of Condemnation//Confine to Eternity",
+        "Basilo, Lion of Valor//The Lion's Charisma",
+        "Bringer of Heliod's Light//Blinded by Divinity",
+        "Callaphe the Mariner//Blessing of the Sea",
+        "Caller of Ferocity//Ferocity of Nature",
+        "Charging Brightmare//Blessings of the Flock",
+        "Charming Siren//Left to the Sea",
+        "Chosen of Heliod//Heliod's Glory",
+        "Dakran Shipcrusher//Depths of the Sea",
+        "Daybreak Rider//The Sun's Blessing",
+        "Furies of the Natural Order//Tether to Reality",
+        "Lykaretos, Harvest's Bounty//The Miraculous Field",
+        "Mogis's Raider//Raider's Blessing",
+        "Oracle of Zakros//Ocular Insight",
+        "Pharika's Harbinger//Poison in the Blood",
+        "Pyros Rider//Consuming Flames",
+        "Reaper of Fields//Fields of Ilysia",
+        "Secluded Gorgon//Glare of the Gorgon",
+        "Seeker of New Horizons//Ilysian Guardian",
+        "Seismic Chimera//Tectonic Rage",
+        "Spikemane Lion//Spikemane Cloak",
+        "Star-Studded Sagittaur//Equinox Mark",
+        "Wolf-Whistle Satyr//Fable of Tooth and Fur",
+        "Zygos, Edge of the Bull//Blessing of Slaughter"
+      ],
+      "behavioral_assertions": [],
+      "source_inventory_id": "rev-bless-015",
+      "derived_variant_provenance": {
+        "source_file": "fixtures/custom_mechanics/revolution.json",
+        "source_inventory_id": "rev-bless-015",
+        "keyword": "Bless",
+        "original_reminder": "Create a token copy of this creature's blessing attached to that permanent.",
+        "variant": "The explicit target-player operands on Callaphe and Furies use the typed player declaration; complete physical source faces retained."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Bless",
+          "reminder": "If this permanent's back face is a Blessing, create a token that's a copy of its back face attached to {Player}.",
+          "template": "{Player}"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "full_source_native_unverified"
+    }
+  ]
+}

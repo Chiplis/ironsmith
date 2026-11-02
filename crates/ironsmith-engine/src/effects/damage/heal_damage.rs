@@ -1,7 +1,7 @@
 //! Heal marked damage by composing removal with the keyword-action envelope.
 
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_single_object_for_effect};
+use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_objects_for_effect};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
@@ -17,65 +17,37 @@ impl EffectExecutor for HealDamageEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
-            let target = resolve_single_object_for_effect(game, ctx, &self.target)?;
-            let Some(object) = game.object(target) else {
-                return Ok(EffectOutcome::target_invalid());
-            };
-            let snapshot =
-                ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
-            let marked = game.damage_on(target);
-            let requested = match &self.amount {
-                Some(amount) => resolve_bounded_nonnegative_u32(game, amount, ctx, marked)?,
-                None => marked,
-            };
-            if ctx.decision_maker.awaiting_choice() || requested == 0 {
-                return Ok(EffectOutcome::count(0));
+            let targets = resolve_objects_for_effect(game, ctx, &self.target)?;
+            let mut proposals = Vec::new();
+            for target in targets {
+                let Some(object) = game.object(target) else { continue; };
+                let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+                let marked = game.damage_on(target);
+                let requested = match &self.amount {
+                    Some(amount) => resolve_bounded_nonnegative_u32(game, amount, ctx, marked)?,
+                    None => marked,
+                };
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                if requested == 0 { continue; }
+                // Each healed permanent remains its own performer. Freeze all
+                // magnitudes and proposal observations before the first removal.
+                proposals.push(Event::new_with_provenance(KeywordActionEvent::new(
+                    KeywordActionKind::Heal, snapshot.controller, target, requested,
+                ).with_snapshot(Some(snapshot)), ctx.provenance));
             }
-            // The healed permanent performs Heal; it is also its subject.
-            let action = KeywordActionEvent::new(
-                KeywordActionKind::Heal,
-                snapshot.controller,
-                target,
-                requested,
-            )
-            .with_snapshot(Some(snapshot));
-            crate::effects::composition::execute_keyword_action(
-                game,
-                ctx,
-                Event::new_with_provenance(action, ctx.provenance),
-                crate::effects::composition::KeywordActionOutput::Body,
-                crate::effects::composition::KeywordActionAmount::BodyMagnitude,
-                |game, ctx, action| {
-                    let removed =
-                        super::remove_marked_damage(game, ctx, action.source, Some(action.amount))?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    let healed = removed.instruction_result().count_or_zero().max(0) as u32;
-                    if healed == 0 {
-                        return Ok(removed);
-                    }
-                    let mut completed = action.clone().with_amount(healed);
-                    completed.snapshot = removed
-                        .instruction_result()
-                        .affected_object_memory()
-                        .and_then(|objects| {
-                            objects
-                                .iter()
-                                .find(|object| object.object_id == action.source)
-                        })
-                        .cloned()
-                        .or_else(|| action.snapshot.clone());
-                    let notification =
-                        crate::effects::composition::complete_keyword_action(game, ctx, completed)?;
-                    Ok(EffectOutcome::aggregate_with_primary_result(
-                        removed.summary_projection(),
-                        [removed, notification],
-                    ))
+            crate::effects::composition::execute_keyword_recipient_batch(
+                game, ctx, proposals, |game, ctx, action| {
+                    let removed = super::remove_marked_damage(game, ctx, action.source, Some(action.amount))?;
+                    Ok(crate::effects::SimultaneousEffectCommit {
+                        outcome: crate::effects::CompletedEffectOutputs::aggregate_only(removed),
+                        completion: Some(Box::new(HealCompletion(action.clone()))),
+                    })
                 },
-            )
+            ).map(crate::effects::CompletedEffectOutputs::into_outcome)
         })
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
@@ -83,6 +55,34 @@ impl EffectExecutor for HealDamageEffect {
 
     fn target_description(&self) -> &'static str {
         "permanent with marked damage to heal"
+    }
+}
+
+// The physical removal is already committed. Publish its exact performer and
+// magnitude only after every removal original in the packet has completed.
+struct HealCompletion(KeywordActionEvent);
+impl crate::effects::SimultaneousEffectCompletion for HealCompletion {
+    fn original_phase_status(&self) -> crate::effects::OriginalPhaseStatus {
+        crate::effects::OriginalPhaseStatus::Retained
+    }
+    fn freeze(&mut self, _: &mut GameState) -> Result<(), ExecutionError> { Ok(()) }
+    fn complete_original_phase_from_outputs(self: Box<Self>, game: &mut GameState,
+        ctx: &mut ExecutionContext, original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let healed = original.outcome.instruction_result().count_or_zero().max(0) as u32;
+        if healed == 0 { return Ok(crate::effects::SimultaneousEffectCommit::finished(original)); }
+        let mut event = self.0.with_amount(healed);
+        event.snapshot = original.outcome.instruction_result().affected_object_memory()
+            .and_then(|objects|objects.iter().find(|object|object.object_id == event.source)).cloned()
+            .or(event.snapshot);
+        let completed = crate::effects::composition::complete_keyword_action_with_outputs(game, ctx, original, event)?;
+        Ok(crate::effects::SimultaneousEffectCommit::finished(completed))
+    }
+    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_original_phase_from_outputs(game, ctx,
+            crate::effects::CompletedEffectOutputs::aggregate_only(original))
+            .map(|receipt|receipt.outcome.into_outcome())
     }
 }
 
@@ -109,6 +109,34 @@ mod tests {
         game.add_object(Object::from_card(id, &card, bob, Zone::Battlefield));
         game.mark_damage(id, marked);
         (game, id, alice, bob)
+    }
+
+    #[test]
+    fn retained_heal_packet_keeps_each_performers_controller_and_actual_removed_amount() {
+        let (mut game, first, alice, bob) = setup_damaged_permanent(5);
+        let card = CardBuilder::new(CardId::new(), "Other healer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 5)).build();
+        let second = game.new_object_id();
+        game.add_object(Object::from_card(second, &card, alice, Zone::Battlefield));
+        game.mark_damage(second, 1);
+        let unselected = game.new_object_id();
+        game.add_object(Object::from_card(unselected, &card, alice, Zone::Battlefield));
+        game.mark_damage(unselected, 3);
+        let spec = ChooseSpec::target(ChooseSpec::Object(crate::target::ObjectFilter::creature()));
+        let mut ctx = ExecutionContext::new_default(unselected, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(first), crate::effects::ResolvedTarget::Object(second)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment { spec: spec.clone(), range: 0..2 }]);
+        let outcome = HealDamageEffect::exact(spec, 2).execute(&mut game, &mut ctx).unwrap();
+        assert_eq!((game.damage_on(first), game.damage_on(second), game.damage_on(unselected)), (3, 0, 3));
+        assert_eq!(outcome.count_or_zero(), 3);
+        let mut actions = outcome.events.iter().filter_map(|event|event.downcast::<KeywordActionEvent>())
+            .filter(|action|action.action == KeywordActionKind::Heal)
+            .map(|action|(action.source, action.player, action.amount)).collect::<Vec<_>>();
+        actions.sort_by_key(|action|action.0);
+        let mut expected = vec![(first, bob, 2), (second, alice, 1)];
+        expected.sort_by_key(|action|action.0);
+        assert_eq!(actions, expected);
     }
 
     #[test]

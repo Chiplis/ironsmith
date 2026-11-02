@@ -405,7 +405,7 @@ fn read_freerunning(
                 name: "Freerunning".into(),
                 total_cost,
                 condition: None,
-                prototype_power_toughness: None,
+                prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
             };
             return Ok(ast(LineAst::AlternativeCastingMethod(
                 crate::model::CompilerAlternativeCastingMethod::alternative_cost_with_condition(
@@ -756,7 +756,7 @@ fn read_entry_counter_countdown(input: &AlternativeCastLine<'_>) -> Result<Optio
     let cost_end = view.token_start_indices()[enters];
     let total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(crate::util::trim_edge_punctuation_tokens(&first[cost_start..cost_end]))?;
     let method = crate::model::CompilerAlternativeCastingMethod::Composed {
-        name: "Parsed entry countdown price".into(), total_cost, condition: None, prototype_power_toughness: None,
+        name: "Parsed entry countdown price".into(), total_cost, condition: None, prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
     };
     let paid_ref = ironsmith_core::OptionalCostRef::new(ironsmith_core::OptionalCostKind::AlternativeCast(
         ironsmith_core::AlternativeCostReference::as_that_cost(method.name(), method.mana_cost()),
@@ -799,7 +799,7 @@ fn read_payment_per_extra_mode(input: &AlternativeCastLine<'_>) -> Result<Option
 
 fn read_reveal_to_add_spell_text(input: &AlternativeCastLine<'_>) -> Result<Option<KeywordLinePayload>, CardTextError> {
     let sentences = crate::lexer::split_lexed_sentences(input.tokens);
-    if sentences.len() != 2 { return Ok(None); }
+    if !(2..=4).contains(&sentences.len()) { return Ok(None); }
     let first = crate::util::trim_edge_punctuation_tokens(&sentences[0]);
     let words = crate::lexer::parser_token_word_refs(first);
     if !words.starts_with(&["as", "you", "cast", "an"]) && !words.starts_with(&["as", "you", "cast", "a"]) { return Ok(None); }
@@ -810,12 +810,50 @@ fn read_reveal_to_add_spell_text(input: &AlternativeCastLine<'_>) -> Result<Opti
         _ => return Ok(None),
     };
     let tail = crate::util::trim_edge_punctuation_tokens(&first[spell + 1..]);
-    let intro = ["you", "may", "reveal", "this", "card", "from", "your", "hand", "and"];
-    if !crate::lexer::parser_token_word_refs(tail).starts_with(&intro) { return Ok(None); }
+    let tail_words = crate::lexer::parser_token_word_refs(tail);
+    let (intro_len, movement) = if tail_words.starts_with(&["you", "may", "reveal", "this", "card", "from", "your", "hand", "and"]) {
+        (9, None)
+    } else if tail_words.starts_with(&["you", "may", "exile", "this", "card", "from", "your", "graveyard", "and"]) {
+        (9, Some((ironsmith_core::Zone::Graveyard, ironsmith_core::Zone::Exile)))
+    } else { return Ok(None); };
     let last = crate::lexer::parser_token_word_refs(&sentences[1]);
     if !matches!(last.as_slice(), ["if", "you", "do", "add", "this", "card's" | "cards", "effects", "to", "that", "spell"]) { return Ok(None); }
-    let mut price = &tail[intro.len()..];
+    let mut max=None;
+    let mut custom_keyword=None;
+    for sentence in &sentences[2..] {
+        let sentence=crate::util::trim_edge_punctuation_tokens(sentence);
+        let words=crate::lexer::parser_token_word_refs(sentence);
+        if words.as_slice()==["you","may","exile","only","one","card","this","way","per","spell"] {
+            if max.replace(1).is_some(){return Ok(None);}
+            continue;
+        }
+        let label=words.strip_prefix(&["this","text","adding","cost","is","named"])
+            .or_else(||words.strip_prefix(&["this","text-adding","cost","is","named"]));
+        if let Some(label)=label && !label.is_empty() && custom_keyword.is_none() {
+            // All label words are data and the complete bounded suffix is read;
+            // punctuation cannot be dropped to infer a different identity.
+            if sentence.iter().any(|token|!matches!(token.kind,crate::lexer::TokenKind::Word|crate::lexer::TokenKind::Dash)){return Ok(None);}
+            let name_start=sentence.iter().position(|token|token.is_word("named")).expect("matched named frame")+1;
+            if sentence[name_start..].iter().any(|token|token.kind!=crate::lexer::TokenKind::Word){return Ok(None);}
+            custom_keyword=Some(crate::lexer::render_token_slice(&sentence[name_start..]).trim().to_ascii_lowercase());continue;
+        }
+        return Ok(None);
+    }
+    if movement.is_none() && max.is_some() { return Ok(None); }
+    let mut price = &tail[intro_len..];
     if price.first().is_some_and(|t| t.is_word("pay")) && price.get(1).is_some_and(|t| t.slice.starts_with('{')) { price = &price[1..]; }
     let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(price)?;
-    Ok(ast(LineAst::StaticAbility(crate::model::CompilerStaticAbilityCore::reveal_to_add_spell_text(quality, cost, crate::lexer::render_token_slice(price)).into())))
+    let surface = crate::lexer::render_token_slice(price);
+    let mut ability = if let Some((zone,destination)) = movement {
+        crate::model::CompilerStaticAbilityCore::move_to_add_spell_text(quality,cost,surface,zone,destination,max)
+    } else {
+        crate::model::CompilerStaticAbilityCore::reveal_to_add_spell_text(quality,cost,surface)
+    };
+    if let ironsmith_core::StaticAbilityPayload::Splice(spec)=&mut ability.payload {
+        spec.custom_keyword=custom_keyword;
+    }
+    // Every frame and optional rider above was read completely. The cost
+    // reader records its operands; record the remaining validated syntax too.
+    crate::word_claims::claim_tokens(input.tokens);
+    Ok(ast(LineAst::StaticAbility(ability.into())))
 }

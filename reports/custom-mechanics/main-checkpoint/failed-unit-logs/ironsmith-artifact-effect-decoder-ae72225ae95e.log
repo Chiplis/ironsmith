@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'creation_graph::tests::scoped_definition_references_use_the_existing_typed_card_id_mapper' panicked at crates/ironsmith-artifact-effect-decoder/src/creation_graph.rs:167:59:
+called `Result::unwrap()` on an `Err` value: Error("missing field `canonical_text`", line: 0, column: 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test creation_graph::tests::scoped_definition_references_use_the_existing_typed_card_id_mapper ... FAILED
+
+failures:
+
+failures:
+    creation_graph::tests::scoped_definition_references_use_the_existing_typed_card_id_mapper
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+

@@ -38,6 +38,8 @@ pub type RegenerateEffect = ironsmith_core::RegenerateEffect<crate::effect::Effe
 /// let effect = RegenerateEffect::source(Until::EndOfTurn);
 /// ```
 impl EffectExecutor for RegenerateEffect {
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { &self.target == spec }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         // The subject is bound to an exact incarnation at shield registration.
         let follow_up =
@@ -69,9 +71,11 @@ impl EffectExecutor for RegenerateEffect {
         // Resolve all matching targets. This supports both traditional
         // "target creature" regeneration and "regenerate each/all ..." forms.
         let targets = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)
-            .map_err(|_| ExecutionError::InvalidTarget)?;
+            .map_err(|error| if crate::effects::target_packets::retained(ctx, &self.target) { error } else { ExecutionError::InvalidTarget })?;
         if targets.is_empty() {
-            return Err(ExecutionError::InvalidTarget);
+            return if crate::effects::target_packets::retained(ctx, &self.target) {
+                Ok(EffectOutcome::target_invalid())
+            } else { Err(ExecutionError::InvalidTarget) };
         }
 
         // "that player" in a follow-up is fixed now, from this resolution's

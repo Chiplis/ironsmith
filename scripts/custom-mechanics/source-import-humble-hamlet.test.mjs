@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {materializeCard} from './cohort-input.mjs';
+import {executableDefinitions,definitionsForSource,indexSourceDefinitions} from './source-definitions.mjs';
+import {validateMechanic} from '../../web/ui/src/lib/custom-mechanics.js';
+const fixture=JSON.parse(readFileSync(new URL('../../fixtures/custom_mechanics/msem-growth-actions.json',import.meta.url),'utf8'));
+test('actual Humble Hamlet nonmana source alias materializes every face and preserves originals',()=>{
+ const row=fixture.mechanics.find(row=>row.id==='msem-718');
+ const card=row.representative_cards.find(card=>card.source_card_key==='Humble Hamlet//Naxila, the Blessed City_OTH');
+ const before=JSON.stringify(card);const own=executableDefinitions(row);
+ assert.equal(own[0].sourceReminder,row.original_reminder);
+ const definitions=definitionsForSource(card,own,indexSourceDefinitions([{fixture}]),'actual Humble Hamlet row');
+ const faces=materializeCard(card,definitions,'msem');assert.equal(faces.length,2);
+ assert.match(faces[0].executable_text,/Tap ten untapped permanents you control: Exile this permanent/i);
+ assert.match(faces[0].executable_text,/return it to the battlefield transformed under its owner's control/i);
+ assert.match(faces[0].executable_text,/Activate only as a sorcery/i);
+ assert.doesNotMatch(faces[0].executable_text,/\bAscend\b/);
+ assert.ok(faces[0].custom_keyword_identities.includes('rise anew'));
+ assert.match(faces[0].original_display_text,/Ascend—Tap ten untapped permanents you control/);
+ assert.equal(faces[1].name,'Naxila, the Blessed City');assert.match(faces[1].executable_text,/gain 2 life and draw two cards/);
+ assert.equal(JSON.stringify(card),before);
+ assert.throws(()=>validateMechanic({...own[0],keyword:'Ascend'}),/official keywords cannot be redefined/);
+});

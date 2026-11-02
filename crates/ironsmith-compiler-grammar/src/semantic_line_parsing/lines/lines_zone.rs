@@ -107,6 +107,8 @@ pub fn exact_atomic_return_as_aura_bundle(
     let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
         target,
         attachment_filter,
+        attachment_player_filter,
+        additional_subtypes,
         granted_abilities,
         ..
     }) = &aura_subject_verb.action
@@ -120,7 +122,7 @@ pub fn exact_atomic_return_as_aura_bundle(
     {
         return None;
     }
-    if !granted_abilities.is_empty() {
+    if !granted_abilities.is_empty() || attachment_player_filter.is_some() || !additional_subtypes.is_empty() {
         return None;
     }
 

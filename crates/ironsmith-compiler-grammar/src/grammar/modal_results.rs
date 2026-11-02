@@ -75,9 +75,6 @@ fn parse_result_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         ))
         .void(),
         alt((primitives::kw("mill"), primitives::kw("milled"))).void(),
-        // "If you didn't create a token this way" gates on the antecedent
-        // token-creation action, whose result memory is the created token.
-        alt((primitives::kw("create"), primitives::kw("created"))).void(),
     ))
     .void()
     .parse_next(input)

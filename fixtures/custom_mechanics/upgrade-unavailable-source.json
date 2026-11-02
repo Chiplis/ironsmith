@@ -1,0 +1,71 @@
+{
+  "name": "Indecisive Sorceress",
+  "source_card_key": "Indecisive Sorceress_MSC",
+  "source_shape": "normal",
+  "original_source_record": {
+    "fullName": "Indecisive Sorceress",
+    "cardName": "Indecisive Sorceress",
+    "manaCost": "{U}{R}",
+    "typeLine": "Creature — Human Wizard Avatar",
+    "rarityLine": "*MSC R*",
+    "rulesText": "Whenever you cast a noncreature spell, upgrade Indecisive Sorceress. When you can't, remove all counters from it and it deals damage to any target equal to the number of counters removed this way.\n• +1/+1\n• Flying\n• First strike",
+    "flavorText": "",
+    "power": "2",
+    "toughness": "1",
+    "loyalty": "",
+    "color": "{Blue/Red} ",
+    "cmc": 2,
+    "cardType": "Creature",
+    "rarity": "rare",
+    "shape": "normal",
+    "setID": "MSC",
+    "cardID": "381",
+    "designer": "BluesEclipse",
+    "script": "",
+    "notes": [],
+    "artist": "Eric Geusz",
+    "sdn": 12472,
+    "key": "Indecisive Sorceress_MSC",
+    "colorIdentity": [
+      "U",
+      "R"
+    ],
+    "spellbook": [],
+    "prints": [
+      "MSC",
+      "MSY"
+    ],
+    "rarities": [
+      "rare"
+    ],
+    "firstPrint": "Indecisive Sorceress_MSC",
+    "printKeys": [
+      "Indecisive Sorceress_MSC",
+      "Indecisive Sorceress_MSY",
+      "Indecisive Sorceress (Signed)_MSY"
+    ],
+    "formats": [
+      "msem",
+      "msedh"
+    ],
+    "pr": 0,
+    "pm": 1.1590171534538711,
+    "psr": 0,
+    "psm": 0
+  },
+  "original_text": "Mana cost: {U}{R}\nType: Creature — Human Wizard Avatar\nPower/Toughness: 2/1\nWhenever you cast a noncreature spell, upgrade Indecisive Sorceress. When you can't, remove all counters from it and it deals damage to any target equal to the number of counters removed this way.\n• +1/+1\n• Flying\n• First strike",
+  "source_faces": [
+    {
+      "name": "Indecisive Sorceress",
+      "original_text": "Mana cost: {U}{R}\nType: Creature — Human Wizard Avatar\nPower/Toughness: 2/1\nWhenever you cast a noncreature spell, upgrade Indecisive Sorceress. When you can't, remove all counters from it and it deals damage to any target equal to the number of counters removed this way.\n• +1/+1\n• Flying\n• First strike"
+    }
+  ],
+  "executable_text": "Mana cost: {U}{R}\nType: Creature — Human Wizard Avatar\nPower/Toughness: 2/1\nWhenever you cast a noncreature spell, Perform the upgrade action on Indecisive Sorceress as follows, completing the action only if all choices were available: [Choose a kind of counter that the proposed objects doesn't have on it from among +1/+1, flying and first strike; Put a counter of that kind on the proposed objects] When no choice was available this way, remove all counters from it and it deals damage to any target equal to the number of counters removed this way.",
+  "executable_faces": [
+    {
+      "name": "Indecisive Sorceress",
+      "executable_text": "Mana cost: {U}{R}\nType: Creature — Human Wizard Avatar\nPower/Toughness: 2/1\nWhenever you cast a noncreature spell, Perform the upgrade action on Indecisive Sorceress as follows, completing the action only if all choices were available: [Choose a kind of counter that the proposed objects doesn't have on it from among +1/+1, flying and first strike; Put a counter of that kind on the proposed objects] When no choice was available this way, remove all counters from it and it deals damage to any target equal to the number of counters removed this way."
+    }
+  ],
+  "rewrite_status": "authored_candidate_parent_frontend_validation_pending"
+}

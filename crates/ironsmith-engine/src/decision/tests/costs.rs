@@ -691,6 +691,7 @@ fn test_select_first_decision_maker_supports_multi_target_requirement() {
             aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }],

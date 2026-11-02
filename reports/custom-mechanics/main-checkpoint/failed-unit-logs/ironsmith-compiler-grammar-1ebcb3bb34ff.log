@@ -1,0 +1,17 @@
+
+running 1 test
+IDENTITY_FILTER_TRACE text="Nontoken creatures without custom keyword \"undercover\" that weren't cast" tokens=[(Word, Some("Nontoken")), (Word, Some("creatures")), (Word, Some("without")), (Word, Some("custom")), (Word, Some("keyword")), (Quote, None), (Word, Some("undercover")), (Quote, None), (Word, Some("that")), (Word, Some("weren't")), (Word, Some("cast"))]
+IDENTITY_FILTER_TRACE matched name="undercover" negative=true
+
+thread 'keyword_static::compound_static_body_tests::filtered_face_down_entry_is_one_typed_replacement_without_custom_keyword_semantics' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/compound_static_body_tests.rs:6:78:
+Nontoken creatures without custom keyword "undercover" that weren't cast enter face-down.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::compound_static_body_tests::filtered_face_down_entry_is_one_typed_replacement_without_custom_keyword_semantics ... FAILED
+
+failures:
+
+failures:
+    keyword_static::compound_static_body_tests::filtered_face_down_entry_is_one_typed_replacement_without_custom_keyword_semantics
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.05s
+

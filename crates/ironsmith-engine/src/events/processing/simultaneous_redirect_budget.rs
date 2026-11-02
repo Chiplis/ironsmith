@@ -23,6 +23,8 @@ fn shared_source_prevention(game: &GameState) -> bool {
             effect.replacement,
             ReplacementAction::PreventDamageByRule(
                 ironsmith_core::StaticDamagePreventionAmount::SharedPerSource(_)
+                | ironsmith_core::StaticDamagePreventionAmount::FirstEachTurn(_)
+                | ironsmith_core::StaticDamagePreventionAmount::AllButFirstEachTurn(_)
             )
         )
     })
@@ -49,12 +51,14 @@ struct Proposal {
     complete: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum BudgetKey {
     Redirect(ReplacementEffectId),
     Prevention(crate::prevention::PreventionShieldId),
     /// One shared static budget per damage source (Cover of Winter).
     SharedPerSource(ReplacementEffectId, crate::ids::ObjectId),
+    FirstEachTurn(ReplacementEffectKey, crate::events::DamageTarget),
+    DealtCapEachTurn(ReplacementEffectKey, crate::events::DamageTarget),
 }
 
 struct Candidate {
@@ -99,6 +103,16 @@ fn finite_budget(
             let budget = application::resolve_static_prevention_amount(game, effect, amount).ok()?;
             (budget > 0).then_some((BudgetKey::SharedPerSource(effect.id, damage.source), budget))
         }
+        ReplacementAction::PreventDamageByRule(ironsmith_core::StaticDamagePreventionAmount::FirstEachTurn(maximum)) => {
+            let damage=crate::events::downcast_event::<DamageEvent>(event.inner())?;
+            if damage.is_unpreventable { return None; }
+            Some((BudgetKey::FirstEachTurn(effect.application_key(),damage.target), application::turn_prevention_remaining(game,effect,damage.target,*maximum,true)))
+        }
+        ReplacementAction::PreventDamageByRule(ironsmith_core::StaticDamagePreventionAmount::AllButFirstEachTurn(maximum)) => {
+            let damage=crate::events::downcast_event::<DamageEvent>(event.inner())?;
+            if damage.is_unpreventable { return None; }
+            Some((BudgetKey::DealtCapEachTurn(effect.application_key(),damage.target), application::turn_prevention_remaining(game,effect,damage.target,*maximum,false)))
+        }
         _ => None,
     }
 }
@@ -134,10 +148,10 @@ fn candidates(
             originals[proposal.original].source_snapshot.as_ref(),
         )? {
             let budget = finite_budget(game, &effect, &proposal.event);
-            if let Some((key, _)) = budget
+            if let Some((ref key, _)) = budget
                 && let Some(existing) = candidates.iter_mut().find(|candidate| {
                     candidate.priority == priority
-                        && candidate.budget.is_some_and(|(other, _)| other == key)
+                        && candidate.budget.as_ref().is_some_and(|(other, _)| other == key)
                 })
             {
                 existing.members.push((index, effect));
@@ -226,7 +240,7 @@ fn allocate(
     candidate: &Candidate,
     dm: &mut dyn DecisionMaker,
 ) -> Result<Option<Vec<u32>>, crate::effects::ExecutionError> {
-    let Some((key, capacity)) = candidate.budget else {
+    let Some((key, capacity)) = candidate.budget.as_ref() else {
         return Ok(Some(vec![0; candidate.members.len()]));
     };
     let amounts = candidate.members.iter().map(|(index, _)| {
@@ -237,13 +251,21 @@ fn allocate(
             ))
     }).collect::<Result<Vec<_>, _>>()?;
     let total = amounts.iter().map(|amount| u128::from(*amount)).sum::<u128>();
-    let mut remaining = u128::from(capacity).min(total) as u32;
+    let mut remaining = if let BudgetKey::DealtCapEachTurn(_,target)=key {
+        // Unpreventable siblings still deal damage and consume the recipient's
+        // allowed total; they cannot receive any prevention allocation.
+        let unavoidable=proposals.iter().filter_map(|proposal|crate::events::downcast_event::<DamageEvent>(proposal.event.inner()))
+            .filter(|damage|damage.is_unpreventable && damage.target==*target)
+            .map(|damage|u128::from(damage.amount)).sum::<u128>();
+        let available=u128::from(*capacity).saturating_sub(unavoidable);
+        total.saturating_sub(available)
+    } else { u128::from(*capacity).min(total) };
     let mut quotas = Vec::with_capacity(amounts.len());
     for (position, (index, effect)) in candidate.members.iter().enumerate() {
         let later = amounts[position + 1..].iter()
             .map(|amount| u128::from(*amount)).sum::<u128>();
-        let minimum = u128::from(remaining).saturating_sub(later) as u32;
-        let maximum = amounts[position].min(remaining);
+        let minimum = remaining.saturating_sub(later) as u32;
+        let maximum = u128::from(amounts[position]).min(remaining) as u32;
         let chosen = if minimum == maximum {
             minimum
         } else {
@@ -254,7 +276,8 @@ fn allocate(
                 .unwrap_or_else(|| "the replacement".into());
             let kind = match key {
                 BudgetKey::Redirect(_) => "redirected",
-                BudgetKey::Prevention(_) | BudgetKey::SharedPerSource(..) => "prevented",
+                BudgetKey::Prevention(_) | BudgetKey::SharedPerSource(..)
+                | BudgetKey::FirstEachTurn(..) | BudgetKey::DealtCapEachTurn(..) => "prevented",
             };
             let spec = crate::decisions::NumberSpec::range(
                 effect.source, minimum, maximum,
@@ -275,7 +298,7 @@ fn allocate(
             chosen
         };
         quotas.push(chosen);
-        remaining -= chosen;
+        remaining -= u128::from(chosen);
     }
     Ok(Some(quotas))
 }

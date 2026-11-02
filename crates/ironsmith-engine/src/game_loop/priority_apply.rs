@@ -33,6 +33,7 @@ fn build_target_assignments(
                 aggregate_constraint: requirement.aggregate_constraint.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                additional_target_budget: requirement.additional_target_budget,
                 distinct_player_group: requirement.distinct_player_group,
                 shared_player_group: requirement.shared_player_group.clone(),
             },
@@ -158,6 +159,11 @@ pub fn apply_priority_response_with_dm(
     let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
     let result =
         apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
+    // A replacement-order question before the candidate exists replays the
+    // original cast action. Later casting stages retain their own PendingCast.
+    let restore_on_pending=restore_on_pending || (matches!(response,
+        PriorityResponse::PriorityAction(LegalAction::CastSpell{..}))
+        && decision_maker.awaiting_choice() && state.pending_cast.is_none() && state.pending_method_selection.is_none());
     let incomplete = matches!(&result, Err(GameLoopError::ExecutionFailed(error))
         if error.is_incomplete_execution());
     if incomplete || (restore_on_pending && (result.is_err() || decision_maker.awaiting_choice())) {
@@ -340,7 +346,7 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
                     "Exhaust ability was already activated".into(),
                 ));
             }
-            let exhaust_announcement = if mana_ability.is_exhaust_ability() {
+            let exhaust_announcement = if mana_ability.is_exhaust_ability() || matches!(mana_ability.keyword, Some(ironsmith_core::ActivatedAbilityKeyword::Grouped { .. })) {
                 if state.checkpoint.is_none() {
                     state.save_checkpoint(game);
                 }
@@ -402,11 +408,13 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
                     .as_ref()
                     .and_then(|snapshot| snapshot.ability_origins.as_ref())
                     .and_then(|origins| origins.get(*ability_index).cloned());
-                game.record_ability_activation_with_origin(
+                game.record_ability_activation_with_payment(
                     *source,
                     *ability_index,
+                    player,
                     activation_origin.clone(),
                     effects_to_run.activation_definition,
+                    prepared_notification.mana_spend_evidence.as_ref(),
                 );
                 let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
                     .with_activation_origin(activation_origin.clone())
@@ -674,9 +682,9 @@ fn apply_priority_response_with_dm_inner(
         );
     }
 
-    // Handle X value selection for a pending cast
-    if let PriorityResponse::XValue(x) | PriorityResponse::NumberChoice(x) = response {
-        return apply_x_value_response(game, trigger_queue, state, *x, &mut *decision_maker);
+    // The stage owner decides whether a number is a target count or X.
+    if let PriorityResponse::XValue(value) | PriorityResponse::NumberChoice(value) = response {
+        return apply_cast_number_response(game, trigger_queue, state, *value, decision_maker);
     }
 
     // Handle mode selection for a pending cast or activated ability.
@@ -1044,7 +1052,9 @@ pub(super) fn apply_admitted_priority_action(
 
             // Move spell to stack immediately per MTG rule 601.2a
             // This happens at the start of proposal, before any choices are made
-            let stack_id = propose_spell_cast(game, *spell_id, *from_zone, player, casting_method)?;
+            let Some(stack_id) = super::priority_mana::propose_spell_cast_with_dm(game, *spell_id, *from_zone, player, casting_method,decision_maker)? else {
+                return Ok(GameProgress::Continue);
+            };
             let cast_provenance =
                 game.provenance_graph_mut()
                     .alloc_root(ProvenanceNodeKind::EffectExecution {
@@ -1153,6 +1163,8 @@ pub(super) fn apply_admitted_priority_action(
                 let chosen_creature_type = game.chosen_creature_type(*source);
                 if let Some(ability) = game.current_ability(*source, *ability_index) {
                     if let AbilityKind::Activated(activated) = &ability.kind {
+                        let prepared = crate::activation_zone_permissions::prepare(game, *source, *ability_index, activated);
+                        let activated = prepared.as_ref().unwrap_or(activated);
                         let is_turn_capped = activated.max_activations_per_turn().is_some();
                         let is_loyalty_ability = activated.is_loyalty_ability();
                         // Fixed-output definitions can become nonmana abilities
@@ -1212,10 +1224,10 @@ pub(super) fn apply_admitted_priority_action(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
-            let announced_ability = game
+            let mut announced_ability = game
                 .current_ability(*source, *ability_index)
                 .and_then(|ability| match &ability.kind {
-                    AbilityKind::Activated(activated) => Some(activated.clone()),
+                    AbilityKind::Activated(activated) => Some(crate::activation_zone_permissions::prepare(game, *source, *ability_index, activated).unwrap_or_else(||activated.clone())),
                     _ => None,
                 })
                 .ok_or_else(|| {
@@ -1232,6 +1244,8 @@ pub(super) fn apply_admitted_priority_action(
                 &announced_ability,
             );
             announced_facts.ability_index = Some(*ability_index);
+            let base_cost = crate::activation_cost_alternatives::unpriced_cost(game, *source, &announced_facts, &base_cost, &crate::derived_view::DerivedGameView::new(game));
+            announced_ability.mana_cost = base_cost.clone();
             let needs_cost_references =
                 crate::cost::prospective_references::needs_activation_reference_context(
                     &base_cost,
@@ -1243,7 +1257,7 @@ pub(super) fn apply_admitted_priority_action(
                 *source,
                 &base_cost,
                 &[],
-                Some(announced_facts),
+                Some(&announced_facts),
             );
             let activation_cost_has_tap = total_cost_contains_tap(&cost);
             let alternative_cost_branches = cost
@@ -1474,14 +1488,16 @@ pub(super) fn apply_admitted_priority_action(
                     };
                 let mut granting_source_tags = std::collections::HashMap::new();
                 game.insert_granting_source_tag(*source, *ability_index, &mut granting_source_tags);
-                game.record_ability_activation_with_origin(
+                game.record_ability_activation_with_payment(
                     *source,
                     *ability_index,
+                    player,
                     source_snapshot
                         .ability_origins
                         .as_ref()
                         .and_then(|origins| origins.get(*ability_index).cloned()),
                     effects.activation_definition,
+                    prepared_notification.mana_spend_evidence.as_ref(),
                 );
                 if is_loyalty_ability {
                     game.record_loyalty_ability_activation(*source);
@@ -1763,10 +1779,10 @@ pub(super) fn apply_targets_response(
             pending.remaining_requirements.drain(..requirements.len());
             pending.active_target_requirement_count = 0;
 
-            {
+            if !pending.effect_driven {
                 let announced = super::priority_cast::announced_activation_cost(&pending)?;
                 let activated = &announced.ability;
-                let facts = announced.facts;
+                let facts = announced.facts.clone();
                 // X was announced before targets (CR 602.2b, 601.2b); price the
                 // cost with it locked so reductions apply to the X part too.
                 let base_cost = if let Some(captured) =
@@ -1831,14 +1847,16 @@ pub(super) fn apply_targets_response(
                 } else {
                     base_cost
                 };
-                let repriced =
-                    crate::decision::calculate_effective_activation_total_cost_for_ability(
+                let price = if pending.cost_reference_base.is_some() {
+                    crate::decision::calculate_effective_activation_selected_branch_cost
+                } else { crate::decision::calculate_effective_activation_total_cost_for_ability };
+                let repriced = price(
                         game,
                         pending.activator,
                         pending.source,
                         &base_cost,
                         &pending.chosen_targets,
-                        Some(facts),
+                        Some(&facts),
                     );
                 let locked_cost = match repriced.kind() {
                     ironsmith_core::TotalCostKind::All(_) => repriced.clone(),
@@ -1904,6 +1922,14 @@ pub(super) fn apply_targets_response(
 
     // Combine previously chosen targets with new ones
     let mut pending = pending;
+    let extra_used:usize=requirements.iter().zip(&assignments).map(|(requirement,assignment)| {
+        requirement.max_targets.map_or(0,|max|assignment.range.len().saturating_sub(max.saturating_sub(requirement.additional_target_budget)))
+    }).sum();
+    if let Some(chooser)=pending.active_target_chooser.take() {
+        if let Some(remaining)=pending.additional_target_budgets.get_mut(&chooser) {
+            *remaining=remaining.saturating_sub(extra_used);
+        }
+    }
     let mut all_targets = pending.chosen_targets.clone();
     all_targets.extend(targets.iter().cloned());
     pending
@@ -2097,7 +2123,7 @@ pub(super) fn apply_x_value_response(
         };
         let min_x = announced.ability.activation_x_minimum();
         let original = announced.ability.clone();
-        let facts = announced.facts;
+        let facts = announced.facts.clone();
         if x_value < min_x {
             state.pending_activation = Some(pending);
             return Err(GameLoopError::InvalidState(format!(
@@ -2130,7 +2156,7 @@ pub(super) fn apply_x_value_response(
                 pending.source,
                 &locked,
                 &pending.chosen_targets,
-                Some(facts),
+                Some(&facts),
             );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => Some(repriced.clone()),
@@ -2438,3 +2464,35 @@ mod sol_78_announced_participants {
         assert_eq!(game.stack.last().unwrap().tagged_objects[&key][0].controller, alice);
     }
 }
+
+/// Shared numeric cast response for explicit commands and DecisionContext replay.
+/// A target-count announcement must not be routed back into X selection.
+pub(super) fn apply_cast_number_response(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    value: u32,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+        if state.pending_cast.as_ref().is_some_and(|pending|pending.pending_target_count.is_some()) {
+            let mut pending=state.pending_cast.take().unwrap();
+            let (index,original_max,maximum)=pending.pending_target_count.take().unwrap();
+            let count=value as usize;
+            if count<pending.remaining_requirements[index].min_targets || count>maximum {
+                pending.pending_target_count=Some((index,original_max,maximum));
+                state.pending_cast=Some(pending);
+                return Err(GameLoopError::InvalidState("target count outside the offered range".into()));
+            }
+            let key=pending.chosen_target_assignments.len()+index;
+            pending.announced_target_counts.insert(key,count);
+            if let Some(chooser)=pending.active_target_chooser {
+                let extra=original_max.map_or(0,|max|count.saturating_sub(max));
+                if let Some(remaining)=pending.additional_target_budgets.get_mut(&chooser) {*remaining=remaining.saturating_sub(extra);}
+            }
+            let requirement=&mut pending.remaining_requirements[index];
+            requirement.min_targets=count;requirement.max_targets=Some(count);requirement.additional_target_budget=0;
+            return continue_to_targets_or_mana_payment(game,trigger_queue,state,pending,&mut *decision_maker);
+        }
+        return apply_x_value_response(game, trigger_queue, state, value, decision_maker);
+}
+

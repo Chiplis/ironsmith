@@ -120,7 +120,21 @@ pub(super) fn run_labeled_line_family(
         ctx.line,
         ctx.allow_unsupported,
     ) {
-        Ok(Some(result)) => line_family_match(ctx, result),
+        Ok(Some(result)) => {
+            // The complete labeled body has a real reading. Its authored
+            // group name is consumed by semantic ability designations, even
+            // when this sibling is static instead of activated/triggered.
+            // Claim only those labels, never unread body words.
+            if !ctx.line.info.semantic_facts.ability_designations.is_empty() {
+                let mut tokens = ctx.line.info.source_tokens.as_slice();
+                while let Some((_, label, body)) = split_label_prefix_lexed(tokens) {
+                    if document_grammar::parse_preserved_keyword_label_tokens(label).is_some() { break; }
+                    crate::word_claims::claim_tokens(label);
+                    tokens = body;
+                }
+            }
+            line_family_match(ctx, result)
+        }
         Ok(None) => ParseOutcome::NoMatch,
         Err(error) => line_family_error(ctx, rule, error),
     }
@@ -1294,6 +1308,16 @@ pub(super) fn run_keyword_line_family(
     let rule = RuleId::new("keyword-line");
     // These whole-line definition readers are probes ahead of the ordinary
     // families: a line they can't read (or misread) keeps its usual owner.
+    // An external class heading owns the complete line. A generic effect
+    // bundle may otherwise claim only its imperative body (for example Draw),
+    // losing the ability heading and leaving its words unclaimed.
+    match crate::clause_support::parse_externally_triggered_line(&ctx.line.tokens) {
+        Ok(Some(parsed)) => return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info:ctx.line.info.clone(),parse_tokens:ctx.line.tokens.clone(),chosen_option:None,parsed:Some(Box::new(parsed)),
+        }),ctx.idx+1)),
+        Err(error) => return line_family_error(ctx,RuleId::new("externally-triggered-ability"),error),
+        Ok(None) => {}
+    }
     if let Ok(Some(effects)) =
         crate::effect_sentences::parse_described_effect_bundle(&ctx.line.tokens).and_then(|parsed| {
             if parsed.is_some() { Ok(parsed) } else { crate::effect_sentences::parse_described_effect_bundle(&ctx.line.info.source_tokens) }
@@ -1308,6 +1332,18 @@ pub(super) fn run_keyword_line_family(
         return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
             info: ctx.line.info.clone(), parse_tokens: ctx.line.tokens.clone(), chosen_option: None,
             parsed: Some(Box::new(parsed)),
+        }), ctx.idx + 1));
+    }
+
+    // An as-cast program owns its typed payer/payment/failure declaration
+    // before the broad additional-cost family can split its followup into
+    // an unrelated resolution clause. The reader independently validates all
+    // operands and declines ordinary additional costs.
+    if let Some(abilities) = line_family_try!(ctx, rule,
+        crate::keyword_static::parse_casting_announcement_program_line(&ctx.line.info.source_tokens)) {
+        return line_family_match(ctx, LineDispatchResult::single(RecognizedLine::Static(RecognizedStaticLine {
+            info: ctx.line.info.clone(), parse_tokens: ctx.line.info.source_tokens.clone(), chosen_option: None,
+            parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
         }), ctx.idx + 1));
     }
 
@@ -1334,7 +1370,7 @@ pub(super) fn run_keyword_line_family(
     // alternative-cost registry before the keyword-head whitelist.
     // A prose head is only a probe here: a line this registry can't read
     // (an ordinary additional cost, say) keeps its usual families.
-    if ctx.line.tokens.first().is_some_and(|token| token.is_any_word(&["as", "cast", "if", "choose", "pay"]))
+    if ctx.line.tokens.first().is_some_and(|token| token.is_any_word(&["as", "cast", "if", "choose", "pay", "during"]))
         && crate::grammar::keyword_dispatch::parse_keyword_dispatch_hint_tokens(&ctx.line.tokens)
             != Some(crate::grammar::keyword_dispatch::KeywordDispatchHint::AlternativeOrExertFamily)
     {
@@ -2220,6 +2256,13 @@ pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("statement-probe");
+    // A complete durationless passive damage rule has no resolving action
+    // or duration to execute, even when printed on an instant or sorcery.
+    // Let its typed static production own the whole line. A timed suffix
+    // makes the complete shape fail, preserving ordinary spell effects.
+    if crate::grammar::activation_restrictions::parse_filtered_unpreventability(&ctx.line.tokens).is_some() {
+        return ParseOutcome::NoMatch;
+    }
     if line_family_claimed!(rule, run_keyword_line_family(ctx))
         || line_family_claimed!(rule, run_start_your_engines_line_family(ctx))
     {
@@ -2559,6 +2602,13 @@ pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("statement-line");
+    // A complete durationless passive damage rule has no resolving action
+    // or duration to execute, even when printed on an instant or sorcery.
+    // Let its typed static production own the whole line. A timed suffix
+    // makes the complete shape fail, preserving ordinary spell effects.
+    if crate::grammar::activation_restrictions::parse_filtered_unpreventability(&ctx.line.tokens).is_some() {
+        return ParseOutcome::NoMatch;
+    }
     if is_this_spell_cost_modifier_line(ctx)
         || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
             &ctx.line.tokens), Ok(Some(_)))
@@ -2652,7 +2702,15 @@ pub(super) fn run_colon_nonactivation_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
     let rule = RuleId::new("colon-nonactivation-statement");
-    if line_family_claimed!(rule, run_activation_line_family(ctx)) {
+    // A recognized declaration owns its colon and payment. Its instruction
+    // body must not become a second, competing statement candidate.
+    if line_family_claimed!(rule, run_keyword_line_family(ctx)) {
+        return ParseOutcome::NoMatch;
+    }
+    // The complete statement probe owns explicit bounded instruction colons.
+    // This compatibility fallback must not re-advertise a different packet.
+    if line_family_claimed!(rule, run_statement_probe_line_family(ctx))
+        || line_family_claimed!(rule, run_activation_line_family(ctx)) {
         return ParseOutcome::NoMatch;
     }
 

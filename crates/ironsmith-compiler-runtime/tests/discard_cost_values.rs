@@ -1,4 +1,5 @@
 //! UNVALIDATED implementation-first regressions for discard activation payments.
+#[path="unfunded_activation_support.rs"] mod unfunded_activation_support;
 use ironsmith::Subtype;
 use ironsmith::ability::AbilityKind;
 use ironsmith::card::{CardBuilder, PowerToughness};
@@ -104,6 +105,7 @@ struct Choices {
     selections: std::collections::VecDeque<Vec<String>>,
     cancel: bool,
     cancelled: bool,
+    expect_unpayable_mana: bool,
 }
 impl DecisionMaker for Choices {
     fn decide_number(&mut self, _game: &GameState, ctx: &NumberContext) -> u32 {
@@ -161,6 +163,7 @@ impl DecisionMaker for Choices {
         game: &GameState,
         ctx: &ManaPaymentContext,
     ) -> ManaPaymentResponse {
+        if self.expect_unpayable_mana {assert!(!ctx.plan.payable,"an eligible discard does not pay the separate X mana price");}
         if self.cancel {
             self.cancelled = true;
             ManaPaymentResponse::Cancel
@@ -324,11 +327,11 @@ fn knollspine_noncontiguous_x_values_and_mana_bounds_do_not_waive_discard() {
         ctx.x_value = Some(3);
         assert!(cost.can_pay(&game, &ctx).is_ok());
         drop(ctx);
-        hand_card(&mut game, A, "One-value payment", 1, ColorSet::GREEN, 0);
+        let one=hand_card(&mut game, A, "One-value payment", 1, ColorSet::GREEN, 0);
         mana(&mut game, ManaSymbol::Colorless, 2);
         let mut dm = Choices {
             x: 1,
-            max_x: Some(2),
+            max_x: Some(3),
             target: Some(Target::Player(B)),
             selections: one_selection("One-value payment"),
             ..Default::default()
@@ -337,6 +340,9 @@ fn knollspine_noncontiguous_x_values_and_mana_bounds_do_not_waive_discard() {
         assert!(dm.saw_x);
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();
         assert_eq!(game.player(B).unwrap().life, 19);
+        assert!(game.object(one).is_none(),"the exact one-value card is discarded");
+        assert_eq!(game.object(paid).unwrap().zone,Zone::Hand,"the three-value card cannot substitute for announced X=1");
+        assert_eq!(game.player(A).unwrap().mana_pool.total(),1);
     }
 }
 
@@ -612,4 +618,19 @@ fn cancelling_x_discard_restores_payment_and_does_not_expose_a_free_activation()
         assert!(game.player(A).unwrap().graveyard.is_empty());
         assert_eq!(game.player(A).unwrap().mana_pool, pool);
     }
+}
+
+#[test]
+fn knollspine_unfunded_eligible_x_restores_the_exact_discard_card_and_mana() {
+ for definition in definitions("Knollspine Invocation"){
+  let mut game=game();let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+  let three=hand_card(&mut game,A,"Three-value payment",3,ColorSet::BLUE,0);let one=hand_card(&mut game,A,"One-value payment",1,ColorSet::GREEN,0);
+  let foreign=hand_card(&mut game,B,"Foreign two",2,ColorSet::BLUE,0);mana(&mut game,ManaSymbol::Colorless,2);
+  let mut dm=Choices{x:3,max_x:Some(3),target:Some(Target::Player(B)),selections:one_selection("Three-value payment"),cancel:true,expect_unpayable_mana:true,..Default::default()};
+  let rejected=unfunded_activation_support::reject_or_cancel(&mut game,action(&definition,source),&mut dm);
+  assert!(dm.saw_x&&(rejected||dm.cancelled));
+  for id in [three,one,foreign]{assert_eq!(game.object(id).unwrap().zone,Zone::Hand);}
+  assert!(game.player(A).unwrap().graveyard.is_empty());assert_eq!(game.player(A).unwrap().mana_pool.total(),2);
+  assert_eq!(game.player(A).unwrap().life,20);assert_eq!(game.player(B).unwrap().life,20);assert!(!game.is_tapped(source));
+ }
 }

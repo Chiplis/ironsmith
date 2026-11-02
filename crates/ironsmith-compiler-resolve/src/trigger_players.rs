@@ -386,7 +386,9 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         TriggerSpec::KeywordActionFromSource { player, .. } if *player == PlayerFilter::Any => {
             Some(PlayerFilter::IteratedPlayer)
         }
-        TriggerSpec::KeywordAction { player, .. }
+        TriggerSpec::NamedActionParticipant { player, .. }
+        | TriggerSpec::NamedAction { player, .. }
+        | TriggerSpec::KeywordAction { player, .. }
         | TriggerSpec::KeywordActionTaggedObject { player, .. }
         | TriggerSpec::KeywordActionFromSource { player, .. }
         | TriggerSpec::WinsClash { player, .. } => {

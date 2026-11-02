@@ -3,7 +3,7 @@
 use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
+use crate::effects::helpers::{resolve_player_filter, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{GrantDuration, Grantable};
@@ -77,36 +77,25 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-                // A delayed effect tracks the original object, not the card's new
-                // incarnation after a zone change. There is nothing left to exile.
-                let Some(from_zone) = game.object(target_id).map(|obj| obj.zone) else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                };
+                let targets = resolve_objects_for_effect(game, ctx, &self.target)?;
                 let player = resolve_player_filter(game, &self.player, ctx)?;
                 let grant_source = crate::effects::player::grant_by_spec::grant_duration_source(
                     self.duration, game, ctx.source, ctx.controller);
                 let starts_on_turn = self.available_starting_next_turn.then_some(game.turn.turn_number.saturating_add(1));
-                let request = crate::effects::zones::PreparedZoneMove::capture(
-                    game,
-                    target_id,
-                    from_zone,
-                    Zone::Exile,
-                    ctx.cause.clone(),
-                    None,
-                );
+                let requests = targets.into_iter().filter_map(|target| {
+                    let from_zone = game.object(target)?.zone;
+                    Some(crate::effects::zones::PreparedZoneMove::capture(
+                        game, target, from_zone, Zone::Exile, ctx.cause.clone(), None,
+                    ))
+                }).collect();
                 crate::effects::zones::execute_zone_moves_with_outputs(
                     game,
                     ctx,
-                    vec![request],
+                    requests,
                     |game, ctx, receipts| {
-                        let arrived = crate::effects::zones::movement_arrivals(
-                            game,
-                            target_id,
-                            &receipts[0].1,
-                        );
+                        let arrived = receipts.iter().flat_map(|(request, outcome)| {
+                            crate::effects::zones::movement_arrivals(game, *request, outcome)
+                        }).collect::<Vec<_>>();
                         // Grant only to this instruction's actual arrivals still in exile;
                         // never follow a later object incarnation by stable identity.
                         let exiled_ids = arrived
@@ -143,6 +132,8 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         );
         result
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)

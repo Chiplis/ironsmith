@@ -3,7 +3,6 @@
 use super::choose_color_as_becomes_attached;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_from_spec, resolve_single_target_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::AttachmentTarget;
@@ -40,38 +39,13 @@ impl EffectExecutor for AttachToEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        // A token replacement can make "attach this to it" name several
-        // tokens. CR 301.5c: the Equipment's current controller chooses one,
-        // even if another player controls the resolving ability.
-        let target = if matches!(self.target.base(), ChooseSpec::Tagged(_)) {
-            let candidates = resolve_objects_from_spec(game, &self.target, ctx)?
-                .into_iter()
-                .filter(|id| {
-                    super::attachment_can_attach_during_effect(game, ctx, ctx.source, AttachmentTarget::Object(*id))
-                        && !crate::targeting::has_protection_from_source(game, *id, ctx.source)
-                })
-                .collect::<Vec<_>>();
-            use crate::effects::composition::captured_selection::{
-                CapturedChoicePolicy, choose_captured_object,
-            };
-            let chooser = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
-            let Some(id) = choose_captured_object(
-                game,
-                ctx,
-                chooser,
-                &candidates,
-                "Choose which permanent to attach this to",
-                CapturedChoicePolicy {
-                    skip_singleton: true,
-                    ..CapturedChoicePolicy::EXPLICIT_FIRST
-                },
-            )?
-            else {
-                return Ok(EffectOutcome::resolved());
-            };
-            crate::effects::ResolvedTarget::Object(id)
-        } else {
-            resolve_single_target_from_spec(game, &self.target, ctx)?
+        let destinations = super::attach_objects::attachment_destinations(game, &self.target, ctx)?;
+        let Some(target) = super::attach_objects::choose_attachment_destination(game, ctx, ctx.source, &destinations)? else {
+            return Ok(EffectOutcome::resolved());
+        };
+        let target = match target {
+            AttachmentTarget::Object(id) => crate::effects::ResolvedTarget::Object(id),
+            AttachmentTarget::Player(id) => crate::effects::ResolvedTarget::Player(id),
         };
 
         complete_resolved_attachment(
@@ -84,6 +58,8 @@ impl EffectExecutor for AttachToEffect {
 
         Ok(EffectOutcome::resolved())
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)

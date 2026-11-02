@@ -64,7 +64,7 @@ pub(crate) struct SourceDamageKeywords {
 
 fn has_damage_marker(abilities: &[crate::ability::Ability], mechanic: ironsmith_core::KeywordMarkerMechanic) -> bool {
     abilities.iter().any(|ability| matches!(&ability.kind,
-        crate::ability::AbilityKind::Static(ability) if ability.keyword_marker_mechanic() == Some(mechanic)))
+        crate::ability::AbilityKind::Static(ability) if ability.keyword_marker_mechanic().as_ref() == Some(&mechanic)))
 }
 
 pub(crate) fn source_damage_is_lethal(game: &GameState, source: ObjectId) -> bool {
@@ -207,7 +207,7 @@ pub(crate) fn apply_processed_damage_assignment_with_scope(
         let mut receipt=commit_prepared_damage_original(game,&mut ctx,prepared)?;
         if ctx.decision_maker.awaiting_choice(){return Ok(AppliedDamageAssignment::default());}
         if receipt.completion.is_some(){
-            crate::effects::capture_triggers_before_added_program(game,&ctx,None,
+            crate::effects::capture_triggers_before_added_program(game,&mut ctx,None,
                 receipt.original.consequence_outcome.iter_mut().flat_map(|outcome|outcome.events.iter_mut()))?;
         }
         complete_damage_original(game,&mut ctx,receipt)
@@ -533,6 +533,8 @@ mod tests {
     fn make_creature(name: &str, power: i32, toughness: i32) -> Object {
         let id = ObjectId::from_raw(NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
         Object {
+            spell_copy_entry_forbidden: false,
+            source_definition_metadata: Default::default(),
             copied_face_values: None,
             token_creation_method: None,
             id,
@@ -579,6 +581,7 @@ mod tests {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: vec![].into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -588,6 +591,7 @@ mod tests {
             x_value: None,
             keyword_payment_contributions_to_cast: vec![],
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: crate::cost::TotalCost::free().into(),
             bestow_cast_state: None,
             face_down_cast_state: None,

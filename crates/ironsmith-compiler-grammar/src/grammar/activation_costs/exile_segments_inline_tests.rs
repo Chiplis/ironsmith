@@ -2,6 +2,29 @@ use super::super::super::super::lexer::lex_line;
 use super::*;
 
 #[test]
+fn hand_or_graveyard_exile_is_one_exact_choice_across_both_owned_zones() {
+    for text in ["exile exactly two cards from your hand and/or graveyard", "exile two blue cards from your hand and/or graveyard"] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::ExileChosen { choice_count, filter, .. } = parse_exile_segment_tokens(&tokens, |_| false).unwrap() else { panic!("missing union choice"); };
+        assert_eq!(choice_count, crate::effect::ChoiceCount::exactly(2));
+        assert_eq!(filter.any_of.len(), 2);
+        for (arm, zone) in filter.any_of.iter().zip([Zone::Hand, Zone::Graveyard]) {
+            assert_eq!(arm.zone, Some(zone));
+            assert_eq!(arm.owner, Some(PlayerFilter::You));
+            if text.contains("blue") { assert_eq!(arm.colors, Some(ColorSet::BLUE)); }
+        }
+    }
+}
+
+#[test]
+fn repeated_exile_price_retains_the_multiplier_on_announced_x() {
+    let tokens = lex_line("exile exactly two times X cards from your hand and/or graveyard", 0).unwrap();
+    let ActivationCostSegmentCst::ExileChosen { count_value, filter, .. } = parse_exile_segment_tokens(&tokens, |_| false).unwrap() else { panic!("missing scaled exile selection"); };
+    assert_eq!(count_value, Some(crate::effect::Value::XTimes(2)));
+    assert_eq!(filter.any_of.len(), 2);
+}
+
+#[test]
 fn exile_segments_preserve_zone_top_and_named_shapes() {
     let top = lex_line("exile the top three cards of your library", 0).unwrap();
     assert_eq!(

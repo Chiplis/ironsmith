@@ -117,6 +117,8 @@ pub enum BecomeCopySourceShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct BecomeAuraShape<'a> {
     pub attachment_you_control: bool,
+    /// Authored subtype words between Aura and enchantment.
+    pub additional_subtype_tokens: &'a [OwnedLexToken],
     /// The complete enchant filter after "enchant" ("creature put onto the
     /// battlefield with Necromancy"), without an enclosing quote.
     pub enchant_filter_tokens: &'a [OwnedLexToken],

@@ -1,0 +1,319 @@
+{
+  "goal": "active; all requested existing-rule custom mechanics, not merely source expansion",
+  "user_confirmed": "Strict official keyword collisions intentional; Cargo cleanup intentional. Never restore scoped exemptions.",
+  "build_directory": "/tmp/ironsmith-goal-native",
+  "running": {
+    "native_batch": {
+      "directory": "/tmp/custom-mechanics-wave17-native-r1",
+      "targets": 72,
+      "status": "complete; input fingerprint drift 0",
+      "passed": 233,
+      "failed": 76,
+      "aborted": 3
+    },
+    "focused_native": {
+      "status": "complete, 58passed34failed plus corrected coloredresource6passed2failed; inputdrift0",
+      "report": "reports/custom-mechanics/wave17-repairs-native-r1-results.json"
+    },
+    "next": "Finish focused unit groups, repair failures then82native rerun. Big coherent wave assembling independently byrevolution_abilities; no live edits during activeverification.",
+    "native_check": {
+      "status": "PASS combined198 registered targets plus engine/grammar/semantic/resolve/syntax cfgtest r4; then applied Resilience ce94 unit pending execution",
+      "log": "/tmp/custom-mechanics-union6-repairs-check-r4.log"
+    },
+    "union6_native": {
+      "status": "COMPLETE 82targets, one intentionally terminated parser stall; allinputhashes unchanged",
+      "report": "reports/custom-mechanics/union6-native-r1-results.json",
+      "cases": {
+        "passed": 211,
+        "failed": 144
+      }
+    },
+    "focused_units": {
+      "session": 93203,
+      "directory": "/tmp/custom-mechanics-union6-repair-units-r2",
+      "runner": "/tmp/ironsmith-run-repair-units-r2.py",
+      "status": "COMPLETE:60passed1failed; Encourage final4a104 repair applied after run, pending test"
+    },
+    "big_v2": {
+      "patch": "b8fc621314b930664865c0d5966a91d5ce26b380c5f637363b6fe400dbb1bfda",
+      "status": "PASS native223targetcheckr8; unit build r3 active session23060 after cfg-only fixes2e7+quotedgrant337. /tmp/custom-mechanics-big-v2-unit-build-r3",
+      "frontend": "PASS83/83, materialization395clean; later Rust-only fixes do not change frontend outcomes",
+      "materialization": "PASS395again afterbd1 (r3 log); source frozen duringunitbuild",
+      "golden": "GENERATED current20 fa94; artifact29/29PASS; reports/custom-mechanics/big-v2-artifact-validation.json",
+      "latest_semantics": "Applied exactoriginalcreation producer5a17 and predicate5569 plusactualOverfueled e239; addedphysicalprefix4d89 tests. These awaitruntimeverification.",
+      "core_unit": "4serde compatibility tests passed but begunbefore5569; rerun latestsource in combinedunitbatch",
+      "next_before_unit_rebuild": "Waitbuild13052 completion; apply growthcfgtestarmfix; rerun395source materialization because bd1 grant-reader fix followed previous materialization; refresh180schema afterboundreaderchanges; rebuildunitexecutables and generate20golden then154focusedtests.",
+      "available_units": "core5+semantic1+syntax1 PASS currentselectedmodels; full158planned unit suite pending binaries"
+    }
+  },
+  "next_integration": {
+    "patch": "tmp/custom-mechanics/next-wave/master-integration/master-coherent.patch",
+    "sha256": "41c19fb2e86af9d0c8b737c536e45835e317e89e41c7a34349144e3f9cf2499d",
+    "files": 240,
+    "status": "APPLIED master+testcontract+Collectcoherent+wave14 followups; see wave15-integrated-patches.json",
+    "review": "tmp/custom-mechanics/next-wave/boundary_remaining/master-packaging-independent-review.json",
+    "frontend": {
+      "pass": 54,
+      "log": "/tmp/custom-mechanics-candidate-master-final.log",
+      "extra_test_patch": "tmp/custom-mechanics/next-wave/categories/vocabulary-forms/subtype-word-forms-test-contract.patch"
+    },
+    "known_followup": "Current ledger authoritative; all current native runtime results pending"
+  },
+  "first_mate_frontend": {
+    "pass": 5,
+    "log": "/tmp/custom-mechanics-candidate-first-mate-corrected-harness.log",
+    "sha256": "892b77bd2e6c9f50b956ac737b36e30a1516a326a71ac12251b14e4a261d6a22",
+    "note": "test import ../../web requires tests/frontend location; browser/native unverified"
+  },
+  "token_diagnostic": "/tmp/custom-mechanics-wave14-token-claim-direct-bigstack.log; trigger body claimed, outer marker/connectors unresolved direct route. Wait fresh Disgraced native result before extra document diagnostic. Raw binary needs RUST_MIN_STACK=67108864.",
+  "source_inventory": "reports/custom-mechanics/full-source-row-fulfillment.json; latest scratch may be richer; availability not behavior certification",
+  "important_dependencies": [
+    "Pledge v2 requires standalone spirited-currentbase patch after master boundary; NOT included in master.",
+    "First mate plus source-setup-browser-replay precede Puzzlebox primitives/consumer.",
+    "Glitch core growth\u2192compiler action_choices\u2192named optional payments actions_linked.",
+    "Syzygy grant_frontend owns generic source-wide spell/activation creature tap pricing."
+  ],
+  "parent_responsibility": "All builds/test runs, source audits, Cargo test target registration; workers scratch changes/tests only.",
+  "excluded_by_user": [
+    "Function new casting rules",
+    "Lucid new casting rules",
+    "Chant new casting rules"
+  ],
+  "coverage_followup": "Availability counts require pending deterministic source-candidate merge fix; native evidence separate. Ride and Tunneler excluded after intrinsic-rule evidence; Chronicle and Journey remain in scope.",
+  "wave16": {
+    "patch": "tmp/custom-mechanics/next-wave/wave16-master-rebased/wave16-rebased-current-live.patch",
+    "sha256": "fa28b8df6cad03ef62b7a3919519ca860e9598b6dda37fb15ebe4a96e51366d2",
+    "files": 210,
+    "new_files": 43,
+    "targets": 17,
+    "frontend": "56/56 live /tmp/custom-mechanics-wave16-live-frontend-r1.log; Humbleadditional1/1",
+    "review": "PASS independent packaging replay/completeness: tmp/custom-mechanics/next-wave/abilities_late/reviews/wave16-master-packaging-review.md",
+    "status": "APPLIED currentr3 master;56/56 livefrontendpassed; postmastercopycostchain applied"
+  },
+  "pending_native_batch": {
+    "targets_file": "/tmp/ironsmith-wave16-native-targets.json",
+    "targets": 53
+  },
+  "golden_frontend_candidate": {
+    "tests": 2,
+    "passed": 2,
+    "log": "/tmp/custom-mechanics-golden-token-frontend-r1.log",
+    "status": "isolatedpendingcoherent+followups, notlive"
+  },
+  "scope_followup": "Ride intrinsicSteedSBA exclusionproven; Tunneler game-owned globalstateexcluded; Chronicle formalstaticability(notintrinsictype) continuescandidateexistingSagaaction withabilitylossnegative. Function/Lucid/Chant timingexcluded unchanged.",
+  "wave17": {
+    "patch": "tmp/custom-mechanics/next-wave/wave17-master-v2/wave17-current-live.patch",
+    "sha256": "4baf05dd90ed016d3953e16dadea0efe611425ed148ad9cc67746be056f10951",
+    "status": "APPLIED, plus reviewed optionaltext and focusedparser/runtime fixes; see ledger",
+    "frontend": "live75/75 PASS; thirteen fixtures materialized with zero binding failures",
+    "native_report": "reports/custom-mechanics/wave17-native-r1-results.json"
+  },
+  "isolated_frontend": {
+    "tokens": {
+      "passed": 15,
+      "log": "/tmp/custom-mechanics-tokens-frontend-r3.log"
+    },
+    "integrate": {
+      "passed": 3,
+      "sources_materialized": 25,
+      "log": "/tmp/custom-mechanics-integrate-frontend-r2.log"
+    },
+    "reprieve_pursuit": {
+      "passed": 2,
+      "sources_materialized": 24,
+      "log": "/tmp/custom-mechanics-reprieve-frontend-r3.log"
+    },
+    "union6": {
+      "passed": 46,
+      "live": true,
+      "log": "/tmp/custom-mechanics-union6-live-frontend-r1.log"
+    }
+  },
+  "renderer_fix": {
+    "activation_native_passed": 4,
+    "both_former_aborted_targets": "complete without stack overflow, remaining source failures",
+    "input_drift": 0
+  },
+  "union6": {
+    "patch": "tmp/custom-mechanics/next-wave/abilities_middle/reviewed-current-union/reviewed-current-union-v2.patch",
+    "sha256": "ec9f305b0a14dd294b2b794f901758b3d79f911a054a62787268faa976732ae0",
+    "status": "APPLIED plus brace/tokenhelper/display/alignment/recursivevisitor compile fixes",
+    "isolated_frontend_passed": 46,
+    "live_fixtures_materialized": 29,
+    "binding_errors": 0,
+    "raw_source_preserved": true,
+    "live_frontend_passed": 46
+  },
+  "applied_native_repairs": {
+    "patch": "tmp/custom-mechanics/next-wave/abilities_middle/ready-native-repairs-v2/ready-native-repairs.patch",
+    "sha256": "a199b84d6595ef22e55ec3e8e48292f45d0fb985579527339e67c2c79a421d59",
+    "optional_text_followup": "defbb4103a820dfa3401330385cb37eadce82ab12a2c47949bb6dff29bd07301",
+    "engine_compilation_followups": [
+      "d646086",
+      "beb8f2cb",
+      "5d9bbd57"
+    ],
+    "decoder_regenerated_routes": 375
+  },
+  "user_source_ambiguity_boundaries": [
+    {
+      "card": "Tunu, Ancient Shaper",
+      "ability": "Conjure six cards named Scorch. Shuffle them and your hand into your library",
+      "decision": "User explicitly chose leave ambiguous source unresolved; no initial zone assumed.",
+      "evidence": "reports/custom-mechanics/tunu-conjure-zone-ambiguity.json"
+    }
+  ],
+  "next_ready_coherent": {
+    "small_full101": "full101-small-repairs-current/full101-small-repairs-current.patch b85e305042a6ced730809d9bfe5168bb47f0839c587123aeecce5e2cf1fb7d15",
+    "transform": "abilities_late/transform-current-live/transform-current-live.patch 02b6666dd2928f14abbb732f58c67cb4da83cad6e476847c9bbd7de93f6e38ef; plus bc851 refinement isolatedfrontendPASS",
+    "cache_stitch_lamech": "boundary_remaining/cache-stitch-inscribe-lamech-currentlive-r8/cache-stitch-inscribe-lamech-currentlive-r8.patch c12cf3df602183fc33ae6d98c1d8ccab2a30f92337b13be920c8ff8845841b6d; isolated12PASS and27+15+26+13materialized0errors",
+    "deathknell": "tokens-death-knell-coherent/death-knell-coherent.patch 1d2f07d7c95cc5f16e86948ffab8e80c6ff247dad7eb525dbc84e205b67daec9; boundedreviewclear, unrun"
+  },
+  "first_union6_repairs_ready": [
+    "abilities_final_recursive_filter_boundary/recursive-donor-identity-boundary.patch b6021bcd22ab5badb8c76a67fd24f2982751ca74b279510fdaf37213e66130ab",
+    "union6_source_collection_adapter/source-collection-native-adapter.patch 9a25ae33100e6b30d1c181d613ac1236500d7e846ec3ef5c31768e8f9fac36be"
+  ],
+  "applied_next_native_repairs": {
+    "patch": "tmp/custom-mechanics/next-wave/revolution_abilities/next-native-repairs/next-native-repairs.patch",
+    "sha256": "100ff1c9e2479a727e05e3d68b9aef6eed37454cee50ef87946f02341ff49fd9",
+    "inputs": 33,
+    "files": 81,
+    "followups": [
+      "028981 selfoperandtest",
+      "e70e9 reviewedordinarymaterializer"
+    ],
+    "check_session": 56983,
+    "check_log": "/tmp/custom-mechanics-union6-repairs-check-r1.log"
+  },
+  "creed_diagnostic": {
+    "log": "/tmp/custom-mechanics-creed-permission-diagnostic-r1.log",
+    "result": "control_durationNone; grammar bundle reconstructed subset of fullpermission",
+    "fix_applied": "3d490222"
+  },
+  "repairs_frontend": {
+    "live_passed": 25,
+    "logs": [
+      "/tmp/custom-mechanics-union6-repairs-live-frontend-r1.log",
+      "/tmp/custom-mechanics-union6-repairs-extra-frontend-r1.log"
+    ],
+    "materialization": "reports/custom-mechanics/union6-repairs-materialization.json"
+  },
+  "user_confirmed_scope": {
+    "exclude_casting_rules": [
+      "Function",
+      "Lucid",
+      "Chant"
+    ],
+    "unresolved_source": "Tunu Ancient Shaper original Conjure destination stays unresolved",
+    "official_keyword_collisions": "Strict rejection intentional; preserve user changes"
+  },
+  "pending_next_coherent": {
+    "assembler": "revolution_abilities",
+    "inputs": [
+      "earlycastingdff149",
+      "private53e9ac",
+      "Upgrade+whole9426e1db",
+      "Coalesce90dfde",
+      "Realm b0dd reviewedclear",
+      "EvilPlan741docs"
+    ],
+    "engorge": "a485 stillheld: entry capture incomplete evidence before resource scope, ownerfixpending",
+    "other_ready": [
+      "Oath280743 reviewedclear",
+      "Harmony47968+c772 diagnostic whole68",
+      "WasteRevive2b994+c4a5",
+      "manac827+namedactivationa975",
+      "Conjure/Surface assembling inscribe, Neural finalreviewpending",
+      "namedhybridcost casting_early under review, Miracle index blocker found"
+    ]
+  },
+  "scope_audit": {
+    "dispatch": "tmp/custom-mechanics/next-wave/categories/coverage-endgate/owner-group-whole-source-dispatch.json",
+    "status": "All35 previousownerconfirmation gaps assigned/excluded; all108remaining equations explicitly assigned original18workers viafollowup_tasks. Proof !=execution. Categoriesauthorsuniversalstrictendgate, updatesfromexactrawproofs.",
+    "new_generic_gaps": {
+      "Traverse_contributor_receipts": "abilities_late withgrant_frontend",
+      "characteristic_type_gains": "special_actions withrevolution_actions/tokens",
+      "Engorge_producer_partition": "abilities_final",
+      "Acquiesce_exile_trigger": "growth source-onlyequivalent followup"
+    }
+  },
+  "pending_coherent_candidates": {
+    "NEXT": "revolution_abilities/next-coherent-currentlive/next-coherent-currentlive.patch f2a990d9; reviewedmiddleclear;199paths14?15targets223\u2192238",
+    "Conjure": "inscribe/conjure/coherent-integration/final-currentlive/conjure-surface-currentlive.patch2ca243ac;209paths65new; reviewedpackagingmiddle+Neuralcastingmiddleclear; needsafterNEXTschema20refresh; externalhybrid682da",
+    "OathHarmony": "oath_harmony_current_live/oath-harmony-current-live.patch1e9bf53d;17paths; additivea4fc26alias+fcf72programassertions",
+    "whole_source_audits": "Manyadditionalpackets arriving; categoriescoverageendgate inventories/proofs and worker manifests authoritative. Mustintegrate/materialize/run, not merelysourcepresence."
+  },
+  "latest_resume": {
+    "time": "2026-11-02T16:51:23.063168",
+    "live_integrated": [
+      "e9c9c9f5b24d4f0996c9184edd32ddf12e9458a197b6f62e877d5f2935d12693",
+      "2df7c100dd6f4fd3234e354db490126cae5fedc096f586e70ee8e884f3d1b4d8",
+      "0fcb9db070364674493e75941fb6a14a7e190e299823cee578af13cce6c9c820",
+      "ac50a4eac1dcd3bb5d5e209e6ad0ed7dcc4b04e58f9c1515bf45b1875164352d"
+    ],
+    "baseline": "reports/custom-mechanics/bounded223-baseline-final.json",
+    "baseline_result": "223/223 targets complete,4751cases4320pass431nonpass,6646inputfingerprints no drift",
+    "isolated_frontend": {
+      "overlay": "/tmp/ironsmith-e9-reconciled-frontend-r2",
+      "materialization_report": "/tmp/custom-mechanics-e9-reconciled-prep-r3/materialization-report.json",
+      "materialization": "4239/4239,0failures,Tunu1unresolved",
+      "tests": "/tmp/custom-mechanics-e9-reconciled-frontend-r3.log",
+      "test_result": "135/135 passed"
+    },
+    "native_build": "/tmp/custom-mechanics-e9-second-check-r3.log",
+    "compile_blocker": "lowering effect_dispatch1459 missing TaggedEffect action; earlyrepair",
+    "third_assembler": "revolution_abilities CLOSED37inputs resolving/freezing; knownlaterpackets FOURTH",
+    "pending_question": "none; user explicitly leaves Glitch Cosmic Dreamer unspecifiedcounter quantity unresolved",
+    "source_rule": "rootonly executes builds/tests/materialization; workers scratch only",
+    "suite_generator": "40executables21filesupdated; checkclean8testsPASS /tmp/custom-mechanics-e9-second-suite-generation.log",
+    "live_compile_repairs": [
+      "17345bb6d65cc607606987911c0a49c9a5b7732a3f3316f080cdbc600a63a9a3",
+      "af969481c0ce85bd6b8a4e552d2815e4f94d0e5c1f2d133003c2c56254908367"
+    ],
+    "third_preparation": "4610attempt4289materialized321fail allConjure invalidtemplate;2explicitunresolved;Surfacepassed reports/custom-mechanics/third-materialization-r2",
+    "third_prep_failures": "RepoWarden collective1, Judge outsideQuotation5, UpgradeRelitian defs2; ownerscoordinatedrevabilities",
+    "compile_repairs_after_third": [
+      "2b9a7bd8",
+      "d5496cbb",
+      "e8fdde4e",
+      "a6e6355b",
+      "107146b4"
+    ],
+    "running": {
+      "grammar_check": 65261,
+      "frontend": 17329
+    },
+    "fourth_assembler": "abilities_tail finite reviewedready cutoff rootrequested; revabilities prep/schema",
+    "grammar_lib_check": "PASS /tmp/custom-mechanics-third-grammar-check-r3.log",
+    "frontend_latest": "FOURTH153152pass1staletest;604fix newquotedexecutablegrantbodyassumption fails, grant_frontendversionedfollowup",
+    "runtime_architecture": "inscribe nativecreationgraph/equivalence nearlyready, actions_linked native recipe referencewalker; independentreviews requested revactions/revlate",
+    "root_latest_applied": "ledgerwave15 through604testcontract;15adespellresolvefoundation77aMaskedtrait2203coretestscope applied",
+    "live_materialized": "yes63fixturecurrentderived outputs; restoreonly162Conjurepools by exactkey from e9 selectedraw before reruns",
+    "core_tests": "193PASS0fail /tmp/custom-mechanics-fourth-core-tests-r2.log",
+    "fourth_preparation": "356/356 in3fixtures reports/custom-mechanics/fourth-targeted-preparation.json",
+    "runtime_check_running": 26464,
+    "runtime_check_log": "/tmp/custom-mechanics-fourth-runtime-check-r2.log",
+    "fifth_assembler": "revolution_abilities 9initialreadyinputs finitecut; tailpeerinventory",
+    "current_stage": "Selected unit execution; SIXTH readyfix union assembler revolution_abilities; Dewshaper abilities_final",
+    "unit_build_running": 12623,
+    "unit_build_log": "/tmp/custom-mechanics-final-unit-build-r3.log",
+    "selected_unit_results": "/tmp/custom-mechanics-selected-units-r1/results.json",
+    "selected_unit_initial": "engine155 ran143PASS12FAIL; text3PASS; ownersassigned",
+    "schema_refresh": "cf00 applied+31artifactPASS but later boundtestfiles changed; finalrefreshrequired",
+    "fifth_integrated": "4798d0ce183487bb0bd01914a7f6722cc1fcd3bf30b531472f0b6054740b1857",
+    "current_scope_decisions": "Tunu and Glitch ambiguoussources remain unresolved; no new castingrules Function/Lucid/Chant",
+    "runtime_library_check": "PASS fifth-runtime-check-r3; laterunitbuild repairingtestonlyAPIs",
+    "last_direct_patch": "aa015b4c source_names TaggedEffect action None cfgtest",
+    "sixth_integrated": "8758b8a24c5fac7140775ec4eecfae58d9ce1171fde9bbb625e3ea17b3d31d36",
+    "additional_unit_build_running": 26310,
+    "additional_unit_build_log": "/tmp/custom-mechanics-additional-unit-build-r1.log",
+    "unit_build_r3": "PASS8packages",
+    "selected_units_r1_summary": "reports/custom-mechanics/selected-units-r1-summary.json",
+    "selected_units_r1": "341passed30failed3inventoryissues; syntaxfull29passed;30ownersassigned",
+    "seventh": "assembler revolution_abilities collecting assigned unitrepairs; schemahold",
+    "post_sixth_directs": [
+      "c510 privateanchortest",
+      "c35 nativeProwessprogramidentity"
+    ]
+  }
+}

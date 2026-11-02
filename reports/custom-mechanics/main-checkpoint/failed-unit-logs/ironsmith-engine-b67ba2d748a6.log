@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'game_state::zone_movement_admission_tests::a_composite_original_checks_every_component_before_any_entry_program_or_removal' panicked at crates/ironsmith-engine/src/cards/definitions/chrome_mox.rs:21:10:
+Card text should be supported: InvariantViolation("runtime parser tests moved to ironsmith-registry")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test game_state::zone_movement_admission_tests::a_composite_original_checks_every_component_before_any_entry_program_or_removal ... FAILED
+
+failures:
+
+failures:
+    game_state::zone_movement_admission_tests::a_composite_original_checks_every_component_before_any_entry_program_or_removal
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.05s
+

@@ -95,6 +95,9 @@ fn convert_counter_put_on_trigger(
     trigger: ironsmith_core::trigger_model::CounterPutOnTrigger,
 ) -> crate::triggers::Trigger {
     let mut out = crate::triggers::CounterPutOnTrigger::new(trigger.filter);
+    out.activation_label = trigger.activation_label;
+    out.activation_definition = trigger.activation_definition;
+    out.cause_designation = trigger.cause_designation;
     if let Some(counter_type) = trigger.counter_type {
         out = out.counter_type(counter_type);
     }
@@ -332,8 +335,10 @@ pub(crate) fn interpret_trigger_model(
                 player, filter, tapped, one_or_more, during_untap_step,
             })
         }
+        TriggerKind::CharacteristicGained(trigger) => crate::triggers::Trigger::new(trigger),
         TriggerKind::ControlChanged(trigger) => crate::triggers::Trigger::new(trigger),
         TriggerKind::RingBearerChosen { player } => crate::triggers::Trigger::new(crate::triggers::RingBearerChosenTrigger { player }),
+        TriggerKind::AttachmentChangedToPlayer { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedToPlayerTrigger { attachment, recipient, attached }),
         TriggerKind::AttachmentChanged { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedTrigger { attachment, recipient, attached }),
         TriggerKind::PlayerAttackDeclaration { attacker, defender, grouping } => crate::triggers::Trigger::new(crate::triggers::PlayerAttackDeclarationTrigger { attacker, defender, grouping }),
         TriggerKind::CardsMilled { player, filter, one_or_more, per_player } => crate::triggers::Trigger::new(crate::triggers::CardsMilledTrigger { player, filter, one_or_more, per_player }),
@@ -811,6 +816,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::NthSpellOfTurnCast { spell_number } => {
             crate::triggers::Trigger::nth_spell_of_turn_cast(spell_number)
         }
+        TriggerKind::SpellResolves {controller} => crate::triggers::Trigger::spell_resolves(controller),
         TriggerKind::SpellCopied { filter, copier } => {
             crate::triggers::Trigger::spell_copied(filter, copier)
         }
@@ -880,10 +886,23 @@ pub(crate) fn interpret_trigger_model(
             surface,
             destination_name,
         ),
+        TriggerKind::PermanentTransformsFromOwnNamedActivation {filter,label,activator} => {
+            let mut trigger=crate::triggers::TransformsTrigger::new().permanent_filter(filter);
+            trigger.activation_label=Some(label);trigger.activation_source_must_match=true;
+            trigger.activation_player=activator;crate::triggers::Trigger::new(trigger)
+        }
+        TriggerKind::PermanentTransformsFromNamedActivation { filter, label } => {
+            let mut trigger=crate::triggers::TransformsTrigger::new().permanent_filter(filter);
+            trigger.activation_label=Some(label);crate::triggers::Trigger::new(trigger)
+        }
         TriggerKind::PermanentTransforms { filter } => {
             crate::triggers::Trigger::permanent_transforms(filter)
         }
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
+        TriggerKind::NamedActionParticipant { label, player, participant_filter, performer_filter, one_or_more } =>
+            crate::triggers::Trigger::new(crate::triggers::other::named_action::NamedActionParticipantTrigger { label, player, participant_filter, performer_filter, one_or_more }),
+        TriggerKind::NamedAction { label, player, source_filter, object_filter, minimum_amount } =>
+            crate::triggers::Trigger::new(crate::triggers::other::named_action::NamedActionTrigger { label, player, source_filter, object_filter, minimum_amount }),
         TriggerKind::KeywordActionMatchingObject {
             action,
             player,
@@ -1031,6 +1050,7 @@ impl super::Trigger {
                 Self::beginning_of_postcombat_main_phase(player)
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
+            ironsmith_core::DelayedTriggerSpec::CharacteristicGained(trigger) => Self::new(trigger),
             ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger) => Self::new(trigger),
             ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter } => Self::new(crate::triggers::PermanentBecomesUntappedTrigger { filter, one_or_more: false }),
             ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {

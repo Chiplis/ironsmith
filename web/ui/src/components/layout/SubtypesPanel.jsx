@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
 import { SUBTYPE_FAMILIES, listCustomSubtypes, mergeSubtypes, storeCustomSubtypes, suggestSubtypePlural, validateSubtype } from '@/lib/custom-subtypes';
 
-export default function SubtypesPanel() {
+export default function SubtypesPanel({ definitions: scopedDefinitions, onChange, setName }) {
   const { game } = useGame();
   const ui = useUiText();
-  const [definitions, setDefinitions] = useState(() => { try { return listCustomSubtypes(); } catch { return []; } });
+  const [personalDefinitions, setDefinitions] = useState(() => { try { return listCustomSubtypes(); } catch { return []; } });
+  const definitions = scopedDefinitions ?? personalDefinitions;
+  const persist = next => onChange ? onChange(next) : setDefinitions(storeCustomSubtypes(next));
   const [singular, setSingular] = useState('');
   const [plural, setPlural] = useState('');
   const [family, setFamily] = useState('Creature');
@@ -18,23 +20,25 @@ export default function SubtypesPanel() {
     try {
       const def = validateSubtype({ singular, plural, family });
       const next = mergeSubtypes(definitions, [def]);
-      const cardType = family === 'Spell' ? 'Sorcery' : family;
-      const preview = await game.previewCustomCard({ customSubtypes: [def], layout: 'single', faces: [{
+      const cardType = family === 'Spell' ? 'Sorcery' : family === 'Planar' ? 'Plane' : family;
+      const preview = await game.previewCustomCard({ customSubtypes: next.filter(item => item.singular === def.singular), layout: 'single', faces: [{
         name: 'Subtype validation', cardTypes: [cardType], subtypes: [def.singular], oracleText: '',
         ...(family === 'Creature' ? { power: '1', toughness: '1' } : {}),
         ...(family === 'Planeswalker' ? { loyalty: 1 } : {}),
         ...(family === 'Battle' ? { defense: 1 } : {}),
       }] });
       if (!preview?.canCreate) throw new Error('The compiler did not accept this subtype.');
-      setDefinitions(storeCustomSubtypes(next)); setSingular(''); setPlural('');
+      await persist(next); setSingular(''); setPlural('');
     } catch (cause) { setError(String(cause?.message || cause)); }
     finally { setBusy(false); }
   }
-  function remove(def) {
-    try { setDefinitions(storeCustomSubtypes(definitions.filter(item => item.singular !== def.singular))); }
+  async function remove(def) {
+    try { await persist(definitions.filter(item => item.singular !== def.singular || item.family !== def.family)); }
     catch (cause) { setError(String(cause?.message || cause)); }
   }
   return <div className="space-y-5 p-5">
+    {setName != null && <h3 className="font-semibold">{setName || ui('Untitled set')} · {ui('Set subtypes')}</h3>}
+    {onChange && <p className="text-sm text-muted-foreground">Subtypes created here belong to this set. Save the set to keep your changes.</p>}
     <p className="text-sm text-muted-foreground">Define subtype names for your cards. Only types referenced by cards in a game join that game’s type choices, changeling, and “every type” effects. Saved cards carry their definitions.</p>
     <form onSubmit={save} className="flex flex-wrap items-end gap-3">
       <label className="grid gap-1 text-sm">{ui('Singular')}<input disabled={busy} required maxLength={32} className="rounded border p-2" value={singular} onChange={event => { setSingular(event.target.value); setPlural(suggestSubtypePlural(event.target.value)); }} placeholder="Moonkin" /></label>
@@ -42,8 +46,8 @@ export default function SubtypesPanel() {
       <label className="grid gap-1 text-sm">{ui('Family')}<select disabled={busy} className="rounded border p-2" value={family} onChange={event => setFamily(event.target.value)}>{SUBTYPE_FAMILIES.map(value => <option className="bg-background" key={value} value={value}>{ui(value)}</option>)}</select></label>
       <Button disabled={busy || !game} type="submit">{ui(busy ? 'Checking…' : 'Add subtype')}</Button>
     </form>
-    <p className="text-xs text-muted-foreground">Use one word of up to 32 letters. Check the suggested plural; irregular and identical forms are supported. Subtypes do not grant inherent abilities.</p>
+    <p className="text-xs text-muted-foreground">Names may contain words, letters, numbers, hyphens, or apostrophes. Check the suggested plural; irregular and identical forms are supported. Subtypes do not grant inherent abilities.</p>
     {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
-    <ul className="space-y-2">{definitions.map(def => <li key={def.singular} className="flex items-center justify-between gap-3 border-b py-2"><span><strong className="capitalize">{def.singular}</strong> / {def.plural} · {def.family}</span><Button disabled={busy} variant="outline" size="sm" onClick={() => remove(def)}>{ui('Remove')}</Button></li>)}</ul>
+    <ul className="space-y-2">{definitions.map(def => <li key={`${def.singular}:${def.family}`} className="flex items-center justify-between gap-3 border-b py-2"><span><strong className="capitalize">{def.singular}</strong> / {def.plural} · {def.family}</span><Button disabled={busy} variant="outline" size="sm" onClick={() => remove(def)}>{ui('Remove')}</Button></li>)}</ul>
   </div>;
 }

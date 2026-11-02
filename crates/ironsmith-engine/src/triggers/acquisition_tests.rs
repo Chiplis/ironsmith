@@ -160,7 +160,8 @@ fn first_discovery_text_change_and_expiry_share_once_per_turn_and_resolution_his
 fn copied_definition_rebinds_acquisition_and_face_replacement_changes_definition() {
     let (mut game, source) = body(vec![definition(5, colored_trigger(), 1)]);
     let original = current(&game, source);
-    let copied = bind(Ability { kind: AbilityKind::Triggered(original.clone()), functional_zones: vec![Zone::Battlefield] },
+    let copied = bind(Ability { kind: AbilityKind::Triggered(original.clone()), designations: Default::default(),
+    functional_zones: vec![Zone::Battlefield] },
         source.0 + 1000, AbilityOrigin::Printed(0));
     assert_eq!(triggered(&copied).effects.retained_trigger_definition(), original.effects.retained_trigger_definition());
     assert_ne!(compute_trigger_identity(triggered(&copied)), compute_trigger_identity(&original));
@@ -181,7 +182,8 @@ fn layer_one_copy_keeps_frozen_definition_after_donor_changes_and_leaves() {
     let receiver = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Receiving host")
         .card_types(vec![crate::types::CardType::Enchantment]).build(), PlayerId::from_index(0), Zone::Battlefield);
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
-        donor, PlayerId::from_index(0), vec![receiver], Modification::CopyOf { retain_original_name: false,
+        donor, PlayerId::from_index(0), vec![receiver], Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
             target_id: donor, copiable_values: Box::new(values), preserve_source_abilities: false,
             name_override: None, name_override_surface: None, add_supertypes: vec![],
         },

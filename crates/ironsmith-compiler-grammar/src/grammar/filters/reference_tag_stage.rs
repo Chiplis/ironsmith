@@ -230,7 +230,7 @@ fn filter_comparison_rhs_ranges(
     let mut idx = 0usize;
     while idx < words.len() {
         let (axis, axis_word_count) =
-            if parse_phrase_at_head(&words[idx..], MANA_VALUE_PREFIX).is_some() {
+            if (parse_phrase_at_head(&words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&words[idx..], &["mana", "values"]).is_some()) {
                 ("mana value", MANA_VALUE_PREFIX.len())
             } else if words[idx] == POWER_WORD {
                 // In "total power and toughness N or less", `power` is
@@ -1282,6 +1282,40 @@ pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter)=crate::object_filters::parse_named_action_role_filter(tokens){return Ok(filter);}
+    // Named status is an ordinary qualifier on a complete object filter.
+    // Preserve its opaque name and independently parse every remaining word.
+    if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
+        let mut filter = parse_object_filter_with_grammar_entrypoint_lexed(&base, other)?;
+        if negative { filter.excluded_custom_statuses.push(name); }
+        else { filter.custom_statuses.push(name); }
+        return Ok(filter);
+    }
+    // A positive missing-family member is an existential set difference,
+    // not a demand that the candidate share no subtype with any permanent.
+    let view=crate::lexer::TokenWordView::new(tokens);
+    let words=view.word_refs();
+    if let Some(start)=words.windows(7).position(|window| matches!(window,
+        ["that","has"|"have","a","creature","type","no",_] |
+        ["that","has"|"have","a","land","type","no",_] |
+        ["that","has"|"have","a","artifact","type","no",_] |
+        ["that","has"|"have","a","enchantment","type","no",_]))
+        && matches!(words.last(),Some(&"does"|&"has"|&"have"))
+    {
+        let family=match words[start+3] {"creature"=>ironsmith_core::SubtypeFamily::Creature,"land"=>ironsmith_core::SubtypeFamily::Land,"artifact"=>ironsmith_core::SubtypeFamily::Artifact,_=>ironsmith_core::SubtypeFamily::Enchantment};
+        let indices=view.token_start_indices();
+        let mut candidate=parse_object_filter_with_grammar_entrypoint_lexed(&tokens[..indices[start]],other)?;
+        let mut comparison=parse_object_filter_with_grammar_entrypoint_lexed(&tokens[indices[start+6]..indices[words.len()-1]],false)?;
+        if comparison.zone.is_none(){comparison.zone=Some(crate::zone::Zone::Battlefield);}
+        candidate.characteristic_relations.push(ironsmith_core::ObjectCharacteristicRelation{
+            kind:ironsmith_core::ObjectCharacteristicRelationKind::HasUnrepresentedSubtype,
+            characteristics:vec![ironsmith_core::ObjectCharacteristic::Subtype(family)],comparison,exclude_candidate:false,
+        });
+        crate::word_claims::claim_tokens(&tokens[indices[start]..indices[start+6]]);
+        crate::word_claims::claim_tokens(&tokens[indices[words.len()-1]..]);
+        return Ok(candidate);
+    }
+    if let Some(result)=crate::util::payment_receipt_references::negative_tap_filter(tokens,other){return result;}
     if let Some(result) = super::live_name_relations::parse_live_name_relation(tokens, other) {
         return result;
     }
@@ -1483,6 +1517,13 @@ pub(super) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // Union arms recurse through this grammar entrypoint, rather than the
+    // public object-filter adapter. Read quoted identity operands before any
+    // word projection here too, preserving their branch-local constraints.
+    if let Some(result) = crate::object_filters::parse_entry_reference_filter(tokens, other) { return result; }
+    if let Some(result) = crate::object_filters::parse_custom_identity_filter(tokens, other) {
+        return result;
+    }
     // Preserve the complete name-reference operand before projecting words:
     // punctuation inside a reference must not disappear from its grammar.
     if let Some(filter) = crate::object_filters::parse_terminal_same_name_filter(tokens, other)? {
@@ -1613,3 +1654,17 @@ use reference_tag_stage_library_programs::{
     strip_other_than_basic_land_cards_clause,
     strip_other_than_basic_land_cards_tokens,
 };
+
+#[cfg(test)]
+mod named_status_filter_entrypoint_tests {
+    use super::*;
+    #[test]
+    fn complete_filter_retains_status_qualification_and_zone() {
+        for (text,negative) in [("a card in exile with the charted status",false),("a card in exile without the charted status",true)] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let filter=parse_object_filter_with_grammar_entrypoint_lexed(&tokens,false).unwrap();
+            assert_eq!(filter.zone,Some(crate::zone::Zone::Exile));
+            assert_eq!(if negative {&filter.excluded_custom_statuses}else{&filter.custom_statuses},&vec!["charted".to_string()]);
+        }
+    }
+}

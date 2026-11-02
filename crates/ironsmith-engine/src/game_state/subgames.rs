@@ -129,6 +129,7 @@ impl GameState {
 
     pub fn complete_subgame_starting_procedure(&mut self) {
         self.subgame_starting_procedure_pending = false;
+        self.capture_game_start_object_states();
     }
 
     /// Whether a restart effect (CR 726) rebuilt this game and the host still
@@ -140,6 +141,7 @@ impl GameState {
 
     pub fn complete_restart_starting_procedure(&mut self) {
         self.restart_starting_procedure_pending = false;
+        self.capture_game_start_object_states();
     }
 
     pub fn take_subgame_just_resumed(&mut self) -> bool {
@@ -1027,6 +1029,61 @@ impl GameState {
             nonwinners,
             returned_cards: returned_ids,
             resumed_depth: self.subgame_depth(),
+        })
+    }
+}
+
+impl GameState {
+    /// Host starting-procedure boundary. Repeated calls cannot overwrite facts.
+    pub fn capture_game_start_object_states(&mut self) {
+        if self.initial_object_states.is_some() { return; }
+        self.initial_object_states = Some(self.objects_in_deterministic_order().into_iter()
+            .map(|object| (object.stable_id, (object.zone, self.is_face_down(object.id))))
+            .collect());
+    }
+    pub fn initial_object_state(&self, id: ObjectId) -> Result<Option<(Zone, bool)>, crate::effects::ExecutionError> {
+        let states = self.initial_object_states.as_ref().ok_or_else(||
+            crate::effects::ExecutionError::IncompleteEvidence("game-start object state was not captured by the starting procedure".into()))?;
+        Ok(self.object(id).and_then(|object| states.get(&object.stable_id).copied()))
+    }
+    /// Shared admission/commit query; callers refresh continuous restrictions first.
+    /// Pure current-rule admission. A physical simultaneous operation owns
+    /// one frozen receipt; ordinary callers derive current providers instead
+    /// of trusting a tracker left behind by a direct move or ability change.
+    pub fn zone_move_is_prohibited(&self, id: ObjectId, destination: Zone) -> bool {
+        let Some(object) = self.object(id) else { return false; };
+        if object.zone == destination { return false; }
+        if let Some(admission) = &self.auxiliary_tracking.zone_movement_admission {
+            return self.zone_movement_admission_blocks(id, destination, admission);
+        }
+        let admission = self.capture_zone_movement_admission();
+        self.zone_movement_admission_blocks(id, destination, &admission)
+    }
+    pub(crate) fn capture_zone_movement_admission(&self) -> super::ZoneMovementAdmission {
+        match self.continuous_query_snapshot() {
+            Ok(checked) => super::ZoneMovementAdmission {
+                rules: checked.effect_store.cant_effects.cant_move_between_zones.clone(), failed: false,
+            },
+            Err(error) => {
+                self.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+                super::ZoneMovementAdmission { rules: Vec::new(), failed: true }
+            }
+        }
+    }
+    fn zone_movement_admission_blocks(&self, id: ObjectId, destination: Zone, admission: &super::ZoneMovementAdmission) -> bool {
+        if admission.failed { return true; }
+        let Some(object) = self.object(id) else { return false; };
+        if object.zone == destination { return false; }
+        admission.rules.iter().any(|(from,to,initial,cards_only)| {
+            if object.zone != *from || to.is_some_and(|to| to != destination)
+                || (*cards_only && object.kind != crate::object::ObjectKind::Card) { return false; }
+            match initial {
+                None => true,
+                Some(expected) => match self.initial_object_state(id) {
+                    Ok(actual) => actual == Some(*expected),
+                    Err(error) => { self.record_token_resource_failure(&error); true },
+                },
+            }
         })
     }
 }

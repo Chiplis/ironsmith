@@ -247,6 +247,7 @@ pub enum CompilerReferenceTag {
     MilledThisWay,
     RevealedThisWay,
     LookedAtHand,
+    LookedAtCards,
     SourceObject,
     Exploited,
     Exploiter,
@@ -422,6 +423,7 @@ pub enum CompilerReferenceTag {
     DurationReferencedCreature,
     DurationReferencedArtifact,
     DurationReferencedPermanent,
+    CurrentIteratedObject,
 }
 
 impl CompilerReferenceTag {
@@ -434,6 +436,7 @@ impl CompilerReferenceTag {
             Self::MilledThisWay => "__milled_this_way__",
             Self::RevealedThisWay => "__revealed_this_way__",
             Self::LookedAtHand => "__looked_at_hand__",
+            Self::LookedAtCards => "__looked_at_cards__",
             Self::SourceObject => "__source_object__",
             Self::SourceEmergeSacrifice => ironsmith_core::tag::SOURCE_EMERGE_SACRIFICE_TAG,
             Self::Exploited => "exploited",
@@ -444,6 +447,7 @@ impl CompilerReferenceTag {
             Self::ZoneChangeGroup => "__zone_change_group__",
             Self::InitiativeHolder => "__initiative_holder__",
             Self::PreviousIteratedObjects => "__previous_iterated_objects__",
+            Self::CurrentIteratedObject => ironsmith_core::tag::CURRENT_ITERATED_OBJECT_TAG,
             Self::CastModifiedCreatures => "__cast_modified_creatures__",
             Self::CastControlledObjects => "__cast_controlled_objects__",
             Self::Triggering => "triggering",
@@ -648,7 +652,8 @@ impl CompilerReferenceTag {
             | Self::ControllerConsultMatched
             | Self::DrawnRevealedCard
             | Self::HideawayLooked
-            | Self::LookedAtHand => (R::Revealed, D::Card),
+            | Self::LookedAtHand
+            | Self::LookedAtCards => (R::Revealed, D::Card),
             Self::Searched
             | Self::SearchedOutsideGame
             | Self::SearchedMultiZone
@@ -668,7 +673,7 @@ impl CompilerReferenceTag {
                 (R::Created, D::Object)
             }
             Self::CopiedStackObject => (R::Copied, D::Spell),
-            Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent => {
+            Self::PreviousIteratedObjects | Self::IterativeLibraryCurrent | Self::CurrentIteratedObject => {
                 (R::Iteration, D::Object)
             }
             Self::ManaPaidObject

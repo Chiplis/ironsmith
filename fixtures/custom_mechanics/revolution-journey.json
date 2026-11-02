@@ -1,0 +1,1442 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "scope": "All exact original Journey reminder variants; staged existing-operation candidate, not gameplay-certified"
+  },
+  "mechanics": [
+    {
+      "id": "rev-journey-000",
+      "keyword": "Journey",
+      "scope": "revolution",
+      "rule_reference": "701.70.",
+      "rule_text": {
+        "name": "701.70.",
+        "rule": "Journey",
+        "subrules": [
+          {
+            "name": "701.70a",
+            "rule": "“Journey” means “Exile the top card of your library. That card becomes journeyed.”",
+            "custom": true
+          },
+          {
+            "name": "701.70b",
+            "rule": "There is an inherent triggered ability associated with journeying. The full text of this ability is “Whenever a creature deals combat damage to one of its controller's opponents, if its controller owns any journeyed cards, the creature's controller puts a journeyed card they own into their hand.” This ability has no source and is controlled by the controller of the creature which dealt the damage that caused it to trigger. This is an exception to rule 113.8.",
+            "custom": true
+          },
+          {
+            "name": "701.70c",
+            "rule": "Journeyed is a designation that has no rules meaning other than to act as a marker that the inherent triggered ability and other spells and abilities can identify. Only cards in exile can gain or have this designation. Once a card becomes journeyed, it stays journeyed until it leaves exile or becomes a new object (see rule 406.7). Journeyed is neither an ability nor part of the card's copiable values.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Fragile Haven",
+          "Antiquity Seeker",
+          "Eternal Wanderer",
+          "Getting Lost",
+          "Know the Way",
+          "Last of Us",
+          "Leave to the Sands",
+          "Luma, Guiding Star",
+          "Luma's Acolyte",
+          "Manta Wrangler",
+          "Naomi, Pathleader",
+          "Naomi's Vanguard",
+          "Oasis Seeker",
+          "Part Ways",
+          "Path of Brutality",
+          "Path of Caution",
+          "Path of Resilience",
+          "Radaran Pioneer",
+          "Raid Veteran",
+          "Resilient Raiders",
+          "Rubble Messenger",
+          "Sanctum's Light",
+          "Seek Out Survivors",
+          "Sidetracked",
+          "Supply Raid",
+          "Survival Gear",
+          "Tradeway Scholar",
+          "Wander the Ruins",
+          "Warpath Minotaur",
+          "Way of the Raider"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "semantic_equivalence": "Exact exile-incarnation status plus one persistent source-free player rule; singular creature combat trigger and REV intervening ownership check. Parent strict/native/full-source verification required.",
+      "representative_cards": [
+        {
+          "id": "rev:Fragile Haven_PLANE",
+          "source_card_key": "Fragile Haven_PLANE",
+          "name": "Fragile Haven",
+          "original_text": "Type: Plane — Vastuum\nAt the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, journey three times, then planeswalk. *(Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "planar",
+          "executable_text": "Type: Plane — Vastuum\nAt the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\", then planeswalk.",
+          "source_faces": [
+            {
+              "name": "Fragile Haven",
+              "original_text": "Type: Plane — Vastuum\nAt the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, journey three times, then planeswalk. *(Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fragile Haven",
+              "executable_text": "Type: Plane — Vastuum\nAt the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\", then planeswalk.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "vastuum",
+                  "plural": "vastuums",
+                  "family": "Planar"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, journey three times, then planeswalk.",
+              "original_printed_rules_text": "At the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, journey three times, then planeswalk. (Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "vastuum",
+              "plural": "vastuums",
+              "family": "Planar"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, journey three times, then planeswalk.",
+          "original_printed_rules_text": "At the beginning of your end step, create a 1/1 white Nomad creature token with vigilance.\nWhenever chaos ensues, journey three times, then planeswalk. (Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Path of Caution_VST",
+          "source_card_key": "Path of Caution_VST",
+          "name": "Path of Caution",
+          "original_text": "Mana cost: {3}{U}\nType: Enchantment\nWhen Path of Caution enters, journey three times. *(Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature an opponent controls gets -5/-0 until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {3}{U}\nType: Enchantment\nWhen Path of Caution enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nAt the beginning of combat on your turn, if you own a card with the journeyed status in exile, target creature an opponent controls gets -5/-0 until end of turn.",
+          "source_faces": [
+            {
+              "name": "Path of Caution",
+              "original_text": "Mana cost: {3}{U}\nType: Enchantment\nWhen Path of Caution enters, journey three times. *(Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature an opponent controls gets -5/-0 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Path of Caution",
+              "executable_text": "Mana cost: {3}{U}\nType: Enchantment\nWhen Path of Caution enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nAt the beginning of combat on your turn, if you own a card with the journeyed status in exile, target creature an opponent controls gets -5/-0 until end of turn.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Path of Caution enters, journey three times.\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature an opponent controls gets -5/-0 until end of turn.",
+              "original_printed_rules_text": "When Path of Caution enters, journey three times. (Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature an opponent controls gets -5/-0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Path of Caution enters, journey three times.\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature an opponent controls gets -5/-0 until end of turn.",
+          "original_printed_rules_text": "When Path of Caution enters, journey three times. (Exile the top three cards of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature an opponent controls gets -5/-0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Fragile Haven",
+        "Path of Caution"
+      ],
+      "behavioral_assertions": [],
+      "support_status": "implemented_candidate_unverified"
+    },
+    {
+      "id": "rev-journey-001",
+      "keyword": "Journey",
+      "scope": "revolution",
+      "rule_reference": "701.70.",
+      "rule_text": {
+        "name": "701.70.",
+        "rule": "Journey",
+        "subrules": [
+          {
+            "name": "701.70a",
+            "rule": "“Journey” means “Exile the top card of your library. That card becomes journeyed.”",
+            "custom": true
+          },
+          {
+            "name": "701.70b",
+            "rule": "There is an inherent triggered ability associated with journeying. The full text of this ability is “Whenever a creature deals combat damage to one of its controller's opponents, if its controller owns any journeyed cards, the creature's controller puts a journeyed card they own into their hand.” This ability has no source and is controlled by the controller of the creature which dealt the damage that caused it to trigger. This is an exception to rule 113.8.",
+            "custom": true
+          },
+          {
+            "name": "701.70c",
+            "rule": "Journeyed is a designation that has no rules meaning other than to act as a marker that the inherent triggered ability and other spells and abilities can identify. Only cards in exile can gain or have this designation. Once a card becomes journeyed, it stays journeyed until it leaves exile or becomes a new object (see rule 406.7). Journeyed is neither an ability nor part of the card's copiable values.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Fragile Haven",
+          "Antiquity Seeker",
+          "Eternal Wanderer",
+          "Getting Lost",
+          "Know the Way",
+          "Last of Us",
+          "Leave to the Sands",
+          "Luma, Guiding Star",
+          "Luma's Acolyte",
+          "Manta Wrangler",
+          "Naomi, Pathleader",
+          "Naomi's Vanguard",
+          "Oasis Seeker",
+          "Part Ways",
+          "Path of Brutality",
+          "Path of Caution",
+          "Path of Resilience",
+          "Radaran Pioneer",
+          "Raid Veteran",
+          "Resilient Raiders",
+          "Rubble Messenger",
+          "Sanctum's Light",
+          "Seek Out Survivors",
+          "Sidetracked",
+          "Supply Raid",
+          "Survival Gear",
+          "Tradeway Scholar",
+          "Wander the Ruins",
+          "Warpath Minotaur",
+          "Way of the Raider"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "semantic_equivalence": "Exact exile-incarnation status plus one persistent source-free player rule; singular creature combat trigger and REV intervening ownership check. Parent strict/native/full-source verification required.",
+      "representative_cards": [
+        {
+          "id": "rev:Antiquity Seeker_VST",
+          "source_card_key": "Antiquity Seeker_VST",
+          "name": "Antiquity Seeker",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Human Wizard \nPower/Toughness: 1/4\nWhen Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Wizard \nPower/Toughness: 1/4\nWhen Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Antiquity Seeker",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Wizard \nPower/Toughness: 1/4\nWhen Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Antiquity Seeker",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Wizard \nPower/Toughness: 1/4\nWhen Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then journey.",
+              "original_printed_rules_text": "When Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then journey.",
+          "original_printed_rules_text": "When Antiquity Seeker enters, put up to one target instant or sorcery card from your graveyard on top of your library, then journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Eternal Wanderer_VST",
+          "source_card_key": "Eternal Wanderer_VST",
+          "name": "Eternal Wanderer",
+          "original_text": "Mana cost: {U}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nWhen Eternal Wanderer enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nWhenever you put a journeyed card into your hand, you may pay {2}. If you do, journey.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {U}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nWhen Eternal Wanderer enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nWhenever you put a card with the journeyed status into your hand, you may pay {2}. If you do, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Eternal Wanderer",
+              "original_text": "Mana cost: {U}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nWhen Eternal Wanderer enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nWhenever you put a journeyed card into your hand, you may pay {2}. If you do, journey."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Eternal Wanderer",
+              "executable_text": "Mana cost: {U}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nWhen Eternal Wanderer enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nWhenever you put a card with the journeyed status into your hand, you may pay {2}. If you do, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Eternal Wanderer enters, journey.\nWhenever you put a journeyed card into your hand, you may pay {2}. If you do, journey.",
+              "original_printed_rules_text": "When Eternal Wanderer enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nWhenever you put a journeyed card into your hand, you may pay {2}. If you do, journey."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Eternal Wanderer enters, journey.\nWhenever you put a journeyed card into your hand, you may pay {2}. If you do, journey.",
+          "original_printed_rules_text": "When Eternal Wanderer enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nWhenever you put a journeyed card into your hand, you may pay {2}. If you do, journey.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Getting Lost_VST",
+          "source_card_key": "Getting Lost_VST",
+          "name": "Getting Lost",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nTap target creature. It doesn't untap during its controller's next untap step.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nTap target creature. It doesn't untap during its controller's next untap step.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Getting Lost",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nTap target creature. It doesn't untap during its controller's next untap step.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Getting Lost",
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nTap target creature. It doesn't untap during its controller's next untap step.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Tap target creature. It doesn't untap during its controller's next untap step.\nJourney.",
+              "original_printed_rules_text": "Tap target creature. It doesn't untap during its controller's next untap step.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Tap target creature. It doesn't untap during its controller's next untap step.\nJourney.",
+          "original_printed_rules_text": "Tap target creature. It doesn't untap during its controller's next untap step.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Leave to the Sands_VST",
+          "source_card_key": "Leave to the Sands_VST",
+          "name": "Leave to the Sands",
+          "original_text": "Mana cost: {1}{U}\nType: Enchantment — Aura \nEnchant creature\nWhen Leave to the Sands enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEnchanted creature doesn't untap during its controller's untap step.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Aura \nEnchant creature\nWhen Leave to the Sands enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEnchanted creature doesn't untap during its controller's untap step.",
+          "source_faces": [
+            {
+              "name": "Leave to the Sands",
+              "original_text": "Mana cost: {1}{U}\nType: Enchantment — Aura \nEnchant creature\nWhen Leave to the Sands enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEnchanted creature doesn't untap during its controller's untap step."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Leave to the Sands",
+              "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Aura \nEnchant creature\nWhen Leave to the Sands enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEnchanted creature doesn't untap during its controller's untap step.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nWhen Leave to the Sands enters, journey.\nEnchanted creature doesn't untap during its controller's untap step.",
+              "original_printed_rules_text": "Enchant creature\nWhen Leave to the Sands enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEnchanted creature doesn't untap during its controller's untap step."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nWhen Leave to the Sands enters, journey.\nEnchanted creature doesn't untap during its controller's untap step.",
+          "original_printed_rules_text": "Enchant creature\nWhen Leave to the Sands enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEnchanted creature doesn't untap during its controller's untap step.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Luma's Acolyte_VST",
+          "source_card_key": "Luma's Acolyte_VST",
+          "name": "Luma's Acolyte",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Wizard Nomad \nPower/Toughness: 2/2\nAt the beginning of combat on your turn, you may discard a card or put a journeyed card you own in exile into your graveyard. If you do, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Wizard Nomad \nPower/Toughness: 2/2\nAt the beginning of combat on your turn, you may discard a card or put a card with the journeyed status you own in exile into your graveyard. If you do, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Luma's Acolyte",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Human Wizard Nomad \nPower/Toughness: 2/2\nAt the beginning of combat on your turn, you may discard a card or put a journeyed card you own in exile into your graveyard. If you do, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Luma's Acolyte",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Wizard Nomad \nPower/Toughness: 2/2\nAt the beginning of combat on your turn, you may discard a card or put a card with the journeyed status you own in exile into your graveyard. If you do, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of combat on your turn, you may discard a card or put a journeyed card you own in exile into your graveyard. If you do, journey.",
+              "original_printed_rules_text": "At the beginning of combat on your turn, you may discard a card or put a journeyed card you own in exile into your graveyard. If you do, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of combat on your turn, you may discard a card or put a journeyed card you own in exile into your graveyard. If you do, journey.",
+          "original_printed_rules_text": "At the beginning of combat on your turn, you may discard a card or put a journeyed card you own in exile into your graveyard. If you do, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Manta Wrangler_VST",
+          "source_card_key": "Manta Wrangler_VST",
+          "name": "Manta Wrangler",
+          "original_text": "Mana cost: {2}{U}{R}\nType: Creature — Human Nomad \nPower/Toughness: 2/4\nFlying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{U}{R}\nType: Creature — Human Nomad \nPower/Toughness: 2/4\nFlying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Manta Wrangler",
+              "original_text": "Mana cost: {2}{U}{R}\nType: Creature — Human Nomad \nPower/Toughness: 2/4\nFlying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Manta Wrangler",
+              "executable_text": "Mana cost: {2}{U}{R}\nType: Creature — Human Nomad \nPower/Toughness: 2/4\nFlying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, journey.",
+              "original_printed_rules_text": "Flying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, journey.",
+          "original_printed_rules_text": "Flying\nAt the beginning of each end step, if you've cast a noncreature spell this turn, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Naomi, Pathleader_VST",
+          "source_card_key": "Naomi, Pathleader_VST",
+          "name": "Naomi, Pathleader",
+          "original_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Creature — Human Nomad \nPower/Toughness: 4/5\nWhenever you put a journeyed card from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Creature — Human Nomad \nPower/Toughness: 4/5\nWhenever you put a card with the journeyed status from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Naomi, Pathleader",
+              "original_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Creature — Human Nomad \nPower/Toughness: 4/5\nWhenever you put a journeyed card from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Naomi, Pathleader",
+              "executable_text": "Mana cost: {1}{U}{R}{W}\nType: Legendary Creature — Human Nomad \nPower/Toughness: 4/5\nWhenever you put a card with the journeyed status from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you put a journeyed card from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, journey.",
+              "original_printed_rules_text": "Whenever you put a journeyed card from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever you put a journeyed card from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, journey.",
+          "original_printed_rules_text": "Whenever you put a journeyed card from exile into your hand, you can't lose the game until the end of your next turn.\nAt the beginning of your upkeep, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Naomi's Vanguard_VST",
+          "source_card_key": "Naomi's Vanguard_VST",
+          "name": "Naomi's Vanguard",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Warrior Nomad \nPower/Toughness: 3/5\nVigilance\nWhenever Naomi's Vanguard attacks, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Warrior Nomad \nPower/Toughness: 3/5\nVigilance\nWhenever Naomi's Vanguard attacks, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Naomi's Vanguard",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Warrior Nomad \nPower/Toughness: 3/5\nVigilance\nWhenever Naomi's Vanguard attacks, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Naomi's Vanguard",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Human Warrior Nomad \nPower/Toughness: 3/5\nVigilance\nWhenever Naomi's Vanguard attacks, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nWhenever Naomi's Vanguard attacks, journey.",
+              "original_printed_rules_text": "Vigilance\nWhenever Naomi's Vanguard attacks, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nWhenever Naomi's Vanguard attacks, journey.",
+          "original_printed_rules_text": "Vigilance\nWhenever Naomi's Vanguard attacks, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Oasis Seeker_VST",
+          "source_card_key": "Oasis Seeker_VST",
+          "name": "Oasis Seeker",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Nomad \nPower/Toughness: 3/3\nWhen Oasis Seeker enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Nomad \nPower/Toughness: 3/3\nWhen Oasis Seeker enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Oasis Seeker",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Human Nomad \nPower/Toughness: 3/3\nWhen Oasis Seeker enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Oasis Seeker",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Nomad \nPower/Toughness: 3/3\nWhen Oasis Seeker enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Oasis Seeker enters, journey.",
+              "original_printed_rules_text": "When Oasis Seeker enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Oasis Seeker enters, journey.",
+          "original_printed_rules_text": "When Oasis Seeker enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Path of Brutality_VST",
+          "source_card_key": "Path of Brutality_VST",
+          "name": "Path of Brutality",
+          "original_text": "Mana cost: {2}{R}\nType: Enchantment\nWhen Path of Brutality enters, journey twice. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gains double strike until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{R}\nType: Enchantment\nWhen Path of Brutality enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nAt the beginning of combat on your turn, if you own a card with the journeyed status in exile, target creature you control gains double strike until end of turn.",
+          "source_faces": [
+            {
+              "name": "Path of Brutality",
+              "original_text": "Mana cost: {2}{R}\nType: Enchantment\nWhen Path of Brutality enters, journey twice. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gains double strike until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Path of Brutality",
+              "executable_text": "Mana cost: {2}{R}\nType: Enchantment\nWhen Path of Brutality enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nAt the beginning of combat on your turn, if you own a card with the journeyed status in exile, target creature you control gains double strike until end of turn.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Path of Brutality enters, journey twice.\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gains double strike until end of turn.",
+              "original_printed_rules_text": "When Path of Brutality enters, journey twice. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gains double strike until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Path of Brutality enters, journey twice.\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gains double strike until end of turn.",
+          "original_printed_rules_text": "When Path of Brutality enters, journey twice. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gains double strike until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Path of Resilience_VST",
+          "source_card_key": "Path of Resilience_VST",
+          "name": "Path of Resilience",
+          "original_text": "Mana cost: {W}\nType: Enchantment\nWhen Path of Resilience enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gets +1/+1 and gains indestructible until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {W}\nType: Enchantment\nWhen Path of Resilience enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nAt the beginning of combat on your turn, if you own a card with the journeyed status in exile, target creature you control gets +1/+1 and gains indestructible until end of turn.",
+          "source_faces": [
+            {
+              "name": "Path of Resilience",
+              "original_text": "Mana cost: {W}\nType: Enchantment\nWhen Path of Resilience enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gets +1/+1 and gains indestructible until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Path of Resilience",
+              "executable_text": "Mana cost: {W}\nType: Enchantment\nWhen Path of Resilience enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nAt the beginning of combat on your turn, if you own a card with the journeyed status in exile, target creature you control gets +1/+1 and gains indestructible until end of turn.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Path of Resilience enters, journey.\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gets +1/+1 and gains indestructible until end of turn.",
+              "original_printed_rules_text": "When Path of Resilience enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gets +1/+1 and gains indestructible until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Path of Resilience enters, journey.\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gets +1/+1 and gains indestructible until end of turn.",
+          "original_printed_rules_text": "When Path of Resilience enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nAt the beginning of combat on your turn, if you own a journeyed card in exile, target creature you control gets +1/+1 and gains indestructible until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Radaran Pioneer_VST",
+          "source_card_key": "Radaran Pioneer_VST",
+          "name": "Radaran Pioneer",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nFirst strike\nWhen Radaran Pioneer dies, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nFirst strike\nWhen Radaran Pioneer dies, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Radaran Pioneer",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nFirst strike\nWhen Radaran Pioneer dies, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Radaran Pioneer",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Nomad \nPower/Toughness: 1/1\nFirst strike\nWhen Radaran Pioneer dies, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nWhen Radaran Pioneer dies, journey.",
+              "original_printed_rules_text": "First strike\nWhen Radaran Pioneer dies, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike\nWhen Radaran Pioneer dies, journey.",
+          "original_printed_rules_text": "First strike\nWhen Radaran Pioneer dies, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Rubble Messenger_VST",
+          "source_card_key": "Rubble Messenger_VST",
+          "name": "Rubble Messenger",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Human Nomad \nPower/Toughness: 5/4\nWhen Rubble Messenger enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Nomad \nPower/Toughness: 5/4\nWhen Rubble Messenger enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Rubble Messenger",
+              "original_text": "Mana cost: {4}{R}\nType: Creature — Human Nomad \nPower/Toughness: 5/4\nWhen Rubble Messenger enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rubble Messenger",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Nomad \nPower/Toughness: 5/4\nWhen Rubble Messenger enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Rubble Messenger enters, journey.",
+              "original_printed_rules_text": "When Rubble Messenger enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Rubble Messenger enters, journey.",
+          "original_printed_rules_text": "When Rubble Messenger enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Survival Gear_VST",
+          "source_card_key": "Survival Gear_VST",
+          "name": "Survival Gear",
+          "original_text": "Mana cost: {2}\nType: Artifact — Equipment \nWhen Survival Gear enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEquipped creature gets +2/+1.\nEquip {2}",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}\nType: Artifact — Equipment \nWhen Survival Gear enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEquipped creature gets +2/+1.\nEquip {2}",
+          "source_faces": [
+            {
+              "name": "Survival Gear",
+              "original_text": "Mana cost: {2}\nType: Artifact — Equipment \nWhen Survival Gear enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEquipped creature gets +2/+1.\nEquip {2}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Survival Gear",
+              "executable_text": "Mana cost: {2}\nType: Artifact — Equipment \nWhen Survival Gear enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEquipped creature gets +2/+1.\nEquip {2}",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Survival Gear enters, journey.\nEquipped creature gets +2/+1.\nEquip {2}",
+              "original_printed_rules_text": "When Survival Gear enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEquipped creature gets +2/+1.\nEquip {2}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Survival Gear enters, journey.\nEquipped creature gets +2/+1.\nEquip {2}",
+          "original_printed_rules_text": "When Survival Gear enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEquipped creature gets +2/+1.\nEquip {2}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Tradeway Scholar_VST",
+          "source_card_key": "Tradeway Scholar_VST",
+          "name": "Tradeway Scholar",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Human Nomad \nPower/Toughness: 1/3\nWhen Tradeway Scholar enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Nomad \nPower/Toughness: 1/3\nWhen Tradeway Scholar enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Tradeway Scholar",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human Nomad \nPower/Toughness: 1/3\nWhen Tradeway Scholar enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Tradeway Scholar",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Nomad \nPower/Toughness: 1/3\nWhen Tradeway Scholar enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Tradeway Scholar enters, journey.",
+              "original_printed_rules_text": "When Tradeway Scholar enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Tradeway Scholar enters, journey.",
+          "original_printed_rules_text": "When Tradeway Scholar enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Warpath Minotaur_VST",
+          "source_card_key": "Warpath Minotaur_VST",
+          "name": "Warpath Minotaur",
+          "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Minotaur Berserker \nPower/Toughness: 5/4\nWhen Warpath Minotaur enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEach player must attack with at least one creature each combat if able.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Minotaur Berserker \nPower/Toughness: 5/4\nWhen Warpath Minotaur enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEach player must attack with at least one creature each combat if able.",
+          "source_faces": [
+            {
+              "name": "Warpath Minotaur",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Minotaur Berserker \nPower/Toughness: 5/4\nWhen Warpath Minotaur enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEach player must attack with at least one creature each combat if able."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Warpath Minotaur",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Minotaur Berserker \nPower/Toughness: 5/4\nWhen Warpath Minotaur enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEach player must attack with at least one creature each combat if able.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Warpath Minotaur enters, journey.\nEach player must attack with at least one creature each combat if able.",
+              "original_printed_rules_text": "When Warpath Minotaur enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEach player must attack with at least one creature each combat if able."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Warpath Minotaur enters, journey.\nEach player must attack with at least one creature each combat if able.",
+          "original_printed_rules_text": "When Warpath Minotaur enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEach player must attack with at least one creature each combat if able.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Way of the Raider_VST",
+          "source_card_key": "Way of the Raider_VST",
+          "name": "Way of the Raider",
+          "original_text": "Mana cost: {2}{R}\nType: Enchantment — Aura \nEnchant creature\nWhen Way of the Raider enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEnchanted creature gets +3/+2.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{R}\nType: Enchantment — Aura \nEnchant creature\nWhen Way of the Raider enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEnchanted creature gets +3/+2.",
+          "source_faces": [
+            {
+              "name": "Way of the Raider",
+              "original_text": "Mana cost: {2}{R}\nType: Enchantment — Aura \nEnchant creature\nWhen Way of the Raider enters, journey. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*\nEnchanted creature gets +3/+2."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Way of the Raider",
+              "executable_text": "Mana cost: {2}{R}\nType: Enchantment — Aura \nEnchant creature\nWhen Way of the Raider enters, Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\nEnchanted creature gets +3/+2.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nWhen Way of the Raider enters, journey.\nEnchanted creature gets +3/+2.",
+              "original_printed_rules_text": "Enchant creature\nWhen Way of the Raider enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEnchanted creature gets +3/+2."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nWhen Way of the Raider enters, journey.\nEnchanted creature gets +3/+2.",
+          "original_printed_rules_text": "Enchant creature\nWhen Way of the Raider enters, journey. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)\nEnchanted creature gets +3/+2.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Know the Way_VST",
+          "source_card_key": "Know the Way_VST",
+          "name": "Know the Way",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Know the Way",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Know the Way",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Counter target spell.\nJourney.",
+              "original_printed_rules_text": "Counter target spell.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Counter target spell.\nJourney.",
+          "original_printed_rules_text": "Counter target spell.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Last of Us_VST",
+          "source_card_key": "Last of Us_VST",
+          "name": "Last of Us",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nEach player chooses a creature they control. Destroy the rest.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nEach player chooses a creature they control. Destroy the rest.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Last of Us",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nEach player chooses a creature they control. Destroy the rest.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Last of Us",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Sorcery\nEach player chooses a creature they control. Destroy the rest.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each player chooses a creature they control. Destroy the rest.\nJourney.",
+              "original_printed_rules_text": "Each player chooses a creature they control. Destroy the rest.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each player chooses a creature they control. Destroy the rest.\nJourney.",
+          "original_printed_rules_text": "Each player chooses a creature they control. Destroy the rest.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Luma, Guiding Star_VST",
+          "source_card_key": "Luma, Guiding Star_VST",
+          "name": "Luma, Guiding Star",
+          "original_text": "Mana cost: {3}{R}{W}\nType: Legendary Planeswalker — Luma \nLoyalty: 5\n[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then journey three times.\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {3}{R}{W}\nType: Legendary Planeswalker — Luma \nLoyalty: 5\n[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total.",
+          "source_faces": [
+            {
+              "name": "Luma, Guiding Star",
+              "original_text": "Mana cost: {3}{R}{W}\nType: Legendary Planeswalker — Luma \nLoyalty: 5\n[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then journey three times.\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Luma, Guiding Star",
+              "executable_text": "Mana cost: {3}{R}{W}\nType: Legendary Planeswalker — Luma \nLoyalty: 5\n[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\". Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total.",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "luma",
+                  "plural": "lumas",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then journey three times.\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total.",
+              "original_printed_rules_text": "[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then journey three times.\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total."
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "luma",
+              "plural": "lumas",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then journey three times.\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total.",
+          "original_printed_rules_text": "[+1]: Luma, Guiding Star deals 1 damage to any target. If a creature is dealt damage this way, it can't attack or block until your next turn.\n[-3]: Create three 1/1 white Nomad creature tokens with vigilance, then journey three times.\n[-6]: Luma, Guiding Star deals 20 damage to target creature or planeswalker. Your life total becomes equal to your starting life total.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Part Ways_VST",
+          "source_card_key": "Part Ways_VST",
+          "name": "Part Ways",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nExchange control of two target creatures.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nExchange control of two target creatures.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Part Ways",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nExchange control of two target creatures.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Part Ways",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nExchange control of two target creatures.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exchange control of two target creatures.\nJourney.",
+              "original_printed_rules_text": "Exchange control of two target creatures.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exchange control of two target creatures.\nJourney.",
+          "original_printed_rules_text": "Exchange control of two target creatures.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Raid Veteran_VST",
+          "source_card_key": "Raid Veteran_VST",
+          "name": "Raid Veteran",
+          "original_text": "Mana cost: {1}{R}{W}\nType: Creature — Human Soldier Nomad \nPower/Toughness: 2/2\nFirst strike, haste\nWhenever you put a journeyed card into your hand, create a 1/1 white Nomad creature token with vigilance.",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{R}{W}\nType: Creature — Human Soldier Nomad \nPower/Toughness: 2/2\nFirst strike, haste\nWhenever you put a card with the journeyed status into your hand, create a 1/1 white Nomad creature token with vigilance.",
+          "source_faces": [
+            {
+              "name": "Raid Veteran",
+              "original_text": "Mana cost: {1}{R}{W}\nType: Creature — Human Soldier Nomad \nPower/Toughness: 2/2\nFirst strike, haste\nWhenever you put a journeyed card into your hand, create a 1/1 white Nomad creature token with vigilance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Raid Veteran",
+              "executable_text": "Mana cost: {1}{R}{W}\nType: Creature — Human Soldier Nomad \nPower/Toughness: 2/2\nFirst strike, haste\nWhenever you put a card with the journeyed status into your hand, create a 1/1 white Nomad creature token with vigilance.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike, haste\nWhenever you put a journeyed card into your hand, create a 1/1 white Nomad creature token with vigilance.",
+              "original_printed_rules_text": "First strike, haste\nWhenever you put a journeyed card into your hand, create a 1/1 white Nomad creature token with vigilance."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike, haste\nWhenever you put a journeyed card into your hand, create a 1/1 white Nomad creature token with vigilance.",
+          "original_printed_rules_text": "First strike, haste\nWhenever you put a journeyed card into your hand, create a 1/1 white Nomad creature token with vigilance.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Sanctum's Light_VST",
+          "source_card_key": "Sanctum's Light_VST",
+          "name": "Sanctum's Light",
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 6 life.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 6 life.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Sanctum's Light",
+              "original_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 6 life.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sanctum's Light",
+              "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nYou gain 6 life.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You gain 6 life.\nJourney.",
+              "original_printed_rules_text": "You gain 6 life.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "You gain 6 life.\nJourney.",
+          "original_printed_rules_text": "You gain 6 life.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Seek Out Survivors_VST",
+          "source_card_key": "Seek Out Survivors_VST",
+          "name": "Seek Out Survivors",
+          "original_text": "Mana cost: {1}{W}\nType: Sorcery\nReturn target creature card with mana value 2 or less from your graveyard to the battlefield.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nReturn target creature card with mana value 2 or less from your graveyard to the battlefield.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Seek Out Survivors",
+              "original_text": "Mana cost: {1}{W}\nType: Sorcery\nReturn target creature card with mana value 2 or less from your graveyard to the battlefield.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seek Out Survivors",
+              "executable_text": "Mana cost: {1}{W}\nType: Sorcery\nReturn target creature card with mana value 2 or less from your graveyard to the battlefield.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card with mana value 2 or less from your graveyard to the battlefield.\nJourney.",
+              "original_printed_rules_text": "Return target creature card with mana value 2 or less from your graveyard to the battlefield.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card with mana value 2 or less from your graveyard to the battlefield.\nJourney.",
+          "original_printed_rules_text": "Return target creature card with mana value 2 or less from your graveyard to the battlefield.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Sidetracked_VST",
+          "source_card_key": "Sidetracked_VST",
+          "name": "Sidetracked",
+          "original_text": "Mana cost: {1}{U}\nType: Sorcery\nReturn target creature to its owner's hand.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{U}\nType: Sorcery\nReturn target creature to its owner's hand.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Sidetracked",
+              "original_text": "Mana cost: {1}{U}\nType: Sorcery\nReturn target creature to its owner's hand.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sidetracked",
+              "executable_text": "Mana cost: {1}{U}\nType: Sorcery\nReturn target creature to its owner's hand.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature to its owner's hand.\nJourney.",
+              "original_printed_rules_text": "Return target creature to its owner's hand.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature to its owner's hand.\nJourney.",
+          "original_printed_rules_text": "Return target creature to its owner's hand.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Wander the Ruins_VST",
+          "source_card_key": "Wander the Ruins_VST",
+          "name": "Wander the Ruins",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Sorcery\nCreate two 1/1 white Nomad creature tokens with vigilance.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Sorcery\nCreate two 1/1 white Nomad creature tokens with vigilance.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Wander the Ruins",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Sorcery\nCreate two 1/1 white Nomad creature tokens with vigilance.\nJourney. *(Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wander the Ruins",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Sorcery\nCreate two 1/1 white Nomad creature tokens with vigilance.\nExile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create two 1/1 white Nomad creature tokens with vigilance.\nJourney.",
+              "original_printed_rules_text": "Create two 1/1 white Nomad creature tokens with vigilance.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create two 1/1 white Nomad creature tokens with vigilance.\nJourney.",
+          "original_printed_rules_text": "Create two 1/1 white Nomad creature tokens with vigilance.\nJourney. (Exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Antiquity Seeker",
+        "Eternal Wanderer",
+        "Getting Lost",
+        "Leave to the Sands",
+        "Luma's Acolyte",
+        "Manta Wrangler",
+        "Naomi, Pathleader",
+        "Naomi's Vanguard",
+        "Oasis Seeker",
+        "Path of Brutality",
+        "Path of Resilience",
+        "Radaran Pioneer",
+        "Rubble Messenger",
+        "Survival Gear",
+        "Tradeway Scholar",
+        "Warpath Minotaur",
+        "Way of the Raider",
+        "Know the Way",
+        "Last of Us",
+        "Luma, Guiding Star",
+        "Part Ways",
+        "Raid Veteran",
+        "Sanctum's Light",
+        "Seek Out Survivors",
+        "Sidetracked",
+        "Wander the Ruins"
+      ],
+      "behavioral_assertions": [],
+      "support_status": "implemented_candidate_unverified"
+    },
+    {
+      "id": "rev-journey-002",
+      "keyword": "Journey",
+      "scope": "revolution",
+      "rule_reference": "701.70.",
+      "rule_text": {
+        "name": "701.70.",
+        "rule": "Journey",
+        "subrules": [
+          {
+            "name": "701.70a",
+            "rule": "“Journey” means “Exile the top card of your library. That card becomes journeyed.”",
+            "custom": true
+          },
+          {
+            "name": "701.70b",
+            "rule": "There is an inherent triggered ability associated with journeying. The full text of this ability is “Whenever a creature deals combat damage to one of its controller's opponents, if its controller owns any journeyed cards, the creature's controller puts a journeyed card they own into their hand.” This ability has no source and is controlled by the controller of the creature which dealt the damage that caused it to trigger. This is an exception to rule 113.8.",
+            "custom": true
+          },
+          {
+            "name": "701.70c",
+            "rule": "Journeyed is a designation that has no rules meaning other than to act as a marker that the inherent triggered ability and other spells and abilities can identify. Only cards in exile can gain or have this designation. Once a card becomes journeyed, it stays journeyed until it leaves exile or becomes a new object (see rule 406.7). Journeyed is neither an ability nor part of the card's copiable values.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Fragile Haven",
+          "Antiquity Seeker",
+          "Eternal Wanderer",
+          "Getting Lost",
+          "Know the Way",
+          "Last of Us",
+          "Leave to the Sands",
+          "Luma, Guiding Star",
+          "Luma's Acolyte",
+          "Manta Wrangler",
+          "Naomi, Pathleader",
+          "Naomi's Vanguard",
+          "Oasis Seeker",
+          "Part Ways",
+          "Path of Brutality",
+          "Path of Caution",
+          "Path of Resilience",
+          "Radaran Pioneer",
+          "Raid Veteran",
+          "Resilient Raiders",
+          "Rubble Messenger",
+          "Sanctum's Light",
+          "Seek Out Survivors",
+          "Sidetracked",
+          "Supply Raid",
+          "Survival Gear",
+          "Tradeway Scholar",
+          "Wander the Ruins",
+          "Warpath Minotaur",
+          "Way of the Raider"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.",
+      "executable_reminder": "Exile the top card of your library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for you with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\"",
+      "semantic_equivalence": "Exact exile-incarnation status plus one persistent source-free player rule; singular creature combat trigger and REV intervening ownership check. Parent strict/native/full-source verification required.",
+      "representative_cards": [
+        {
+          "id": "rev:Resilient Raiders_VST",
+          "source_card_key": "Resilient Raiders_VST",
+          "name": "Resilient Raiders",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Hyena Warrior \nPower/Toughness: 4/2\nWhen Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they journey. *(To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Hyena Warrior \nPower/Toughness: 4/2\nWhen Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they exile the top card of that player's library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for that player with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Resilient Raiders",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Hyena Warrior \nPower/Toughness: 4/2\nWhen Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they journey. *(To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Resilient Raiders",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Hyena Warrior \nPower/Toughness: 4/2\nWhen Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they exile the top card of that player's library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for that player with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they journey.",
+              "original_printed_rules_text": "When Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they journey. (To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they journey.",
+          "original_printed_rules_text": "When Resilient Raiders is put into your graveyard from anywhere, put it on top of its owner's library, then they journey. (To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Supply Raid_VST",
+          "source_card_key": "Supply Raid_VST",
+          "name": "Supply Raid",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nTarget player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they journey. *(To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*",
+          "source_layout": "normal",
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nTarget player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they exile the top card of that player's library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for that player with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+          "source_faces": [
+            {
+              "name": "Supply Raid",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nTarget player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they journey. *(To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Supply Raid",
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nTarget player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they exile the top card of that player's library face up. Give it the journeyed status while in exile. Register a persistent rule named \"journey retrieval\" for that player with condition \"You own a card in exile with the journeyed status\" and ability \"Whenever a creature you control deals combat damage to an opponent, put a card you own in exile with the journeyed status into your hand.\".",
+              "custom_keyword_identities": [
+                "journey"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they journey.",
+              "original_printed_rules_text": "Target player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they journey. (To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "journey"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they journey.",
+          "original_printed_rules_text": "Target player reveals their hand. You choose a nonland card from it. Put that card on top of its owner's library, then they journey. (To journey, exile the top card of your library face up. Whenever a creature you control deals combat damage to an opponent, put a journeyed card you own into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Resilient Raiders",
+        "Supply Raid"
+      ],
+      "behavioral_assertions": [],
+      "support_status": "implemented_candidate_unverified"
+    }
+  ]
+}

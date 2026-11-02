@@ -11,6 +11,18 @@ mod r#counted_counter_transfers;
 #[path = "../counter_qualified_return.rs"]
 mod r#counter_qualified_return;
 
+#[path = "../custom_action_status_source_claims.rs"]
+mod r#custom_action_status_source_claims;
+
+#[path = "../custom_bounded_object_program.rs"]
+mod r#custom_bounded_object_program;
+
+#[path = "../custom_prefixed_trigger_frequency.rs"]
+mod r#custom_prefixed_trigger_frequency;
+
+#[path = "../custom_quoted_named_tap_prohibition.rs"]
+mod r#custom_quoted_named_tap_prohibition;
+
 #[path = "../day_night_starts_day_named_source.rs"]
 mod r#day_night_starts_day_named_source;
 

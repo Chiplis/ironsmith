@@ -1,0 +1,588 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/mechanic-definitions.json",
+    "card_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "snapshot_fetched": "2026-10-31",
+    "scope": "msem",
+    "status": "unreviewed source inventory; all executable rewrites pending",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces."
+  },
+  "cohort": "Slipstream universal attacker identity",
+  "mechanics": [
+    {
+      "id": "msem-695",
+      "keyword": "Slipstream",
+      "original_reminder": "This creature can't be blocked as long as only creatures with slipstream are attacking.",
+      "executable_reminder": "This creature can't be blocked as long as each attacking creature has custom keyword slipstream.",
+      "source_cards": [
+        "Abalone Abomination",
+        "Entrancing Light",
+        "Face of the Abyss",
+        "Harmonic Attunement",
+        "Treasury Master"
+      ],
+      "rule_reference": "702.247.",
+      "rule_text": [
+        {
+          "name": "702.247a",
+          "rule": "Slipstream is an evasion ability. A creature with slipstream can't be blocked as long as each attacking creature has slipstream.",
+          "custom": true
+        },
+        {
+          "name": "702.247b",
+          "rule": "If creatures with and without slipstream are attacking and then each attacking creature without slipstream is removed from combat, creatures with slipstream can't be blocked. However, if blockers have already been declared, those creatures will still be blocked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Abalone Abomination_EIA",
+          "name": "Abalone Abomination",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Shrimp Horror\nPower/Toughness: 3/2\nSlipstream *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard.",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Shrimp Horror\nPower/Toughness: 3/2\nThis creature can't be blocked as long as each attacking creature has custom keyword slipstream\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Creature — Shrimp Horror",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Abalone Abomination_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Abalone Abomination",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Shrimp Horror\nPower/Toughness: 3/2\nSlipstream *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Abalone Abomination",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Shrimp Horror\nPower/Toughness: 3/2\nThis creature can't be blocked as long as each attacking creature has custom keyword slipstream\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard.",
+              "custom_keyword_identities": [
+                "slipstream"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "shrimp",
+                  "plural": "shrimps",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Slipstream\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard.",
+              "original_printed_rules_text": "Slipstream (This creature can't be blocked as long as only creatures with slipstream are attacking.)\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "slipstream"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Slipstream\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "shrimp",
+              "plural": "shrimps",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Slipstream (This creature can't be blocked as long as only creatures with slipstream are attacking.)\n{4}{B}{B}, {T}, Sacrifice Abalone Abomination: Create an X/X black Horror creature token, where X is the number of cards in your graveyard."
+        },
+        {
+          "id": "Entrancing Light_EIA",
+          "name": "Entrancing Light",
+          "source_card_key": "Entrancing Light_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {4}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {4}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Entrancing Light",
+              "original_text": "Mana cost: {4}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "mana_cost": "{4}{U}{U}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Entrancing Light",
+              "executable_text": "Mana cost: {4}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has slipstream.",
+              "original_printed_rules_text": "Enchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Enchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has slipstream.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Enchant creature\nYou control enchanted creature.\nEnchanted creature gets +1/+1 and has slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+        },
+        {
+          "id": "Face of the Abyss_EIA",
+          "name": "Face of the Abyss",
+          "source_card_key": "Face of the Abyss_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nLook at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nLook at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Face of the Abyss",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nLook at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Face of the Abyss",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nLook at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Look at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+              "original_printed_rules_text": "Look at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Look at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Look at target player's hand. You choose a nonland card from it. That player discards that card.\nCreate a 1/1 blue Jellyfish enchantment creature token with slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+        },
+        {
+          "id": "Harmonic Attunement_EIA",
+          "name": "Harmonic Attunement",
+          "source_card_key": "Harmonic Attunement_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Harmonic Attunement",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Harmonic Attunement",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has slipstream.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Enchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has slipstream.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Enchant creature\nEnchanted creature gets +2/+2.\nConcord — As long as there are four or more card types among permanents you control, enchanted creature has slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+        },
+        {
+          "id": "Treasury Master_EIA",
+          "name": "Treasury Master",
+          "source_card_key": "Treasury Master_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Merfolk\nPower/Toughness: 1/3\nAs long as you control three or more artifacts, Treasury Master gets +2/+0 and has slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Merfolk\nPower/Toughness: 1/3\nAs long as you control three or more artifacts, Treasury Master gets +2/+0 and has custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Treasury Master",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Merfolk\nPower/Toughness: 1/3\nAs long as you control three or more artifacts, Treasury Master gets +2/+0 and has slipstream. *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Merfolk",
+          "power": "1",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Treasury Master",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Merfolk\nPower/Toughness: 1/3\nAs long as you control three or more artifacts, Treasury Master gets +2/+0 and has custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "As long as you control three or more artifacts, Treasury Master gets +2/+0 and has slipstream.",
+              "original_printed_rules_text": "As long as you control three or more artifacts, Treasury Master gets +2/+0 and has slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "As long as you control three or more artifacts, Treasury Master gets +2/+0 and has slipstream.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "As long as you control three or more artifacts, Treasury Master gets +2/+0 and has slipstream. (This creature can't be blocked as long as only creatures with slipstream are attacking.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Slipstream",
+          "reminder": "This creature can't be blocked as long as each attacking creature has custom keyword slipstream."
+        }
+      ],
+      "implementation_status": "next_wave_universal_identity_predicate_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "universal-attacker-domain",
+          "status": "pending",
+          "test_reference": "custom_slipstream::all_current_attackers_must_have_identity_and_nonattackers_do_not_count",
+          "observable": "All attacking creatures must bear calculated custom identity; nonattacking ordinary creatures do not suppress evasion. Mixed attackers restore blocking. Granted/token identity and artifact round-trip follow same condition."
+        }
+      ]
+    },
+    {
+      "id": "msem-696",
+      "keyword": "Slipstream",
+      "original_reminder": "It can't be blocked as long as only creatures with slipstream are attacking.",
+      "executable_reminder": "This creature can't be blocked as long as each attacking creature has custom keyword slipstream.",
+      "source_cards": [
+        "Bubbledome Keeper",
+        "Edina's Soulsinger",
+        "Idyllic Odyssey",
+        "Mina, Jeweled Minnow"
+      ],
+      "rule_reference": "702.247.",
+      "rule_text": [
+        {
+          "name": "702.247a",
+          "rule": "Slipstream is an evasion ability. A creature with slipstream can't be blocked as long as each attacking creature has slipstream.",
+          "custom": true
+        },
+        {
+          "name": "702.247b",
+          "rule": "If creatures with and without slipstream are attacking and then each attacking creature without slipstream is removed from combat, creatures with slipstream can't be blocked. However, if blockers have already been declared, those creatures will still be blocked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bubbledome Keeper_EIA",
+          "name": "Bubbledome Keeper",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 1/3\nWhenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with slipstream. *(It can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 1/3\nWhenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Merfolk Wizard",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Bubbledome Keeper_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bubbledome Keeper",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 1/3\nWhenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with slipstream. *(It can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bubbledome Keeper",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 1/3\nWhenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+              "original_printed_rules_text": "Whenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with slipstream. (It can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Whenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Whenever you cast an enchantment, instant, or sorcery spell, create a 1/1 blue Jellyfish enchantment creature token with slipstream. (It can't be blocked as long as only creatures with slipstream are attacking.)"
+        },
+        {
+          "id": "Edina's Soulsinger_EIA",
+          "name": "Edina's Soulsinger",
+          "source_card_key": "Edina's Soulsinger_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/1\nWhen Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with slipstream. *(It can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/1\nWhen Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Edina's Soulsinger",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/1\nWhen Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with slipstream. *(It can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Merfolk Wizard",
+          "power": "2",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Edina's Soulsinger",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 2/1\nWhen Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+              "original_printed_rules_text": "When Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with slipstream. (It can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Edina's Soulsinger enters, create a 1/1 blue Jellyfish enchantment creature token with slipstream. (It can't be blocked as long as only creatures with slipstream are attacking.)"
+        },
+        {
+          "id": "Idyllic Odyssey_EIA",
+          "name": "Idyllic Odyssey",
+          "source_card_key": "Idyllic Odyssey_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {W}\nType: Enchantment\nConcord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with slipstream. *(It can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {W}\nType: Enchantment\nConcord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Idyllic Odyssey",
+              "original_text": "Mana cost: {W}\nType: Enchantment\nConcord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with slipstream. *(It can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Idyllic Odyssey",
+              "executable_text": "Mana cost: {W}\nType: Enchantment\nConcord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Concord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+              "original_printed_rules_text": "Concord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with slipstream. (It can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Concord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with slipstream.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Concord — At the beginning of your upkeep, if there are four or more card types among permanents you control, you gain 1 life and create a 1/1 blue Jellyfish enchantment creature token with slipstream. (It can't be blocked as long as only creatures with slipstream are attacking.)"
+        },
+        {
+          "id": "Mina, Jeweled Minnow_EIA",
+          "name": "Mina, Jeweled Minnow",
+          "source_card_key": "Mina, Jeweled Minnow_EIA",
+          "source_shape": "normal",
+          "source_face": "front",
+          "original_text": "Mana cost: {U}\nType: Legendary Enchantment Creature — Fish\nPower/Toughness: 1/1\nWhenever you cast an enchantment, instant, or sorcery spell, target creature gains slipstream until end of turn. *(It can't be blocked as long as only creatures with slipstream are attacking.)*\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {U}\nType: Legendary Enchantment Creature — Fish\nPower/Toughness: 1/1\nWhenever you cast an enchantment, instant, or sorcery spell, target creature gains custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\" until end of turn.\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mina, Jeweled Minnow",
+              "original_text": "Mana cost: {U}\nType: Legendary Enchantment Creature — Fish\nPower/Toughness: 1/1\nWhenever you cast an enchantment, instant, or sorcery spell, target creature gains slipstream until end of turn. *(It can't be blocked as long as only creatures with slipstream are attacking.)*\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand."
+            }
+          ],
+          "mana_cost": "{U}",
+          "type_line": "Legendary Enchantment Creature — Fish",
+          "power": "1",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "executable_faces": [
+            {
+              "name": "Mina, Jeweled Minnow",
+              "executable_text": "Mana cost: {U}\nType: Legendary Enchantment Creature — Fish\nPower/Toughness: 1/1\nWhenever you cast an enchantment, instant, or sorcery spell, target creature gains custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\" until end of turn.\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast an enchantment, instant, or sorcery spell, target creature gains slipstream until end of turn.\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand.",
+              "original_printed_rules_text": "Whenever you cast an enchantment, instant, or sorcery spell, target creature gains slipstream until end of turn. (It can't be blocked as long as only creatures with slipstream are attacking.)\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever you cast an enchantment, instant, or sorcery spell, target creature gains slipstream until end of turn.\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Whenever you cast an enchantment, instant, or sorcery spell, target creature gains slipstream until end of turn. (It can't be blocked as long as only creatures with slipstream are attacking.)\nWhenever Mina deals combat damage to a player, put a wish counter on her. Then if she has three or more, exile her, then return an enchantment card, an instant card, and a sorcery card from your graveyard to your hand."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Slipstream",
+          "reminder": "This creature can't be blocked as long as each attacking creature has custom keyword slipstream."
+        }
+      ],
+      "implementation_status": "next_wave_universal_identity_predicate_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "universal-attacker-domain",
+          "status": "pending",
+          "test_reference": "custom_slipstream::all_current_attackers_must_have_identity_and_nonattackers_do_not_count",
+          "observable": "All attacking creatures must bear calculated custom identity; nonattacking ordinary creatures do not suppress evasion. Mixed attackers restore blocking. Granted/token identity and artifact round-trip follow same condition."
+        }
+      ]
+    },
+    {
+      "id": "msem-697",
+      "keyword": "Slipstream",
+      "original_reminder": "Creatures with slipstream can't be blocked as long as only creatures with slipstream are attacking.",
+      "executable_reminder": "This creature can't be blocked as long as each attacking creature has custom keyword slipstream.",
+      "source_cards": [
+        "Lord of the Bubbledome"
+      ],
+      "rule_reference": "702.247.",
+      "rule_text": [
+        {
+          "name": "702.247a",
+          "rule": "Slipstream is an evasion ability. A creature with slipstream can't be blocked as long as each attacking creature has slipstream.",
+          "custom": true
+        },
+        {
+          "name": "702.247b",
+          "rule": "If creatures with and without slipstream are attacking and then each attacking creature without slipstream is removed from combat, creatures with slipstream can't be blocked. However, if blockers have already been declared, those creatures will still be blocked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Lord of the Bubbledome_EIA",
+          "name": "Lord of the Bubbledome",
+          "original_text": "Mana cost: {U}{U}\nType: Creature — Merfolk Noble\nPower/Toughness: 2/2\nOther Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains slipstream until end of turn. *(Creatures with slipstream can't be blocked as long as only creatures with slipstream are attacking.)*",
+          "executable_text": "Mana cost: {U}{U}\nType: Creature — Merfolk Noble\nPower/Toughness: 2/2\nOther Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\" until end of turn.",
+          "mana_cost": "{U}{U}",
+          "type_line": "Creature — Merfolk Noble",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Lord of the Bubbledome_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lord of the Bubbledome",
+              "original_text": "Mana cost: {U}{U}\nType: Creature — Merfolk Noble\nPower/Toughness: 2/2\nOther Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains slipstream until end of turn. *(Creatures with slipstream can't be blocked as long as only creatures with slipstream are attacking.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lord of the Bubbledome",
+              "executable_text": "Mana cost: {U}{U}\nType: Creature — Merfolk Noble\nPower/Toughness: 2/2\nOther Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains custom keyword \"slipstream\", and \"This creature can't be blocked as long as each attacking creature has custom keyword slipstream.\" until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Other Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains slipstream until end of turn.",
+              "original_printed_rules_text": "Other Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains slipstream until end of turn. (Creatures with slipstream can't be blocked as long as only creatures with slipstream are attacking.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Other Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains slipstream until end of turn.",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Other Merfolk you control get +1/+1.\n{1}{U}: Target Merfolk gains slipstream until end of turn. (Creatures with slipstream can't be blocked as long as only creatures with slipstream are attacking.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Slipstream",
+          "reminder": "This creature can't be blocked as long as each attacking creature has custom keyword slipstream."
+        }
+      ],
+      "implementation_status": "next_wave_universal_identity_predicate_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "universal-attacker-domain",
+          "status": "pending",
+          "test_reference": "custom_slipstream::all_current_attackers_must_have_identity_and_nonattackers_do_not_count",
+          "observable": "All attacking creatures must bear calculated custom identity; nonattacking ordinary creatures do not suppress evasion. Mixed attackers restore blocking. Granted/token identity and artifact round-trip follow same condition."
+        }
+      ]
+    }
+  ]
+}

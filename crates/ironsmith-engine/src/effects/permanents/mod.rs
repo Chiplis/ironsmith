@@ -27,6 +27,7 @@ mod face_up_transition;
 mod flip;
 mod grant_object_ability;
 mod meld;
+mod merge_permanents;
 mod monstrosity;
 mod next_adapt_ignores_counters;
 mod ninjutsu;
@@ -40,6 +41,7 @@ mod renown;
 mod saddle;
 mod solve_case;
 mod soulbond_pair;
+mod link_permanents;
 mod suspect;
 mod tap;
 mod transform;
@@ -620,6 +622,7 @@ pub(crate) fn choose_color_as_becomes_attached(
 pub use attach_objects::AttachObjectsEffect;
 pub(crate) use attach_objects::{
     aura_can_enter_attached_to, aura_preview_can_enter_attached_to, entry_attachment_for_move, resolve_entry_attachment_target,
+    attachment_destinations, choose_attachment_destination,
 };
 pub use attach_to::AttachToEffect;
 pub use become_basic_land_type_choice::BecomeBasicLandTypeChoiceEffect;
@@ -638,6 +641,7 @@ pub use exert::ExertCostEffect;
 pub use flip::FlipEffect;
 pub use grant_object_ability::GrantObjectAbilityEffect;
 pub use meld::MeldEffect;
+pub use merge_permanents::MergePermanentsEffect;
 pub use monstrosity::MonstrosityEffect;
 pub use next_adapt_ignores_counters::NextAdaptIgnoresCountersEffect;
 pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
@@ -651,6 +655,7 @@ pub use renown::RenownEffect;
 pub use saddle::{BecomeSaddledUntilEotEffect, SaddleCostEffect};
 pub use solve_case::{DayNightDesignation, SetClassLevelEffect, SetDayNightEffect, SolveCaseEffect};
 pub use soulbond_pair::SoulbondPairEffect;
+pub use link_permanents::LinkPermanentsEffect;
 pub(crate) use soulbond_pair::soulbond_pairing_possible;
 pub use suspect::{ClearSuspectedEffect, SuspectEffect};
 pub use tap::TapEffect;

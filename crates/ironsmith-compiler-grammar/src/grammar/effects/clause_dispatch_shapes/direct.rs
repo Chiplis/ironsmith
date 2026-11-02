@@ -339,6 +339,7 @@ pub fn parse_turn_target_face_up_shape(
         // "turn a face-down creature you control face up" (Ugin's Mastery),
         // "turn all cards exiled with this creature face up" (Grimoire
         // Thief): a chosen object or a whole group (CR 708.8).
+        && crate::lexer::token_word_refs(target_tokens) != ["the", "card", "chosen", "for", "this", "source"]
         && !target_tokens
             .first()
             .is_some_and(|token| token.is_any_word(&["a", "an", "all", "each"]))

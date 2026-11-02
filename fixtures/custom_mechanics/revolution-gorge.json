@@ -1,0 +1,682 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01",
+    "scope": "Two exactGorge reminder variants with all direct sourceface matches; no formalrule invented."
+  },
+  "mechanics": [
+    {
+      "id": "rev-gorge-059",
+      "keyword": "Gorge",
+      "scope": "revolution",
+      "rule_reference": "701.81.",
+      "rule_text": {
+        "name": "701.81.",
+        "rule": "Gorge",
+        "subrules": [],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Anje's Thirst",
+          "Claret Ascendance",
+          "Deranged Ravager",
+          "Erdwal Fangseeker",
+          "Greedy Duelist",
+          "Insatiable Elder",
+          "Markov Imperator",
+          "Olivia, Sanguine Reveler",
+          "Olivia's Debauchery",
+          "Repressed Aristocrat//Unbound Fanatic",
+          "Sanguine Liturgy",
+          "Sorin, Errant Bloodlord",
+          "Sorin's Interrogation",
+          "Stain with Crimson",
+          "Thirsting Dagger"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.",
+      "executable_reminder": "You may pay the cost \"Discard a nonland card or sacrifice a creature other than {Subject}\". If you do, put a +1/+1 counter on {Subject} and draw a card.",
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Explicit optional cost owns payment and completion; one bound recipient per action scope; adjacent subject reflexive remains a real When-you-do trigger; authored complete reminder variants only (formal heading empty)."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Anje's Thirst_IWH",
+          "name": "Anje's Thirst",
+          "original_text": "Type: Sorcery\nMana cost: {2}{B}\nTarget creature gets -5/-5 until end of turn. You may have up to one target creature you control gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Sorcery\nMana cost: {2}{B}\nTarget creature gets -5/-5 until end of turn. Choose up to one target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Anje's Thirst_IWH",
+          "executable_faces": [
+            {
+              "name": "Anje's Thirst",
+              "executable_text": "Type: Sorcery\nMana cost: {2}{B}\nTarget creature gets -5/-5 until end of turn. Choose up to one target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets -5/-5 until end of turn. You may have up to one target creature you control gorge.",
+              "original_printed_rules_text": "Target creature gets -5/-5 until end of turn. You may have up to one target creature you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets -5/-5 until end of turn. You may have up to one target creature you control gorge.",
+          "original_printed_rules_text": "Target creature gets -5/-5 until end of turn. You may have up to one target creature you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+        },
+        {
+          "id": "rev:Claret Ascendance_IWH",
+          "name": "Claret Ascendance",
+          "original_text": "Type: Sorcery\nMana cost: {R}\nClaret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: You may have target creature you control gorge. Activate only as a sorcery. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Sorcery\nMana cost: {R}\nClaret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: Choose target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card. Activate only as a sorcery.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Claret Ascendance_IWH",
+          "executable_faces": [
+            {
+              "name": "Claret Ascendance",
+              "executable_text": "Type: Sorcery\nMana cost: {R}\nClaret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: Choose target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Claret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: You may have target creature you control gorge. Activate only as a sorcery.",
+              "original_printed_rules_text": "Claret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: You may have target creature you control gorge. Activate only as a sorcery. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Claret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: You may have target creature you control gorge. Activate only as a sorcery.",
+          "original_printed_rules_text": "Claret Ascendance deals 2 damage to any target. If a permanent dealt damage this way would die this turn, exile it instead.\n{2}{R}, Exile this card from your graveyard: You may have target creature you control gorge. Activate only as a sorcery. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+        },
+        {
+          "id": "rev:Markov Imperator_IWH",
+          "name": "Markov Imperator",
+          "original_text": "Type: Creature — Vampire Soldier\nMana cost: {4}{B}{B}\nPower/Toughness: 2/2\nFlying, lifelink\nThis creature gets +X/+X, where X is the the number of creature cards in your graveyard.\n{1}{B}, Discard this card: You may have target creature you control gorge, then you may have it gorge again. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Creature — Vampire Soldier\nMana cost: {4}{B}{B}\nPower/Toughness: 2/2\nFlying, lifelink\nThis creature gets +X/+X, where X is the number of creature cards in your graveyard.\n{1}{B}, Discard this card: Choose target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Markov Imperator_IWH",
+          "executable_faces": [
+            {
+              "name": "Markov Imperator",
+              "executable_text": "Type: Creature — Vampire Soldier\nMana cost: {4}{B}{B}\nPower/Toughness: 2/2\nFlying, lifelink\nThis creature gets +X/+X, where X is the number of creature cards in your graveyard.\n{1}{B}, Discard this card: Choose target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, lifelink\nThis creature gets +X/+X, where X is the number of creature cards in your graveyard.\n{1}{B}, Discard this card: You may have target creature you control gorge, then you may have it gorge again.",
+              "original_printed_rules_text": "Flying, lifelink\nThis creature gets +X/+X, where X is the number of creature cards in your graveyard.\n{1}{B}, Discard this card: You may have target creature you control gorge, then you may have it gorge again. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying, lifelink\nThis creature gets +X/+X, where X is the number of creature cards in your graveyard.\n{1}{B}, Discard this card: You may have target creature you control gorge, then you may have it gorge again.",
+          "original_printed_rules_text": "Flying, lifelink\nThis creature gets +X/+X, where X is the number of creature cards in your graveyard.\n{1}{B}, Discard this card: You may have target creature you control gorge, then you may have it gorge again. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)",
+          "source_faces": [
+            {
+              "name": "Markov Imperator",
+              "original_text": "Type: Creature — Vampire Soldier\nMana cost: {4}{B}{B}\nPower/Toughness: 2/2\nFlying, lifelink\nThis creature gets +X/+X, where X is the the number of creature cards in your graveyard.\n{1}{B}, Discard this card: You may have target creature you control gorge, then you may have it gorge again. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+              "reviewed_source_corrections": [
+                {
+                  "original": "where X is the the number of creature cards in your graveyard",
+                  "replacement": "where X is the number of creature cards in your graveyard",
+                  "source_context": "This creature gets +X/+X, where X is the the number of creature cards in your graveyard.",
+                  "evidence": "Exact REV source Markov Imperator_IWH, rev-complete-source.json SHA256 ace692b92427156ca7b153706071365ffdde27c00303f8a52ac297ee2a4a84f1, duplicates the definite article in its count expression. Removing the duplicated article retains the count of creature cards in your graveyard; it does not introduce a double/twice multiplier or change any printed operand. Original source fields remain verbatim.",
+                  "review_status": "source_context_reviewed"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "rev:Olivia, Sanguine Reveler_IWH",
+          "name": "Olivia, Sanguine Reveler",
+          "original_text": "Type: Legendary Creature — Vampire Noble\nMana cost: {2}{B}{R}\nPower/Toughness: 3/2\nFlying, haste\nWhenever a Vampire you control attacks, you may have it gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Legendary Creature — Vampire Noble\nMana cost: {2}{B}{R}\nPower/Toughness: 3/2\nFlying, haste\nWhenever a Vampire you control attacks, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Olivia, Sanguine Reveler_IWH",
+          "executable_faces": [
+            {
+              "name": "Olivia, Sanguine Reveler",
+              "executable_text": "Type: Legendary Creature — Vampire Noble\nMana cost: {2}{B}{R}\nPower/Toughness: 3/2\nFlying, haste\nWhenever a Vampire you control attacks, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, haste\nWhenever a Vampire you control attacks, you may have it gorge.",
+              "original_printed_rules_text": "Flying, haste\nWhenever a Vampire you control attacks, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying, haste\nWhenever a Vampire you control attacks, you may have it gorge.",
+          "original_printed_rules_text": "Flying, haste\nWhenever a Vampire you control attacks, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+        },
+        {
+          "id": "rev:Olivia's Debauchery_IWH",
+          "name": "Olivia's Debauchery",
+          "original_text": "Type: Sorcery\nMana cost: {X}{R}\nChoose one —\n• Olivia's Debauchery deals X damage to any target.\n• You may have any number of up to X target creatures you control gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Sorcery\nMana cost: {X}{R}\nChoose one —\n• Olivia's Debauchery deals X damage to any target.\n• Choose up to X target creatures you control. For each permanent chosen this way, do the following: [You may pay the cost \"Discard a nonland card or sacrifice a creature other than that permanent\"; If you do, put a +1/+1 counter on that permanent and draw a card].",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Olivia's Debauchery_IWH",
+          "executable_faces": [
+            {
+              "name": "Olivia's Debauchery",
+              "executable_text": "Type: Sorcery\nMana cost: {X}{R}\nChoose one —\n• Olivia's Debauchery deals X damage to any target.\n• Choose up to X target creatures you control. For each permanent chosen this way, do the following: [You may pay the cost \"Discard a nonland card or sacrifice a creature other than that permanent\"; If you do, put a +1/+1 counter on that permanent and draw a card].",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Olivia's Debauchery deals X damage to any target.\n• You may have any number of up to X target creatures you control gorge.",
+              "original_printed_rules_text": "Choose one —\n• Olivia's Debauchery deals X damage to any target.\n• You may have any number of up to X target creatures you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one —\n• Olivia's Debauchery deals X damage to any target.\n• You may have any number of up to X target creatures you control gorge.",
+          "original_printed_rules_text": "Choose one —\n• Olivia's Debauchery deals X damage to any target.\n• You may have any number of up to X target creatures you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+        },
+        {
+          "id": "rev:Sorin, Errant Bloodlord_IWH",
+          "name": "Sorin, Errant Bloodlord",
+          "original_text": "Type: Legendary Planeswalker — Sorin\nMana cost: {1}{B}{B}\nLoyalty: 3\n[+1]: You may have up to one target creature you control gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard.",
+          "executable_text": "Type: Legendary Planeswalker — Sorin\nMana cost: {1}{B}{B}\nLoyalty: 3\n[+1]: Choose up to one target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Sorin, Errant Bloodlord_IWH",
+          "executable_faces": [
+            {
+              "name": "Sorin, Errant Bloodlord",
+              "executable_text": "Type: Legendary Planeswalker — Sorin\nMana cost: {1}{B}{B}\nLoyalty: 3\n[+1]: Choose up to one target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "[+1]: You may have up to one target creature you control gorge.\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard.",
+              "original_printed_rules_text": "[+1]: You may have up to one target creature you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "[+1]: You may have up to one target creature you control gorge.\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard.",
+          "original_printed_rules_text": "[+1]: You may have up to one target creature you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)\n[-2]: Create a 2/2 black Vampire creature token with flying and lifelink.\n[-6]: Sorin deals X damage divided among any number of targets and you gain X life, where X is the number of cards in your graveyard."
+        },
+        {
+          "id": "rev:Sorin's Interrogation_IWH",
+          "name": "Sorin's Interrogation",
+          "original_text": "Type: Sorcery\nMana cost: {1}{B}\nTarget opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. You may have up to one target creature you control gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Sorcery\nMana cost: {1}{B}\nTarget opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. Choose up to one target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Sorin's Interrogation_IWH",
+          "executable_faces": [
+            {
+              "name": "Sorin's Interrogation",
+              "executable_text": "Type: Sorcery\nMana cost: {1}{B}\nTarget opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. Choose up to one target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. You may have up to one target creature you control gorge.",
+              "original_printed_rules_text": "Target opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. You may have up to one target creature you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. You may have up to one target creature you control gorge.",
+          "original_printed_rules_text": "Target opponent reveals their hand. You choose a creature or planeswalker card from it. That player discards that card. You may have up to one target creature you control gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+        },
+        {
+          "id": "rev:Stain with Crimson_IWH",
+          "name": "Stain with Crimson",
+          "original_text": "Type: Instant\nMana cost: {1}{R}\nTarget creature you control gets +2/+0 and gains trample until end of turn. You may have that creature gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)*",
+          "executable_text": "Type: Instant\nMana cost: {1}{R}\nTarget creature you control gets +2/+0 and gains trample until end of turn. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Stain with Crimson_IWH",
+          "executable_faces": [
+            {
+              "name": "Stain with Crimson",
+              "executable_text": "Type: Instant\nMana cost: {1}{R}\nTarget creature you control gets +2/+0 and gains trample until end of turn. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control gets +2/+0 and gains trample until end of turn. You may have that creature gorge.",
+              "original_printed_rules_text": "Target creature you control gets +2/+0 and gains trample until end of turn. You may have that creature gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control gets +2/+0 and gains trample until end of turn. You may have that creature gorge.",
+          "original_printed_rules_text": "Target creature you control gets +2/+0 and gains trample until end of turn. You may have that creature gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on that creature and draw a card.)"
+        }
+      ],
+      "source_cards": [
+        "Anje's Thirst",
+        "Claret Ascendance",
+        "Markov Imperator",
+        "Olivia, Sanguine Reveler",
+        "Olivia's Debauchery",
+        "Sorin, Errant Bloodlord",
+        "Sorin's Interrogation",
+        "Stain with Crimson"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "nonland-or-another-creature-payment",
+          "status": "passed",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_gorge.rs",
+          "observable": "Both existing payment alternatives and decline/noresource cases; no land discard,no self/opponent sacrifice; reward only after actual payment.",
+          "verification": "Coordinating parent reported all8payment scenarios passed in native round8; this verifies the self-body only,not targeted/group/reflexive sourcecards."
+        }
+      ],
+      "support_status": "reminder_derived_existing_operations_candidate",
+      "unresolved_reason": "Parent verification pending; formal heading has no semantic body, so authority is the complete authored source reminder.",
+      "source_resolution_status": "numbered_rule_missing_reminder_evidence_available",
+      "source_rule_caveat": "Extracted and full Gorge rule heading701.81 has no subrules. Candidates derive from consistent authored reminders; formalrules equivalence is not certified.",
+      "candidate_executable_reminder": "You may discard a nonland card or sacrifice another creature. If you do, put a +1/+1 counter on this creature and draw a card.",
+      "candidate_targeted_action_body": "You may discard a nonland card or sacrifice a creature other than {Object}. If you do, put a +1/+1 counter on {Object} and draw a card.",
+      "candidate_group_program": "Choose up to X target creatures you control. For each creature chosen this way, you may discard a nonland card or sacrifice a creature other than that creature. If you do, put a +1/+1 counter on that creature and draw a card.",
+      "candidate_group_program_status": "unreviewed_scope_requires_native_iteration_and_reference_proof",
+      "executable_definitions": [
+        {
+          "keyword": "Gorge {Subject}",
+          "reminder": "You may pay the cost \"Discard a nonland card or sacrifice a creature other than {Subject}\". If you do, put a +1/+1 counter on {Subject} and draw a card."
+        }
+      ]
+    },
+    {
+      "id": "rev-gorge-060",
+      "keyword": "Gorge",
+      "scope": "revolution",
+      "rule_reference": "701.81.",
+      "rule_text": {
+        "name": "701.81.",
+        "rule": "Gorge",
+        "subrules": [],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Anje's Thirst",
+          "Claret Ascendance",
+          "Deranged Ravager",
+          "Erdwal Fangseeker",
+          "Greedy Duelist",
+          "Insatiable Elder",
+          "Markov Imperator",
+          "Olivia, Sanguine Reveler",
+          "Olivia's Debauchery",
+          "Repressed Aristocrat//Unbound Fanatic",
+          "Sanguine Liturgy",
+          "Sorin, Errant Bloodlord",
+          "Sorin's Interrogation",
+          "Stain with Crimson",
+          "Thirsting Dagger"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.",
+      "executable_reminder": "You may pay the cost \"Discard a nonland card or sacrifice a creature other than {Subject}\". If you do, put a +1/+1 counter on {Subject} and draw a card.",
+      "semantic_equivalence": {
+        "status": "candidate_unverified",
+        "evidence": "Explicit optional cost owns payment and completion; one bound recipient per action scope; adjacent subject reflexive remains a real When-you-do trigger; authored complete reminder variants only (formal heading empty)."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Deranged Ravager_IWH",
+          "name": "Deranged Ravager",
+          "original_text": "Type: Creature — Vampire\nMana cost: {2}{B}\nPower/Toughness: 2/1\nLifelink\nWhen this creature enters, you may have it gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*",
+          "executable_text": "Type: Creature — Vampire\nMana cost: {2}{B}\nPower/Toughness: 2/1\nLifelink\nWhen this creature enters, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Deranged Ravager_IWH",
+          "executable_faces": [
+            {
+              "name": "Deranged Ravager",
+              "executable_text": "Type: Creature — Vampire\nMana cost: {2}{B}\nPower/Toughness: 2/1\nLifelink\nWhen this creature enters, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lifelink\nWhen this creature enters, you may have it gorge.",
+              "original_printed_rules_text": "Lifelink\nWhen this creature enters, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Lifelink\nWhen this creature enters, you may have it gorge.",
+          "original_printed_rules_text": "Lifelink\nWhen this creature enters, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+        },
+        {
+          "id": "rev:Erdwal Fangseeker_IWH",
+          "name": "Erdwal Fangseeker",
+          "original_text": "Type: Creature — Vampire\nMana cost: {4}{R}\nPower/Toughness: 4/3\nHaste\nWhen this creature enters, you may have it gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*",
+          "executable_text": "Type: Creature — Vampire\nMana cost: {4}{R}\nPower/Toughness: 4/3\nHaste\nWhen this creature enters, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Erdwal Fangseeker_IWH",
+          "executable_faces": [
+            {
+              "name": "Erdwal Fangseeker",
+              "executable_text": "Type: Creature — Vampire\nMana cost: {4}{R}\nPower/Toughness: 4/3\nHaste\nWhen this creature enters, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nWhen this creature enters, you may have it gorge.",
+              "original_printed_rules_text": "Haste\nWhen this creature enters, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Haste\nWhen this creature enters, you may have it gorge.",
+          "original_printed_rules_text": "Haste\nWhen this creature enters, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+        },
+        {
+          "id": "rev:Greedy Duelist_IWH",
+          "name": "Greedy Duelist",
+          "original_text": "Type: Creature — Vampire Soldier\nMana cost: {B}\nPower/Toughness: 1/2\n{1}{B}: You may have this creature gorge. Activate only once each turn and only if this creature attacked this turn. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*\n{2}{B}: Return this card from your graveyard to your hand.",
+          "executable_text": "Type: Creature — Vampire Soldier\nMana cost: {B}\nPower/Toughness: 1/2\n{1}{B}: You may pay the cost \"Discard a nonland card or sacrifice a creature other than this creature\". If you do, put a +1/+1 counter on this creature and draw a card. Activate only once each turn and only if this creature attacked this turn.\n{2}{B}: Return this card from your graveyard to your hand.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Greedy Duelist_IWH",
+          "executable_faces": [
+            {
+              "name": "Greedy Duelist",
+              "executable_text": "Type: Creature — Vampire Soldier\nMana cost: {B}\nPower/Toughness: 1/2\n{1}{B}: You may pay the cost \"Discard a nonland card or sacrifice a creature other than this creature\". If you do, put a +1/+1 counter on this creature and draw a card. Activate only once each turn and only if this creature attacked this turn.\n{2}{B}: Return this card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{1}{B}: You may have this creature gorge. Activate only once each turn and only if this creature attacked this turn.\n{2}{B}: Return this card from your graveyard to your hand.",
+              "original_printed_rules_text": "{1}{B}: You may have this creature gorge. Activate only once each turn and only if this creature attacked this turn. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)\n{2}{B}: Return this card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{1}{B}: You may have this creature gorge. Activate only once each turn and only if this creature attacked this turn.\n{2}{B}: Return this card from your graveyard to your hand.",
+          "original_printed_rules_text": "{1}{B}: You may have this creature gorge. Activate only once each turn and only if this creature attacked this turn. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)\n{2}{B}: Return this card from your graveyard to your hand."
+        },
+        {
+          "id": "rev:Insatiable Elder_IWH",
+          "name": "Insatiable Elder",
+          "original_text": "Type: Creature — Vampire Warlock\nMana cost: {2}{B}{R}\nPower/Toughness: 4/3\nWhen this creature enters, you may have it gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature.",
+          "executable_text": "Type: Creature — Vampire Warlock\nMana cost: {2}{B}{R}\nPower/Toughness: 4/3\nWhen this creature enters, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Insatiable Elder_IWH",
+          "executable_faces": [
+            {
+              "name": "Insatiable Elder",
+              "executable_text": "Type: Creature — Vampire Warlock\nMana cost: {2}{B}{R}\nPower/Toughness: 4/3\nWhen this creature enters, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, you may have it gorge.\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature.",
+              "original_printed_rules_text": "When this creature enters, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, you may have it gorge.\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature.",
+          "original_printed_rules_text": "When this creature enters, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)\nAt the beginning of your end step, if you discarded a card or sacrificed a creature this turn, each opponent loses 3 life unless they discard a card or sacrifice a creature."
+        },
+        {
+          "id": "rev:Repressed Aristocrat//Unbound Fanatic_IWH",
+          "name": "Repressed Aristocrat",
+          "original_text": "Type: Creature — Vampire Noble\nMana cost: {2}{R}\nPower/Toughness: 3/2\nWhenever this creature attacks, you may have it gorge. Then if you've discarded a card and sacrificed a creature this turn, transform it. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*",
+          "executable_text": "Type: Creature — Vampire Noble\nMana cost: {2}{R}\nPower/Toughness: 3/2\nWhenever this creature attacks, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card. Then if you've discarded a card and sacrificed a creature this turn, transform it.",
+          "source_layout": "doubleface",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "name": "Repressed Aristocrat",
+              "original_text": "Type: Creature — Vampire Noble\nMana cost: {2}{R}\nPower/Toughness: 3/2\nWhenever this creature attacks, you may have it gorge. Then if you've discarded a card and sacrificed a creature this turn, transform it. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*"
+            },
+            {
+              "name": "Unbound Fanatic",
+              "original_text": "Type: Creature — Vampire Horror\nPower/Toughness: 4/3\nTrample\nWhen this creature transforms into Unbound Fanatic, add {R}{R}. Until end of turn, you don't lose this mana as steps and phases end."
+            }
+          ],
+          "source_card_key": "Repressed Aristocrat//Unbound Fanatic_IWH",
+          "executable_faces": [
+            {
+              "name": "Repressed Aristocrat",
+              "executable_text": "Type: Creature — Vampire Noble\nMana cost: {2}{R}\nPower/Toughness: 3/2\nWhenever this creature attacks, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card. Then if you've discarded a card and sacrificed a creature this turn, transform it.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever this creature attacks, you may have it gorge. Then if you've discarded a card and sacrificed a creature this turn, transform it.",
+              "original_printed_rules_text": "Whenever this creature attacks, you may have it gorge. Then if you've discarded a card and sacrificed a creature this turn, transform it. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+            },
+            {
+              "name": "Unbound Fanatic",
+              "executable_text": "Type: Creature — Vampire Horror\nPower/Toughness: 4/3\nTrample\nWhen this creature transforms into Unbound Fanatic, add {R}{R}. Until end of turn, you don't lose this mana as steps and phases end.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhen this creature transforms into Unbound Fanatic, add {R}{R}. Until end of turn, you don't lose this mana as steps and phases end.",
+              "original_printed_rules_text": "Trample\nWhen this creature transforms into Unbound Fanatic, add {R}{R}. Until end of turn, you don't lose this mana as steps and phases end."
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever this creature attacks, you may have it gorge. Then if you've discarded a card and sacrificed a creature this turn, transform it.",
+          "original_printed_rules_text": "Whenever this creature attacks, you may have it gorge. Then if you've discarded a card and sacrificed a creature this turn, transform it. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+        },
+        {
+          "id": "rev:Sanguine Liturgy_IWH",
+          "name": "Sanguine Liturgy",
+          "original_text": "Type: Sorcery\nMana cost: {B}{R}\nYou may have target creature you control gorge. When it does, you may destroy target artifact or creature with mana value less than or equal to that creature's power. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*",
+          "executable_text": "Type: Sorcery\nMana cost: {B}{R}\nChoose target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card. When you do, you may destroy target artifact or creature with mana value less than or equal to that creature's power.",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Sanguine Liturgy_IWH",
+          "executable_faces": [
+            {
+              "name": "Sanguine Liturgy",
+              "executable_text": "Type: Sorcery\nMana cost: {B}{R}\nChoose target creature you control. You may pay the cost \"Discard a nonland card or sacrifice a creature other than that creature\". If you do, put a +1/+1 counter on that creature and draw a card. When you do, you may destroy target artifact or creature with mana value less than or equal to that creature's power.",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may have target creature you control gorge. When it does, you may destroy target artifact or creature with mana value less than or equal to that creature's power.",
+              "original_printed_rules_text": "You may have target creature you control gorge. When it does, you may destroy target artifact or creature with mana value less than or equal to that creature's power. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "You may have target creature you control gorge. When it does, you may destroy target artifact or creature with mana value less than or equal to that creature's power.",
+          "original_printed_rules_text": "You may have target creature you control gorge. When it does, you may destroy target artifact or creature with mana value less than or equal to that creature's power. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)"
+        },
+        {
+          "id": "rev:Thirsting Dagger_IWH",
+          "name": "Thirsting Dagger",
+          "original_text": "Type: Artifact — Equipment\nMana cost: {1}\nEquipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, you may have it gorge. *(To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)*\nEquip {2}",
+          "executable_text": "Type: Artifact — Equipment\nMana cost: {1}\nEquipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.\nEquip {2}",
+          "source_layout": "normal",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_card_key": "Thirsting Dagger_IWH",
+          "executable_faces": [
+            {
+              "name": "Thirsting Dagger",
+              "executable_text": "Type: Artifact — Equipment\nMana cost: {1}\nEquipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, You may pay the cost \"Discard a nonland card or sacrifice a creature other than it\". If you do, put a +1/+1 counter on it and draw a card.\nEquip {2}",
+              "custom_keyword_identities": [
+                "gorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Equipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, you may have it gorge.\nEquip {2}",
+              "original_printed_rules_text": "Equipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)\nEquip {2}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "gorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Equipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, you may have it gorge.\nEquip {2}",
+          "original_printed_rules_text": "Equipped creature gets +1/+0. As long as it's your turn, it also has first strike.\nWhenever equipped creature attacks, you may have it gorge. (To gorge, discard a nonland card or sacrifice another creature to put a +1/+1 counter on this creature and draw a card.)\nEquip {2}"
+        }
+      ],
+      "source_cards": [
+        "Deranged Ravager",
+        "Greedy Duelist",
+        "Repressed Aristocrat//Unbound Fanatic",
+        "Sanguine Liturgy",
+        "Thirsting Dagger"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "nonland-or-another-creature-payment",
+          "status": "passed",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_gorge.rs",
+          "observable": "Both existing payment alternatives and decline/noresource cases; no land discard,no self/opponent sacrifice; reward only after actual payment.",
+          "verification": "Coordinating parent reported all8payment scenarios passed in native round8; this verifies the self-body only,not targeted/group/reflexive sourcecards."
+        }
+      ],
+      "support_status": "reminder_derived_existing_operations_candidate",
+      "unresolved_reason": "Parent verification pending; formal heading has no semantic body, so authority is the complete authored source reminder.",
+      "source_resolution_status": "numbered_rule_missing_reminder_evidence_available",
+      "source_rule_caveat": "Extracted and full Gorge rule heading701.81 has no subrules. Candidates derive from consistent authored reminders; formalrules equivalence is not certified.",
+      "candidate_executable_reminder": "You may discard a nonland card or sacrifice another creature. If you do, put a +1/+1 counter on this creature and draw a card.",
+      "candidate_targeted_action_body": "You may discard a nonland card or sacrifice a creature other than {Object}. If you do, put a +1/+1 counter on {Object} and draw a card.",
+      "candidate_group_program": "Choose up to X target creatures you control. For each creature chosen this way, you may discard a nonland card or sacrifice a creature other than that creature. If you do, put a +1/+1 counter on that creature and draw a card.",
+      "candidate_group_program_status": "unreviewed_scope_requires_native_iteration_and_reference_proof",
+      "executable_definitions": [
+        {
+          "keyword": "Gorge {Subject}",
+          "reminder": "You may pay the cost \"Discard a nonland card or sacrifice a creature other than {Subject}\". If you do, put a +1/+1 counter on {Subject} and draw a card."
+        }
+      ]
+    }
+  ]
+}

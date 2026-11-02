@@ -505,6 +505,7 @@ mod tests {
                 kind: crate::ability::AbilityKind::Static(
                     crate::static_abilities::StaticAbility::indestructible(),
                 ),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             });
         let bear = create_creature_on_battlefield(&mut game, "Bear", alice);

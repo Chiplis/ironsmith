@@ -143,3 +143,29 @@ fn rejects_half_of_an_aggregate_copy_pt_exception() {
 
     assert!(error.to_string().contains("both values"));
 }
+
+#[test]
+fn copy_subtype_family_replacement_is_an_explicit_fact_not_inferred_from_names() {
+    for (suffix,preserve) in [
+        (vec!["instead","of","its","other","creature","types"],true),
+        (vec!["instead","of","its","other","types"],false),
+        (vec![],false),
+    ] {
+        let mut words=vec!["except","it's","a","1/1","illusion"];
+        words.extend(suffix);
+        let spec=parse_copy_modifier_words(&words).unwrap();
+        assert_eq!(spec.set_subtypes,Some(vec![Subtype::Illusion]));
+        assert_eq!(spec.preserve_noncreature_subtypes,preserve);
+        assert!(spec.set_card_types.is_none(),"the suffix family noun is not a replacement card type");
+    }
+}
+
+#[test]
+fn timed_ability_loss_is_an_ordinary_duration_not_a_copiable_deletion() {
+    let spec=parse_copy_modifier_words(&["except","it","loses","all","abilities","until","end","of","turn"]).unwrap();
+    assert_eq!(spec.ability_loss_until,Some(crate::effect::Until::EndOfTurn));
+    assert!(spec.removed_ability_designations.is_empty());assert!(!spec.loses_soulbond);
+    for words in [vec!["except","it","loses","all","abilities"],vec!["except","it","loses","all","abilities","until","end","of","combat"]] {
+        assert!(parse_copy_modifier_words(&words).map(|spec|spec.ability_loss_until.is_none()).unwrap_or(true));
+    }
+}

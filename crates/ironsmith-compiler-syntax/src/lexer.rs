@@ -42,7 +42,7 @@ fn parser_text_for_token(kind: TokenKind, slice: &str) -> String {
 }
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq)]
-#[logos(skip r"[ \t\r\n\f]+", error = LexerError)]
+#[logos(skip r"[ \t\r\n\f\u{200B}]+", error = LexerError)]
 pub enum TokenKind {
     #[token("!")]
     Bang,
@@ -88,6 +88,7 @@ pub enum TokenKind {
     #[regex(r#""|“|”"#)]
     Quote,
     #[regex(r"\{[^}\r\n]+\}")]
+    #[regex(r"[★⭐]+")]
     ManaGroup,
     #[regex(r"[0-9]+", priority = 3)]
     #[regex(r"[0-9]{1,3}(,[0-9]{3})+", priority = 4)]
@@ -1369,12 +1370,17 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
     let mut sentences = Vec::new();
     let mut start = 0usize;
     let mut paren_depth = 0u32;
+    // Explicit program brackets define an outer instruction scope. Periods
+    // and child-quote endings inside them belong to that nested program.
+    let mut bracket_depth = 0u32;
     let mut inside_quotes = false;
     let mut last_inner_token_was_period = false;
 
     let quoted_period_continues_sentence =
-        |next: Option<&OwnedLexToken>, after: Option<&OwnedLexToken>| match next {
-            Some(token) if token.kind == TokenKind::Comma => true,
+        |next: Option<&OwnedLexToken>, after: Option<&OwnedLexToken>, third: Option<&OwnedLexToken>, fourth: Option<&OwnedLexToken>, fifth: Option<&OwnedLexToken>| match next {
+            // A choice separator continues the enclosing instruction even
+            // when a mode ends in a complete quoted child ability.
+            Some(token) if matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon | TokenKind::Pipe) => true,
             Some(token)
                 if token.kind == TokenKind::Word
                     && matches!(
@@ -1384,6 +1390,10 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
             {
                 true
             }
+            Some(token) if token.is_word("as") && after.is_some_and(|t|t.is_word("you"))
+                && third.is_some_and(|t|t.is_word("cast"))
+                && (fourth.is_some_and(|t|t.is_any_word(&["it","them"]))
+                    || (fourth.is_some_and(|t|t.is_word("that"))&&fifth.is_some_and(|t|t.is_word("spell")))) => true,
             // `"..." this turn` continues the sentence; `"..." this creature
             // loses ...` (a normalized card name) starts a new one.
             Some(token) if token.kind == TokenKind::Word && token.parser_text() == "this" => {
@@ -1404,11 +1414,20 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
                 paren_depth = paren_depth.saturating_sub(1);
                 last_inner_token_was_period = false;
             }
+            TokenKind::LBracket if !inside_quotes => {
+                bracket_depth = bracket_depth.saturating_add(1);
+                last_inner_token_was_period = false;
+            }
+            TokenKind::RBracket if !inside_quotes => {
+                bracket_depth = bracket_depth.saturating_sub(1);
+                last_inner_token_was_period = false;
+            }
             TokenKind::Quote => {
                 if inside_quotes
                     && paren_depth == 0
+                    && bracket_depth == 0
                     && last_inner_token_was_period
-                    && !quoted_period_continues_sentence(tokens.get(idx + 1), tokens.get(idx + 2))
+                    && !quoted_period_continues_sentence(tokens.get(idx + 1), tokens.get(idx + 2),tokens.get(idx+3),tokens.get(idx+4),tokens.get(idx+5))
                 {
                     sentences.push(&tokens[start..=idx]);
                     start = idx + 1;
@@ -1422,7 +1441,7 @@ pub fn split_lexed_sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
             // A nested single-quoted rule closing right after its own period
             // keeps that period sentence-final for the enclosing quote.
             TokenKind::Apostrophe if inside_quotes && last_inner_token_was_period => {}
-            TokenKind::Period if paren_depth == 0 && !inside_quotes => {
+            TokenKind::Period if paren_depth == 0 && bracket_depth == 0 && !inside_quotes => {
                 if start < idx {
                     sentences.push(&tokens[start..idx]);
                 }
@@ -1586,5 +1605,57 @@ mod literal_surface_tests {
         assert_eq!(token.literal_surface(), "creature");
         token.set_literal_surface("Nissa");
         assert_eq!(token.literal_surface(), "creature");
+    }
+}
+
+#[cfg(test)]
+mod cast_grant_quote_boundaries {
+ use super::*;
+ #[test]
+ fn a_cast_grant_suffix_remains_with_its_quoted_program(){
+  for suffix in ["as you cast it","as you cast them","as you cast that spell"]{
+   let tokens=lex_line(&format!("The next creature spell you cast this turn gains \"This spell costs {{1}} less to cast.\" {suffix}. Draw a card."),0).unwrap();
+   let sentences=split_lexed_sentences(&tokens);assert_eq!(sentences.len(),2);assert!(render_token_slice(sentences[0]).ends_with(suffix));
+  }
+ }
+ #[test]
+ fn an_independent_cast_announcement_starts_a_new_sentence(){
+  let tokens=lex_line("This creature gains \"Draw a card.\" As you cast this spell, choose a color.",0).unwrap();
+  assert_eq!(split_lexed_sentences(&tokens).len(),2);
+ }
+}
+
+#[cfg(test)]
+mod quoted_instruction_menu_sentence_tests {
+    use super::*;
+    #[test]
+    fn quoted_branch_period_does_not_end_an_explicit_pipe_menu(){
+        let text="Choose one instruction — Create an artifact token with \"Flying.\" | Create an artifact token with \"Haste.\". Draw a card.";
+        let tokens=lex_line(text,0).unwrap();let sentences=split_lexed_sentences(&tokens);
+        assert_eq!(sentences.len(),2,"only the explicit outer period ends the instruction menu");
+        assert!(sentences[0].iter().any(|token|token.kind==TokenKind::Pipe));
+        assert_eq!(parser_token_word_refs(sentences[1]),["draw","a","card"]);
+    }
+}
+
+#[cfg(test)]
+mod bounded_program_sentence_scope_tests {
+    use super::*;
+    #[test]
+    fn nested_bracket_program_and_quoted_cost_keep_one_outer_instruction() {
+        let text="Perform the example action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card; Exile an instant or sorcery card\". If you do, do the following: [You gain 1 life. Draw a card.]]. The token enters tapped.";
+        let tokens=lex_line(text,0).unwrap();let sentences=split_lexed_sentences(&tokens);
+        assert_eq!(sentences.len(),2);assert_eq!(sentences[0].last().unwrap().kind,TokenKind::RBracket);
+        assert_eq!(sentences[0].iter().filter(|token|token.kind==TokenKind::RBracket).count(),2);
+        assert_eq!(token_word_refs(sentences[1]),["The","token","enters","tapped"]);
+        assert_eq!(parser_token_word_refs(sentences[1]),["the","token","enters","tapped"]);
+    }
+    #[test]
+    fn child_rule_quote_end_cannot_split_its_enclosing_bounded_program() {
+        let tokens=lex_line("Do the following: [Target creature gains \"Whenever this creature attacks, draw a card.\". You gain 1 life.]. Draw a card.",0).unwrap();
+        let sentences=split_lexed_sentences(&tokens);assert_eq!(sentences.len(),2);
+        assert_eq!(sentences[0].last().unwrap().kind,TokenKind::RBracket);
+        assert_eq!(token_word_refs(sentences[1]),["Draw","a","card"]);
+        assert_eq!(parser_token_word_refs(sentences[1]),["draw","a","card"]);
     }
 }

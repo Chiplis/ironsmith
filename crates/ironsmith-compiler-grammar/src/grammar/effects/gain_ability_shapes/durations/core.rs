@@ -39,6 +39,8 @@ fn duration_reference(input: &mut WordSliceInput<'_>) -> WResult<ironsmith_core:
     use crate::tag::CompilerReferenceTag as Reference;
     alt((
         (primitives::word_slice_exact("this"),primitives::word_slice_exact("card")).value(Object::SourceInZone(crate::zone::Zone::Exile)),
+        (primitives::word_slice_exact("the"),primitives::word_slice_exact("iterated"),alt((primitives::word_slice_exact("card"),primitives::word_slice_exact("object"))))
+            .value(Object::Tagged(Reference::CurrentIteratedObject.key())),
         (primitives::word_slice_exact("that"),primitives::word_slice_exact("creature")).value(Object::Tagged(Reference::DurationReferencedCreature.key())),
         (primitives::word_slice_exact("that"),primitives::word_slice_exact("artifact")).value(Object::Tagged(Reference::DurationReferencedArtifact.key())),
         (primitives::word_slice_exact("that"),primitives::word_slice_exact("permanent")).value(Object::Tagged(Reference::DurationReferencedPermanent.key())),
@@ -70,4 +72,17 @@ pub(super) fn object_zone_duration(input: &mut WordSliceInput<'_>) -> WResult<Un
         predicates.push(duration_zone_atom.parse_next(input)?);
     }
     Ok(Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::all(predicates)))
+}
+
+#[cfg(test)]
+mod iteration_duration_reference_tests {
+    use super::*;
+    #[test]
+    fn iterated_card_and_chosen_creature_are_independent_duration_operands() {
+        let mut words:&[&str]=&["for","as","long","as","the","iterated","card","remains","exiled","and","that","creature","remains","on","the","battlefield"];
+        let duration=object_zone_duration(&mut words).unwrap();assert!(words.is_empty());
+        let Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::All(atoms))=duration else {panic!("conjoined duration")};
+        assert!(matches!(&atoms[0],ironsmith_core::ContinuousDurationPredicate::ObjectInZone{object:ironsmith_core::ContinuousDurationObject::Tagged(tag),zone:crate::zone::Zone::Exile} if tag==&crate::tag::CompilerReferenceTag::CurrentIteratedObject.key()));
+        assert!(matches!(&atoms[1],ironsmith_core::ContinuousDurationPredicate::ObjectInZone{object:ironsmith_core::ContinuousDurationObject::Tagged(tag),zone:crate::zone::Zone::Battlefield} if tag==&crate::tag::CompilerReferenceTag::DurationReferencedCreature.key()));
+    }
 }

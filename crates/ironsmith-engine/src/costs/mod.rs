@@ -42,7 +42,8 @@ pub(crate) use payer_trait::{check_effect_cost_program, payment_event_cause};
 mod prepared_payment;
 mod processing_mode;
 pub(crate) use prepared_payment::{
-    PaymentScope, acknowledged_total_cost, execute_total_cost_program_action, prepare_total_cost,
+    PaymentScope, acknowledged_total_cost, acknowledged_payment_program_outcome,
+    execute_total_cost_program_action, prepare_total_cost,
     prepare_total_cost_program_action, select_payable_total_cost,
     total_cost_supports_prepared_program,
 };

@@ -1,0 +1,98 @@
+{
+  "mechanics": [
+    {
+      "id": "msem-upgrade-companion",
+      "keyword": "Upgrade",
+      "scope": "msem",
+      "rule_reference": "701.95.",
+      "rule_text": [
+        {
+          "name": "701.95a",
+          "rule": "Upgrade is a keyword action and modal ability. “upgrade a permanent. [bulleted list]” means “Choose one that's not a kind of counter this permanent has on it. Put a counter of that kind on this permanent. [bulleted list].”",
+          "custom": true
+        }
+      ],
+      "original_reminder": "They give it one of the listed counters it doesn't have.",
+      "executable_reminder": "Choose a kind of counter that {Object} doesn't have on it from among {CounterKinds}. Put a counter of that kind on {Object}.",
+      "executable_definitions": [
+        {
+          "keyword": "Upgrade",
+          "reminder": "Choose a kind of counter that {Object} doesn't have on it from among {CounterKinds}. Put a counter of that kind on {Object}.",
+          "template": "{Object}",
+          "actionProgram": true,
+          "collectiveObject": true,
+          "completionRequirement": "all-choices-available"
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "Cutting Content//Curse of Rebalancing_OTH:back",
+          "name": "Curse of Rebalancing",
+          "source_card_key": "Cutting Content//Curse of Rebalancing_OTH",
+          "source_face": "back",
+          "source_shape": "doubleface",
+          "original_text": "Type: Enchantment — Aura Curse\nEnchant player\nAt the beginning of enchanted player's upkeep, that player upgrades a creature you control. *(They give it one of the listed counters it doesn't have.)*\n• +1/+1\n• Lifelink\n• Menace",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cutting Content",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget opponent sacrifices a creature with the greatest power among creatures that player controls.\nFabled {3}{B}{B} *(Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)*"
+            },
+            {
+              "face": "back",
+              "name": "Curse of Rebalancing",
+              "original_text": "Type: Enchantment — Aura Curse\nEnchant player\nAt the beginning of enchanted player's upkeep, that player upgrades a creature you control. *(They give it one of the listed counters it doesn't have.)*\n• +1/+1\n• Lifelink\n• Menace"
+            }
+          ],
+          "executable_text": "Type: Enchantment — Aura Curse\nEnchant player\nAt the beginning of enchanted player's upkeep, That player chooses a creature you control. That player performs the upgrade action on that creature as follows, completing the action only if all choices were available: [Choose a kind of counter that the proposed objects doesn't have on it from among +1/+1, lifelink and menace; Put a counter of that kind on the proposed objects]\n",
+          "custom_keyword_identities": [
+            "upgrade"
+          ],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_subtypes": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Cutting Content",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget opponent sacrifices a creature with the greatest power among creatures that player controls.\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, put it onto the battlefield transformed attached to an eligible target of this spell as it resolves. Copies of this spell cannot enter the battlefield.",
+              "custom_keyword_identities": [
+                "fabled"
+              ],
+              "custom_keyword_payments": [
+                "fabled"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target opponent sacrifices a creature with the greatest power among creatures that player controls.\nFabled {3}{B}{B}",
+              "original_printed_rules_text": "Target opponent sacrifices a creature with the greatest power among creatures that player controls.\nFabled {3}{B}{B} (Then if you cast this for its fabled cost, put it onto the battlefield transformed attached to that player.)"
+            },
+            {
+              "name": "Curse of Rebalancing",
+              "executable_text": "Type: Enchantment — Aura Curse\nEnchant player\nAt the beginning of enchanted player's upkeep, That player chooses a creature you control. That player performs the upgrade action on that creature as follows, completing the action only if all choices were available: [Choose a kind of counter that the proposed objects doesn't have on it from among +1/+1, lifelink and menace; Put a counter of that kind on the proposed objects]\n",
+              "custom_keyword_identities": [
+                "upgrade"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player upgrades a creature you control.\n• +1/+1\n• Lifelink\n• Menace",
+              "original_printed_rules_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player upgrades a creature you control. (They give it one of the listed counters it doesn't have.)\n• +1/+1\n• Lifelink\n• Menace"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_token_definitions": [],
+          "original_display_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player upgrades a creature you control.\n• +1/+1\n• Lifelink\n• Menace",
+          "original_printed_rules_text": "Enchant player\nAt the beginning of enchanted player's upkeep, that player upgrades a creature you control. (They give it one of the listed counters it doesn't have.)\n• +1/+1\n• Lifelink\n• Menace"
+        }
+      ],
+      "source_cards": [
+        "Cutting Content//Curse of Rebalancing"
+      ]
+    }
+  ]
+}

@@ -269,3 +269,60 @@ mod tests {
     }
 
 }
+
+/// A passive blocking requirement uses the same complete battlefield subject
+/// reader as attack/block requirements, including the exact Aura/Equipment host.
+pub fn parse_subject_must_be_blocked_if_able_line(tokens:&[OwnedLexToken])->Result<Option<Vec<StaticAbilityAst>>,CardTextError>{
+    let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(must)=tokens.iter().position(|token|token.is_word("must"))else{return Ok(None)};
+    if crate::lexer::parser_token_word_refs(&tokens[must..]) != ["must","be","blocked","if","able"] {return Ok(None)}
+    // The established intrinsic reader owns its complete source spelling.
+    // It and this filtered-subject reader use different display surfaces;
+    // admitting both would create a non-equivalent registry candidate.
+    if crate::activation_and_restrictions::parse_source_must_be_blocked_if_able_line(tokens)?.is_some() {
+        return Ok(None);
+    }
+    let filter=match combat_rule_subject(&tokens[..must]) {
+        Some(AnthemSubjectAst::Source)=>ObjectFilter::source(),
+        Some(AnthemSubjectAst::Filter(filter))=>filter,
+        _=>return Ok(None),
+    };
+    crate::word_claims::claim_tokens(&tokens[must..]);
+    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::restriction(
+        crate::effect::Restriction::must_be_blocked(filter),crate::lexer::render_token_slice(tokens),
+    ))]))
+}
+
+#[cfg(test)]
+mod passive_host_requirement_tests {
+    use super::*;
+    #[test]
+    fn attachment_requirement_is_bound_to_this_source_host(){
+        let tokens=crate::lexer::lex_line("Enchanted creature must be blocked if able.",0).unwrap();
+        let result=parse_subject_must_be_blocked_if_able_line(&tokens).unwrap().unwrap();
+        let StaticAbilityAst::Static(ability)=&result[0] else{panic!("static rule expected")};
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::MustBeBlocked(filter),..}=&ability.payload else{panic!("blocking requirement expected")};
+        assert_eq!(filter.with_attached_object,Some(Box::new(ObjectFilter::source())));
+    }
+}
+
+#[cfg(test)]
+mod must_be_blocked_owner_tests {
+ use super::*;
+ #[test]fn intrinsic_and_filtered_block_requirements_have_disjoint_owners(){
+  for text in ["This creature must be blocked if able.","This must be blocked if able."] {
+   let tokens=crate::lexer::lex_line(text,0).unwrap();
+   assert!(parse_subject_must_be_blocked_if_able_line(&tokens).unwrap().is_none());
+   let result=crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+   assert_eq!(result.len(),1);
+   let StaticAbilityAst::Static(ability)=&result[0] else{panic!("static source requirement")};
+   let ironsmith_core::StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::MustBeBlocked(filter),..}=&ability.payload else{panic!("typed requirement")};
+   assert_eq!(filter,&ObjectFilter::source());
+  }
+  for text in ["Enchanted creature must be blocked if able.","Creatures you control must be blocked if able."] {
+   let tokens=crate::lexer::lex_line(text,0).unwrap();
+   assert!(crate::activation_and_restrictions::parse_source_must_be_blocked_if_able_line(&tokens).unwrap().is_none());
+   assert!(parse_subject_must_be_blocked_if_able_line(&tokens).unwrap().is_some());
+  }
+ }
+}

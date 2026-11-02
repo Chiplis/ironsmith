@@ -38,16 +38,31 @@ fn chosen_recipient(definition: &CardDefinition, counter: CounterType) -> (PutCo
     assert_eq!(puts.len(), 1, "{}: {puts:?}", definition.card.name);
     let put = puts[0].clone();
     assert!(!put.target.is_target(), "a bare noun never declares a target");
-    let ChooseSpec::WithCount(inner, count) = &put.target else {
-        panic!("{}: exactly one chosen recipient, got {:?}", definition.card.name, put.target);
-    };
-    assert_eq!((count.min, count.max), (1, Some(1)));
-    let ChooseSpec::Object(filter) = inner.base() else {
-        panic!("{}: object recipient, got {inner:?}", definition.card.name);
+    let filter = match &put.target {
+        ChooseSpec::WithCount(inner, count) => {
+            assert_eq!((count.min, count.max), (1, Some(1)));
+            let ChooseSpec::Object(filter) = inner.base() else {
+                panic!("{}: object recipient, got {inner:?}", definition.card.name);
+            };
+            filter.clone()
+        }
+        ChooseSpec::Tagged(tag) => {
+            // A declared resolution-time choice is shared by the following
+            // placement/animation instructions through its exact output tag.
+            let producers:Vec<_>=support::find_all::<ironsmith::effects::ChooseObjectsEffect>(definition)
+                .into_iter().filter(|choice|&choice.tag==tag).collect();
+            assert_eq!(producers.len(),1,"the counter recipient must have one exact choice producer: {tag:?}");
+            let choice=&producers[0];
+            assert_eq!((choice.count.min,choice.count.max),(1,Some(1)));
+            assert!(choice.count_value.is_none());
+            assert_eq!(choice.chooser,PlayerFilter::You);
+            assert!(!choice.is_search);
+            choice.filter.clone()
+        }
+        other=>panic!("{}: exactly one chosen recipient, got {other:?}",definition.card.name),
     };
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert_eq!(filter.zone, Some(Zone::Battlefield));
-    let filter = filter.clone();
     (put, filter)
 }
 

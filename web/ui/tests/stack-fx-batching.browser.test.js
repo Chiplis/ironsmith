@@ -3,19 +3,27 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
-test('stack particles batch GPU uploads, preserve wrapped records and retire idle bursts', async () => {
-  const source = await readFile(new URL('../src/lib/motion/stack-fx-renderer.js', import.meta.url), 'utf8');
+for (const fallback of [false, true]) test(`fallback=${fallback}: stack particles batch GPU uploads, preserve wrapped records and retire idle bursts`, async () => {
+  const helper = await readFile(new URL('../src/lib/shader-program.js', import.meta.url), 'utf8');
+  const source = helper + '\n' + (await readFile(new URL('../src/lib/motion/stack-fx-renderer.js', import.meta.url), 'utf8')).replace(/^import .*shader-program.*\n/, '');
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.setContent('<canvas></canvas>');
-    const result = await page.evaluate(async source => {
+    const result = await page.evaluate(async ({ source, fallback }) => {
+      if (fallback) {
+        const getExtension = WebGL2RenderingContext.prototype.getExtension;
+        WebGL2RenderingContext.prototype.getExtension = function(name) {
+          return name === "KHR_parallel_shader_compile" ? null : getExtension.call(this, name);
+        };
+      }
       let now = 0;
       performance.now = () => now;
       const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
       const { StackFxRenderer } = await import(url);
       URL.revokeObjectURL(url);
       const renderer = new StackFxRenderer(document.querySelector('canvas'));
+      await renderer.ready;
       renderer.resize(800, 600, 1);
       const { gl } = renderer;
       const uploads = [];
@@ -51,7 +59,7 @@ test('stack particles batch GPU uploads, preserve wrapped records and retire idl
       const error = gl.getError();
       renderer.dispose();
       return { beforeRender, first, quietFrame, wrapped, wrappedX, saturated, saturatedX, idle, error };
-    }, source);
+    }, { source, fallback });
     assert.equal(result.beforeRender, 0, 'emission performs no GPU calls');
     assert.deepEqual(result.first, [[0, 890 * 20]]);
     assert.equal(result.quietFrame, 0, 'GPU simulation needs no playback uploads');

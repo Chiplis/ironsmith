@@ -8,10 +8,12 @@ mod apply_continuous;
 pub(crate) use apply_continuous::sacrificed_cost_land_types;
 mod exchange_text_boxes;
 mod change_text;
+mod remove_optional_text_fragment;
 
 pub use apply_continuous::{ApplyContinuousEffect, RuntimeModification};
 pub use exchange_text_boxes::ExchangeTextBoxesEffect;
 pub use change_text::ChangeTextEffect;
+pub use remove_optional_text_fragment::RemoveOptionalTextFragmentEffect;
 
 pub(crate) use apply_continuous::materialize_duration_predicate;
 

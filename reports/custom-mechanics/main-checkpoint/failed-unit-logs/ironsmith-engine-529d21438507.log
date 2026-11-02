@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'game_state::zone_movement_admission_tests::end_of_turn_rule_expires_and_card_copy_is_not_a_physical_card' panicked at crates/ironsmith-engine/src/game_state/zone_movement_admission_tests.rs:59:5:
+assertion failed: !game.zone_move_is_prohibited(target, Zone::Exile)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test game_state::zone_movement_admission_tests::end_of_turn_rule_expires_and_card_copy_is_not_a_physical_card ... FAILED
+
+failures:
+
+failures:
+    game_state::zone_movement_admission_tests::end_of_turn_rule_expires_and_card_copy_is_not_a_physical_card
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.07s
+

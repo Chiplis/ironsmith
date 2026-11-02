@@ -34,6 +34,7 @@ pub fn incubator_token_definitions() -> (CardDefinition, CardDefinition) {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 

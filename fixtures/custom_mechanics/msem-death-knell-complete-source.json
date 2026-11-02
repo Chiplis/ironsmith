@@ -1,0 +1,2463 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "complete_source_count": 27,
+    "source_literal_policy": "All source_export and original source faces unchanged; Agent O alternate presentation retained as its own authoritative physical source key.",
+    "verification": "Not materialized or executed by worker."
+  },
+  "mechanics": [
+    {
+      "id": "msem-death-knell-complete-source",
+      "scope": "msem",
+      "keyword": "Death knell",
+      "rule_reference": "702.266.",
+      "rule_text": [
+        {
+          "name": "702.266a",
+          "rule": "A death knell ability is a special kind of triggered ability that does not have a built-in trigger condition. Instead, it may be triggered by spells, abilities, or game rules (see 702.266b)",
+          "custom": true
+        },
+        {
+          "name": "702.266b",
+          "rule": "As a creature dies, its controller may choose a death knell ability of that creature or another permanent they control. Choosing an ability this way causes it to trigger.",
+          "custom": true
+        }
+      ],
+      "source_cards": [
+        "Acolyte of the Tempest",
+        "Catacomb Recovery",
+        "Churner of Souls",
+        "Crested Cloudfisher",
+        "Crushing Victor",
+        "Font of Sorrows",
+        "Gatekeeper Geist",
+        "Grieving Process",
+        "Guiltless Matron",
+        "Guiltless Wraith",
+        "Inconspicuous Otter",
+        "Inconspicuous Otter",
+        "Indomitable Spirit",
+        "Join the Chorus",
+        "Reader of Bones",
+        "Senn, the Haunting Gaze",
+        "Senn's Essence",
+        "Siphon Student",
+        "Skullhoarder Dragon",
+        "Sorrowslayer",
+        "Tempest Dodger",
+        "The Endless Tempest",
+        "The Locus of Sorrows",
+        "Thundering Towershell",
+        "Twilight Vigil",
+        "Usona Lurker",
+        "Vengeful Sorrow"
+      ],
+      "executable_reminder": "An externally triggered program with a source-authored optional shared event selection rule.",
+      "executable_definitions": [
+        {
+          "keyword": "Death knell",
+          "declarationKind": "ability-word",
+          "reminder": "Externally triggered ability named death knell",
+          "programSelectionRules": [
+            "As a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control."
+          ],
+          "triggerReferences": {
+            "class": "death knell",
+            "noun": "death knell"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "Acolyte of the Tempest_KXP",
+          "name": "Acolyte of the Tempest",
+          "source_card_key": "Acolyte of the Tempest_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 0/4\nDeath knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nWhenever a creature dies, trigger a death knell of a permanent you control.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 0/4\nExternally triggered ability named death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way.\nWhenever a creature dies, trigger one death knell triggered ability of a permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Acolyte of the Tempest",
+            "cardName": "Acolyte of the Tempest",
+            "manaCost": "{2}{B}",
+            "typeLine": "Creature — Human Warlock",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nWhenever a creature dies, trigger a death knell of a permanent you control.",
+            "flavorText": "",
+            "power": "0",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "74",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Dimitar Spasov",
+            "sdn": 14329,
+            "key": "Acolyte of the Tempest_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Acolyte of the Tempest_KXP",
+            "printKeys": [
+              "Acolyte of the Tempest_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Acolyte of the Tempest",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 0/4\nDeath knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nWhenever a creature dies, trigger a death knell of a permanent you control."
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Warlock",
+          "power": "0",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way.\nWhenever a creature dies, trigger a death knell of a permanent you control.",
+          "original_printed_rules_text": "Death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nWhenever a creature dies, trigger a death knell of a permanent you control.",
+          "executable_faces": [
+            {
+              "name": "Acolyte of the Tempest",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Warlock\nPower/Toughness: 0/4\nExternally triggered ability named death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way.\nWhenever a creature dies, trigger one death knell triggered ability of a permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way.\nWhenever a creature dies, trigger a death knell of a permanent you control.",
+              "original_printed_rules_text": "Death knell — Each opponent loses 1 life. You gain life equal to the amount of life lost this way. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nWhenever a creature dies, trigger a death knell of a permanent you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Catacomb Recovery_KXP",
+          "name": "Catacomb Recovery",
+          "source_card_key": "Catacomb Recovery_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nReturn target creature card from your graveyard to your hand. You may trigger a death knell of that card.",
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nReturn target creature card from your graveyard to your hand. You may trigger one death knell triggered ability of that card in your hand.",
+          "source_export": {
+            "fullName": "Catacomb Recovery",
+            "cardName": "Catacomb Recovery",
+            "manaCost": "{1}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Return target creature card from your graveyard to your hand. You may trigger a death knell of that card.",
+            "flavorText": "*“And now whoever, whatever, is left wanders. They don't remember where they belong. They don't even remember if they're alive. But they don't remember the pain, either.”\n—Mei Liva, to Karina and Flynn*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "155",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "MaxD-Art",
+            "sdn": 14410,
+            "key": "Catacomb Recovery_KXP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Catacomb Recovery_KXP",
+            "printKeys": [
+              "Catacomb Recovery_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Catacomb Recovery",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nReturn target creature card from your graveyard to your hand. You may trigger a death knell of that card."
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card from your graveyard to your hand. You may trigger a death knell of that card.",
+          "original_printed_rules_text": "Return target creature card from your graveyard to your hand. You may trigger a death knell of that card.",
+          "executable_faces": [
+            {
+              "name": "Catacomb Recovery",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nReturn target creature card from your graveyard to your hand. You may trigger one death knell triggered ability of that card in your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card from your graveyard to your hand. You may trigger a death knell of that card.",
+              "original_printed_rules_text": "Return target creature card from your graveyard to your hand. You may trigger a death knell of that card."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Churner of Souls_KXP",
+          "name": "Churner of Souls",
+          "source_card_key": "Churner of Souls_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 1/1\nDeath knell — Add {G}. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\n{W}{B}{G}: Trigger a death knell of target permanent you control.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 1/1\nExternally triggered ability named death knell — Add {G}.\n{W}{B}{G}: trigger one death knell triggered ability of target permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Churner of Souls",
+            "cardName": "Churner of Souls",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Spirit Warlock",
+            "rarityLine": "*KXP R*",
+            "rulesText": "Death knell — Add {G}. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\n{W}{B}{G}: Trigger a death knell of target permanent you control.",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "157",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "DanteCyberMan",
+            "sdn": 14412,
+            "key": "Churner of Souls_KXP",
+            "colorIdentity": [
+              "G",
+              "W",
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Churner of Souls_KXP",
+            "printKeys": [
+              "Churner of Souls_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Churner of Souls",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 1/1\nDeath knell — Add {G}. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\n{W}{B}{G}: Trigger a death knell of target permanent you control."
+            }
+          ],
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Spirit Warlock",
+          "power": "1",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — Add {G}.\n{W}{B}{G}: Trigger a death knell of target permanent you control.",
+          "original_printed_rules_text": "Death knell — Add {G}. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\n{W}{B}{G}: Trigger a death knell of target permanent you control.",
+          "executable_faces": [
+            {
+              "name": "Churner of Souls",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 1/1\nExternally triggered ability named death knell — Add {G}.\n{W}{B}{G}: trigger one death knell triggered ability of target permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — Add {G}.\n{W}{B}{G}: Trigger a death knell of target permanent you control.",
+              "original_printed_rules_text": "Death knell — Add {G}. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\n{W}{B}{G}: Trigger a death knell of target permanent you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Crested Cloudfisher_KXP",
+          "name": "Crested Cloudfisher",
+          "source_card_key": "Crested Cloudfisher_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Bird Dragon\nPower/Toughness: 3/3\nFlying\nDeath knell — Put a flying counter on target creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Bird Dragon\nPower/Toughness: 3/3\nFlying\nExternally triggered ability named death knell — Put a flying counter on target creature you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Crested Cloudfisher",
+            "cardName": "Crested Cloudfisher",
+            "manaCost": "{4}{W}",
+            "typeLine": "Creature — Bird Dragon",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Flying\nDeath knell — Put a flying counter on target creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“Okay, if you don't like the fire, maybe we can find a dragon that doesn't breathe fire at all.”\n—Flynn Skara, to Karina*\n",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "8",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Kipine",
+            "sdn": 14262,
+            "key": "Crested Cloudfisher_KXP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Crested Cloudfisher_KXP",
+            "printKeys": [
+              "Crested Cloudfisher_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Crested Cloudfisher",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Bird Dragon\nPower/Toughness: 3/3\nFlying\nDeath knell — Put a flying counter on target creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{4}{W}",
+          "type_line": "Creature — Bird Dragon",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nDeath knell — Put a flying counter on target creature you control.",
+          "original_printed_rules_text": "Flying\nDeath knell — Put a flying counter on target creature you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Crested Cloudfisher",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Bird Dragon\nPower/Toughness: 3/3\nFlying\nExternally triggered ability named death knell — Put a flying counter on target creature you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nDeath knell — Put a flying counter on target creature you control.",
+              "original_printed_rules_text": "Flying\nDeath knell — Put a flying counter on target creature you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Crushing Victor_KXP",
+          "name": "Crushing Victor",
+          "source_card_key": "Crushing Victor_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Human Warrior\nPower/Toughness: 4/3\nDeath knell — Put a trample counter on target creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Human Warrior\nPower/Toughness: 4/3\nExternally triggered ability named death knell — Put a trample counter on target creature you control.\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Crushing Victor",
+            "cardName": "Crushing Victor",
+            "manaCost": "{4}{G}",
+            "typeLine": "Creature — Human Warrior",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Death knell — Put a trample counter on target creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.",
+            "flavorText": "*Usona's dwindling population holds fast to every memory they have left.*\n",
+            "power": "4",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "158",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Elena Bespalova",
+            "sdn": 14413,
+            "key": "Crushing Victor_KXP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Crushing Victor_KXP",
+            "printKeys": [
+              "Crushing Victor_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Crushing Victor",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Human Warrior\nPower/Toughness: 4/3\nDeath knell — Put a trample counter on target creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery."
+            }
+          ],
+          "mana_cost": "{4}{G}",
+          "type_line": "Creature — Human Warrior",
+          "power": "4",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — Put a trample counter on target creature you control.\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.",
+          "original_printed_rules_text": "Death knell — Put a trample counter on target creature you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Crushing Victor",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Human Warrior\nPower/Toughness: 4/3\nExternally triggered ability named death knell — Put a trample counter on target creature you control.\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — Put a trample counter on target creature you control.\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery.",
+              "original_printed_rules_text": "Death knell — Put a trample counter on target creature you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nSacrifice a creature: Put a +1/+1 counter on Crushing Victor. Activate only as a sorcery."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Font of Sorrows_KXP",
+          "name": "Font of Sorrows",
+          "source_card_key": "Font of Sorrows_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Enchantment\nFont of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Enchantment\nAs a permanent you control enters, trigger each externally triggered ability named death knell of the event arrival.\nExternally triggered ability named death knell — Draw a card.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Font of Sorrows",
+            "cardName": "Font of Sorrows",
+            "manaCost": "{3}{G}{G}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Font of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 5,
+            "cardType": "Enchantment",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "161",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Jerome Comentale",
+            "sdn": 14416,
+            "key": "Font of Sorrows_KXP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Font of Sorrows_KXP",
+            "printKeys": [
+              "Font of Sorrows_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Font of Sorrows",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Enchantment\nFont of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Font of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card.",
+          "original_printed_rules_text": "Font of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Font of Sorrows",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Enchantment\nAs a permanent you control enters, trigger each externally triggered ability named death knell of the event arrival.\nExternally triggered ability named death knell — Draw a card.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Font of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card.",
+              "original_printed_rules_text": "Font of Sorrows and other permanents you control entering the battlefield cause their death knell to trigger.\nDeath knell — Draw a card. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Gatekeeper Geist_KXP",
+          "name": "Gatekeeper Geist",
+          "source_card_key": "Gatekeeper Geist_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Spirit\nPower/Toughness: 1/4\nVigilance\nDeath knell — Tap up to two creatures you don't control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Spirit\nPower/Toughness: 1/4\nVigilance\nExternally triggered ability named death knell — Tap up to two creatures you don't control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Gatekeeper Geist",
+            "cardName": "Gatekeeper Geist",
+            "manaCost": "{2}{W}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Vigilance\nDeath knell — Tap up to two creatures you don't control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“They tried to return to their normal lives, acting as if their sorrows were truly gone.”\n—Mei Liva, to Karina and Flynn*\n",
+            "power": "1",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "15",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Irina Nordsol Kuzmina",
+            "sdn": 14268,
+            "key": "Gatekeeper Geist_KXP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Gatekeeper Geist_KXP",
+            "printKeys": [
+              "Gatekeeper Geist_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gatekeeper Geist",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Spirit\nPower/Toughness: 1/4\nVigilance\nDeath knell — Tap up to two creatures you don't control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Spirit",
+          "power": "1",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nDeath knell — Tap up to two creatures you don't control.",
+          "original_printed_rules_text": "Vigilance\nDeath knell — Tap up to two creatures you don't control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Gatekeeper Geist",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Spirit\nPower/Toughness: 1/4\nVigilance\nExternally triggered ability named death knell — Tap up to two creatures you don't control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nDeath knell — Tap up to two creatures you don't control.",
+              "original_printed_rules_text": "Vigilance\nDeath knell — Tap up to two creatures you don't control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Grieving Process_KXP",
+          "name": "Grieving Process",
+          "source_card_key": "Grieving Process_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Aura Curse\nEnchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability.",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Aura Curse\nEnchant player\nExternally triggered ability named death knell — Enchanted player loses 1 life and you gain 1 life.\nWhenever a creature you control dies, Trigger one death knell triggered ability of a permanent you control, chosen by enchanted player.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Grieving Process",
+            "cardName": "Grieving Process",
+            "manaCost": "{1}{W}{B}",
+            "typeLine": "Enchantment — Aura Curse",
+            "rarityLine": "*KXP R*",
+            "rulesText": "Enchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White/Black} ",
+            "cmc": 3,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "203",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "KristinaToxicpanda",
+            "sdn": 14458,
+            "key": "Grieving Process_KXP",
+            "colorIdentity": [
+              "W",
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Grieving Process_KXP",
+            "printKeys": [
+              "Grieving Process_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grieving Process",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Aura Curse\nEnchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability."
+            }
+          ],
+          "mana_cost": "{1}{W}{B}",
+          "type_line": "Enchantment — Aura Curse",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life.\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability.",
+          "original_printed_rules_text": "Enchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability.",
+          "executable_faces": [
+            {
+              "name": "Grieving Process",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Aura Curse\nEnchant player\nExternally triggered ability named death knell — Enchanted player loses 1 life and you gain 1 life.\nWhenever a creature you control dies, Trigger one death knell triggered ability of a permanent you control, chosen by enchanted player.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life.\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability.",
+              "original_printed_rules_text": "Enchant player\nDeath knell — Enchanted player loses 1 life and you gain 1 life. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nWhenever a creature you control dies, enchanted player chooses a death knell ability of a permanent you control. Trigger that ability."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Guiltless Matron_KXP",
+          "name": "Guiltless Matron",
+          "source_card_key": "Guiltless Matron_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Spirit\nPower/Toughness: 3/3\nLifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Spirit\nPower/Toughness: 3/3\nLifelink\nExternally triggered ability named death knell — You gain 1 life for each permanent with a death knell you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Guiltless Matron",
+            "cardName": "Guiltless Matron",
+            "manaCost": "{3}{W}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Lifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“The memories weren't gone. They were taken.”\n—Mei Liva, to Karina and Flynn*\n",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "17",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "0BO",
+            "sdn": 14270,
+            "key": "Guiltless Matron_KXP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Guiltless Matron_KXP",
+            "printKeys": [
+              "Guiltless Matron_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Guiltless Matron",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Spirit\nPower/Toughness: 3/3\nLifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Spirit",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Lifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control.",
+          "original_printed_rules_text": "Lifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Guiltless Matron",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Spirit\nPower/Toughness: 3/3\nLifelink\nExternally triggered ability named death knell — You gain 1 life for each permanent with a death knell you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control.",
+              "original_printed_rules_text": "Lifelink\nDeath knell — You gain 1 life for each permanent with a death knell you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Guiltless Wraith_KXP",
+          "name": "Guiltless Wraith",
+          "source_card_key": "Guiltless Wraith_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Spirit\nPower/Toughness: 4/4\nMenace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Spirit\nPower/Toughness: 4/4\nMenace\nExternally triggered ability named death knell — Put a +1/+1 counter on Guiltless Wraith.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Guiltless Wraith",
+            "cardName": "Guiltless Wraith",
+            "manaCost": "{4}{B}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Menace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“Only a few forgot at first, but as others saw how happy they had become, more followed.”\n—Mei Liva, to Karina and Flynn*\n",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "84",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Imad Awan",
+            "sdn": 14339,
+            "key": "Guiltless Wraith_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Guiltless Wraith_KXP",
+            "printKeys": [
+              "Guiltless Wraith_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Guiltless Wraith",
+              "original_text": "Mana cost: {4}{B}\nType: Creature — Spirit\nPower/Toughness: 4/4\nMenace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{4}{B}",
+          "type_line": "Creature — Spirit",
+          "power": "4",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith.",
+          "original_printed_rules_text": "Menace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Guiltless Wraith",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Spirit\nPower/Toughness: 4/4\nMenace\nExternally triggered ability named death knell — Put a +1/+1 counter on Guiltless Wraith.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith.",
+              "original_printed_rules_text": "Menace\nDeath knell — Put a +1/+1 counter on Guiltless Wraith. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Inconspicuous Otter_KXP",
+          "name": "Inconspicuous Otter",
+          "source_card_key": "Inconspicuous Otter_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Otter\nPower/Toughness: 2/3\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Otter\nPower/Toughness: 2/3\nExternally triggered ability named death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Inconspicuous Otter",
+            "cardName": "Inconspicuous Otter",
+            "manaCost": "{2}{B}",
+            "typeLine": "Creature — Otter",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "86",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "rajewel",
+            "sdn": 14341,
+            "key": "Inconspicuous Otter_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon",
+              "bonus"
+            ],
+            "firstPrint": "Inconspicuous Otter_KXP",
+            "printKeys": [
+              "Inconspicuous Otter_KXP",
+              "Agent O Reminder_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inconspicuous Otter",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Otter\nPower/Toughness: 2/3\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace."
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Otter",
+          "power": "2",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.",
+          "original_printed_rules_text": "Death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.",
+          "executable_faces": [
+            {
+              "name": "Inconspicuous Otter",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Otter\nPower/Toughness: 2/3\nExternally triggered ability named death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace.",
+              "original_printed_rules_text": "Death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nAs long as Inconspicuous Otter is enchanted or equipped, he's a 3/4 legendary Otter Rogue named Agent O and has menace."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Agent O Reminder_KXP",
+          "name": "Inconspicuous Otter",
+          "source_card_key": "Agent O Reminder_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Legendary Creature — Otter Rogue\nPower/Toughness: 3/4\n*(Use only while enchanted or equipped.)*\nMenace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Legendary Creature — Otter Rogue\nPower/Toughness: 3/4\nMenace\nExternally triggered ability named death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Agent O Reminder",
+            "cardName": "Inconspicuous Otter",
+            "alias": "Agent O",
+            "manaCost": "{2}{B}",
+            "typeLine": "Legendary Creature — Otter Rogue",
+            "rarityLine": "*KXP Bonus*",
+            "rulesText": "*(Use only while enchanted or equipped.)*\nMenace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": " Creature",
+            "rarity": "bonus",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "291",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [
+              "no export",
+              "reprint"
+            ],
+            "artist": "rajewel",
+            "sdn": 14563,
+            "key": "Agent O Reminder_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon",
+              "bonus"
+            ],
+            "firstPrint": "Inconspicuous Otter_KXP",
+            "printKeys": [
+              "Inconspicuous Otter_KXP",
+              "Agent O Reminder_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inconspicuous Otter",
+              "original_text": "Mana cost: {2}{B}\nType: Legendary Creature — Otter Rogue\nPower/Toughness: 3/4\n*(Use only while enchanted or equipped.)*\nMenace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Legendary Creature — Otter Rogue",
+          "power": "3",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.",
+          "original_printed_rules_text": "(Use only while enchanted or equipped.)\nMenace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Inconspicuous Otter",
+              "executable_text": "Mana cost: {2}{B}\nType: Legendary Creature — Otter Rogue\nPower/Toughness: 3/4\nMenace\nExternally triggered ability named death knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield.",
+              "original_printed_rules_text": "(Use only while enchanted or equipped.)\nMenace\nDeath knell — Return an Aura card with mana value 5 or less from your graveyard to the battlefield. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Indomitable Spirit_KXP",
+          "name": "Indomitable Spirit",
+          "source_card_key": "Indomitable Spirit_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Spirit\nPower/Toughness: 4/4\nCreatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Spirit\nPower/Toughness: 4/4\nAs a creature you control attacks, trigger each externally triggered ability named death knell of the event source.\nExternally triggered ability named death knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Indomitable Spirit",
+            "cardName": "Indomitable Spirit",
+            "manaCost": "{3}{G}{G}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP R*",
+            "rulesText": "Creatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "",
+            "power": "4",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "166",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "RykyArt",
+            "sdn": 14421,
+            "key": "Indomitable Spirit_KXP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Indomitable Spirit_KXP",
+            "printKeys": [
+              "Indomitable Spirit_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Indomitable Spirit",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Spirit\nPower/Toughness: 4/4\nCreatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Spirit",
+          "power": "4",
+          "toughness": "4",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Creatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn.",
+          "original_printed_rules_text": "Creatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Indomitable Spirit",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Spirit\nPower/Toughness: 4/4\nAs a creature you control attacks, trigger each externally triggered ability named death knell of the event source.\nExternally triggered ability named death knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Creatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn.",
+              "original_printed_rules_text": "Creatures you control attacking causes their death knell to trigger.\nDeath knell — Indomitable Spirit gets +2/+2 and gains trample until end of turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Join the Chorus_KXP",
+          "name": "Join the Chorus",
+          "source_card_key": "Join the Chorus_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{G}\nType: Sorcery\nDestroy target permanent. Trigger a death knell of any number of permanents you control.",
+          "executable_text": "Mana cost: {2}{B}{G}\nType: Sorcery\nDestroy target permanent. Choose any number of permanents you control. For each of those permanents, trigger one death knell triggered ability of that permanent.",
+          "source_export": {
+            "fullName": "Join the Chorus",
+            "cardName": "Join the Chorus",
+            "manaCost": "{2}{B}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KXP R*",
+            "rulesText": "Destroy target permanent. Trigger a death knell of any number of permanents you control.",
+            "flavorText": "*“They gave up more and more, until they gave up even the memory of giving up.”\n—Mei Liva, to Karina and Flynn*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black/Green} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "213",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Evi-gilatio",
+            "sdn": 14467,
+            "key": "Join the Chorus_KXP",
+            "colorIdentity": [
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Join the Chorus_KXP",
+            "printKeys": [
+              "Join the Chorus_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Join the Chorus",
+              "original_text": "Mana cost: {2}{B}{G}\nType: Sorcery\nDestroy target permanent. Trigger a death knell of any number of permanents you control."
+            }
+          ],
+          "mana_cost": "{2}{B}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target permanent. Trigger a death knell of any number of permanents you control.",
+          "original_printed_rules_text": "Destroy target permanent. Trigger a death knell of any number of permanents you control.",
+          "executable_faces": [
+            {
+              "name": "Join the Chorus",
+              "executable_text": "Mana cost: {2}{B}{G}\nType: Sorcery\nDestroy target permanent. Choose any number of permanents you control. For each of those permanents, trigger one death knell triggered ability of that permanent.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target permanent. Trigger a death knell of any number of permanents you control.",
+              "original_printed_rules_text": "Destroy target permanent. Trigger a death knell of any number of permanents you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Reader of Bones_KXP",
+          "name": "Reader of Bones",
+          "source_card_key": "Reader of Bones_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}{B}{G}\nType: Creature — Spirit\nPower/Toughness: 3/3\nDeath knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nCreatures you control dying causes their death knell to trigger. *(In addition to the normal death knell trigger.)*",
+          "executable_text": "Mana cost: {W}{B}{G}\nType: Creature — Spirit\nPower/Toughness: 3/3\nExternally triggered ability named death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token.\nAs a creature you control dies, trigger each externally triggered ability named death knell of the event source.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Reader of Bones",
+            "cardName": "Reader of Bones",
+            "manaCost": "{W}{B}{G}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nCreatures you control dying causes their death knell to trigger. *(In addition to the normal death knell trigger.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White/Black/Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "225",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Eriyal",
+            "sdn": 14479,
+            "key": "Reader of Bones_KXP",
+            "colorIdentity": [
+              "W",
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Reader of Bones_KXP",
+            "printKeys": [
+              "Reader of Bones_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reader of Bones",
+              "original_text": "Mana cost: {W}{B}{G}\nType: Creature — Spirit\nPower/Toughness: 3/3\nDeath knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nCreatures you control dying causes their death knell to trigger. *(In addition to the normal death knell trigger.)*"
+            }
+          ],
+          "mana_cost": "{W}{B}{G}",
+          "type_line": "Creature — Spirit",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token.\nCreatures you control dying causes their death knell to trigger.",
+          "original_printed_rules_text": "Death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nCreatures you control dying causes their death knell to trigger. (In addition to the normal death knell trigger.)",
+          "executable_faces": [
+            {
+              "name": "Reader of Bones",
+              "executable_text": "Mana cost: {W}{B}{G}\nType: Creature — Spirit\nPower/Toughness: 3/3\nExternally triggered ability named death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token.\nAs a creature you control dies, trigger each externally triggered ability named death knell of the event source.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token.\nCreatures you control dying causes their death knell to trigger.",
+              "original_printed_rules_text": "Death knell — You may sacrifice a nontoken creature. If you do, create a 3/3 black Spirit creature token. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nCreatures you control dying causes their death knell to trigger. (In addition to the normal death knell trigger.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Senn, the Haunting Gaze_KXP",
+          "name": "Senn, the Haunting Gaze",
+          "source_card_key": "Senn, the Haunting Gaze_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Demon\nPower/Toughness: 3/3\nDeath knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Demon\nPower/Toughness: 3/3\nExternally triggered ability named death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger one death knell triggered ability of another permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Senn, the Haunting Gaze",
+            "cardName": "Senn, the Haunting Gaze",
+            "manaCost": "{1}{B}{B}",
+            "typeLine": "Legendary Creature — Demon",
+            "rarityLine": "*KXP R*",
+            "rulesText": "Death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“Usona may be dying off, but there's only room for me, vampire.”*\n",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": " Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "95",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Eugene Korolev",
+            "sdn": 14350,
+            "key": "Senn, the Haunting Gaze_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Senn, the Haunting Gaze_KXP",
+            "printKeys": [
+              "Senn, the Haunting Gaze_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.276003276003276,
+            "pm": 2.0738820479585223,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Senn, the Haunting Gaze",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Demon\nPower/Toughness: 3/3\nDeath knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Legendary Creature — Demon",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control.",
+          "original_printed_rules_text": "Death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Senn, the Haunting Gaze",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature — Demon\nPower/Toughness: 3/3\nExternally triggered ability named death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger one death knell triggered ability of another permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control.",
+              "original_printed_rules_text": "Death knell — Put a +1/+1, flying, lifelink, or menace counter on Senn, the Haunting Gaze, then trigger a death knell of another permanent you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Senn's Essence_KXP",
+          "name": "Senn's Essence",
+          "source_card_key": "Senn's Essence_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nDestroy target creature. Trigger a death knell of a permanent you control.",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nDestroy target creature. trigger one death knell triggered ability of a permanent you control.",
+          "source_export": {
+            "fullName": "Senn's Essence",
+            "cardName": "Senn's Essence",
+            "manaCost": "{2}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Destroy target creature. Trigger a death knell of a permanent you control.",
+            "flavorText": "*“The souls cry out because they recognize they have lost one of their own. They do not recognize any more than that. Do not mourn, for they have already been lost for years.”\n—Senn, the Haunting Gaze*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "96",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Rousteinere",
+            "sdn": 14351,
+            "key": "Senn's Essence_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Senn's Essence_KXP",
+            "printKeys": [
+              "Senn's Essence_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Senn's Essence",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nDestroy target creature. Trigger a death knell of a permanent you control."
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target creature. Trigger a death knell of a permanent you control.",
+          "original_printed_rules_text": "Destroy target creature. Trigger a death knell of a permanent you control.",
+          "executable_faces": [
+            {
+              "name": "Senn's Essence",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nDestroy target creature. trigger one death knell triggered ability of a permanent you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target creature. Trigger a death knell of a permanent you control.",
+              "original_printed_rules_text": "Destroy target creature. Trigger a death knell of a permanent you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Siphon Student_KXP",
+          "name": "Siphon Student",
+          "source_card_key": "Siphon Student_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Vampire Cleric\nPower/Toughness: 3/1\nDeath knell — You gain 2 life. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Vampire Cleric\nPower/Toughness: 3/1\nExternally triggered ability named death knell — You gain 2 life.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Siphon Student",
+            "cardName": "Siphon Student",
+            "manaCost": "{1}{W}",
+            "typeLine": "Creature — Vampire Cleric",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Death knell — You gain 2 life. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“So little is remembered here that I don't think anyone even realizes I'm here.”\n—Mei Liva*\n",
+            "power": "3",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "28",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "aditya777",
+            "sdn": 14282,
+            "key": "Siphon Student_KXP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Siphon Student_KXP",
+            "printKeys": [
+              "Siphon Student_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Siphon Student",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Vampire Cleric\nPower/Toughness: 3/1\nDeath knell — You gain 2 life. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Vampire Cleric",
+          "power": "3",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — You gain 2 life.",
+          "original_printed_rules_text": "Death knell — You gain 2 life. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Siphon Student",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Vampire Cleric\nPower/Toughness: 3/1\nExternally triggered ability named death knell — You gain 2 life.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — You gain 2 life.",
+              "original_printed_rules_text": "Death knell — You gain 2 life. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Skullhoarder Dragon_KXP",
+          "name": "Skullhoarder Dragon",
+          "source_card_key": "Skullhoarder Dragon_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Dragon\nPower/Toughness: 2/2\nFlying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Dragon\nPower/Toughness: 2/2\nFlying\nExternally triggered ability named death knell — Skullhoarder Dragon gets +2/+0 until end of turn.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Skullhoarder Dragon",
+            "cardName": "Skullhoarder Dragon",
+            "manaCost": "{2}{B}",
+            "typeLine": "Creature — Dragon",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Flying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*“But their troubles were just forgotten, not fixed. And so, their sorrows found them all over again.”\n—Mei Liva, to Karina and Flynn*\n",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "99",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Philipp A. Urlich",
+            "sdn": 14354,
+            "key": "Skullhoarder Dragon_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Skullhoarder Dragon_KXP",
+            "printKeys": [
+              "Skullhoarder Dragon_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skullhoarder Dragon",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Dragon\nPower/Toughness: 2/2\nFlying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Dragon",
+          "power": "2",
+          "toughness": "2",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn.",
+          "original_printed_rules_text": "Flying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Skullhoarder Dragon",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Dragon\nPower/Toughness: 2/2\nFlying\nExternally triggered ability named death knell — Skullhoarder Dragon gets +2/+0 until end of turn.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn.",
+              "original_printed_rules_text": "Flying\nDeath knell — Skullhoarder Dragon gets +2/+0 until end of turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sorrowslayer_KXP",
+          "name": "Sorrowslayer",
+          "source_card_key": "Sorrowslayer_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhen Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhen Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: trigger one death knell triggered ability of a permanent you control. Activate only once each turn and only as a sorcery.",
+          "source_export": {
+            "fullName": "Sorrowslayer",
+            "cardName": "Sorrowslayer",
+            "manaCost": "{1}{G}",
+            "typeLine": "Creature — Human Warrior",
+            "rarityLine": "*KXP C*",
+            "rulesText": "When Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery.",
+            "flavorText": "*“Let's put you out of our misery.”*\n",
+            "power": "1",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "177",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "thatnickid",
+            "sdn": 14432,
+            "key": "Sorrowslayer_KXP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Sorrowslayer_KXP",
+            "printKeys": [
+              "Sorrowslayer_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sorrowslayer",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhen Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery."
+            }
+          ],
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Warrior",
+          "power": "1",
+          "toughness": "1",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery.",
+          "original_printed_rules_text": "When Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery.",
+          "executable_faces": [
+            {
+              "name": "Sorrowslayer",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhen Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: trigger one death knell triggered ability of a permanent you control. Activate only once each turn and only as a sorcery.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery.",
+              "original_printed_rules_text": "When Sorrowslayer enters, put a +1/+1 counter on target creature.\nRemove a +1/+1 counter from Sorrowslayer: Trigger a death knell of a permanent you control. Activate only once each turn and only as a sorcery."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Tempest Dodger_KXP",
+          "name": "Tempest Dodger",
+          "source_card_key": "Tempest Dodger_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {G}\nType: Creature — Spirit\nPower/Toughness: 1/1\nTrample\nDeath knell — Put a +1/+1 counter on Tempest Dodger. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {G}\nType: Creature — Spirit\nPower/Toughness: 1/1\nTrample\nExternally triggered ability named death knell — Put a +1/+1 counter on Tempest Dodger.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Tempest Dodger",
+            "cardName": "Tempest Dodger",
+            "manaCost": "{G}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP C*",
+            "rulesText": "Trample\nDeath knell — Put a +1/+1 counter on Tempest Dodger. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*The Endless Tempest calls the guiltless, but they need not heed the call.*\n",
+            "power": "1",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 1,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "178",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "DeadSlug",
+            "sdn": 14433,
+            "key": "Tempest Dodger_KXP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Tempest Dodger_KXP",
+            "printKeys": [
+              "Tempest Dodger_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tempest Dodger",
+              "original_text": "Mana cost: {G}\nType: Creature — Spirit\nPower/Toughness: 1/1\nTrample\nDeath knell — Put a +1/+1 counter on Tempest Dodger. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{G}",
+          "type_line": "Creature — Spirit",
+          "power": "1",
+          "toughness": "1",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nDeath knell — Put a +1/+1 counter on Tempest Dodger.",
+          "original_printed_rules_text": "Trample\nDeath knell — Put a +1/+1 counter on Tempest Dodger. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Tempest Dodger",
+              "executable_text": "Mana cost: {G}\nType: Creature — Spirit\nPower/Toughness: 1/1\nTrample\nExternally triggered ability named death knell — Put a +1/+1 counter on Tempest Dodger.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nDeath knell — Put a +1/+1 counter on Tempest Dodger.",
+              "original_printed_rules_text": "Trample\nDeath knell — Put a +1/+1 counter on Tempest Dodger. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "The Endless Tempest_KXP",
+          "name": "The Endless Tempest",
+          "source_card_key": "The Endless Tempest_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Enchantment\nDeath knell — All creatures get -1/-1 until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Enchantment\nExternally triggered ability named death knell — All creatures get -1/-1 until end of turn.\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "The Endless Tempest",
+            "cardName": "The Endless Tempest",
+            "manaCost": "{2}{B}{B}",
+            "typeLine": "Legendary Enchantment",
+            "rarityLine": "*KXP M*",
+            "rulesText": "Death knell — All creatures get -1/-1 until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 4,
+            "cardType": " Enchantment",
+            "rarity": "mythic rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "80",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Sandeep Karunakaran",
+            "sdn": 14335,
+            "key": "The Endless Tempest_KXP",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "mythic rare"
+            ],
+            "firstPrint": "The Endless Tempest_KXP",
+            "printKeys": [
+              "The Endless Tempest_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Endless Tempest",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Legendary Enchantment\nDeath knell — All creatures get -1/-1 until end of turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost."
+            }
+          ],
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Legendary Enchantment",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Death knell — All creatures get -1/-1 until end of turn.\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.",
+          "original_printed_rules_text": "Death knell — All creatures get -1/-1 until end of turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.",
+          "executable_faces": [
+            {
+              "name": "The Endless Tempest",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Legendary Enchantment\nExternally triggered ability named death knell — All creatures get -1/-1 until end of turn.\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Death knell — All creatures get -1/-1 until end of turn.\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost.",
+              "original_printed_rules_text": "Death knell — All creatures get -1/-1 until end of turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\n{B}, Sacrifice a creature: Choose a card in your graveyard with mana value less than the sacrificed creature's mana value. You may cast it without paying its mana cost."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "The Locus of Sorrows_KXP",
+          "name": "The Locus of Sorrows",
+          "source_card_key": "The Locus of Sorrows_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}{B}{G}\nType: Legendary Creature — Spirit Warlock\nPower/Toughness: 5/3\nFirst strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {2}{W}{B}{G}\nType: Legendary Creature — Spirit Warlock\nPower/Toughness: 5/3\nFirst strike, trample\nExternally triggered ability named death knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "The Locus of Sorrows",
+            "cardName": "The Locus of Sorrows",
+            "manaCost": "{2}{W}{B}{G}",
+            "typeLine": "Legendary Creature — Spirit Warlock",
+            "rarityLine": "*KXP R*",
+            "rulesText": "First strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "",
+            "power": "5",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White/Black/Green} ",
+            "cmc": 5,
+            "cardType": " Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "216",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Fetsch",
+            "sdn": 14470,
+            "key": "The Locus of Sorrows_KXP",
+            "colorIdentity": [
+              "W",
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "The Locus of Sorrows_KXP",
+            "printKeys": [
+              "The Locus of Sorrows_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Locus of Sorrows",
+              "original_text": "Mana cost: {2}{W}{B}{G}\nType: Legendary Creature — Spirit Warlock\nPower/Toughness: 5/3\nFirst strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{2}{W}{B}{G}",
+          "type_line": "Legendary Creature — Spirit Warlock",
+          "power": "5",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn.",
+          "original_printed_rules_text": "First strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "The Locus of Sorrows",
+              "executable_text": "Mana cost: {2}{W}{B}{G}\nType: Legendary Creature — Spirit Warlock\nPower/Toughness: 5/3\nFirst strike, trample\nExternally triggered ability named death knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn.",
+              "original_printed_rules_text": "First strike, trample\nDeath knell — Return a permanent card with mana value less than X from your graveyard to the battlefield, where X is the mana value of the last creature that died this turn. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Thundering Towershell_KXP",
+          "name": "Thundering Towershell",
+          "source_card_key": "Thundering Towershell_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{W}{B}{G}\nType: Creature — Turtle\nPower/Toughness: 5/7\nWhenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature.",
+          "executable_text": "Mana cost: {3}{W}{B}{G}\nType: Creature — Turtle\nPower/Toughness: 5/7\nWhenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. trigger one death knell triggered ability of that creature.",
+          "source_export": {
+            "fullName": "Thundering Towershell",
+            "cardName": "Thundering Towershell",
+            "manaCost": "{3}{W}{B}{G}",
+            "typeLine": "Creature — Turtle",
+            "rarityLine": "*KXP R*",
+            "rulesText": "Whenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature.",
+            "flavorText": "*The movement of Usona's greatest beasts is momentous enough to wake the dead.*\n",
+            "power": "5",
+            "toughness": "7",
+            "loyalty": "",
+            "color": "{White/Black/Green} ",
+            "cmc": 6,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "230",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Garrett Post",
+            "sdn": 14484,
+            "key": "Thundering Towershell_KXP",
+            "colorIdentity": [
+              "W",
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Thundering Towershell_KXP",
+            "printKeys": [
+              "Thundering Towershell_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Thundering Towershell",
+              "original_text": "Mana cost: {3}{W}{B}{G}\nType: Creature — Turtle\nPower/Toughness: 5/7\nWhenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature."
+            }
+          ],
+          "mana_cost": "{3}{W}{B}{G}",
+          "type_line": "Creature — Turtle",
+          "power": "5",
+          "toughness": "7",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature.",
+          "original_printed_rules_text": "Whenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature.",
+          "executable_faces": [
+            {
+              "name": "Thundering Towershell",
+              "executable_text": "Mana cost: {3}{W}{B}{G}\nType: Creature — Turtle\nPower/Toughness: 5/7\nWhenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. trigger one death knell triggered ability of that creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature.",
+              "original_printed_rules_text": "Whenever Thundering Towershell attacks, return a creature card with mana value 5 or less from a graveyard to the battlefield under your control. Trigger a death knell of that creature."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Twilight Vigil_KXP",
+          "name": "Twilight Vigil",
+          "source_card_key": "Twilight Vigil_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}\nType: Enchantment\nWhen Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control.",
+          "executable_text": "Mana cost: {W}\nType: Enchantment\nWhen Twilight Vigil enters, scry 2, then put a night counter on it.\nExternally triggered ability named death knell — Put a night counter on Twilight Vigil.\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell triggered ability of a permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Twilight Vigil",
+            "cardName": "Twilight Vigil",
+            "manaCost": "{W}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*KXP R*",
+            "rulesText": "When Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "34",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Atha（アサ）",
+            "sdn": 14288,
+            "key": "Twilight Vigil_KXP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Twilight Vigil_KXP",
+            "printKeys": [
+              "Twilight Vigil_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Twilight Vigil",
+              "original_text": "Mana cost: {W}\nType: Enchantment\nWhen Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control."
+            }
+          ],
+          "mana_cost": "{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil.\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control.",
+          "original_printed_rules_text": "When Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control.",
+          "executable_faces": [
+            {
+              "name": "Twilight Vigil",
+              "executable_text": "Mana cost: {W}\nType: Enchantment\nWhen Twilight Vigil enters, scry 2, then put a night counter on it.\nExternally triggered ability named death knell — Put a night counter on Twilight Vigil.\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell triggered ability of a permanent you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil.\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control.",
+              "original_printed_rules_text": "When Twilight Vigil enters, scry 2, then put a night counter on it.\nDeath knell — Put a night counter on Twilight Vigil. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)\nSacrifice Twilight Vigil: For each night counter on it, you gain 1 life and trigger up to one death knell of a permanent you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Usona Lurker_KXP",
+          "name": "Usona Lurker",
+          "source_card_key": "Usona Lurker_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 3/3\nFlash\nDeath knell — Put a +1/+1 counter on each creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 3/3\nFlash\nExternally triggered ability named death knell — Put a +1/+1 counter on each creature you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Usona Lurker",
+            "cardName": "Usona Lurker",
+            "manaCost": "{2}{W}{B}{G}",
+            "typeLine": "Creature — Spirit Warlock",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Flash\nDeath knell — Put a +1/+1 counter on each creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{White/Black/Green} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "234",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "John Stone",
+            "sdn": 14488,
+            "key": "Usona Lurker_KXP",
+            "colorIdentity": [
+              "W",
+              "B",
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Usona Lurker_KXP",
+            "printKeys": [
+              "Usona Lurker_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Usona Lurker",
+              "original_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 3/3\nFlash\nDeath knell — Put a +1/+1 counter on each creature you control. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{2}{W}{B}{G}",
+          "type_line": "Creature — Spirit Warlock",
+          "power": "3",
+          "toughness": "3",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\nDeath knell — Put a +1/+1 counter on each creature you control.",
+          "original_printed_rules_text": "Flash\nDeath knell — Put a +1/+1 counter on each creature you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Usona Lurker",
+              "executable_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Spirit Warlock\nPower/Toughness: 3/3\nFlash\nExternally triggered ability named death knell — Put a +1/+1 counter on each creature you control.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\nDeath knell — Put a +1/+1 counter on each creature you control.",
+              "original_printed_rules_text": "Flash\nDeath knell — Put a +1/+1 counter on each creature you control. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Vengeful Sorrow_KXP",
+          "name": "Vengeful Sorrow",
+          "source_card_key": "Vengeful Sorrow_KXP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Spirit\nPower/Toughness: 2/2\nOpponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Spirit\nPower/Toughness: 2/2\nAs an opponent draws a card during your turn, trigger one externally triggered ability named death knell from a permanent you control.\nExternally triggered ability named death knell — Spells target opponent casts this turn cost {1} more to cast.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+          "source_export": {
+            "fullName": "Vengeful Sorrow",
+            "cardName": "Vengeful Sorrow",
+            "manaCost": "{1}{W}",
+            "typeLine": "Creature — Spirit",
+            "rarityLine": "*KXP U*",
+            "rulesText": "Opponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*",
+            "flavorText": "*A whole plane's worth of sorrows all came together, and decided it didn't want to be forgotten.*\n",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KXP",
+            "cardID": "36",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "RykyArt",
+            "sdn": 14291,
+            "key": "Vengeful Sorrow_KXP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KXP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Vengeful Sorrow_KXP",
+            "printKeys": [
+              "Vengeful Sorrow_KXP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.276003276003276,
+            "pm": 1.0369410239792611,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Vengeful Sorrow",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Spirit\nPower/Toughness: 2/2\nOpponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast. *(As a creature you control dies, trigger one death knell of that creature or another permanent you control.)*"
+            }
+          ],
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Spirit",
+          "power": "2",
+          "toughness": "2",
+          "custom_keyword_identities": [
+            "death knell"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Opponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast.",
+          "original_printed_rules_text": "Opponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)",
+          "executable_faces": [
+            {
+              "name": "Vengeful Sorrow",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Spirit\nPower/Toughness: 2/2\nAs an opponent draws a card during your turn, trigger one externally triggered ability named death knell from a permanent you control.\nExternally triggered ability named death knell — Spells target opponent casts this turn cost {1} more to cast.\nAs a creature you control dies, select up to one externally triggered ability named death knell from the event source or a permanent you control.",
+              "custom_keyword_identities": [
+                "death knell"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Opponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast.",
+              "original_printed_rules_text": "Opponents drawing a card during your turn causes one death knell of a permanent you control to trigger.\nDeath knell — Spells target opponent casts this turn cost {1} more to cast. (As a creature you control dies, trigger one death knell of that creature or another permanent you control.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    }
+  ]
+}

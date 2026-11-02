@@ -137,12 +137,165 @@ impl TokenEntryOptions {
     }
 }
 
+/// Actual provisional identities and fully prepared entries owned by one
+/// creation proposal. No original battlefield entry has occurred yet.
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedTokenEntry {
+    pub id: ObjectId,
+    pub is_creature: bool,
+    prepared: Option<crate::game_state::PreparedEtbEntry>,
+    entry_effects: Vec<crate::continuous::ContinuousEffectId>,
+    choose_aura_attachment: bool,
+}
+impl PreparedTokenEntry {
+    pub(crate) fn commit(self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::game_state::EntryCommitResult, ExecutionError>
+    {
+        let Some(prepared) = self.prepared else {
+            for id in self.entry_effects { game.effect_store.continuous_effects.remove_effect(id); }
+            return Ok(crate::game_state::EntryCommitResult {
+                original: crate::events::processing::EventOutcome::NotApplicable,
+                programs: Vec::new(), pending: false, published_outputs: Vec::new(),
+            });
+        };
+        let committed=game.commit_prepared_etb_with_cause_and_options_and_dm(
+            self.id, prepared, None, ctx.cause.clone(), self.choose_aura_attachment, &mut ctx.decision_maker,
+        )?;
+        let entered=matches!(&committed.original, crate::events::processing::EventOutcome::Proceed(result)
+            if game.object(result.new_id).is_some_and(|object|object.zone==Zone::Battlefield));
+        if !entered {for id in self.entry_effects {game.effect_store.continuous_effects.remove_effect(id);}}
+        Ok(committed)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TokenEntryAttachmentPlan {
+    groups: Vec<(crate::events::tokens::TokenGroupKey, Vec<Option<PreparedTokenEntry>>)>,
+}
+impl TokenEntryAttachmentPlan {
+    pub(crate) fn take(&mut self, group: crate::events::tokens::TokenGroupKey, index: usize)
+        -> Result<PreparedTokenEntry, ExecutionError>
+    {
+        self.groups.iter_mut().find(|(key, _)| *key == group)
+            .and_then(|(_, entries)| entries.get_mut(index)).and_then(Option::take)
+            .ok_or_else(|| ExecutionError::IncompleteEvidence("token original lost its exact prepared entry".into()))
+    }
+}
+
+/// Prepare every actual original/replacement-added token before any entry.
+/// This belongs to proposal preparation, including all host menus, so another
+/// participant's original cannot change a pending token's offered hosts.
+pub(crate) fn prepare_token_entry_attachments(
+    game: &mut GameState, ctx: &mut ExecutionContext,
+    creation: &crate::events::CreateTokensEvent,
+    initial_counters: &[(crate::object::CounterType, u32)], enters_tapped: bool,
+    operation_grants: &[super::NamedActionTokenGrant],
+    entry_modifications: &[(crate::continuous::Modification, crate::effect::Until)],
+    choose_aura_attachment: bool,
+) -> Result<Option<TokenEntryAttachmentPlan>, ExecutionError> {
+    use crate::events::tokens::TokenGroupKey;
+    let spec=ctx.pending_entry_attachment.clone();
+    if spec.is_none() && entry_modifications.is_empty() {return Ok(None)}
+    let destinations=match &spec {
+        Some(spec)=>crate::effects::permanents::attachment_destinations(game,spec,ctx)?,
+        None=>Vec::new(),
+    };
+    let mut plan = TokenEntryAttachmentPlan::default();
+    // Reserve exact identities first. Provisional tokens remain outside the
+    // battlefield until all replacement/as-enters proposals and menus finish.
+    for key in creation.group_keys() {
+        if creation.group_count(key) == 0 { plan.groups.push((key, Vec::new())); continue; }
+        let preview = creation.group_object(key).ok_or_else(||
+            ExecutionError::IncompleteEvidence("token creation lost a proposed group".into()))?;
+        let mut entries = super::resources::buffer(creation.group_count(key) as usize)?;
+        for _ in 0..creation.group_count(key) {
+            let id = game.new_object_id();
+            match key {
+                TokenGroupKey::Named(index) => { let _ = game.object_from_token_definition(id,
+                    &crate::events::tokens::additional_token_definition(creation.additional_tokens[index].0), creation.controller); }
+                TokenGroupKey::Template(index) => { let _ = game.object_from_token_definition(id,
+                    &creation.additional_templates[index].definition, creation.controller); }
+                _ => {}
+            }
+            let mut token = crate::object::Object::token_copy_of(&preview, id, creation.controller);
+            token.token_creation_method = preview.token_creation_method;
+            token.cast_tagged_objects = preview.cast_tagged_objects.clone();
+            // The original preview already owns this creation's captured
+            // grants. Replacement-added groups acquire those same frozen
+            // grants before as-enters/attachment previews, exactly once.
+            if key != TokenGroupKey::Original {
+                super::apply_named_action_grants_to_object(&mut token, operation_grants);
+            }
+            token.zone = Zone::Command;
+            let is_creature = token.is_creature();
+            game.commit_token_resource_slot()?;
+            game.add_object(token);
+            let entry_effects=entry_modifications.iter().map(|(modification,duration)| {
+                game.effect_store.continuous_effects.add_effect(crate::continuous::ContinuousEffect::from_resolution(
+                    ctx.source,ctx.controller,vec![id],modification.clone()).until(duration.clone()))
+            }).collect();
+            entries.push(Some(PreparedTokenEntry { id, is_creature, prepared: None, entry_effects,
+                choose_aura_attachment: choose_aura_attachment && spec.is_none() }));
+        }
+        plan.groups.push((key, entries));
+    }
+    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    // Replacements and as-enters programs see no earlier original entrant.
+    for (key, entries) in &mut plan.groups {
+        for entry in entries.iter_mut().flatten() {
+            if game.card_cannot_enter_battlefield(entry.id) { continue; }
+            let counters = match key {
+                TokenGroupKey::Copy(index) => creation.additional_copies[*index].initial_counters.clone(),
+                _ => initial_counters.to_vec(),
+            };
+            let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
+                game, entry.id, Zone::Command, &mut ctx.decision_maker, counters,
+                None, enters_tapped, ctx.cause.clone(),
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+            entry.prepared = game.prepare_etb_entry_with_controller_and_dm(
+                entry.id, result, None, &mut ctx.decision_maker,
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+            if let Some(prepared)=&mut entry.prepared {
+                prepared.choices.as_enters_continuous_effects.extend(entry.entry_effects.iter().copied());
+            }
+            if entry.prepared.is_none() {
+                return Err(ExecutionError::IncompleteEvidence("token entry preparation produced no verdict".into()));
+            }
+        }
+    }
+    // Use the native final prospective entrant, including copied enchant
+    // restrictions and all type/ability changes. No template approximation.
+    for (_, entries) in &mut plan.groups {
+        for entry in entries.iter_mut().flatten() {
+            let Some(prepared) = &mut entry.prepared else { continue; };
+            if spec.is_none() {continue;}
+            prepared.entry_attachment_specified = true;
+            prepared.entry_attachment_requires_aura = true;
+            if prepared.result.prevented { continue; }
+            let prospective = game.prepared_entry_attachment_game_state(entry.id, prepared, None)?
+                .ok_or_else(|| ExecutionError::IncompleteEvidence("token entry lost its prospective attachment world".into()))?;
+            if prepared.entry_attachment_requires_aura
+                && !prospective.calculated_subtypes(entry.id).contains(&crate::types::Subtype::Aura)
+            { prepared.entry_attachment = None; continue; }
+            prepared.entry_attachment = crate::effects::permanents::choose_attachment_destination(
+                &prospective, ctx, entry.id, &destinations,
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+        }
+    }
+    Ok(Some(plan))
+}
+
 /// Keep the complete entry receipt while exposing only its original arrival
 /// for the owner's authored token links, combat setup and cleanup registration.
 /// The owner must finish these receipts after every original token is complete.
 pub(crate) fn retain_token_entry_receipt(
     game: &mut GameState,
     provisional: ObjectId,
+    provenance: crate::provenance::ProvNodeId,
+    attachment_receipts: &mut Vec<crate::effect::EntryAttachmentReceipt>,
     entry: crate::game_state::EntryCommitResult,
     published: &mut Vec<crate::effects::PublishedEffectOutputs>,
     receipts: &mut Vec<(
@@ -159,6 +312,11 @@ pub(crate) fn retain_token_entry_receipt(
     crate::effects::PublishedEffectOutputs::append_distinct(published, entry.published_outputs);
     let (original, arrival) = match entry.original {
         EventOutcome::Proceed(result) => {
+            if let Some(choice) = result.entry_attachment {
+                attachment_receipts.push(crate::effect::EntryAttachmentReceipt {
+                    original_object: provisional, entered_object: result.new_id, choice, provenance,
+                });
+            }
             let final_zone = game
                 .object(result.new_id)
                 .map(|object| object.zone)
@@ -198,6 +356,7 @@ pub(crate) fn retain_token_entry_receipt(
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AdditionalTokenInstructions {
     pub enters_tapped: bool,
+    pub entry_attachment_plan: Option<TokenEntryAttachmentPlan>,
     pub suppress_aura_attachment_choice: bool,
     pub entry: TokenEntryOptions,
     pub attack_player: Option<PlayerId>,
@@ -209,6 +368,7 @@ pub(crate) struct AdditionalTokenInstructions {
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
     pub cleanup: Option<TokenCleanupOptions>,
     pub linked_exiles: Vec<ObjectId>,
+    pub operation_grants: Vec<super::NamedActionTokenGrant>,
 }
 
 /// Commit every added/substituted group as part of its original creation.
@@ -224,6 +384,7 @@ pub(crate) fn create_replacement_additional_tokens(
         ObjectId,
         crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
     )>,
+    attachment_receipts: &mut Vec<crate::effect::EntryAttachmentReceipt>,
     children: &mut Vec<crate::effects::CompletedEffectOutputs>,
     published: &mut Vec<crate::effects::PublishedEffectOutputs>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
@@ -231,6 +392,7 @@ pub(crate) fn create_replacement_additional_tokens(
     use crate::events::tokens::TokenGroupKey;
     let mut created_ids = Vec::new();
     let mut attack_index = 0usize;
+    let mut entry_plan = instructions.entry_attachment_plan.clone();
     for key in creation.group_keys() {
         let definition = match key {
             TokenGroupKey::Original => continue,
@@ -244,7 +406,7 @@ pub(crate) fn create_replacement_additional_tokens(
         };
         let count = creation.group_count(key) as usize;
         let mut actual = 0u32;
-        for _ in 0..count {
+        for group_index in 0..count {
             let prepared_attack = instructions
                 .prepared_attack_targets
                 .as_ref()
@@ -257,33 +419,45 @@ pub(crate) fn create_replacement_additional_tokens(
                 })
                 .transpose()?;
             attack_index += 1;
-            let id = game.new_object_id();
-            let mut token = if let TokenGroupKey::Copy(index) = key {
-                let source = &creation.additional_copies[index].token;
-                let mut token = crate::object::Object::token_copy_of(source, id, controller_id);
-                token.token_creation_method = source.token_creation_method;
-                token
+            let (id, is_creature, entry) = if let Some(plan) = &mut entry_plan {
+                let prepared = plan.take(key, group_index)?;
+                let id = prepared.id; let is_creature = prepared.is_creature;
+                let entry = prepared.commit(game, ctx)?;
+                (id, is_creature, entry)
             } else {
-                game.object_from_token_definition(id, definition.as_ref().expect("defined token group"), controller_id)
+                let id = game.new_object_id();
+                let mut token = if let TokenGroupKey::Copy(index) = key {
+                    let source = &creation.additional_copies[index].token;
+                    let mut token = crate::object::Object::token_copy_of(source, id, controller_id);
+                    token.token_creation_method = source.token_creation_method;
+                    token
+                } else {
+                    game.object_from_token_definition(id, definition.as_ref().expect("defined token group"), controller_id)
+                };
+                super::apply_named_action_grants_to_object(&mut token, &instructions.operation_grants);
+                token.zone = Zone::Command;
+                let is_creature = token.is_creature();
+                game.commit_token_resource_slot()?;
+                game.add_object(token);
+                let attachment = None;
+                let entry = game.move_created_token_with_entry_instructions(
+                    id,
+                    ctx.cause.clone(),
+                    &mut ctx.decision_maker,
+                    instructions.enters_tapped,
+                    !instructions.suppress_aura_attachment_choice,
+                    if let TokenGroupKey::Copy(index) = key {
+                        creation.additional_copies[index].initial_counters.clone()
+                    } else { instructions.initial_counters.clone() },
+                    attachment,
+                    ctx.pending_entry_attachment.is_some(),
+                )?;
+                (id, is_creature, entry)
             };
-            token.zone = Zone::Command;
-            let is_creature = token.is_creature();
-            game.commit_token_resource_slot()?;
-            game.add_object(token);
-            let entry = game.move_created_token_with_entry_instructions(
-                id,
-                ctx.cause.clone(),
-                &mut ctx.decision_maker,
-                instructions.enters_tapped,
-                !instructions.suppress_aura_attachment_choice,
-                if let TokenGroupKey::Copy(index) = key {
-                    creation.additional_copies[index].initial_counters.clone()
-                } else { instructions.initial_counters.clone() },
-            )?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(Vec::new());
             }
-            let Some(entry) = retain_token_entry_receipt(game, id, entry, published, receipts)?
+            let Some(entry) = retain_token_entry_receipt(game, id, ctx.provenance, attachment_receipts, entry, published, receipts)?
             else {
                 game.remove_object(id);
                 continue;
@@ -292,7 +466,7 @@ pub(crate) fn create_replacement_additional_tokens(
             actual += 1;
             created_ids.push(entered);
             for &exiled in &instructions.linked_exiles {
-                game.add_exiled_with_source_link(entered, exiled);
+                game.add_created_token_exile_link(entered, exiled);
             }
             if game
                 .object(entered)
@@ -988,6 +1162,11 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        // The original token packet is complete. Entry/replacement additions
+        // are independently authored programs, outside the operation's grant.
+        let token_scope = ctx.named_action_token_scope.take();
+        let created_objects = ctx.named_action_created_objects.take();
+        let result = (|| {
         let _phase = self
             .instruction
             .as_ref()
@@ -1044,6 +1223,10 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
             outputs = outputs.project_aggregate(aggregate);
         }
         Ok(outputs)
+        })();
+        ctx.named_action_token_scope = token_scope;
+        ctx.named_action_created_objects = created_objects;
+        result
     }
 }
 
@@ -1076,4 +1259,111 @@ pub(crate) fn token_instruction_completion_with_haste(
         programs,
         haste_recipients,
     })
+}
+
+#[cfg(test)]
+pub(crate) mod retained_token_entry_attachment_tests {
+    use super::*;
+    use crate::{Ability, CardDefinitionBuilder, CardId};
+    use crate::object::{AttachmentTarget, AuraAttachmentFilter};
+    use crate::static_abilities::{StaticAbility, EnterAsCopyAsEntersSpec};
+    use crate::target::{ObjectFilter, PlayerFilter};
+    use crate::types::{CardType, Subtype};
+    use crate::events::tokens::{TemplateTokenGroup, TokenGroupKey};
+
+    fn aura(name: &str, filter: AuraAttachmentFilter) -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura])
+            .enchants(filter.clone()).with_ability(Ability::static_ability(StaticAbility::enchant(filter))).build()
+    }
+    pub(crate) fn source_and_creation(game: &mut GameState, alice: PlayerId) -> (ObjectId, crate::events::CreateTokensEvent) {
+        let mut blueprint = aura("resolved player Aura", AuraAttachmentFilter::Player(PlayerFilter::Any));
+        blueprint.abilities.push(Ability::static_ability(StaticAbility::with_enter_as_copy_as_enters(
+            EnterAsCopyAsEntersSpec {
+                filter: ObjectFilter::source(), affected_filter: Some(ObjectFilter::default().with_subtype(Subtype::Aura)),
+                may: false, enters_tapped_if_chosen: false, copy_duration: None, linked_exile_pair: None,
+                copy_source_self: true, copy_source_enchanted: false, name_override: None,
+                added_colors: crate::color::ColorSet::new(), added_card_types: Vec::new(), removes_other_card_types: false,
+                added_supertypes: Vec::new(), removed_supertypes: Vec::new(), added_subtypes: Vec::new(),
+                added_abilities: Vec::new(), set_base_power_toughness: None, additional_counters: Vec::new(),
+                additional_x_counters: Vec::new(), keep_other_source_abilities: false, additional_counters_source_filter: None,
+                added_abilities_source_filter: None, set_base_power_toughness_from_self: false,
+                copy_followups: Vec::new(), conditional_additional_counters: Vec::new(),
+            }, "Auras enter as copies of this permanent.".into(),
+        )));
+        blueprint.ability_labels.push("Auras enter as copies of this permanent.".into());
+        let source = game.create_object_from_definition(&blueprint, alice, Zone::Battlefield);
+        assert!(game.attach_object_to_target(source, AttachmentTarget::Player(alice)));
+        // The old template can enchant no player. Only the resolved ETB copy
+        // may offer the authored player packet, proving no template shortcut.
+        let template = aura("old creature Aura", AuraAttachmentFilter::Object(ObjectFilter::creature()));
+        let prototype = crate::object::Object::from_token_definition(ObjectId::from_raw(0), &template, alice);
+        let mut creation = crate::events::CreateTokensEvent::with_token_cause(alice, 1, prototype, crate::events::cause::EventCause::effect());
+        creation.additional_templates.push(TemplateTokenGroup { definition: template, count: 2 });
+        (source, creation)
+    }
+    pub(crate) fn bind_hosts(ctx: &mut ExecutionContext, alice: PlayerId, bob: PlayerId) {
+        let spec = ChooseSpec::Player(PlayerFilter::Any);
+        ctx.pending_entry_attachment = Some(spec.clone());
+        ctx.targets = vec![ResolvedTarget::Player(alice), ResolvedTarget::Player(bob)];
+        ctx.target_assignments = vec![crate::game_state::TargetAssignment { spec, range: 0..2 }];
+    }
+    pub(crate) struct HostChoices { pub calls: usize, pub pending: bool, pub suspend: bool }
+    impl crate::decision::DecisionMaker for HostChoices {
+        fn decide_options(&mut self, game: &GameState, _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(game.battlefield.len(), 2, "only the source and this prospective entrant may exist at every menu");
+            self.calls += 1;
+            self.pending = self.suspend;
+            if self.pending { Vec::new() } else { vec![1] }
+        }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    #[test]
+    fn original_and_replacement_added_tokens_prepare_exact_ids_and_all_hosts_before_entry() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let (source, creation) = source_and_creation(&mut game, alice);
+        let (root, meter) = game.begin_token_resource_scope();
+        let guard = super::super::resources::TokenInstructionGuard::enter(meter.clone()).unwrap();
+        game.reserve_token_creation(creation.total_count()).unwrap();
+        let mut choices = HostChoices { calls: 0, pending: false, suspend: false };
+        let mut ctx = ExecutionContext::new(source, alice, &mut choices); bind_hosts(&mut ctx, alice, bob);
+        let mut plan = prepare_token_entry_attachments(&mut game, &mut ctx, &creation, &[], false, &[], &[], true).unwrap().unwrap();
+        assert_eq!(game.battlefield, vec![source], "all host choices precede every real token entry");
+        let mut actual = Vec::new(); let mut outputs = Vec::new(); let mut zones = Vec::new();
+        for (group, count) in [(TokenGroupKey::Original, 1), (TokenGroupKey::Template(0), 2)] {
+            for index in 0..count {
+                let prepared = plan.take(group, index).unwrap();
+                let provisional = prepared.id;
+                assert_eq!(game.object(provisional).unwrap().zone, Zone::Command);
+                let result = prepared.commit(&mut game, &mut ctx).unwrap();
+                let entered = retain_token_entry_receipt(&mut game, provisional, ctx.provenance, &mut actual, result, &mut outputs, &mut zones).unwrap().unwrap();
+                assert_ne!(entered.new_id, provisional);
+                assert_eq!(game.object(entered.new_id).unwrap().attached_to, Some(AttachmentTarget::Player(bob)));
+                assert_eq!(game.object(entered.new_id).unwrap().name.to_string(), "resolved player Aura");
+            }
+        }
+        assert_eq!(actual.len(), 3);
+        assert!(actual.iter().all(|receipt| receipt.choice.performed && receipt.choice.target == Some(AttachmentTarget::Player(bob))));
+        assert!(plan.take(TokenGroupKey::Original, 0).is_err(), "one exact prepared token may be committed only once");
+        drop(ctx); assert_eq!(choices.calls, 3, "commit never reopens a host menu");
+        drop(guard); game.end_token_resource_scope(root, &meter);
+    }
+    #[test]
+    fn pending_host_choice_rolls_back_every_provisional_token_and_entry_program() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let (source, creation) = source_and_creation(&mut game, alice);
+        let mut choices = HostChoices { calls: 0, pending: false, suspend: true };
+        let mut ctx = ExecutionContext::new(source, alice, &mut choices); bind_hosts(&mut ctx, alice, bob);
+        execute_token_instruction_atomically(&mut game, &mut ctx, |game, ctx| {
+            game.reserve_token_creation(creation.total_count())?;
+            let _ = prepare_token_entry_attachments(game, ctx, &creation, &[], false, &[], &[], true)?;
+            Ok(EffectOutcome::count(0))
+        }).unwrap();
+        assert_eq!(game.battlefield, vec![source]);
+        assert_eq!(game.objects_map().values().filter(|object| object.kind == crate::object::ObjectKind::Token).count(), 0);
+        assert!(ctx.decision_maker.awaiting_choice());
+        drop(ctx); assert_eq!(choices.calls, 1);
+    }
 }

@@ -66,6 +66,6 @@ fn stolen_uniform_watches_the_equipment_for_lost_control() {
         let delayed = effects.iter().find_map(|effect|
             effect.downcast_ref::<ironsmith::effects::ScheduleDelayedTriggerEffect>()).unwrap();
         assert!(delayed.until_end_of_turn, "the control-change watch must expire this turn");
-        assert!(delayed.target_filter.as_ref().unwrap().subtypes.contains(&ironsmith::Subtype::Equipment));
+        assert!(delayed.target_filter.as_ref().unwrap_or_else(|| panic!("missing watched filter: {delayed:#?}; full program: {debug}")).subtypes.contains(&ironsmith::Subtype::Equipment));
     }
 }

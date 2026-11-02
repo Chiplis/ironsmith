@@ -633,6 +633,9 @@ pub fn parse_draw_trailing_clause(
                 super::super::grammar::effects::ReturnTimingShape::NextUpkeep(player) => {
                     DelayedReturnTimingAst::NextUpkeep(player)
                 }
+                super::super::grammar::effects::ReturnTimingShape::NextMainPhase(player) => {
+                    DelayedReturnTimingAst::NextMainPhase(player)
+                }
                 super::super::grammar::effects::ReturnTimingShape::EndOfCombat => {
                     DelayedReturnTimingAst::EndOfCombat
                 }

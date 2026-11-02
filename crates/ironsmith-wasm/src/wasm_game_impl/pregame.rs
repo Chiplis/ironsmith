@@ -404,6 +404,7 @@ impl WasmGame {
         self.suspended_subgame_hosts.clear();
         self.grand_melee_host_lanes.clear();
         self.loaded_decks = Vec::new();
+        self.pending_setup_shuffles.clear();
     }
 
     fn populate_demo_libraries(&mut self) -> Result<(), String> {
@@ -488,7 +489,7 @@ impl WasmGame {
                         );
                     }
                 }
-                self.game.shuffle_player_library(player_id);
+                if !self.pending_setup_shuffles.contains(&player_id) { self.pending_setup_shuffles.push(player_id); }
                 continue;
             }
 
@@ -2240,12 +2241,23 @@ impl WasmGame {
                     // from the opening hand.
                     ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
                     | ironsmith::static_abilities::PregameActionKind::ChooseColor
+                    | ironsmith::static_abilities::PregameActionKind::SourceSetup { .. }
+                    | ironsmith::static_abilities::PregameActionKind::ChosenOutsideGame(_)
                     | ironsmith::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => continue,
                 }
                 actions.push(LegalAction::UsePregameAction {
                     card_id,
                     ability_index,
                 });
+            }
+        }
+        if let Some(setup)=self.pregame.as_ref().and_then(|p|p.chosen_setup.as_ref()) {
+            for (source,_) in setup.available_exchanges(&self.game,player) {
+                if let Some(object)=self.game.object(source) {
+                    if let Some(index)=object.abilities.iter().position(|ability|matches!(&ability.kind,ironsmith::AbilityKind::Static(s) if matches!(s.pregame_action_kind(),Some(ironsmith::static_abilities::PregameActionKind::ChosenOutsideGame(_))))) {
+                        actions.push(LegalAction::UsePregameAction{card_id:source,ability_index:index});
+                    }
+                }
             }
         }
         actions
@@ -2449,6 +2461,41 @@ impl WasmGame {
             };
 
             match &pregame.stage {
+                PregameStage::SourceSetupPrograms { queue,sticker_sheets } => {
+                    if !queue.is_empty() {
+                        if pregame.source_setup_context.is_some() { return Ok(()); }
+                        if !self.advance_source_setup_program()? { return Ok(()); }
+                        continue;
+                    }
+                    let sheets=sticker_sheets.clone();
+                    let chosen=self.prepare_chosen_card_setup().map_err(|e|JsValue::from_str(&e))?;
+                    if let Some((mut session,queue))=chosen {
+                        let state=self.pregame.as_mut().unwrap();
+                        if let Some(previous)=state.chosen_setup.as_ref() { session.retain_completed_source_programs_from(previous); }
+                        state.chosen_setup=Some(session);
+                        state.stage=PregameStage::ChosenOutsideCards{queue,sticker_sheets:sheets};
+                    } else {
+                        let shuffles=std::mem::take(&mut self.pregame.as_mut().unwrap().chosen_deferred_shuffles);
+                        for player in shuffles{self.game.shuffle_player_library(player);}
+                        let state=self.pregame.as_mut().unwrap();
+                        if sheets.is_empty(){
+                            let draws=state.player_order.iter().map(|p|(*p,state.opening_hand_size_for(*p))).collect::<Vec<_>>();
+                            for (player,count) in draws{self.game.draw_cards(player,count);}
+                            state.stage=PregameStage::MulliganDecision{undecided_players:state.player_order.clone(),round_mulliganers:Vec::new()};
+                        }else{state.stage=PregameStage::StickerSheets{queue:sheets};}
+                    }
+                    continue;
+                }
+                PregameStage::ChosenOutsideCards { queue, sticker_sheets } if queue.is_empty() => {
+                    let sheets = sticker_sheets.clone();
+                    let draws = pregame.player_order.iter().map(|player| (*player,pregame.opening_hand_size_for(*player))).collect::<Vec<_>>();
+                    let shuffles=std::mem::take(&mut self.pregame.as_mut().unwrap().chosen_deferred_shuffles);
+                    for player in shuffles { self.game.shuffle_player_library(player); }
+                    if sheets.is_empty() { for (player,count) in draws { self.game.draw_cards(player,count); } }
+                    let state = self.pregame.as_mut().unwrap();
+                    state.stage = if sheets.is_empty() { PregameStage::MulliganDecision { undecided_players:state.player_order.clone(),round_mulliganers:Vec::new() } } else { PregameStage::StickerSheets { queue:sheets } };
+                    continue;
+                }
                 PregameStage::StickerSheets { queue } if queue.is_empty() => {
                     // Limited sheet choices are made before anyone can see an
                     // opening hand (CR 103.2d precedes 103.5).
@@ -2471,6 +2518,7 @@ impl WasmGame {
                     if round_mulliganers.is_empty() {
                         // Every mulligan already bottomed its cards (CR 103.5).
                         if let Some(pregame) = self.pregame.as_mut() {
+                            if let Some(setup) = pregame.chosen_setup.as_mut() { setup.begin_opening_hand_actions().map_err(|e|JsValue::from_str(&format!("chosen setup stage failed: {e:?}")))?; }
                             pregame.stage = PregameStage::OpeningActions {
                                 current_index: 0,
                                 pending_hand_exile: None,
@@ -2552,6 +2600,7 @@ impl WasmGame {
                     // step; the turn runner applies them there so the
                     // entering cards' choices reach their players.
                     self.game.complete_restart_starting_procedure();
+                    if let Some(setup) = self.pregame.as_mut().and_then(|p|p.chosen_setup.as_mut()) { setup.finish(); }
                     self.pregame = None;
                     continue;
                 }
@@ -2566,6 +2615,15 @@ impl WasmGame {
         };
 
         let ctx = match &pregame.stage {
+            PregameStage::SourceSetupPrograms { .. } => {
+                let Some(context)=pregame.source_setup_context.clone() else{return Ok(None);};
+                context
+            }
+            PregameStage::ChosenOutsideCards { queue,.. } => {
+                let Some((player,label,offers))=queue.first() else { return Ok(None); };
+                let candidates=offers.iter().filter_map(|(id,_)|self.game.object(*id).map(|o|ironsmith::decisions::context::SelectableObject::new(*id,o.name.to_string()))).collect();
+                DecisionContext::SelectObjects(ironsmith::decisions::context::SelectObjectsContext::new(*player,None,format!("Choose up to one outside-game card as your {label}"),candidates,0,Some(1)))
+            }
             PregameStage::StickerSheets { queue } => {
                 let Some((player, offers)) = queue.first() else {
                     return Ok(None);
@@ -2631,7 +2689,10 @@ impl WasmGame {
                 let Some(player) = pregame.player_order.get(*current_index).copied() else {
                     return Ok(None);
                 };
-                if let Some(pending_exile) = pending_hand_exile {
+                if let Some((owner,source,label))=&pregame.pending_chosen_exchange {
+                    if *owner!=player { return Err(JsValue::from_str("chosen exchange player is out of sync")); }
+                    DecisionContext::SelectObjects(ironsmith::decisions::context::SelectObjectsContext::new(player,Some(*source),format!("Choose one opening-hand card to exchange with your {label}"),self.build_hand_selectable_objects(player),1,Some(1)))
+                } else if let Some(pending_exile) = pending_hand_exile {
                     if pending_exile.player != player {
                         return Err(JsValue::from_str(
                             "pregame hand exile prompt is out of sync with turn order",
@@ -2813,6 +2874,12 @@ impl WasmGame {
                         "pregame actions can only be used during pregame opening actions",
                     )
                 })?;
+                if matches!(self.parsed_pregame_action_kind(card_id,ability_index),Some(ironsmith::static_abilities::PregameActionKind::ChosenOutsideGame(_))) {
+                    let label=self.pregame.as_ref().and_then(|p|p.chosen_setup.as_ref()).and_then(|setup|setup.available_exchanges(&self.game,player).into_iter().find(|(id,_)|*id==card_id).map(|(_,label)|label))
+                        .ok_or_else(||JsValue::from_str("that outside card is not an available chosen setup exchange"))?;
+                    self.pregame.as_mut().unwrap().pending_chosen_exchange=Some((player,card_id,label));
+                    return Ok(());
+                }
                 let hand_ids = self.player_hand_ids(player);
                 if !hand_ids.contains(&card_id) {
                     return Err(JsValue::from_str(
@@ -2843,6 +2910,8 @@ impl WasmGame {
                     }
                     ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
                     | ironsmith::static_abilities::PregameActionKind::ChooseColor
+                    | ironsmith::static_abilities::PregameActionKind::SourceSetup { .. }
+                    | ironsmith::static_abilities::PregameActionKind::ChosenOutsideGame(_)
                     | ironsmith::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => {
                         return Err(JsValue::from_str(
                             "selected ability is not a supported opening pregame action",
@@ -2911,6 +2980,19 @@ impl WasmGame {
                 Err(err)
             };
 
+        if matches!(self.pregame.as_ref().map(|p|&p.stage),Some(PregameStage::SourceSetupPrograms{..})) {
+            let decision_game=self.pending_decision_game.as_deref().cloned().unwrap_or_else(||self.game.clone());
+            let actual=std::mem::replace(&mut self.game,decision_game);
+            let answer=self.command_to_replay_answer(&pending_ctx,command);
+            self.game=actual;
+            let answer=match answer{Ok(answer)=>answer,Err(error)=>return restore(self,pending_ctx,error)};
+            let state=self.pregame.as_mut().unwrap();
+            state.source_setup_answers.push(answer);
+            state.source_setup_context=None;
+            self.pending_decision=None;
+            self.advance_until_decision()?;
+            return self.snapshot();
+        }
         match (&pending_ctx, command) {
             (
                 DecisionContext::Priority(priority),
@@ -2977,6 +3059,15 @@ impl WasmGame {
                 }
                 let selected: Vec<ObjectId> =
                     object_ids.into_iter().map(ObjectId::from_raw).collect();
+                match self.chosen_setup_selection(&selected) {
+                    Ok(true) => {
+                        self.pending_decision=None;
+                        self.advance_until_decision()?;
+                        return self.snapshot();
+                    }
+                    Ok(false)=>{},
+                    Err(error)=>return restore(self,pending_ctx,JsValue::from_str(&error)),
+                }
                 enum PregameSelectResolution {
                     BottomNow,
                     BottomNeedsOrdering(PlayerId),
@@ -3161,7 +3252,11 @@ impl WasmGame {
                 (player, size)
             })
             .collect::<HashMap<_, _>>();
-        for player_id in player_ids.iter().filter(|_| sticker_sheet_choices.is_empty()) {
+        let source_queue = self.source_setup_programs();
+        let chosen_setup = if source_queue.is_empty() { self.prepare_chosen_card_setup()? } else { None };
+        let initial_shuffles = std::mem::take(&mut self.pending_setup_shuffles);
+        if chosen_setup.is_none() && source_queue.is_empty() { for player in &initial_shuffles { self.game.shuffle_player_library(*player); } }
+        for player_id in player_ids.iter().filter(|_| sticker_sheet_choices.is_empty() && chosen_setup.is_none() && source_queue.is_empty()) {
             let size = opening_hand_sizes
                 .get(player_id)
                 .copied()
@@ -3174,7 +3269,15 @@ impl WasmGame {
             opening_hand_sizes,
             self.match_format,
         );
-        if !sticker_sheet_choices.is_empty() {
+        if !source_queue.is_empty() {
+            pregame.chosen_setup = Some(ironsmith::pregame_setup::PregameSetupSession::new(&self.game,vec![]).map_err(|e|format!("source setup initialization failed: {e:?}"))?);
+            pregame.chosen_deferred_shuffles = initial_shuffles;
+            pregame.stage = PregameStage::SourceSetupPrograms { queue:source_queue,sticker_sheets:sticker_sheet_choices };
+        } else if let Some((session, queue)) = chosen_setup {
+            pregame.chosen_setup = Some(session);
+            pregame.chosen_deferred_shuffles = initial_shuffles;
+            pregame.stage = PregameStage::ChosenOutsideCards { queue, sticker_sheets: sticker_sheet_choices };
+        } else if !sticker_sheet_choices.is_empty() {
             pregame.stage = PregameStage::StickerSheets {
                 queue: sticker_sheet_choices,
             };
@@ -5372,5 +5475,210 @@ mod opening_stack_text_tests {
                 view["entry"]["name"]
             );
         }
+    }
+}
+
+impl WasmGame {
+    fn prepare_chosen_card_setup(&self)->Result<Option<(ironsmith::pregame_setup::PregameSetupSession,Vec<(PlayerId,String,Vec<(ObjectId,usize)>)>)>,String>{
+        let mut offers=Vec::new();
+        for object in self.game.objects_in_deterministic_order(){
+            if object.zone!=Zone::OutsideGame{continue;}
+            for (index,ability) in object.abilities.iter().enumerate(){
+                if let ironsmith::AbilityKind::Static(ability)=&ability.kind
+                    && let Some(ironsmith::static_abilities::PregameActionKind::ChosenOutsideGame(spec))=ability.pregame_action_kind(){
+                    offers.push((object.owner,spec.designation.to_lowercase(),object.id,index));
+                }
+            }
+        }
+        if offers.is_empty(){return Ok(None);}
+        let owners=offers.iter().map(|(owner,..)|*owner).collect::<HashSet<_>>();
+        let mut decks=Vec::new();
+        for player in self.game.players.iter().filter(|p|owners.contains(&p.id)){
+            let mut cards=Vec::new();
+            for id in player.library.iter().chain(player.commanders.iter()){
+                let object=self.game.object(*id).ok_or_else(||"starting-deck source object is missing".to_string())?;
+                let name=object.name.to_string();
+                let original=object.card.and_then(|id|self.original_printed_card_sources.get(&id)).cloned().or_else(||{
+                    self.generated_parse_source_for_name(&name).map(|(_,block)|Self::extract_oracle_text_from_parse_block(&block).unwrap_or_default())
+                }).ok_or_else(||format!("original printed rules text is required to validate chosen setup cards: {name}"))?;
+                cards.push(ironsmith::pregame_setup::PrintedStartingDeckCard{object:*id,original_printed_rules_text:original});
+            }
+            decks.push((player.id,cards));
+        }
+        let session=ironsmith::pregame_setup::PregameSetupSession::new(&self.game,decks).map_err(|e|format!("chosen setup deck validation: {e:?}"))?;
+        let mut queue:Vec<(PlayerId,String,Vec<(ObjectId,usize)>)>=Vec::new();
+        for (owner,label,source,index) in offers {
+            if session.clone().choose(&self.game,owner,source,index).is_err(){continue;}
+            if let Some((_,_,cards))=queue.iter_mut().find(|(p,l,_)|*p==owner&&*l==label){cards.push((source,index));}
+            else{queue.push((owner,label,vec![(source,index)]));}
+        }
+        queue.sort_by_key(|(player,label,_)|(self.game.team_apnap_player_order().iter().position(|p|p==player).unwrap_or(usize::MAX),label.clone()));
+        Ok((!queue.is_empty()).then_some((session,queue)))
+    }
+    fn chosen_setup_selection(&mut self,selected:&[ObjectId])->Result<bool,String>{
+        let choice=self.pregame.as_ref().and_then(|p|match &p.stage{PregameStage::ChosenOutsideCards{queue,..}=>queue.first().cloned(),_=>None});
+        if let Some((player,_,offers))=choice{
+            if let Some(source)=selected.first(){
+                let (_,index)=offers.iter().find(|(id,_)|id==source).ok_or_else(||"selected setup card was not offered".to_string())?;
+                self.pregame.as_mut().unwrap().chosen_setup.as_mut().unwrap().choose(&self.game,player,*source,*index).map_err(|e|format!("chosen setup selection failed: {e:?}"))?;
+            }
+            if let PregameStage::ChosenOutsideCards{queue,..}=&mut self.pregame.as_mut().unwrap().stage{queue.remove(0);}
+            return Ok(true);
+        }
+        if let Some((player,_,label))=self.pregame.as_ref().and_then(|p|p.pending_chosen_exchange.clone()){
+            let card=*selected.first().ok_or_else(||"select one opening-hand card to exchange".to_string())?;
+            self.pregame.as_mut().unwrap().chosen_setup.as_mut().unwrap().exchange_with_opening_hand(&mut self.game,player,&label,card).map_err(|e|format!("chosen opening-hand exchange failed: {e:?}"))?;
+            self.pregame.as_mut().unwrap().pending_chosen_exchange=None;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+}
+
+#[cfg(all(test,feature="dynamic-compile"))]
+mod chosen_outside_setup_tests {
+    use super::*;
+    fn compile(name:&str,text:&str)->CardDefinition {
+        ironsmith_dynamic_compile::compile_to_runtime_definition(name,text.to_string(),false).unwrap()
+    }
+    #[test]
+    fn browser_coordinator_selects_before_opening_hands_and_exchanges_after_normal_mulligans(){
+      for accept in [false,true]{
+        let mut wasm=WasmGame::new();
+        wasm.game=GameState::new(vec!["A".into(),"B".into()],20);
+        let a=PlayerId(0);
+        let mate=compile("Lilia setup witness","Type: Creature\nPower/Toughness: 4/4\nChosen outside game card \"first mate\": Each nonland card in your starting deck has \"+1/+1 counter\" or \"harmonize\" in its printed rules text. You may exchange this card with a card in your opening hand.");
+        let source=wasm.game.create_object_from_definition(&mate,a,Zone::OutsideGame);
+        let stable=wasm.game.object(source).unwrap().stable_id;
+        for (i,original) in ["Harmonize.","Put a +1/+1 counter on a creature.","Harmonize."].into_iter().enumerate(){
+            let card=compile(&format!("Printed setup memory {i}"),"Type: Artifact");
+            wasm.original_printed_card_sources.insert(card.card.id,original.to_string());
+            wasm.game.create_object_from_definition(&card,a,Zone::Library);
+        }
+        let filler=compile("Other player's starting memory","Type: Artifact");
+        for _ in 0..3{wasm.game.create_object_from_definition(&filler,PlayerId(1),Zone::Library);}
+        wasm.finish_match_setup(2).unwrap();
+        assert_eq!(wasm.game.player(a).unwrap().hand.len(),0);
+        assert!(matches!(wasm.build_pregame_decision().unwrap(),Some(DecisionContext::SelectObjects(ref c)) if c.min==0&&c.max==Some(1)));
+        wasm.chosen_setup_selection(if accept{std::slice::from_ref(&source)}else{&[]}).unwrap();
+        wasm.normalize_pregame_state().unwrap();
+        assert_eq!(wasm.game.player(a).unwrap().hand.len(),2);
+        for _ in 0..2{wasm.apply_pregame_priority_action(LegalAction::KeepOpeningHand).unwrap();wasm.normalize_pregame_state().unwrap();}
+        let actions=wasm.available_pregame_actions(a);
+        let exchange=actions.into_iter().find(|action|matches!(action,LegalAction::UsePregameAction{card_id,..}if *card_id==source));
+        assert_eq!(exchange.is_some(),accept);
+        if let Some(exchange)=exchange {
+            wasm.apply_pregame_priority_action(exchange).unwrap();
+            assert!(matches!(wasm.build_pregame_decision().unwrap(),Some(DecisionContext::SelectObjects(ref c)) if c.min==1&&c.max==Some(1)));
+            let outgoing=wasm.game.player(a).unwrap().hand[0];
+            let old_stable=wasm.game.object(outgoing).unwrap().stable_id;
+            wasm.chosen_setup_selection(&[outgoing]).unwrap();
+            let current=wasm.game.find_object_by_stable_id(stable).unwrap();
+            let removed=wasm.game.find_object_by_stable_id(old_stable).unwrap();
+            assert_eq!(wasm.game.object(current).unwrap().zone,Zone::Hand);
+            assert_eq!(wasm.game.object(removed).unwrap().zone,Zone::OutsideGame);
+            assert_eq!(wasm.game.player(a).unwrap().hand.len(),2);
+            assert!(wasm.game.player(a).unwrap().companion.is_none());
+            assert!(!wasm.available_pregame_actions(a).iter().any(|action|matches!(action,LegalAction::UsePregameAction{card_id,..}if *card_id==current)));
+        }
+      }
+    }
+}
+
+
+impl WasmGame {
+    fn source_setup_programs(&self)->Vec<(PlayerId,ObjectId,usize)>{
+        let order=self.game.team_apnap_player_order();
+        let mut sources=Vec::new();
+        for object in self.game.objects_in_deterministic_order(){
+            for (index,ability) in object.abilities.iter().enumerate(){
+                if let ironsmith::AbilityKind::Static(ability)=&ability.kind
+                    && let Some(ironsmith::static_abilities::PregameActionKind::SourceSetup{source_zone})=ability.pregame_action_kind()
+                    && object.zone==source_zone {
+                    sources.push((object.owner,object.id,index));
+                }
+            }
+        }
+        sources.sort_by_key(|(player,id,index)|(order.iter().position(|p|p==player).unwrap_or(usize::MAX),id.0,*index));
+        sources
+    }
+    /// Run against clones. An incomplete replay exposes its ordinary decision
+    /// context while all original game objects and setup-use receipts stay put.
+    fn advance_source_setup_program(&mut self)->Result<bool,JsValue>{
+        let state=self.pregame.as_ref().ok_or_else(||JsValue::from_str("source setup state missing"))?;
+        let Some((player,source,index))=(match &state.stage{PregameStage::SourceSetupPrograms{queue,..}=>queue.first().copied(),_=>None}) else{return Ok(true);};
+        let counters=state.source_setup_counters.clone().unwrap_or_else(snapshot_id_counters);
+        let answers=state.source_setup_answers.clone();
+        let mut session=state.chosen_setup.clone().ok_or_else(||JsValue::from_str("source setup session missing"))?;
+        let mut game=self.game.clone();
+        restore_id_counters(counters.clone());
+        let mut dm=WasmReplayDecisionMaker::new(&answers);
+        let result=session.run_source_setup_program(&mut game,player,source,index,&mut dm);
+        let (pending,views,audit,pending_game)=dm.finish();
+        self.active_viewed_cards=merge_carried_active_viewed_cards(self.active_viewed_cards.take(),views);
+        self.active_audit_viewed_cards.extend(audit);
+        if let Some(context)=pending {
+            restore_id_counters(counters.clone());
+            let state=self.pregame.as_mut().unwrap();
+            state.source_setup_counters=Some(counters);
+            state.source_setup_context=Some(context);
+            self.pending_decision_game=pending_game;
+            return Ok(false);
+        }
+        if let Err(error)=result {
+            restore_id_counters(counters);
+            return Err(JsValue::from_str(&format!("source setup program failed: {error:?}")));
+        }
+        self.game=game;
+        let state=self.pregame.as_mut().unwrap();
+        state.chosen_setup=Some(session);
+        state.source_setup_context=None;
+        state.source_setup_counters=None;
+        state.source_setup_answers.clear();
+        if let PregameStage::SourceSetupPrograms{queue,..}=&mut state.stage{queue.remove(0);}
+        self.pending_decision_game=None;
+        Ok(true)
+    }
+}
+
+#[cfg(all(test,feature="dynamic-compile"))]
+mod source_setup_replay_tests {
+    use super::*;
+    #[test]
+    fn source_setup_replays_choices_transactionally_and_keeps_each_conspiracy_link_independent(){
+        let mut wasm=WasmGame::new();wasm.game=GameState::new(vec!["A".into(),"B".into()],20);
+        let a=PlayerId(0);let b=PlayerId(1);
+        let compile=|name:&str,text:&str|ironsmith_dynamic_compile::compile_to_runtime_definition(name,text.to_string(),false).unwrap();
+        let text="Type: Conspiracy\nBefore the game begins, while this card is in the command zone, Put another card you own from outside the game into the command zone. Turn it face down. Give it the locked status in the command zone. Give this card the locked status in the command zone. Remember the moved card as the chosen card.";
+        let setup=compile("Independent source setup",text);
+        let first=wasm.game.create_object_from_definition(&setup,a,Zone::Command);
+        let second=wasm.game.create_object_from_definition(&setup,a,Zone::Command);
+        let card=compile("Outside setup memory","Type: Artifact");
+        let payloads=[wasm.game.create_object_from_definition(&card,a,Zone::OutsideGame),wasm.game.create_object_from_definition(&card,a,Zone::OutsideGame)];
+        let foreign=wasm.game.create_object_from_definition(&card,b,Zone::OutsideGame);
+        for owner in [a,b]{for _ in 0..3{wasm.game.create_object_from_definition(&card,owner,Zone::Library);}}
+        wasm.finish_match_setup(2).unwrap();
+        wasm.normalize_pregame_state().unwrap();
+        assert_eq!(wasm.game.player(a).unwrap().hand.len(),0,"source setup precedes opening hands");
+        for (source,payload) in [first,second].into_iter().zip(payloads){
+            let context=wasm.build_pregame_decision().unwrap().unwrap();
+            let DecisionContext::SelectObjects(ref offered)=context else{panic!("setup program should expose its ordinary object decision")};
+            assert!(offered.candidates.iter().any(|o|o.legal&&o.id==payload));
+            assert!(!offered.candidates.iter().any(|o|o.legal&&o.id==foreign));
+            assert_eq!(wasm.game.object(payload).unwrap().zone,Zone::OutsideGame,"pending program must not commit speculative movement");
+            assert!(wasm.game.chosen_object(source).is_none());
+            let answer=wasm.command_to_replay_answer(&context,UiCommand::SelectObjects{object_ids:vec![payload.0],object_stable_ids:vec![],object_hidden_refs:vec![]}).unwrap();
+            let state=wasm.pregame.as_mut().unwrap();state.source_setup_answers.push(answer);state.source_setup_context=None;
+            wasm.normalize_pregame_state().unwrap();
+            let chosen=wasm.game.chosen_object(source).unwrap();
+            assert_ne!(chosen.object_id,payload,"persistent link records actual moved incarnation");
+            assert_eq!(wasm.game.object(chosen.object_id).unwrap().zone,Zone::Command);
+            assert!(wasm.game.is_face_down(chosen.object_id));
+        }
+        assert_ne!(wasm.game.chosen_object(first).unwrap().object_id,wasm.game.chosen_object(second).unwrap().object_id);
+        assert_eq!(wasm.game.object(foreign).unwrap().zone,Zone::OutsideGame);
+        assert_eq!(wasm.game.player(a).unwrap().hand.len(),2);
+        assert_eq!(wasm.game.player(b).unwrap().hand.len(),2);
+        assert!(matches!(wasm.pregame.as_ref().unwrap().stage,PregameStage::MulliganDecision{..}));
     }
 }

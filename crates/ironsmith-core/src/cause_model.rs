@@ -43,6 +43,14 @@ pub struct EventCause {
     /// for spells, costs, rules and anything not resolving from the stack.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub resolving_ability: Option<CauseAbilityKind>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_definition: Option<crate::LinkedExileDefinition>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_label: Option<String>,
+    /// Frozen from the executing retained ability/segment, never its source's
+    /// currently visible keywords or its eventual effect shape.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub resolving_ability_designations: Vec<String>,
 }
 
 /// What kind of ability is resolving when an event is caused (CR 113.3).
@@ -99,6 +107,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -111,6 +122,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -123,6 +137,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -143,6 +160,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -155,6 +175,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -167,6 +190,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -179,6 +205,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -191,6 +220,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 
@@ -203,6 +235,9 @@ impl EventCause {
             resolving_spell: None,
             targeted_objects: Vec::new(),
             resolving_ability: None,
+            activation_definition: None,
+            activation_label: None,
+            resolving_ability_designations: Vec::new(),
         }
     }
 }

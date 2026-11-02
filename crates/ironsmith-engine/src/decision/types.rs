@@ -179,6 +179,9 @@ pub struct TargetRequirement {
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited, i.e., "any number").
     pub max_targets: Option<usize>,
+    /// Shared optional extra-target budget; original maximum is max minus this allowance.
+    pub additional_target_budget: usize,
+    pub supports_additional_targets: bool,
     /// Requirements in the same group must select different targets.
     /// The field retains its original player-only API name.
     pub distinct_player_group: Option<usize>,
@@ -204,6 +207,8 @@ impl TargetRequirement {
             description,
             min_targets: 1,
             max_targets: Some(1),
+            additional_target_budget: 0,
+            supports_additional_targets: false,
             distinct_player_group: None,
             shared_player_group: None,
             distribution_value: None,
@@ -224,6 +229,8 @@ impl TargetRequirement {
             description,
             min_targets: 0,
             max_targets: None,
+            additional_target_budget: 0,
+            supports_additional_targets: false,
             distinct_player_group: None,
             shared_player_group: None,
             distribution_value: None,
@@ -250,6 +257,8 @@ impl TargetRequirement {
             description,
             min_targets: min,
             max_targets: max,
+            additional_target_budget: 0,
+            supports_additional_targets: false,
             distinct_player_group: None,
             shared_player_group: None,
             distribution_value: None,
@@ -444,7 +453,7 @@ impl<'a> CastLegalityContext<'a> {
                 .effect_store
                 .temporary_spell_cost_reductions
                 .iter()
-                .any(|effect| effect.player == player && !effect.is_expired(game)),
+                .any(|effect| effect.player == player && effect.is_active(game)),
             minimum_total_spell_mana_payment: view.minimum_total_spell_mana_payment(),
             strips_life_pips_for_casts: view.player_cant_pay_life_to_cast_or_activate(player),
             perf: RefCell::new(CastLegalityPerfBreakdown::default()),

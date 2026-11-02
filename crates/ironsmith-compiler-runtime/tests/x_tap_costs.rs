@@ -99,6 +99,7 @@ struct Choices {
     selected: Vec<ObjectId>,
     cancel_mana: bool,
     saw_cancel: bool,
+    expected_payment_payable: Option<bool>,
 }
 impl DecisionMaker for Choices {
     fn decide_number(&mut self, _game: &GameState, ctx: &NumberContext) -> u32 {
@@ -106,7 +107,7 @@ impl DecisionMaker for Choices {
         assert_eq!(ctx.min, 0);
         assert_eq!(
             ctx.max, self.expected_max,
-            "X is bounded by distinct eligible objects and payable mana"
+            "X is bounded by distinct eligible objects; mana is validated after announcement"
         );
         assert!(self.x <= ctx.max);
         self.saw_x = true;
@@ -151,6 +152,7 @@ impl DecisionMaker for Choices {
         game: &GameState,
         ctx: &ManaPaymentContext,
     ) -> ManaPaymentResponse {
+        if let Some(expected)=self.expected_payment_payable {assert_eq!(ctx.plan.payable,expected,"the announced X still requires its exact mana price");}
         if self.cancel_mana {
             self.saw_cancel = true;
             return ManaPaymentResponse::Cancel;
@@ -257,13 +259,14 @@ fn necron_overlord_pays_exact_x_and_resolves_announced_amount_after_source_and_t
             let (mut game, source, eligible, excluded) = setup(&definition, mana);
             let mut choices = Choices {
                 x,
-                expected_max: mana.min(2),
+                expected_max: 2,
                 target: Target::Player(bob),
                 eligible: eligible.clone(),
                 saw_x: false,
                 selected: vec![],
                 cancel_mana: false,
                 saw_cancel: false,
+                expected_payment_payable: None,
             };
             activate(&mut game, &definition, source, &mut choices);
             assert_eq!(game.stack.len(), 1);
@@ -314,6 +317,7 @@ fn secluded_starforge_nonmana_x_is_not_limited_by_its_fixed_mana_cost_and_expire
             selected: vec![],
             cancel_mana: false,
             saw_cancel: false,
+            expected_payment_payable: None,
         };
         activate(&mut game, &definition, source, &mut choices);
         resolve_stack_entry(&mut game).unwrap();
@@ -344,6 +348,7 @@ fn cancelling_x_tap_payment_restores_mana_taps_and_pending_activation() {
             selected: vec![],
             cancel_mana: true,
             saw_cancel: false,
+            expected_payment_payable: None,
         };
         activate(&mut game, &definition, source, &mut choices);
         assert!(
@@ -370,5 +375,33 @@ fn cancelling_x_tap_payment_restores_mana_taps_and_pending_activation() {
                 .unwrap()
                 .contains(&action)
         );
+    }
+}
+
+
+#[test]
+fn necron_unfunded_announced_x_keeps_all_source_and_artifact_taps_unspent() {
+    let alice=PlayerId::from_index(0);let bob=PlayerId::from_index(1);
+    for definition in definitions("Necron Overlord") {
+        let (mut game,source,eligible,excluded)=setup(&definition,1);
+        let mut choices=Choices{x:2,expected_max:2,target:Target::Player(bob),eligible:eligible.clone(),saw_x:false,selected:vec![],cancel_mana:true,saw_cancel:false,expected_payment_payable:Some(false)};
+        let action=LegalAction::ActivateAbility{source,ability_index:x_ability(&definition)};
+        assert!(compute_legal_actions(&game,alice).unwrap().contains(&action));
+        let mut queue=TriggerQueue::new();let mut state=PriorityLoopState::new(2);
+        let mut progress=apply_priority_response_with_dm(&mut game,&mut queue,&mut state,&PriorityResponse::PriorityAction(action),&mut choices);
+        let mut rejected=false;
+        for _ in 0..40 {
+            match progress {
+                Err(ironsmith::game_loop::GameLoopError::ActionCancelled(_))=>{rejected=true;break;},
+                Err(error)=>panic!("unexpected activation failure: {error:?}"),
+                Ok(_)if state.pending_activation.is_none()=>{rejected=game.stack_is_empty();break;},
+                Ok(GameProgress::NeedsDecisionCtx(context))=>{progress=apply_decision_context_with_dm(&mut game,&mut queue,&mut state,&context,&mut choices);},
+                Ok(other)=>panic!("unfinished activation: {other:?}"),
+            }
+        }
+        assert!(choices.saw_x&&(rejected||choices.saw_cancel));assert!(state.pending_activation.is_none());assert!(game.stack_is_empty());
+        assert!(!game.is_tapped(source));assert!(eligible.iter().all(|id|!game.is_tapped(*id)));
+        assert!(!game.is_tapped(excluded[0]));assert!(!game.is_tapped(excluded[1]));assert!(game.is_tapped(excluded[2]));
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(),1);assert_eq!(game.player(alice).unwrap().life,20);assert_eq!(game.player(bob).unwrap().life,20);
     }
 }

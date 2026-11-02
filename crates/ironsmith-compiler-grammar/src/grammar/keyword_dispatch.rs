@@ -116,7 +116,7 @@ impl KeywordDispatchHint {
 pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<KeywordDispatchHint> {
     let words = crate::lexer::parser_token_word_refs(tokens);
     if words.starts_with(&["you", "may"])
-        && matches!(words.get(2), Some(&"sacrifice" | &"discard" | &"exile" | &"return" | &"tap" | &"remove"))
+        && matches!(words.get(2), Some(&"sacrifice" | &"discard" | &"exile" | &"return" | &"tap" | &"remove" | &"mill"))
         && words.ends_with(&["as", "you", "cast", "this", "spell"])
     {
         return Some(KeywordDispatchHint::AdditionalCostFamily);
@@ -192,6 +192,7 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
         alt((
             alt((
                 primitives::phrase(&["you", "may", "pay", "an", "additional"]),
+                primitives::phrase(&["as", "you", "cast", "this", "spell"]),
                 primitives::phrase(&[
                 "as",
                 "an",

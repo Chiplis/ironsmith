@@ -237,6 +237,8 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PermanentBecomesUntapped { filter, .. }
         | TriggerSpec::TurnedFaceUp(filter)
         | TriggerSpec::PermanentMutates(filter)
+        | TriggerSpec::PermanentTransformsFromNamedActivation {filter, ..}
+        | TriggerSpec::PermanentTransformsFromOwnNamedActivation {filter, ..}
         | TriggerSpec::PermanentTransforms(filter)
         | TriggerSpec::PermanentTransformsInto { filter, .. }
         | TriggerSpec::PlayerTurnsFaceUp { filter, .. }
@@ -257,13 +259,19 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             TriggerSubjectAst::Object(filter.clone())
         }
+        TriggerSpec::NamedAction {source_filter,object_filter,..} => {
+            let filter=object_filter.as_ref().unwrap_or(source_filter);
+            if filter.source {TriggerSubjectAst::Source}else{TriggerSubjectAst::Object(filter.clone())}
+        }
         TriggerSpec::DamageReceived { target, .. } => match target.base() {
             crate::target::ChooseSpec::Object(filter) => TriggerSubjectAst::Object(filter.clone()),
             crate::target::ChooseSpec::Player(player) => TriggerSubjectAst::Player(player.clone()),
             _ => TriggerSubjectAst::Source,
         },
         TriggerSpec::BecomesTargetedByAbilitySource { target, .. } => TriggerSubjectAst::Object(target.clone()),
+        TriggerSpec::CharacteristicGained(trigger) => TriggerSubjectAst::Object(trigger.filter.clone()),
         TriggerSpec::ControlChanged(trigger) => TriggerSubjectAst::Object(trigger.filter.clone()),
+        TriggerSpec::AttachmentChangedToPlayer { recipient, .. } => TriggerSubjectAst::Player(recipient.clone()),
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..

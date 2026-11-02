@@ -123,6 +123,7 @@ pub(crate) fn land_play_restriction_applies(
     player: PlayerId,
     card: ObjectId,
 ) -> Result<bool, ExecutionError> {
+    if game.zone_move_is_prohibited(card, Zone::Battlefield) { return Ok(true); }
     let object = game
         .object(card)
         .ok_or(ExecutionError::ObjectNotFound(card))?;
@@ -253,6 +254,8 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
             }
             permission.reserve(game, player)?;
             let play_permission = permission.identity().cloned();
+            let origin_snapshot=crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
+                game.object(card).ok_or(ExecutionError::ObjectNotFound(card))?,game)?;
             game.reserve_next_land_play_timing(player, card);
             let receipt = if root {
                 let receipt = game
@@ -326,7 +329,7 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
                         destination,
                         game,
                     )
-                    .map(|event| (subject, event.with_play_permission(play_permission.clone())))
+                    .map(|event| (subject, event.with_origin_snapshot(origin_snapshot.clone()).with_play_permission(play_permission.clone())))
                 })
                 .transpose()?;
             if matches!(timing, LandPlayObservationTiming::AfterHistory) {

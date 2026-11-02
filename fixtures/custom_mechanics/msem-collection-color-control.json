@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "constraint": "Exact preserved physical source control; executable source program is ordinary generic composition.",
+  "source_fixture": "fixtures/custom_mechanics/msem-source-collections-next.json",
+  "mechanics": [
+    {
+      "id": "source-control-msem-361",
+      "keyword": "Salvage",
+      "original_reminder": "Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.",
+      "source_cards": [
+        "Mettalia, Light from Above"
+      ],
+      "rule_reference": "701.92.",
+      "rule_text": [
+        {
+          "name": "701.92a",
+          "rule": "Salvage is a keyword action. To salvage a [quality] card, exile a card with that quality from your graveyard until the permanent that was the source of the salvage ability leaves the battlefield. That card is “salvaged” by that permanent.",
+          "custom": true
+        },
+        {
+          "name": "701.92b",
+          "rule": "Whenever a creature that has one or more salvaged cards in exile deals combat damage to a player, that creature's controller puts one of those salvaged cards into its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Mettalia, Light from Above_EIA",
+          "name": "Mettalia, Light from Above",
+          "original_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards in exile from the salvaged collection.\nWhen Mettalia enters, for each color, you may do the following: [Exile a nonlegendary card of that color from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{4}",
+          "type_line": "Legendary Artifact Creature — Construct",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Mettalia, Light from Above_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Mettalia, Light from Above",
+              "cardName": "Mettalia, Light from Above",
+              "manaCost": "{4}",
+              "typeLine": "Legendary Artifact Creature — Construct",
+              "rarityLine": "*EIA M*",
+              "rulesText": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "",
+              "cmc": 4,
+              "cardType": " Artifact Creature",
+              "rarity": "mythic rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "245",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Herve Groussin",
+              "sdn": 9155,
+              "key": "Mettalia, Light from Above_EIA",
+              "colorIdentity": [],
+              "spellbook": [],
+              "prints": [
+                "EIA",
+                "MSC",
+                "LAIR"
+              ],
+              "rarities": [
+                "mythic rare",
+                "rare"
+              ],
+              "firstPrint": "Mettalia, Light from Above_EIA",
+              "printKeys": [
+                "Mettalia, Light from Above_EIA",
+                "Mettalia, Light from Above_MSC",
+                "Mettalia, Light from Above (SL58)_LAIR"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 6.584362139917696,
+              "psr": 0,
+              "psm": 0
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Mettalia, Light from Above",
+              "executable_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards in exile from the salvaged collection.\nWhen Mettalia enters, for each color, you may do the following: [Exile a nonlegendary card of that color from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color.",
+              "original_printed_rules_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color.",
+          "original_printed_rules_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+        }
+      ],
+      "candidate_executable_reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+      "executable_reminder": null,
+      "executable_definitions": [
+        {
+          "keyword": "Salvage {Object}",
+          "reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "collectionReferences": [
+            {
+              "participle": "salvaged",
+              "label": "salvaged"
+            }
+          ]
+        }
+      ],
+      "support_status": "scratch source-owned collection reader; native verification and remaining selector variants pending",
+      "source_candidate_id": "msem-361",
+      "test_status": "pending_parent_native_verification"
+    }
+  ]
+}

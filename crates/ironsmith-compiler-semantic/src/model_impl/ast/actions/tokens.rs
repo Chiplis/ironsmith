@@ -34,6 +34,8 @@ pub enum TokenActionAst {
         exile_at_end_of_combat: bool,
         exile_at_end_of_combat_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         loses_soulbond: bool,
+        removed_ability_designations: Vec<String>,
+        ability_loss_until: Option<crate::effect::Until>,
         sacrifice_at_next_end_step: bool,
         sacrifice_at_next_end_step_reference_surface:
             Option<crate::effect::TokenCopyReferenceSurface>,
@@ -47,6 +49,7 @@ pub enum TokenActionAst {
         added_colors: ColorSet,
         set_card_types: Option<Vec<CardType>>,
         set_subtypes: Option<Vec<Subtype>>,
+        preserve_noncreature_subtypes: bool,
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
         removed_supertypes: Vec<Supertype>,
@@ -74,6 +77,8 @@ pub enum TokenActionAst {
         exile_at_end_of_combat: bool,
         exile_at_end_of_combat_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         loses_soulbond: bool,
+        removed_ability_designations: Vec<String>,
+        ability_loss_until: Option<crate::effect::Until>,
         sacrifice_at_next_end_step: bool,
         sacrifice_at_next_end_step_reference_surface:
             Option<crate::effect::TokenCopyReferenceSurface>,
@@ -87,6 +92,7 @@ pub enum TokenActionAst {
         added_colors: ColorSet,
         set_card_types: Option<Vec<CardType>>,
         set_subtypes: Option<Vec<Subtype>>,
+        preserve_noncreature_subtypes: bool,
         added_card_types: Vec<CardType>,
         added_subtypes: Vec<Subtype>,
         removed_supertypes: Vec<Supertype>,

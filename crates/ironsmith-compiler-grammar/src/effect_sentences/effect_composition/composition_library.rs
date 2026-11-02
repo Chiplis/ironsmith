@@ -95,6 +95,7 @@ pub(super) fn parse_look_hand_optional_exile_play_tax_bundle(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    starts_after_current_turn: false,
                     tag,
                     player: PlayerAst::ItsOwner,
                     allow_land: true,

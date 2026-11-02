@@ -840,6 +840,14 @@ struct ConsultOpenings {
 impl DecisionMaker for ConsultOpenings {
     fn awaiting_choice(&self) -> bool { self.pending }
     fn decide_objects(&mut self, _: &GameState, context: &SelectObjectsContext) -> Vec<ObjectId> {
+        // This scenario has no event-time alternative casting method in
+        // hand. Decline that independent optional disclosure channel, while
+        // preserving the exact mandatory original opening assertions below.
+        if context.description == "You may reveal cards with a casting permission for this event" {
+            assert_eq!(context.min, 0);
+            assert_eq!(context.reveal_policy, ironsmith::decisions::context::SelectionRevealPolicy::Public);
+            return Vec::new();
+        }
         assert_eq!(context.player, A);
         assert_eq!((context.min, context.max), (1, Some(1)));
         assert_eq!(context.reveal_policy, ironsmith::decisions::context::SelectionRevealPolicy::Public);
@@ -1103,7 +1111,9 @@ fn inspiration_preserves_optional_announced_graveyard_targets_and_sums_every_sur
             } else { None };
             game.force_next_die_roll(natural);
             settle(&mut game, &mut dm);
-            assert_eq!(game.player(A).unwrap().life, expected_life);
+            assert_eq!(game.player(A).unwrap().life, expected_life,
+                "natural={natural} chosen={chosen} remove_high={remove_high}; program={:#?}; roll receipts={:?}",
+                definition.spell_effect, game.turn_store.turn_history.die_rolls_this_turn);
             assert_eq!(game.player(A).unwrap().hand.len(), chosen - usize::from(remove_high));
             assert_eq!(game.object(untouched).unwrap().zone, Zone::Graveyard);
             if let Some(later) = later_incarnation { assert_eq!(game.object(later).unwrap().zone, Zone::Graveyard); }

@@ -765,6 +765,7 @@ pub(super) fn open_next_spell_riders(
             effects.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::AffectedPlayer, shape.player,
                 SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantNextSpellAbilityThisTurn {
+                repeat_for_turn: false,
                     filter: filter.clone(), ability: Box::new(ability),
                     mode: ironsmith_core::NextSpellGrantMode::IncarnationAbility,
                 }),

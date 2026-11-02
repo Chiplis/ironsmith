@@ -1,0 +1,3310 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "msem-compose-source-complete",
+  "actual_physical_source_count": 34,
+  "ordinary_whole_source_candidates": 33,
+  "mechanics": [
+    {
+      "id": "msem-compose-full-ordinary",
+      "keyword": "Compose",
+      "original_reminder": "Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”",
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+      "source_cards": [
+        "All Part of the Show",
+        "Apprehend the Nemesis",
+        "Call the Backup Actors",
+        "Collect the Actors",
+        "Defeat of the Greatest Evil",
+        "Dig for Evidence",
+        "Dream Monologue",
+        "From Curtains to Chills",
+        "Glory of the Star",
+        "Go Out Guns Blazing",
+        "Holding Out for a Hero",
+        "Imposing Threat",
+        "In the Nick of Time",
+        "Inciting Incident",
+        "Inspect the Plot",
+        "Looming Threat",
+        "Lovely Duet",
+        "Make a Plan",
+        "Mourning Lady Faye",
+        "Paul, Making Greatness",
+        "Powerful Distraction",
+        "Rendezvous Behind the Curtain",
+        "Repurpose Debris",
+        "Scaled Outburst",
+        "Shattered Reflection",
+        "Silent Sleep",
+        "Steal the Show",
+        "Study the Maps",
+        "The Highest Stakes",
+        "Time Stands Still, Heroes Emerge",
+        "Timeless Rehearsal",
+        "Uncover Malevolence",
+        "Stand Everlasting"
+      ],
+      "rule_reference": "702.277.",
+      "rule_text": [
+        {
+          "name": "702.277a",
+          "rule": "Compose appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Compose” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with “{r3}—Copy the exiled card. You may cast the copy without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.277b",
+          "rule": "The card with compose will only be copied if the same object remains in exile by the time its associated Saga tokens have their final chapter ability trigger.",
+          "custom": true
+        },
+        {
+          "name": "702.277c",
+          "rule": "Casting a spell as an effect of its Saga's ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.277d",
+          "rule": "Multiple instances of compose will cause multiple Saga tokens to be created, each of which will be able to copy the original card with compose.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "All Part of the Show_ACT",
+          "name": "All Part of the Show",
+          "original_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{3}{R}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "All Part of the Show_ACT",
+          "source_card_name": "All Part of the Show",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "All Part of the Show",
+              "original_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "All Part of the Show",
+            "cardName": "All Part of the Show",
+            "manaCost": "{3}{R}{W}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red/White} ",
+            "cmc": 5,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "206",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Weiss Hunt",
+            "sdn": 17262,
+            "key": "All Part of the Show_ACT",
+            "colorIdentity": [
+              "R",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "All Part of the Show_ACT",
+            "printKeys": [
+              "All Part of the Show_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nCompose",
+          "original_printed_rules_text": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "All Part of the Show",
+              "executable_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nCompose",
+              "original_printed_rules_text": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Apprehend the Nemesis_ACT",
+          "name": "Apprehend the Nemesis",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Apprehend the Nemesis_ACT",
+          "source_card_name": "Apprehend the Nemesis",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Apprehend the Nemesis",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Apprehend the Nemesis",
+            "cardName": "Apprehend the Nemesis",
+            "manaCost": "{1}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "137",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Gagimas",
+            "sdn": 17223,
+            "key": "Apprehend the Nemesis_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Apprehend the Nemesis_ACT",
+            "printKeys": [
+              "Apprehend the Nemesis_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose",
+          "original_printed_rules_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Apprehend the Nemesis",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose",
+              "original_printed_rules_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Call the Backup Actors_ACT",
+          "name": "Call the Backup Actors",
+          "original_text": "Mana cost: {G}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Call the Backup Actors_ACT",
+          "source_card_name": "Call the Backup Actors",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Call the Backup Actors",
+              "original_text": "Mana cost: {G}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Call the Backup Actors",
+            "cardName": "Call the Backup Actors",
+            "manaCost": "{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Create a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "140",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "A Dan",
+            "sdn": 17290,
+            "key": "Call the Backup Actors_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Call the Backup Actors_ACT",
+            "printKeys": [
+              "Call the Backup Actors_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 9.657594381035997,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {G}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose",
+          "original_printed_rules_text": "Create a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Call the Backup Actors",
+              "executable_text": "Mana cost: {G}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose",
+              "original_printed_rules_text": "Create a 1/1 colorless Construct Actor creature token. Put a +1/+1 counter on it if you control another Construct.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Collect the Actors_ACT",
+          "name": "Collect the Actors",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Collect the Actors_ACT",
+          "source_card_name": "Collect the Actors",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Collect the Actors",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Collect the Actors",
+            "cardName": "Collect the Actors",
+            "manaCost": "{3}{W}{W}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Create a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 5,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "3",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Xia.Ye",
+            "sdn": 17240,
+            "key": "Collect the Actors_ACT",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Collect the Actors_ACT",
+            "printKeys": [
+              "Collect the Actors_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token for each creature you control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose",
+          "original_printed_rules_text": "Create a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Collect the Actors",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nCreate a 1/1 colorless Construct Actor creature token for each creature you control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose",
+              "original_printed_rules_text": "Create a 1/1 colorless Construct Actor creature token for each creature you control.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Defeat of the Greatest Evil_ACT",
+          "name": "Defeat of the Greatest Evil",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Instant\nDestroy target creature or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Defeat of the Greatest Evil_ACT",
+          "source_card_name": "Defeat of the Greatest Evil",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Defeat of the Greatest Evil",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Instant\nDestroy target creature or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Defeat of the Greatest Evil",
+            "cardName": "Defeat of the Greatest Evil",
+            "manaCost": "{2}{B}{B}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Destroy target creature or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 4,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "77",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Xia Yu",
+            "sdn": 17238,
+            "key": "Defeat of the Greatest Evil_ACT",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Defeat of the Greatest Evil_ACT",
+            "printKeys": [
+              "Defeat of the Greatest Evil_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Instant\nDestroy target creature or planeswalker.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target creature or planeswalker.\nCompose",
+          "original_printed_rules_text": "Destroy target creature or planeswalker.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Defeat of the Greatest Evil",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Instant\nDestroy target creature or planeswalker.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target creature or planeswalker.\nCompose",
+              "original_printed_rules_text": "Destroy target creature or planeswalker.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Dig for Evidence_ACT",
+          "name": "Dig for Evidence",
+          "original_text": "Mana cost: {2}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Dig for Evidence_ACT",
+          "source_card_name": "Dig for Evidence",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dig for Evidence",
+              "original_text": "Mana cost: {2}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Dig for Evidence",
+            "cardName": "Dig for Evidence",
+            "manaCost": "{2}{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Return target instant or sorcery card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "40",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "axxx",
+            "sdn": 17212,
+            "key": "Dig for Evidence_ACT",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Dig for Evidence_ACT",
+            "printKeys": [
+              "Dig for Evidence_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target instant or sorcery card from your graveyard to your hand.\nCompose",
+          "original_printed_rules_text": "Return target instant or sorcery card from your graveyard to your hand.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Dig for Evidence",
+              "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nReturn target instant or sorcery card from your graveyard to your hand.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target instant or sorcery card from your graveyard to your hand.\nCompose",
+              "original_printed_rules_text": "Return target instant or sorcery card from your graveyard to your hand.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Dream Monologue_ACT",
+          "name": "Dream Monologue",
+          "original_text": "Mana cost: {6}{U}{U}\nType: Sorcery\nTake an extra turn after this one.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{6}{U}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Dream Monologue_ACT",
+          "source_card_name": "Dream Monologue",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dream Monologue",
+              "original_text": "Mana cost: {6}{U}{U}\nType: Sorcery\nTake an extra turn after this one.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Dream Monologue",
+            "cardName": "Dream Monologue",
+            "manaCost": "{6}{U}{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Take an extra turn after this one.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "*“I've run the numbers on what I have lost,\nYour timeline serves as but a perfect cost.”\n—The Infinite Calls to Marva, Act III*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 8,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "42",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Xia Yu",
+            "sdn": 17241,
+            "key": "Dream Monologue_ACT",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT",
+              "MC25"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Dream Monologue_ACT",
+            "printKeys": [
+              "Dream Monologue_ACT",
+              "Dream Monologue_MC25"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {6}{U}{U}\nType: Sorcery\nTake an extra turn after this one.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Take an extra turn after this one.\nCompose",
+          "original_printed_rules_text": "Take an extra turn after this one.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Dream Monologue",
+              "executable_text": "Mana cost: {6}{U}{U}\nType: Sorcery\nTake an extra turn after this one.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Take an extra turn after this one.\nCompose",
+              "original_printed_rules_text": "Take an extra turn after this one.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "From Curtains to Chills_ACT",
+          "name": "From Curtains to Chills",
+          "original_text": "Mana cost: {U}\nType: Instant\nTap up to one target nonland permanent and put a stun counter on it.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "From Curtains to Chills_ACT",
+          "source_card_name": "From Curtains to Chills",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "From Curtains to Chills",
+              "original_text": "Mana cost: {U}\nType: Instant\nTap up to one target nonland permanent and put a stun counter on it.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "From Curtains to Chills",
+            "cardName": "From Curtains to Chills",
+            "manaCost": "{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Tap up to one target nonland permanent and put a stun counter on it.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "45",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Gaojunjie",
+            "sdn": 17157,
+            "key": "From Curtains to Chills_ACT",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "From Curtains to Chills_ACT",
+            "printKeys": [
+              "From Curtains to Chills_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Instant\nTap up to one target nonland permanent and put a stun counter on it.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Tap up to one target nonland permanent and put a stun counter on it.\nCompose",
+          "original_printed_rules_text": "Tap up to one target nonland permanent and put a stun counter on it.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "From Curtains to Chills",
+              "executable_text": "Mana cost: {U}\nType: Instant\nTap up to one target nonland permanent and put a stun counter on it.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Tap up to one target nonland permanent and put a stun counter on it.\nCompose",
+              "original_printed_rules_text": "Tap up to one target nonland permanent and put a stun counter on it.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Glory of the Star_ACT",
+          "name": "Glory of the Star",
+          "original_text": "Mana cost: {W}\nType: Instant\nExile target creature you control, then return it to the battlefield under its owner's control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Glory of the Star_ACT",
+          "source_card_name": "Glory of the Star",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Glory of the Star",
+              "original_text": "Mana cost: {W}\nType: Instant\nExile target creature you control, then return it to the battlefield under its owner's control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Glory of the Star",
+            "cardName": "Glory of the Star",
+            "manaCost": "{W}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Exile target creature you control, then return it to the battlefield under its owner's control.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "10",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Xia Yu",
+            "sdn": 17286,
+            "key": "Glory of the Star_ACT",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Glory of the Star_ACT",
+            "printKeys": [
+              "Glory of the Star_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.9215686274509802,
+            "pm": 12.345679012345679,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {W}\nType: Instant\nExile target creature you control, then return it to the battlefield under its owner's control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile target creature you control, then return it to the battlefield under its owner's control.\nCompose",
+          "original_printed_rules_text": "Exile target creature you control, then return it to the battlefield under its owner's control.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Glory of the Star",
+              "executable_text": "Mana cost: {W}\nType: Instant\nExile target creature you control, then return it to the battlefield under its owner's control.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile target creature you control, then return it to the battlefield under its owner's control.\nCompose",
+              "original_printed_rules_text": "Exile target creature you control, then return it to the battlefield under its owner's control.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Go Out Guns Blazing_ACT",
+          "name": "Go Out Guns Blazing",
+          "original_text": "Mana cost: {1}{R}\nType: Instant\nGo Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Go Out Guns Blazing_ACT",
+          "source_card_name": "Go Out Guns Blazing",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Go Out Guns Blazing",
+              "original_text": "Mana cost: {1}{R}\nType: Instant\nGo Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Go Out Guns Blazing",
+            "cardName": "Go Out Guns Blazing",
+            "manaCost": "{1}{R}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Go Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "114",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "buerray",
+            "sdn": 17179,
+            "key": "Go Out Guns Blazing_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Go Out Guns Blazing_ACT",
+            "printKeys": [
+              "Go Out Guns Blazing_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{R}\nType: Instant\nGo Out Guns Blazing deals 2 damage to target player or planeswalker.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Go Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose",
+          "original_printed_rules_text": "Go Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Go Out Guns Blazing",
+              "executable_text": "Mana cost: {1}{R}\nType: Instant\nGo Out Guns Blazing deals 2 damage to target player or planeswalker.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Go Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose",
+              "original_printed_rules_text": "Go Out Guns Blazing deals 2 damage to target player or planeswalker.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Holding Out for a Hero_ACT",
+          "name": "Holding Out for a Hero",
+          "original_text": "Mana cost: {W}\nType: Sorcery\nIf you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Holding Out for a Hero_ACT",
+          "source_card_name": "Holding Out for a Hero",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Holding Out for a Hero",
+              "original_text": "Mana cost: {W}\nType: Sorcery\nIf you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Holding Out for a Hero",
+            "cardName": "Holding Out for a Hero",
+            "manaCost": "{W}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "If you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "11",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Winking Corporation",
+            "sdn": 17206,
+            "key": "Holding Out for a Hero_ACT",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Holding Out for a Hero_ACT",
+            "printKeys": [
+              "Holding Out for a Hero_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 2.728512960436562,
+            "pm": 16.681299385425813,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {W}\nType: Sorcery\nIf you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "If you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose",
+          "original_printed_rules_text": "If you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Holding Out for a Hero",
+              "executable_text": "Mana cost: {W}\nType: Sorcery\nIf you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "If you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose",
+              "original_printed_rules_text": "If you have less life than an opponent, you gain 2 life. If you control fewer creatures than an opponent, create a 1/1 colorless Construct Actor creature token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Imposing Threat_ACT",
+          "name": "Imposing Threat",
+          "original_text": "Mana cost: {2}{B}\nType: Instant\nCreate a 2/2 black Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Imposing Threat_ACT",
+          "source_card_name": "Imposing Threat",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Imposing Threat",
+              "original_text": "Mana cost: {2}{B}\nType: Instant\nCreate a 2/2 black Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Imposing Threat",
+            "cardName": "Imposing Threat",
+            "manaCost": "{2}{B}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Create a 2/2 black Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "84",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "sune",
+            "sdn": 17166,
+            "key": "Imposing Threat_ACT",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Imposing Threat_ACT",
+            "printKeys": [
+              "Imposing Threat_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{B}\nType: Instant\nCreate a 2/2 black Horror creature token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 2/2 black Horror creature token.\nCompose",
+          "original_printed_rules_text": "Create a 2/2 black Horror creature token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Imposing Threat",
+              "executable_text": "Mana cost: {2}{B}\nType: Instant\nCreate a 2/2 black Horror creature token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 2/2 black Horror creature token.\nCompose",
+              "original_printed_rules_text": "Create a 2/2 black Horror creature token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "In the Nick of Time_ACT",
+          "name": "In the Nick of Time",
+          "original_text": "Mana cost: {W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "In the Nick of Time_ACT",
+          "source_card_name": "In the Nick of Time",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "In the Nick of Time",
+              "original_text": "Mana cost: {W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "In the Nick of Time",
+            "cardName": "In the Nick of Time",
+            "manaCost": "{W}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Target creature you control gets +2/+2 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "13",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Chenatu",
+            "sdn": 17030,
+            "key": "In the Nick of Time_ACT",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "In the Nick of Time_ACT",
+            "printKeys": [
+              "In the Nick of Time_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ]
+          },
+          "executable_text": "Mana cost: {W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control gets +2/+2 until end of turn.\nCompose",
+          "original_printed_rules_text": "Target creature you control gets +2/+2 until end of turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "In the Nick of Time",
+              "executable_text": "Mana cost: {W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control gets +2/+2 until end of turn.\nCompose",
+              "original_printed_rules_text": "Target creature you control gets +2/+2 until end of turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Inciting Incident_ACT",
+          "name": "Inciting Incident",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nEach opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Inciting Incident_ACT",
+          "source_card_name": "Inciting Incident",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inciting Incident",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nEach opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Inciting Incident",
+            "cardName": "Inciting Incident",
+            "manaCost": "{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Each opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "85",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Ku Shiraishi",
+            "sdn": 17164,
+            "key": "Inciting Incident_ACT",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Inciting Incident_ACT",
+            "printKeys": [
+              "Inciting Incident_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nEach opponent loses 1 life and you gain 1 life. Surveil 2.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose",
+          "original_printed_rules_text": "Each opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Inciting Incident",
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nEach opponent loses 1 life and you gain 1 life. Surveil 2.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose",
+              "original_printed_rules_text": "Each opponent loses 1 life and you gain 1 life. Surveil 2.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Inspect the Plot_ACT",
+          "name": "Inspect the Plot",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Inspect the Plot_ACT",
+          "source_card_name": "Inspect the Plot",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inspect the Plot",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Inspect the Plot",
+            "cardName": "Inspect the Plot",
+            "manaCost": "{1}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Draw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "47",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Ziyi Gao",
+            "sdn": 17153,
+            "key": "Inspect the Plot_ACT",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Inspect the Plot_ACT",
+            "printKeys": [
+              "Inspect the Plot_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Draw a card.\nCompose",
+          "original_printed_rules_text": "Draw a card.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Inspect the Plot",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw a card.\nCompose",
+              "original_printed_rules_text": "Draw a card.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Looming Threat_ACT",
+          "name": "Looming Threat",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Looming Threat_ACT",
+          "source_card_name": "Looming Threat",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Looming Threat",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Looming Threat",
+            "cardName": "Looming Threat",
+            "manaCost": "{2}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Target player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "87",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Yefeng Chen",
+            "sdn": 17288,
+            "key": "Looming Threat_ACT",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Looming Threat_ACT",
+            "printKeys": [
+              "Looming Threat_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 1.3169446883230904,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player sacrifices a creature. You gain life equal to that creature's toughness.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose",
+          "original_printed_rules_text": "Target player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Looming Threat",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nTarget player sacrifices a creature. You gain life equal to that creature's toughness.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose",
+              "original_printed_rules_text": "Target player sacrifices a creature. You gain life equal to that creature's toughness.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Lovely Duet_ACT",
+          "name": "Lovely Duet",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nUp to two target creatures can't block this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Lovely Duet_ACT",
+          "source_card_name": "Lovely Duet",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lovely Duet",
+              "original_text": "Mana cost: {1}{R}\nType: Sorcery\nUp to two target creatures can't block this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Lovely Duet",
+            "cardName": "Lovely Duet",
+            "manaCost": "{1}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Up to two target creatures can't block this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "*“No matter the tune, the seasons sing back.”\n—Into Autumn's Arms, Prelude*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "120",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "NetEase",
+            "sdn": 17029,
+            "version": 20260204,
+            "key": "Lovely Duet_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Lovely Duet_ACT",
+            "printKeys": [
+              "Lovely Duet_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nUp to two target creatures can't block this turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Up to two target creatures can't block this turn.\nCompose",
+          "original_printed_rules_text": "Up to two target creatures can't block this turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Lovely Duet",
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nUp to two target creatures can't block this turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Up to two target creatures can't block this turn.\nCompose",
+              "original_printed_rules_text": "Up to two target creatures can't block this turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Make a Plan_ACT",
+          "name": "Make a Plan",
+          "original_text": "Mana cost: {2}{G}\nType: Sorcery\nCreate a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Make a Plan_ACT",
+          "source_card_name": "Make a Plan",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Make a Plan",
+              "original_text": "Mana cost: {2}{G}\nType: Sorcery\nCreate a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Make a Plan",
+            "cardName": "Make a Plan",
+            "manaCost": "{2}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Create a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "155",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Senfeng Chen",
+            "sdn": 17186,
+            "key": "Make a Plan_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Make a Plan_ACT",
+            "printKeys": [
+              "Make a Plan_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nCreate a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose",
+          "original_printed_rules_text": "Create a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Make a Plan",
+              "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nCreate a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose",
+              "original_printed_rules_text": "Create a tapped Plains token, Island token, Swamp token, Mountain token, or Forest token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mourning Lady Faye_ACT",
+          "name": "Mourning Lady Faye",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Mourning Lady Faye_ACT",
+          "source_card_name": "Mourning Lady Faye",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mourning Lady Faye",
+              "original_text": "Mana cost: {1}{G}\nType: Instant\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Mourning Lady Faye",
+            "cardName": "Mourning Lady Faye",
+            "manaCost": "{1}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "157",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Feijiu",
+            "sdn": 17008,
+            "key": "Mourning Lady Faye_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Mourning Lady Faye_ACT",
+            "printKeys": [
+              "Mourning Lady Faye_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{G}\nType: Instant\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose",
+          "original_printed_rules_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Mourning Lady Faye",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant\nSearch your library for a basic land card, reveal it, put it into your hand, then shuffle.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose",
+              "original_printed_rules_text": "Search your library for a basic land card, reveal it, put it into your hand, then shuffle.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Paul, Making Greatness_ACT",
+          "name": "Paul, Making Greatness",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Legendary Creature — Construct Actor",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "source_card_key": "Paul, Making Greatness_ACT",
+          "source_card_name": "Paul, Making Greatness",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Paul, Making Greatness",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Paul, Making Greatness",
+            "cardName": "Paul, Making Greatness",
+            "manaCost": "{1}{U}{R}",
+            "typeLine": "Legendary Creature — Construct Actor",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Prowess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue/Red} ",
+            "cmc": 3,
+            "cardType": " Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "198",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Lin Chang",
+            "sdn": 17259,
+            "key": "Paul, Making Greatness_ACT",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT",
+              "LAIR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Paul, Making Greatness_ACT",
+            "printKeys": [
+              "Paul, Making Greatness_ACT",
+              "Paul, Making Greatness (SL129)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it is a spell without custom keyword \"compose\", it gains custom keyword \"compose\", and \"If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with 'III — Copy the exiled card. You may cast the copy without paying its mana cost.'\".",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prowess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose.",
+          "original_printed_rules_text": "Prowess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Paul, Making Greatness",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it is a spell without custom keyword \"compose\", it gains custom keyword \"compose\", and \"If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with 'III — Copy the exiled card. You may cast the copy without paying its mana cost.'\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prowess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose.",
+              "original_printed_rules_text": "Prowess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Powerful Distraction_ACT",
+          "name": "Powerful Distraction",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nTap up to three target creatures.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Powerful Distraction_ACT",
+          "source_card_name": "Powerful Distraction",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Powerful Distraction",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nTap up to three target creatures.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Powerful Distraction",
+            "cardName": "Powerful Distraction",
+            "manaCost": "{1}{W}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Tap up to three target creatures.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "*“Play in shambles, reputation in brambles,\nDirector Ich had one last trick.”\n—The Playwright's Gambit, Act III*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "21",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "KarrotteRAVE",
+            "sdn": 17138,
+            "key": "Powerful Distraction_ACT",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Powerful Distraction_ACT",
+            "printKeys": [
+              "Powerful Distraction_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nTap up to three target creatures.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Tap up to three target creatures.\nCompose",
+          "original_printed_rules_text": "Tap up to three target creatures.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Powerful Distraction",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nTap up to three target creatures.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Tap up to three target creatures.\nCompose",
+              "original_printed_rules_text": "Tap up to three target creatures.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Rendezvous Behind the Curtain_ACT",
+          "name": "Rendezvous Behind the Curtain",
+          "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. *(It loses any Roles you don't control.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{3}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Rendezvous Behind the Curtain_ACT",
+          "source_card_name": "Rendezvous Behind the Curtain",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rendezvous Behind the Curtain",
+              "original_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. *(It loses any Roles you don't control.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Rendezvous Behind the Curtain",
+            "cardName": "Rendezvous Behind the Curtain",
+            "manaCost": "{3}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. *(It loses any Roles you don't control.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "125",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Ying Yi",
+            "sdn": 17289,
+            "key": "Rendezvous Behind the Curtain_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Rendezvous Behind the Curtain_ACT",
+            "printKeys": [
+              "Rendezvous Behind the Curtain_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nCompose",
+          "original_printed_rules_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. (It loses any Roles you don't control.)\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Rendezvous Behind the Curtain",
+              "executable_text": "Mana cost: {3}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn.\nCompose",
+              "original_printed_rules_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn. (It loses any Roles you don't control.)\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Repurpose Debris_ACT",
+          "name": "Repurpose Debris",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types. *(This effect lasts indefinitely.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Repurpose Debris_ACT",
+          "source_card_name": "Repurpose Debris",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Repurpose Debris",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types. *(This effect lasts indefinitely.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Repurpose Debris",
+            "cardName": "Repurpose Debris",
+            "manaCost": "{2}{B}{B}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Return target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types. *(This effect lasts indefinitely.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 4,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "93",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Norman",
+            "sdn": 17214,
+            "key": "Repurpose Debris_ACT",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Repurpose Debris_ACT",
+            "printKeys": [
+              "Repurpose Debris_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types.\nCompose",
+          "original_printed_rules_text": "Return target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types. (This effect lasts indefinitely.)\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Repurpose Debris",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types.\nCompose",
+              "original_printed_rules_text": "Return target creature card from your graveyard to the battlefield. It has base power and toughness 1/1 and is a Construct in addition to its other types. (This effect lasts indefinitely.)\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Scaled Outburst_ACT",
+          "name": "Scaled Outburst",
+          "original_text": "Mana cost: {R}\nType: Instant\nPut a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Scaled Outburst_ACT",
+          "source_card_name": "Scaled Outburst",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scaled Outburst",
+              "original_text": "Mana cost: {R}\nType: Instant\nPut a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Scaled Outburst",
+            "cardName": "Scaled Outburst",
+            "manaCost": "{R}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Put a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "126",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "hyc838243596",
+            "sdn": 17107,
+            "key": "Scaled Outburst_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Scaled Outburst_ACT",
+            "printKeys": [
+              "Scaled Outburst_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {R}\nType: Instant\nPut a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Put a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose",
+          "original_printed_rules_text": "Put a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Scaled Outburst",
+              "executable_text": "Mana cost: {R}\nType: Instant\nPut a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Put a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose",
+              "original_printed_rules_text": "Put a +1/+1 counter on target creature. That creature gains first strike until end of turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Shattered Reflection_ACT",
+          "name": "Shattered Reflection",
+          "original_text": "Mana cost: {R}\nType: Sorcery\nDiscard a card, then draw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Shattered Reflection_ACT",
+          "source_card_name": "Shattered Reflection",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shattered Reflection",
+              "original_text": "Mana cost: {R}\nType: Sorcery\nDiscard a card, then draw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Shattered Reflection",
+            "cardName": "Shattered Reflection",
+            "manaCost": "{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Discard a card, then draw a card.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "*“Is this who I really am?”\n—Arn, Troubled Actor*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "129",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Junjie Gao",
+            "sdn": 17039,
+            "key": "Shattered Reflection_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Shattered Reflection_ACT",
+            "printKeys": [
+              "Shattered Reflection_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 6.36523266022827,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {R}\nType: Sorcery\nDiscard a card, then draw a card.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Discard a card, then draw a card.\nCompose",
+          "original_printed_rules_text": "Discard a card, then draw a card.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Shattered Reflection",
+              "executable_text": "Mana cost: {R}\nType: Sorcery\nDiscard a card, then draw a card.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Discard a card, then draw a card.\nCompose",
+              "original_printed_rules_text": "Discard a card, then draw a card.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Silent Sleep_ACT",
+          "name": "Silent Sleep",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Silent Sleep_ACT",
+          "source_card_name": "Silent Sleep",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Silent Sleep",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Silent Sleep",
+            "cardName": "Silent Sleep",
+            "manaCost": "{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Return target creature card from your graveyard to your hand.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "100",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "sune",
+            "sdn": 17165,
+            "key": "Silent Sleep_ACT",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Silent Sleep_ACT",
+            "printKeys": [
+              "Silent Sleep_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.8779631255487269,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card from your graveyard to your hand.\nCompose",
+          "original_printed_rules_text": "Return target creature card from your graveyard to your hand.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Silent Sleep",
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nReturn target creature card from your graveyard to your hand.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card from your graveyard to your hand.\nCompose",
+              "original_printed_rules_text": "Return target creature card from your graveyard to your hand.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Steal the Show_ACT",
+          "name": "Steal the Show",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Instant\nCreate a 3/3 black Demon Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{G}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Steal the Show_ACT",
+          "source_card_name": "Steal the Show",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Steal the Show",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Instant\nCreate a 3/3 black Demon Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Steal the Show",
+            "cardName": "Steal the Show",
+            "manaCost": "{1}{G}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Create a 3/3 black Demon Horror creature token.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "161",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Xia Yu",
+            "sdn": 17012,
+            "key": "Steal the Show_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Steal the Show_ACT",
+            "printKeys": [
+              "Steal the Show_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "conflict"
+            ],
+            "pr": 0,
+            "pm": 2.633889376646181,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Instant\nCreate a 3/3 black Demon Horror creature token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 3/3 black Demon Horror creature token.\nCompose",
+          "original_printed_rules_text": "Create a 3/3 black Demon Horror creature token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Steal the Show",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Instant\nCreate a 3/3 black Demon Horror creature token.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 3/3 black Demon Horror creature token.\nCompose",
+              "original_printed_rules_text": "Create a 3/3 black Demon Horror creature token.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Study the Maps_ACT",
+          "name": "Study the Maps",
+          "original_text": "Mana cost: {2}{U}\nType: Instant\nReveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Study the Maps_ACT",
+          "source_card_name": "Study the Maps",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Study the Maps",
+              "original_text": "Mana cost: {2}{U}\nType: Instant\nReveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Study the Maps",
+            "cardName": "Study the Maps",
+            "manaCost": "{2}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Reveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "62",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Feijiu",
+            "sdn": 17287,
+            "key": "Study the Maps_ACT",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT",
+              "MC25"
+            ],
+            "rarities": [
+              "uncommon",
+              "rare"
+            ],
+            "firstPrint": "Study the Maps_ACT",
+            "printKeys": [
+              "Study the Maps_ACT",
+              "Study the Maps_MC25"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{U}\nType: Instant\nReveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose",
+          "original_printed_rules_text": "Reveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Study the Maps",
+              "executable_text": "Mana cost: {2}{U}\nType: Instant\nReveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose",
+              "original_printed_rules_text": "Reveal the top four cards of your library. You may put one into your hand and the rest into your graveyard.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "The Highest Stakes_ACT",
+          "name": "The Highest Stakes",
+          "original_text": "Mana cost: {2}{R}\nType: Instant\nTarget opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "The Highest Stakes_ACT",
+          "source_card_name": "The Highest Stakes",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Highest Stakes",
+              "original_text": "Mana cost: {2}{R}\nType: Instant\nTarget opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "The Highest Stakes",
+            "cardName": "The Highest Stakes",
+            "manaCost": "{2}{R}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT R*",
+            "rulesText": "Target opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "117",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Xia Yu",
+            "sdn": 17239,
+            "key": "The Highest Stakes_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "The Highest Stakes_ACT",
+            "printKeys": [
+              "The Highest Stakes_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 1.7559262510974538,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {2}{R}\nType: Instant\nTarget opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose",
+          "original_printed_rules_text": "Target opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "The Highest Stakes",
+              "executable_text": "Mana cost: {2}{R}\nType: Instant\nTarget opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose",
+              "original_printed_rules_text": "Target opponent may have The Highest Stakes deal 4 damage to them. If that player doesn't, you draw two cards.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Time Stands Still, Heroes Emerge_ACT",
+          "name": "Time Stands Still, Heroes Emerge",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control gets +4/+4 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{1}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Time Stands Still, Heroes Emerge_ACT",
+          "source_card_name": "Time Stands Still, Heroes Emerge",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Time Stands Still, Heroes Emerge",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control gets +4/+4 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Time Stands Still, Heroes Emerge",
+            "cardName": "Time Stands Still, Heroes Emerge",
+            "manaCost": "{1}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT U*",
+            "rulesText": "Target creature you control gets +4/+4 until end of turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "163",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "buerray",
+            "sdn": 17187,
+            "key": "Time Stands Still, Heroes Emerge_ACT",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Time Stands Still, Heroes Emerge_ACT",
+            "printKeys": [
+              "Time Stands Still, Heroes Emerge_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control gets +4/+4 until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control gets +4/+4 until end of turn.\nCompose",
+          "original_printed_rules_text": "Target creature you control gets +4/+4 until end of turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Time Stands Still, Heroes Emerge",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control gets +4/+4 until end of turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control gets +4/+4 until end of turn.\nCompose",
+              "original_printed_rules_text": "Target creature you control gets +4/+4 until end of turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Timeless Rehearsal_ACT",
+          "name": "Timeless Rehearsal",
+          "original_text": "Mana cost: {2}{R}\nType: Instant\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Timeless Rehearsal_ACT",
+          "source_card_name": "Timeless Rehearsal",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Timeless Rehearsal",
+              "original_text": "Mana cost: {2}{R}\nType: Instant\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Timeless Rehearsal",
+            "cardName": "Timeless Rehearsal",
+            "manaCost": "{2}{R}",
+            "typeLine": "Instant",
+            "rarityLine": "*ACT U*",
+            "rulesText": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "133",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "KarotteRAVE",
+            "sdn": 17018,
+            "key": "Timeless Rehearsal_ACT",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Timeless Rehearsal_ACT",
+            "printKeys": [
+              "Timeless Rehearsal_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{R}\nType: Instant\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose",
+          "original_printed_rules_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Timeless Rehearsal",
+              "executable_text": "Mana cost: {2}{R}\nType: Instant\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose",
+              "original_printed_rules_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Uncover Malevolence_ACT",
+          "name": "Uncover Malevolence",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nTarget creature can't be blocked this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Uncover Malevolence_ACT",
+          "source_card_name": "Uncover Malevolence",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Uncover Malevolence",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nTarget creature can't be blocked this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Uncover Malevolence",
+            "cardName": "Uncover Malevolence",
+            "manaCost": "{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*ACT C*",
+            "rulesText": "Target creature can't be blocked this turn.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "*“And so Eleanor found the truth, in all its bloody terror and muffled screams.”\n—The Malevolence Chronicles, Act III*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ACT",
+            "cardID": "67",
+            "designer": "Zangy & Fleur",
+            "script": "",
+            "notes": [],
+            "artist": "Gagimas",
+            "sdn": 17161,
+            "key": "Uncover Malevolence_ACT",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ACT"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Uncover Malevolence_ACT",
+            "printKeys": [
+              "Uncover Malevolence_ACT"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nTarget creature can't be blocked this turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature can't be blocked this turn.\nCompose",
+          "original_printed_rules_text": "Target creature can't be blocked this turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Uncover Malevolence",
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nTarget creature can't be blocked this turn.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature can't be blocked this turn.\nCompose",
+              "original_printed_rules_text": "Target creature can't be blocked this turn.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Stand Everlasting_MSY",
+          "name": "Stand Everlasting",
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nChoose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Stand Everlasting_MSY",
+          "source_card_name": "Stand Everlasting",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Stand Everlasting",
+              "original_text": "Mana cost: {2}{W}\nType: Instant\nChoose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Stand Everlasting",
+            "cardName": "Stand Everlasting",
+            "manaCost": "{2}{W}",
+            "typeLine": "Instant",
+            "rarityLine": "*MSY U*",
+            "rulesText": "Choose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "MSY",
+            "cardID": "32",
+            "designer": "Trewq",
+            "script": "",
+            "notes": [],
+            "artist": "Nai Ga",
+            "sdn": 21703,
+            "version": 20260330,
+            "key": "Stand Everlasting_MSY",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MSY"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Stand Everlasting_MSY",
+            "printKeys": [
+              "Stand Everlasting_MSY"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ],
+            "pr": 116.88311688311688,
+            "pm": 167.5461741424802,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {2}{W}\nType: Instant\nChoose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose",
+          "original_printed_rules_text": "Choose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Stand Everlasting",
+              "executable_text": "Mana cost: {2}{W}\nType: Instant\nChoose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose",
+              "original_printed_rules_text": "Choose one —\n• Exile target player's graveyard.\n• Target player gains 4 life.\n• Target player sacrifices an enchantment.\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_inventory_id": "msem-841",
+      "verification_status": "scratch_source_complete_behavior_pending",
+      "remaining_semantic_obligation": "Exact resolving-spell destination replacement, instance multiplicity, exact exile-arrival linked Saga chapterIII copy and recipient spell recipe grants."
+    },
+    {
+      "id": "msem-compose-full-function-dependent-source",
+      "source_inventory_id": "msem-842",
+      "keyword": "Compose",
+      "original_reminder": "Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”",
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+      "representative_cards": [
+        {
+          "id": "Digital Encores_MC25",
+          "name": "Digital Encores",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "source_card_key": "Digital Encores_MC25",
+          "source_card_name": "Digital Encores",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Digital Encores",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "verification_status": "awaiting_parent_materialization_and_native_behavior",
+          "source_original_raw": {
+            "fullName": "Digital Encores",
+            "cardName": "Digital Encores",
+            "manaCost": "{2}{U}{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*MC25 R*",
+            "rulesText": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "MC25",
+            "cardID": "65",
+            "designer": "HerziQuerzi",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "a": [
+                [
+                  "ComposeFunction",
+                  1
+                ]
+              ]
+            },
+            "artist": "Ying Yi",
+            "sdn": 19374,
+            "key": "Digital Encores_MC25",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "MC25"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Digital Encores_MC25",
+            "printKeys": [
+              "Digital Encores_MC25"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "excluded_dependent_clause": {
+            "rule": "Function/Lucid/Chant new casting-rule scope exclusion",
+            "text": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*",
+            "ordinary_compose_still_required": true
+          },
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.”\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "function",
+              "plural": "functions",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.”\nCompose",
+          "original_printed_rules_text": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” (It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "executable_faces": [
+            {
+              "name": "Digital Encores",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.”\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "function",
+                  "plural": "functions",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.”\nCompose",
+              "original_printed_rules_text": "Draw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” (It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)\nCompose (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "verification_status": "ordinary_compose_required_function_clause_explicitly_excluded",
+      "scope": "msem"
+    }
+  ],
+  "notes": "Ordinary Compose only. The Function-dependent creation clause of Digital Encores is explicitly excluded; its ordinary Compose remains required."
+}

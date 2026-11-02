@@ -1,10 +1,10 @@
 //! Earthbend effect implementation.
 
-use crate::continuous::{EffectSourceType, EffectTarget, Modification, PtSublayer};
+use crate::continuous::{EffectSourceType, Modification, PtSublayer};
 use crate::effect::{Effect, EffectOutcome, Until, Value};
 #[cfg(test)]
 use crate::effects::ResolvedTarget;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{
     ApplyContinuousEffect, CompletedEffectOutputs, EffectExecutor, ScheduleDelayedTriggerEffect,
     TargetReusePolicy,
@@ -65,20 +65,20 @@ impl EffectExecutor for EarthbendEffect {
                 // resolves (CR 107.3a), before the land is animated.
                 let counters = crate::effects::helpers::resolve_value(game, &self.counters, ctx)?
                     .max(0) as u32;
-                let target = resolve_single_object_for_effect(game, ctx, &self.target)?;
+                let targets = resolve_objects_for_effect(game, ctx, &self.target)?;
+                if targets.is_empty() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
                 if self.awaken || self.descriptive {
                     return execute_land_animation_with_outputs(
                         game,
                         ctx,
-                        target,
+                        &targets,
                         counters,
                         self.awaken,
                         None,
                     );
                 }
-                let subject = keyword_object_snapshot(game, target)?
-                    .into_iter()
-                    .collect::<Vec<_>>();
+                let subject = targets.iter().map(|target|keyword_object_snapshot(game, *target)).collect::<Result<Vec<_>,_>>()?
+                    .into_iter().flatten().collect::<Vec<_>>();
                 let proposal = crate::events::KeywordActionEvent::new(
                     KeywordActionKind::Earthbend,
                     ctx.controller,
@@ -104,7 +104,7 @@ impl EffectExecutor for EarthbendEffect {
                         execute_land_animation_with_outputs(
                             game,
                             ctx,
-                            target,
+                            &targets,
                             action.amount,
                             false,
                             Some(action),
@@ -114,6 +114,8 @@ impl EffectExecutor for EarthbendEffect {
             },
         )
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
@@ -153,7 +155,7 @@ fn keyword_object_snapshot(
 fn execute_land_animation_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    target: crate::ids::ObjectId,
+    targets: &[crate::ids::ObjectId],
     amount: u32,
     awaken: bool,
     action: Option<&crate::events::KeywordActionEvent>,
@@ -162,73 +164,52 @@ fn execute_land_animation_with_outputs(
     // Awaken places counters while the object is still a land. Counter
     // replacements must see that world, rather than an animated one.
     if awaken {
-        outcomes.push(place_animation_counters(game, ctx, target, amount)?);
+        outcomes.push(place_animation_counter_batch(game, ctx, targets, amount)?);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));
         }
     }
-    // A replacement program may have removed this incarnation.
-    // Never animate a successor found by stable identity.
-    if game
-        .object(target)
-        .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-        && !game.is_phased_out(target)
-    {
-        for effect in land_animation_program(target, awaken) {
+    // Each native registration captures the full surviving recipient set;
+    // no counter replacement additions can run between original animations.
+    let survivors = targets.iter().copied().filter(|target|game.object(*target)
+        .is_some_and(|object|object.zone == crate::zone::Zone::Battlefield) && !game.is_phased_out(*target)).collect::<Vec<_>>();
+    if !survivors.is_empty() {
+        for modification in land_animation_modifications(awaken) {
+            let effect = Effect::new(ApplyContinuousEffect::with_spec(
+                exact_animation_recipients(&survivors), modification, Until::Forever,
+            ).with_source_type(EffectSourceType::Resolution { locked_targets: survivors.clone() }));
             outcomes.push(execute_effect_with_outputs(game, &effect, ctx)?);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
+                return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
         }
     }
     if awaken {
         return Ok(collect_animation_outputs(outcomes));
     }
-    let last_subject = keyword_object_snapshot(game, target)?.or_else(|| {
-        action.and_then(|action| {
-            action
-                .object_tags
-                .get("it")
-                .and_then(|objects| objects.first())
-                .cloned()
-        })
-    });
+    let last_subject = targets.iter().map(|target| {
+        keyword_object_snapshot(game, *target).map(|current|current.or_else(||action.and_then(|action|
+            action.object_tags.get("it").and_then(|objects|objects.iter().find(|object|object.object_id == *target)).cloned())))
+    }).collect::<Result<Vec<_>,_>>()?;
     // Earthbend's counters follow animation. Its watcher is created
     // afterwards and cannot retroactively observe a departure caused
     // by a counter replacement program (CR 701.66, 603.7).
-    outcomes.push(place_animation_counters(game, ctx, target, amount)?);
+    outcomes.push(place_animation_counter_batch(game, ctx, targets, amount)?);
     if ctx.decision_maker.awaiting_choice() {
         return Ok(CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(0),
         ));
     }
-    let placed_subject = outcomes.last().and_then(|outcome| {
-        // Auxiliary programs are not original placement results, but a
-        // departure they caused supplies the exact land's latest LKI. Read
-        // the full observation stream only for this identity, never adopt a
-        // replacement program's output object as the earthbent land.
-        outcome
-            .outcome
-            .events
-            .iter()
-            .rev()
-            .filter_map(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
-            .flat_map(|event| event.snapshots().iter())
-            .find(|object| object.object_id == target)
-            .cloned()
-            .or_else(|| {
-                outcome
-                    .outcome
-                    .instruction_result()
-                    .affected_object_memory()
-                    .and_then(|objects| objects.iter().find(|object| object.object_id == target))
-                    .cloned()
-            })
-    });
+    let placed_subjects = outcomes.last().map(|outcome| {
+        let mut snapshots = outcome.outcome.instruction_result().affected_object_memory().unwrap_or(&[]).to_vec();
+        snapshots.extend(outcome.outcome.events.iter().rev()
+            .filter_map(|event|event.downcast::<crate::events::zones::ZoneChangeEvent>())
+            .flat_map(|event|event.snapshots()).filter(|object|targets.contains(&object.object_id)).cloned());
+        snapshots
+    }).unwrap_or_default();
+    for target in targets.iter().copied() {
     let schedule = ScheduleDelayedTriggerEffect::new(
         Trigger::this_dies_or_is_exiled(),
         vec![Effect::new(crate::effects::ReturnFromGraveyardOrExileToBattlefieldEffect::new(true).under_control_of(crate::target::PlayerFilter::You))],
@@ -243,14 +224,15 @@ fn execute_land_animation_with_outputs(
             EffectOutcome::count(0),
         ));
     }
+    }
     let Some(action) = action else { return Ok(collect_animation_outputs(outcomes)); };
     let mut completion = action.clone();
     // The land is the subject; the instruction source can be another
     // object entirely. Freeze the completed incarnation before additions.
-    let subject = keyword_object_snapshot(game, target)?
-        .or(placed_subject)
-        .or(last_subject);
-    let subjects = subject.into_iter().collect::<Vec<_>>();
+    let subjects = targets.iter().enumerate().map(|(index,target)|keyword_object_snapshot(game,*target)
+        .map(|current|current.or_else(||placed_subjects.iter().rev().find(|object|object.object_id == *target).cloned())
+            .or_else(||last_subject[index].clone())))
+        .collect::<Result<Vec<_>,_>>()?.into_iter().flatten().collect::<Vec<_>>();
     completion.object_tags.insert("it".into(), subjects.clone());
     completion.object_tags.insert("__it__".into(), subjects);
     completion.snapshot = keyword_object_snapshot(game, completion.source)?.or(completion.snapshot);
@@ -303,33 +285,17 @@ fn land_animation_modifications(elemental: bool) -> Vec<Modification> {
     modifications
 }
 
-fn land_animation_program(target: crate::ids::ObjectId, elemental: bool) -> Vec<Effect> {
-    land_animation_modifications(elemental)
-        .into_iter()
-        .map(|modification| {
-            Effect::new(
-                ApplyContinuousEffect::new(
-                    EffectTarget::Specific(target),
-                    modification,
-                    Until::Forever,
-                )
-                .with_source_type(EffectSourceType::Resolution {
-                    locked_targets: vec![target],
-                }),
-            )
-        })
-        .collect()
+// This filter denotes only frozen exact incarnations, never a fresh choice.
+fn exact_animation_recipients(targets: &[crate::ids::ObjectId]) -> ChooseSpec {
+    let mut filter = crate::target::ObjectFilter::default();
+    filter.any_of = targets.iter().copied().map(crate::target::ObjectFilter::specific).collect();
+    ChooseSpec::All(filter)
 }
-
-fn place_animation_counters(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    target: crate::ids::ObjectId,
-    amount: u32,
-) -> Result<CompletedEffectOutputs, ExecutionError> {
-    crate::effects::PutCountersEffect::new(
-        CounterType::PlusOnePlusOne, amount, ChooseSpec::SpecificObject(target),
-    ).execute_child_with_outputs(game, ctx)
+fn place_animation_counter_batch(game: &mut GameState, ctx: &mut ExecutionContext,
+    targets: &[crate::ids::ObjectId], amount: u32) -> Result<CompletedEffectOutputs, ExecutionError> {
+    if targets.is_empty() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
+    crate::effects::PutCountersEffect::new(CounterType::PlusOnePlusOne, amount, exact_animation_recipients(targets))
+        .execute_child_with_outputs(game, ctx)
 }
 
 #[cfg(test)]
@@ -340,6 +306,30 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn retained_land_packet_animates_and_places_counters_before_one_full_subject_completion() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&crate::cards::definitions::basic_plains(), alice, Zone::Battlefield);
+        let first = game.create_object_from_definition(&crate::cards::definitions::basic_plains(), alice, Zone::Battlefield);
+        let second = game.create_object_from_definition(&crate::cards::definitions::basic_plains(), alice, Zone::Battlefield);
+        let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(first), ResolvedTarget::Object(second)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment { spec: spec.clone(), range: 0..2 }]);
+        let outcome = EarthbendEffect::new(spec, 4).execute(&mut game, &mut ctx).unwrap();
+        for target in [first, second] {
+            assert_eq!(game.counter_count(target, CounterType::PlusOnePlusOne), 4);
+            assert_eq!(game.calculated_power(target), Some(4));
+        }
+        assert!(!game.current_card_types(source).unwrap().contains(&CardType::Creature));
+        let actions = outcome.events.iter().filter_map(|event|event.downcast::<crate::events::KeywordActionEvent>())
+            .filter(|action|action.action == KeywordActionKind::Earthbend).collect::<Vec<_>>();
+        assert_eq!(actions.len(), 1);
+        assert_eq!((actions[0].source, actions[0].player, actions[0].amount), (source, alice, 4));
+        assert_eq!(actions[0].object_tags.get("it").unwrap().iter().map(|object|object.object_id).collect::<Vec<_>>(), vec![first, second]);
+    }
 
     #[test]
     fn targeted_earthbend_puts_counters_on_selected_land() {

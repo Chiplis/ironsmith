@@ -66,6 +66,14 @@ fn parse_object_filter_inner_unchecked(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words.strip_prefix(&["the"]).unwrap_or(&words);
+    if matches!(words, ["card" | "cards", "you", "looked", "at"]
+        | ["card" | "cards", "you", "looked", "at", "this", "way"])
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(ObjectFilter::tagged(crate::tag::CompilerReferenceTag::LookedAtCards.bind()));
+    }
     // Own the complete union before any relation, attachment, source reference,
     // or qualifier is peeled off. Returning a freshly parsed union after those
     // passes would silently discard their accumulated semantic constraints.
@@ -1589,7 +1597,7 @@ fn parse_object_filter_inner_unchecked(
         } else if all_words[idx] == TOUGHNESS_WORD {
             Some("toughness")
         } else if idx + 1 < all_words.len()
-            && parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some()
+            && (parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&all_words[idx..], &["mana", "values"]).is_some())
         {
             Some("mana value")
         } else {
@@ -1602,7 +1610,7 @@ fn parse_object_filter_inner_unchecked(
         let is_base_reference = idx > 0 && all_words[idx - 1] == BASE_WORD;
 
         let axis_word_count =
-            usize::from(parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some()) + 1;
+            usize::from((parse_phrase_at_head(&all_words[idx..], MANA_VALUE_PREFIX).is_some() || parse_phrase_at_head(&all_words[idx..], &["mana", "values"]).is_some())) + 1;
         let value_tokens = if idx + axis_word_count < all_words.len() {
             &all_words[idx + axis_word_count..]
         } else {
@@ -3126,9 +3134,11 @@ fn parse_object_filter_inner_unchecked(
         );
     }
 
-    if not_on_battlefield && filter.any_of.is_empty() && !matches!(filter.zone, Some(Zone::Stack)) {
+    if not_on_battlefield && matches!(filter.zone, None | Some(Zone::Battlefield)) {
         let mut base = filter.clone();
-        base.any_of.clear();
+        // The explicit zone domain intersects the whole characteristic
+        // selector, including any existing type/subtype disjunction. Keep
+        // those arms and their shared ownership/quality constraints intact.
         base.zone = None;
 
         let mut disjunction = ObjectFilter::default();

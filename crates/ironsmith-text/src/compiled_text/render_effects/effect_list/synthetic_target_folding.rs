@@ -52,6 +52,10 @@ fn player_filter_references_identity(
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
+        PlayerFilter::WithMatchingAttachments { base, filter } => {
+            player_filter_references_identity(base, identity)
+                || object_filter_references_identity(filter, identity)
+        }
         PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } | PlayerFilter::ControlsMatchingObject { filter } => {
             object_filter_references_identity(filter, identity)
         }
@@ -274,6 +278,7 @@ fn restriction_references_identity(
     use crate::effect::Restriction;
 
     match restriction {
+        Restriction::MoveBetweenZones { .. } => false,
         Restriction::CastOrActivatePayments { player, sacrifice, .. } => player_filter_references_identity(player, identity)
             || sacrifice.as_ref().is_some_and(|filter| object_filter_references_identity(filter, identity)),
         Restriction::AdditionalLandPlays(player, _)

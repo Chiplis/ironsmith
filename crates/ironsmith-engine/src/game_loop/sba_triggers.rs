@@ -75,6 +75,7 @@ fn check_and_apply_sbas_with_inner(
     // to be put into a graveyard still sees them (Chandra, Fire Artisan dealt
     // lethal combat damage still triggers on her removed loyalty counters).
     try_drain_pending_trigger_events(game, trigger_queue)?;
+    if !complete_trigger_class_choices_before_continuation(game,trigger_queue,decision_maker)? {return Ok(());}
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
     game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
@@ -105,6 +106,7 @@ fn check_and_apply_sbas_with_inner(
         // choices, dungeon completion) are matched before this check's
         // actions are performed (CR 603.2).
         try_drain_pending_trigger_events(game, trigger_queue)?;
+        if !complete_trigger_class_choices_before_continuation(game,trigger_queue,decision_maker)? {return Ok(());}
         game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
@@ -356,6 +358,7 @@ fn put_triggers_on_stack_with_dm_inner(
         if resolve_pending_hidden_draw_reveals(game, trigger_queue, decision_maker)? {
             return Ok(());
         }
+        if resolve_class_event_choices(game, trigger_queue, decision_maker)? { return Ok(()); }
         drain_ability_triggered_events(game, trigger_queue, &mut announced_counts)?;
 
         // Triggered mana abilities resolve immediately and never use the stack.
@@ -380,7 +383,8 @@ fn put_triggers_on_stack_with_dm_inner(
         let mut ordinary = Vec::new();
         let mut triggered_by_ability = Vec::new();
         for trigger in trigger_queue.take_all() {
-            if trigger.triggering_event.kind() == crate::events::EventKind::AbilityTriggered {
+            if trigger.triggering_event.kind() == crate::events::EventKind::AbilityTriggered
+                && !trigger.triggering_event.is_direct_trigger_invocation() {
                 triggered_by_ability.push(trigger);
             } else {
                 ordinary.push(trigger);
@@ -482,7 +486,7 @@ fn resolve_pending_hidden_draw_reveals(
             decision_maker,
             &candidate,
             deferred.parent_provenance,
-        );
+        )?;
         if !deferred.observations_suppressed {
             queue_triggers_from_event(game, trigger_queue, event, true);
         }
@@ -502,7 +506,7 @@ fn resolve_pending_hidden_draw_reveals(
             };
             drawn.miracle = Some(decision);
             game.finish_pending_hidden_draw_reveal(card);
-            for reveal in crate::effects::cards::miracle_reveal_event(game, &drawn, pending.event.provenance()) {
+            for reveal in crate::effects::cards::miracle_reveal_event(game, &drawn, pending.event.provenance(), decision_maker)? {
                 queue_triggers_from_event(game, trigger_queue, reveal, true);
             }
             let event = TriggerEvent::new_with_provenance(drawn, pending.event.provenance());
@@ -555,6 +559,7 @@ fn drain_ability_triggered_events(
     loop {
         let pending = trigger_queue.take_ability_triggered_events();
         if pending.is_empty() {
+            for entry in &mut trigger_queue.entries {entry.triggering_event.mark_trigger_entry_announced();}
             return Ok(());
         }
 
@@ -846,6 +851,75 @@ fn grand_melee_trigger_stack_destination(
             }
         }
     }
+}
+
+/// This is an instruction continuation boundary, not a priority grant. Freeze
+/// choices at event capture, ask the real player now, then capture notifications
+/// for only the selected programs before the next instruction can change them.
+pub(crate) fn complete_trigger_class_choices_before_continuation(
+ game:&mut GameState,queue:&mut TriggerQueue,dm:&mut dyn DecisionMaker,
+)->Result<bool,crate::effects::ExecutionError> {
+ if !game.effect_store.pending_trigger_class_choices.is_empty() {
+  let mut older=std::mem::take(&mut game.effect_store.pending_trigger_class_choices);
+  older.append(&mut queue.class_event_choices);queue.class_event_choices=older;
+ }
+ if queue.class_event_choices.is_empty(){return Ok(true);}
+ let convert=|error|match error {GameLoopError::ExecutionFailed(error)=>error,
+  error=>crate::effects::ExecutionError::Impossible(error.to_string())};
+ let mut announced=std::collections::HashMap::new();let mut steps=0u32;
+ loop {
+  if resolve_class_event_choices(game,queue,dm).map_err(convert)? {return Ok(false);}
+  // Notifications use their ordinary capture owner, retaining observer LKI;
+  // the selected programs themselves still wait for normal stack placement.
+  drain_ability_triggered_events(game,queue,&mut announced).map_err(convert)?;
+  if queue.class_event_choices.is_empty(){return Ok(true);}
+  steps+=1;if steps>10000 {return Err(crate::effects::ExecutionError::ResourceLimitExceeded {
+   resource:"trigger-program event continuations",requested:u128::from(steps),maximum:10000});}
+ }
+}
+
+/// Complete the source-authored choice before publishing any ability-trigger
+/// notification. A suspended answer leaves every immutable candidate in place.
+fn resolve_class_event_choices(game:&mut GameState,queue:&mut TriggerQueue,dm:&mut dyn DecisionMaker)
+ ->Result<bool,GameLoopError> {
+ while !queue.class_event_choices.is_empty() {
+  let order=players_in_apnap_order(game);
+  let first=&queue.class_event_choices[0].event;
+  let batch=first.simultaneous_batch();let occurrence=first.occurrence_key();
+  let index=queue.class_event_choices.iter().enumerate()
+   .filter(|(_,choice)|if let Some(batch)=batch {choice.event.simultaneous_batch()==Some(batch)} else {choice.event.occurrence_key()==occurrence})
+   .min_by_key(|(index,choice)|(order.iter().position(|player|*player==choice.controller).unwrap_or(usize::MAX),*index))
+   .map(|(index,_)|index).unwrap();
+  let choice=&queue.class_event_choices[index];
+  if !game.player(choice.controller).is_some_and(|player|player.is_in_game()) {queue.class_event_choices.remove(index);continue;}
+  if !choice.automatic&&!dm.answers_player_choices() {
+   return Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+    "source-authored trigger selection requires a player decision channel".into())));
+  }
+  let maximum=(choice.maximum as usize).min(choice.candidates.len());
+  let options=choice.candidates.iter().enumerate().map(|(index,copies)| {
+   let entry=&copies[0];
+   crate::decisions::context::SelectableOption::new(index,describe_trigger_for_ordering(game,entry))
+    .with_object(entry.source)
+  }).collect();
+  let context=crate::decisions::context::SelectOptionsContext::new(choice.controller,choice.event.object_id(),
+   format!("Choose {} {} triggered program{}",if choice.optional {format!("up to {maximum}")} else {maximum.to_string()},choice.class,
+    if maximum==1 {""} else {"s"}),options,if choice.optional {0} else {maximum},maximum);
+  let selected=if choice.automatic {(0..maximum).collect()} else {dm.decide_options(game,&context)};
+  if dm.awaiting_choice() {return Ok(true);}
+  if selected.len()>maximum || (!choice.optional&&selected.len()<maximum) {
+   return Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::InvalidTarget));
+  }
+  let mut seen=std::collections::HashSet::new();let mut entries=Vec::new();
+  for index in selected {
+   if !seen.insert(index) {return Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::InvalidTarget));}
+   let copies=choice.candidates.get(index).ok_or(crate::effects::ExecutionError::InvalidTarget)?;
+   entries.extend(copies.iter().cloned());
+  }
+  queue.class_event_choices.remove(index);
+  for entry in entries {queue.add(entry);}
+ }
+ Ok(false)
 }
 
 fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
@@ -1161,7 +1235,7 @@ fn resolve_triggered_stack_entry_immediately_with_outputs(
 
     if let Some(ref condition) = entry.intervening_if
         && let Some(ref triggering_event) = entry.triggering_event
-        && !crate::triggers::verify_intervening_if_at_resolution_checked(
+        && !crate::triggers::check::verify_intervening_if_at_resolution_with_memory_owner_checked(
             game,
             condition,
             entry.controller,
@@ -1169,6 +1243,7 @@ fn resolve_triggered_stack_entry_immediately_with_outputs(
             ctx.source,
             None,
             Some(&entry.optional_costs_paid),
+            entry.source_number_owner.as_ref(),
         )
         .map_err(GameLoopError::ExecutionFailed)?
     {
@@ -1233,9 +1308,7 @@ pub(crate) fn resolve_pending_mana_triggers_with_outputs(
     let mut queue = TriggerQueue::default();
     try_drain_pending_trigger_events(game, &mut queue)?;
     let result = resolve_triggered_mana_abilities_with_outputs(game, &mut queue, decision_maker);
-    game.effect_store
-        .pending_trigger_entries
-        .extend(queue.take_all());
+    queue.defer_into_game(game);
     result
 }
 
@@ -1570,6 +1643,7 @@ fn trigger_target_requirement_contexts(
                 aggregate_constraint: requirement.aggregate_constraint.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                additional_target_budget: requirement.additional_target_budget,
                 distinct_player_group: requirement.distinct_player_group,
                 shared_player_group: requirement.shared_player_group.clone(),
             },
@@ -1683,6 +1757,8 @@ fn target_requirements_from_explicit_choices(
                 description: format!("target for {}", trigger.source_name),
                 min_targets: count.min,
                 max_targets: count.max,
+                additional_target_budget: 0,
+                supports_additional_targets: false,
                 distinct_player_group: None,
                 shared_player_group: None,
                 distribution_value: None,

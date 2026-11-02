@@ -25,25 +25,40 @@ pub(crate) fn waterbend_sources(game: &GameState, request: &ManaPaymentRequest) 
     {
         return Vec::new();
     }
-    // A creature-only tap payment (Heirloom Epic) never admits artifacts.
-    let mut sources = if request.cost.has_creature_tap_payment() {
-        Vec::new()
-    } else {
-        crate::decision::get_improvise_artifacts(game, request.payer)
-    };
-    sources.extend(
-        crate::decision::get_convoke_creatures(game, request.payer)
-            .into_iter()
-            .map(|(id, _)| id),
-    );
-    sources.retain(|id| {
-        !game.is_phased_out(*id)
-            && !request.reserved_tap_sources.contains(id)
-            && !request.preferences.excluded_sources.contains(id)
-    });
+    let mut sources=Vec::new();
+    if request.cost.native_waterbend_capacity(request.x_value)>0 {
+        if !request.cost.has_creature_tap_payment(){sources.extend(crate::decision::get_improvise_artifacts(game,request.payer));}
+        if !request.cost.has_artifact_tap_payment(){sources.extend(crate::decision::get_convoke_creatures(game,request.payer).into_iter().map(|(id,_)|id));}
+    }
+    sources.extend(crate::decision::get_convoke_creatures(game,request.payer).into_iter()
+        .map(|(id,_)|id).filter(|id|tap_payment_source_admitted(game,request,*id)));
+    sources.retain(|id| !game.is_phased_out(*id)
+        && !request.reserved_tap_sources.contains(id) && !request.preferences.excluded_sources.contains(id));
     sources.sort_unstable();
     sources.dedup();
     sources
+}
+
+pub(crate) fn tap_payment_source_admitted(game:&GameState,request:&ManaPaymentRequest,object:ObjectId)->bool {
+    // Classification and replay call this on native artifact candidates too.
+    // A named creature-tap permission must never widen their original share.
+    if !game.current_card_types(object).is_some_and(|types|types.contains(&crate::types::CardType::Creature)){return false}
+    let Some(scope)=request.cost.waterbend_payment_scope() else{return false};
+    if scope.tap_payment_methods.is_empty(){return false}
+    fn prohibited(game:&GameState,controller:crate::ids::PlayerId,object:ObjectId,model:&crate::static_abilities::CompiledStaticAbility,name:&str)->bool{
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::GenericManaTapPaymentProhibition {name:denied}=>denied.eq_ignore_ascii_case(name),
+            ironsmith_core::StaticAbilityPayload::Conditional {ability,condition,..} if crate::condition_eval::evaluate_condition_cast_time(game,condition,controller,object)=>prohibited(game,controller,object,ability,name),
+            _=>false,
+        }
+    }
+    scope.tap_payment_methods.iter().any(|method|{
+        if method.exclude_source && object==request.source{return false}
+        let Some(name)=method.name.as_deref()else{return true};
+        !game.current_abilities(object).unwrap_or_default().iter().any(|ability|
+            matches!(&ability.kind,crate::ability::AbilityKind::Static(rule)
+                if rule.compiled_model().is_some_and(|model|prohibited(game,request.payer,object,model,name))))
+    })
 }
 
 /// Recheck live ownership, types and tap state after all mana activations. A
@@ -62,6 +77,8 @@ pub(crate) fn validate_waterbend_taps(
         .collect::<Vec<_>>();
     let legal = waterbend_sources(game, request);
     selected.len() <= request.cost.waterbend_capacity(request.x_value) as usize
+        && selected.iter().filter(|id|!tap_payment_source_admitted(game,request,**id)).count()
+            <=request.cost.native_waterbend_capacity(request.x_value) as usize
         && selected
             .iter()
             .enumerate()

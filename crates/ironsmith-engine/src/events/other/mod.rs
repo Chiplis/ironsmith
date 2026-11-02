@@ -7,6 +7,8 @@ mod card_revealed;
 mod chapter_ability_resolved;
 mod coin_flipped;
 mod control_changed;
+mod characteristic_gained;
+pub use characteristic_gained::CharacteristicGainedEvent;
 mod converted;
 mod counter_placed;
 mod day_night_changed;
@@ -17,6 +19,8 @@ pub(crate) mod keyword_action;
 mod land_played;
 mod markers_changed;
 mod mutated;
+mod named_action;
+pub use named_action::NamedActionEvent;
 mod object_became_unattached;
 mod object_became_attached;
 pub use object_became_attached::ObjectBecameAttachedEvent;
@@ -75,3 +79,11 @@ pub use monarch_changed::MonarchChangedEvent;
 
 mod dungeon_room_entered;
 pub use dungeon_room_entered::DungeonRoomEnteredEvent;
+
+mod named_action_proposal;
+pub use named_action_proposal::{NamedActionProposalEvent, WouldNamedActionMatcher};
+
+mod create_cards;
+mod copy_card_source;
+pub use copy_card_source::{CopyCardSourceEvent,CopySourceOperation,WouldSelectCopySourceMatcher};
+pub use create_cards::{CreateCardsEvent, WouldCreateCardsMatcher};

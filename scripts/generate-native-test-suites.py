@@ -10,11 +10,52 @@ import hashlib
 from pathlib import Path
 import re
 import sys
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {"ironsmith-compiler-runtime": 24, "ironsmith-tools": 16}
 BEGIN = "# BEGIN GENERATED NATIVE TEST SUITES"
 END = "# END GENERATED NATIVE TEST SUITES"
+
+
+HELPER_MARKER = "// native-test-suite: helper-only"
+
+def is_helper(source):
+    text = source.read_text()
+    if not text.splitlines() or text.splitlines()[0] != HELPER_MARKER:
+        return False
+    compact = "".join(text.split())
+    if any(attribute in compact for attribute in ("#[test]", "#[bench]", "#[tokio::test]", "#[async_std::test]")):
+        raise ValueError(f"helper-only source contains test/bench declarations: {source}")
+    return True
+
+def standalone_sources(directory, manifest, sources):
+    tests = (directory / "tests").resolve()
+    candidates = {source.resolve() for source in sources}
+    registered = set()
+    for target in tomllib.loads(manifest).get("test", []):
+        path = target.get("path")
+        if path is None:
+            name = target["name"]
+            choices = [directory / "tests" / f"{name}.rs", directory / "tests" / name / "main.rs"]
+            existing = [p for p in choices if p.is_file()]
+            if len(existing) != 1:
+                raise ValueError(f"explicit test needs one unambiguous source: {name}")
+            source = existing[0].resolve()
+        else:
+            source = (directory / path).resolve()
+        try:
+            relative = source.relative_to(tests)
+        except ValueError as error:
+            raise ValueError(f"explicit test source is outside tests/: {source}") from error
+        if relative.parts[0] == "suites":
+            continue
+        if source not in candidates or is_helper(source):
+            raise ValueError(f"explicit test source is missing or helper-only: {source}")
+        if source in registered:
+            raise ValueError(f"test source registered twice as standalone: {source}")
+        registered.add(source)
+    return registered
 
 
 def outputs(root=ROOT):
@@ -23,6 +64,10 @@ def outputs(root=ROOT):
         directory = root / "crates" / package
         tests = directory / "tests"
         sources = sorted(tests.glob("*.rs")) + sorted(tests.glob("*/main.rs"))
+        manifest = directory / "Cargo.toml"
+        original = manifest.read_text()
+        direct = standalone_sources(directory, original, sources)
+        sources = [source for source in sources if source.resolve() not in direct and not is_helper(source)]
         suites = [[] for _ in range(count)]
         names = set()
         for source in sources:
@@ -34,8 +79,6 @@ def outputs(root=ROOT):
             bucket = int.from_bytes(hashlib.sha256(name.encode()).digest()[:8], "big") % count
             suites[bucket].append((name, source.relative_to(tests).as_posix()))
 
-        manifest = directory / "Cargo.toml"
-        original = manifest.read_text()
         if "autotests = false" not in original:
             original = original.replace("[package]\n", "[package]\nautotests = false\n", 1)
         declarations = [BEGIN, "# Regenerate with python3 scripts/generate-native-test-suites.py."]

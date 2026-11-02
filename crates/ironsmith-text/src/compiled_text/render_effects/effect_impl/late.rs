@@ -799,6 +799,19 @@
         }
         return bullet_modes;
     }
+    if let Some(copy)=effect.downcast_ref::<crate::effects::CopyFromDefinitionEffect>() {
+        return format!("{} creates {} copies of the supplied card named {}",capitalize_first(&describe_player_filter(&copy.player)),describe_value(&copy.count),copy.definition.card.name);
+    }
+    if let Some(create)=effect.downcast_ref::<crate::effects::CreateCardsEffect>() {
+        let selection=match &create.selection {
+            ironsmith_core::CardCreationSelection::Named(name)=>format!("named {name}"),
+            ironsmith_core::CardCreationSelection::ChosenName{..}=>"with the chosen name".to_string(),
+            ironsmith_core::CardCreationSelection::RandomMatching{filter,independent}=>format!("matching {} chosen at random{}",filter.description(),if *independent{" independently for each card"}else{" once for the batch"}),
+            ironsmith_core::CardCreationSelection::Duplicate(target)=>format!("duplicating {}",describe_choose_spec(target)),
+        };
+        let destination=if create.zone==Zone::Library {format!("on {} of their library",if create.library_position==ironsmith_core::CardCreationLibraryPosition::Top{"top"}else{"the bottom"})}else{format!("in {}",create.zone)};
+        return format!("{} creates {} real cards {selection} {destination}",capitalize_first(&describe_player_filter(&create.player)),describe_value(&create.count));
+    }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         if let Some(compact) = describe_token_definition_with_end_step_sacrifice(create_token) {
             return compact;
@@ -1526,6 +1539,12 @@
                 "they lose soulbond".to_string()
             });
         }
+        if let Some(duration)=&create_copy.ability_loss_until {
+            exception_clauses.push(format!("{} {} all abilities {}",if singular_copy {"it"}else{"they"},if singular_copy {"loses"}else{"lose"},describe_until(duration)));
+        }
+        for designation in &create_copy.removed_ability_designations {
+            exception_clauses.push(format!("{} doesn't have custom keyword \"{}\"", if singular_copy { "it" } else { "each token" }, designation));
+        }
         if let Some(ability_text) = &create_copy.sacrifice_at_next_end_step_ability_text {
             let quoted = quote_token_granted_ability_text(ability_text);
             // "except it has haste and "At the beginning ..."" shares the
@@ -1732,7 +1751,11 @@
     }
     if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestObjectsEffect>() {
         if manifest.descriptive {
-            return format!("Put {} onto the battlefield face down{} as a 2/2 creature{}. Turn it face up any time for its mana cost if it's a creature card.", describe_choose_spec(&manifest.target), if manifest.tapped { " tapped" } else { "" }, if manifest.cloak { " with ward {2}" } else { "" });
+            let cast_permission = manifest.exile_cast_permission.as_ref().map(|permission| format!(
+                " You may exile and cast it face up any time you have priority if it is {}{}. You still pay its costs.",
+                permission.filter.description(), if permission.require_printed_mana_cost { " with a mana cost" } else { "" },
+            )).unwrap_or_default();
+            return format!("Put {} onto the battlefield face down{}{} as a 2/2 creature{}.{}{}", describe_choose_spec(&manifest.target), if manifest.tapped { " tapped" } else { "" }, if manifest.under_owner_control { " under its owner's control" } else { "" }, if manifest.cloak { " with ward {2}" } else { "" }, if manifest.no_turn_up_permission { "" } else { " Turn it face up any time for its mana cost if it's a creature card." }, cast_permission);
         }
 
         let action = if manifest.cloak { "cloak" } else { "manifest" };
@@ -3148,6 +3171,7 @@
         effect.downcast_ref::<crate::effects::GrantLoyaltyActivationAllowanceEffect>()
     {
         let planeswalkers = match &allowance.scope {
+            crate::effects::LoyaltyActivationScope::Objects(target) => describe_choose_spec(target),
             crate::effects::LoyaltyActivationScope::Source => "this permanent".to_string(),
             crate::effects::LoyaltyActivationScope::EachControlledPlaneswalkerNow => {
                 "each planeswalker you control".to_string()
@@ -5306,6 +5330,15 @@
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if let Some(name) = &schedule.persistent_player_rule {
+            let (condition, event) = match schedule.intervening_if.as_ref() {
+                Some(crate::effect::Condition::TriggerEventOnly(condition)) => (describe_condition(condition), "event "),
+                Some(condition) => (describe_condition(condition), ""),
+                None => ("you are a player".to_string(), ""),
+            };
+            return format!("Register a persistent rule named \"{name}\" for {} with {event}condition \"{condition}\" and ability \"{}, {}\"", describe_player_filter(&schedule.controller), schedule.trigger.display().trim_end_matches('.'), lowercase_first(&describe_resolution_program(&schedule.effects)));
+        }
+
         // A linked exile return installs one delayed watcher per card actually
         // exiled during this resolution. The provenance flag distinguishes the
         // source's duration return from an unrelated exile-to-battlefield move.
@@ -6673,6 +6706,9 @@
             "If {target} would go{from}{to}{duration}, it goes to {replacement} instead"
         );
     }
+    if let Some(register)=effect.downcast_ref::<crate::effects::RegisterEventReplacementEffect>() {
+        return ironsmith_core::semantic_audit::retained("RegisterEventReplacementEffect",&register.display,register);
+    }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDrawReplacementEffect>() {
         // An audit reads the player, replaced event, duration and substitute
         // program below, never the authored sentence.
@@ -7661,6 +7697,11 @@
             describe_each_object_subject(&become_type.target)
         }
         .unwrap_or_else(|| capitalize_first(&describe_choose_spec(&become_type.target)));
+        if become_type.use_source_chosen_type {
+            let addition=if become_type.in_addition_to_other_types { " in addition to its other types" } else { "" };
+            let domain = if become_type.use_source_chosen_card_type { "card" } else { "creature" };
+            return format!("{subject_text} becomes the chosen {domain} type{addition} {}",describe_until(&become_type.duration));
+        }
         if become_type.excluded_subtypes.is_empty() {
             let in_addition = if become_type.in_addition_to_other_types {
                 " in addition to its other types"
@@ -8098,8 +8139,15 @@
         } else {
             String::new()
         };
+        let choose = if random_kind.player_choice {
+            random_kind.chooser.as_ref().map(|player| {
+                if matches!(player, PlayerFilter::You) { "You choose".to_string() }
+                else { format!("{} chooses", capitalize_first(&describe_player_filter(player))) }
+            }).unwrap_or_else(|| "Choose".into())
+        } else { "Choose".into() };
         return format!(
-            "Choose a kind of counter at random{absent} from among {list}. Put a counter of that kind on {recipient}"
+            "{choose} a kind of counter{random}{absent} from among {list}. Put a counter of that kind on {recipient}",
+            random = if random_kind.player_choice { "" } else { " at random" }
         );
     }
     if let Some(chosen_kind) = effect.downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
@@ -8201,10 +8249,11 @@
         if let crate::grant::Grantable::AlternativeCast(
             method @ AlternativeCastingMethod::Composed {
                 condition: None,
-                prototype_power_toughness: None,
+                prototype_power_toughness: None, uses_land_play: false, instructions,
                 ..
             },
         ) = &grant.grantable
+            && instructions == &ironsmith_core::alternative_cast_model::ZoneCastInstructions::default()
             && method.non_mana_costs().is_empty()
             && let Some(cost) = method.mana_cost()
         {
@@ -8364,6 +8413,15 @@
             grant.permanents_enter_tapped = false;
             let permission = describe_effect(&Effect::new(grant));
             return format!("{}. If you do, it enters tapped", permission.trim_end_matches('.'));
+        }
+        if let Some(filter) = &grant_play_tagged.control_duration {
+            let mut grant = grant_play_tagged.clone();
+            grant.control_duration = None;
+            let permission = describe_effect(&Effect::new(grant));
+            let condition = describe_condition(&crate::effect::Condition::PlayerControls {
+                player: grant_play_tagged.player.clone(), filter: filter.clone(),
+            });
+            return format!("{} for as long as {condition}", permission.trim_end_matches('.'));
         }
         // "You may play those cards for as long as they remain exiled if you
         // control a Wizard." (Flameshape): the permission's control gate.
@@ -8627,6 +8685,7 @@
             crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => {
                 "until this source exiles another card".to_string()
             }
+            crate::effects::GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled => { "after the current turn has ended and for as long as it remains exiled".into() }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 if grant_play_tagged.cast_pool_is_plural {
                     "for as long as they remain exiled".to_string()
@@ -9004,6 +9063,7 @@
             crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => {
                 "until this source exiles another card"
             }
+            crate::effects::GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled => { "after the current turn has ended and for as long as it remains exiled".into() }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 "for as long as it remains exiled"
             }
@@ -9265,10 +9325,13 @@
                 plural_spell_text, duration_text, reduction, direction, where_suffix,
             );
         }
-        let duration_text = match grant_next_spell_cost_reduction.duration {
+        let duration_text = if grant_next_spell_cost_reduction.starts_during_next_turn {
+            if player_text == "you" { "during your next turn".to_string() }
+            else { format!("during {player_text}'s next turn") }
+        } else { match grant_next_spell_cost_reduction.duration {
             Until::EndOfTurn => "this turn".to_string(),
             _ => describe_until(&grant_next_spell_cost_reduction.duration),
-        };
+        }};
         if grant_next_spell_cost_reduction.pay_life_equal_to_mana_value {
             return format!(
                 "Rather than pay the mana cost of the next {spell_text} {player_text} cast {duration_text}, {player_text} may pay life equal to that spell's mana value",
@@ -9349,6 +9412,14 @@
             return format!("The next {subject} {player_text} {verb} this turn can be {participle} as though it had flash");
         }
         let granted_text = describe_inline_ability(&grant_next_spell_ability.ability);
+        if grant_next_spell_ability.mode == ironsmith_core::NextSpellGrantMode::EntryFollowup {
+            // The carried trigger is an external program envelope, never an
+            // ability placed on the future creature itself.
+            let printed = granted_text.trim_matches('"');
+            let body = printed.split_once(',').map(|(_, body)| body.trim()).unwrap_or(printed);
+            return format!("When the next {} {} cast this turn enters the battlefield, {}", spell_text.replace(" spell", ""), player_text, body);
+        }
+        if grant_next_spell_ability.repeat_for_turn {return format!("Whenever {player_text} cast {spell_text} this turn, it gains {granted_text} as it is cast");}
         if spell_text.contains("from your hand") && player_text == "you" {
             return format!(
                 "When you next cast {} this turn, it gains {}",
@@ -9488,6 +9559,12 @@
             schedule_tagged_leaves.tag.as_str(),
             describe_effect_list(&schedule_tagged_leaves.effects)
         );
+    }
+    if let Some(remove)=effect.downcast_ref::<crate::effects::RemoveOptionalTextFragmentEffect>() {
+        return format!("Remove one bracketed text fragment from {}",describe_choose_spec(&remove.target));
+    }
+    if let Some(link)=effect.downcast_ref::<crate::effects::LinkPermanentsEffect>() {
+        return format!("Link {} to {} by the {} relation for as long as both remain {} on the battlefield under your control",describe_choose_spec(&link.source),describe_choose_spec(&link.target),link.relation,if link.require_creatures {"creatures"}else{"permanents"});
     }
     if effect
         .downcast_ref::<crate::effects::SoulbondPairEffect>()
@@ -10199,11 +10276,54 @@
             _ => format!("{repeated} {} times", describe_value(&repeat.count)),
         };
     }
+    if let Some(grant) = effect.downcast_ref::<crate::effects::GrantActivationCostAlternativeEffect>() {
+        return format!("While {} has the {} status, you may pay {} rather than pay the activation cost of each of its {}activated abilities {} each turn", describe_choose_spec(&grant.target), grant.status, grant.replacement_cost.to_oracle(), if grant.nonloyalty_only { "nonloyalty " } else { "" }, if grant.max_uses_per_ability_each_turn == 1 { "once".into() } else { format!("{} times", grant.max_uses_per_ability_each_turn) });
+    }
+    if let Some(record) = effect.downcast_ref::<ironsmith_core::RecordSourceCollectionEffect>() {
+        let source=record.source_tag.as_ref().map_or_else(||"this card".to_string(),|tag|format!("the object tagged \"{}\"",tag.as_str()));
+        let zone=|zone|match zone{ironsmith_core::Zone::Battlefield=>"on the battlefield".to_string(),ironsmith_core::Zone::Stack=>"on the stack".to_string(),ironsmith_core::Zone::Exile=>"in exile".to_string(),ironsmith_core::Zone::Command=>"in the command zone".to_string(),other=>format!("in the {:?}",other).to_ascii_lowercase()};
+        let owner=record.source_zone.map(|owner|format!("that source remains {} and ",zone(owner))).unwrap_or_default();
+        return format!("Record {} in the {} collection of {} while {}those members remain {}",describe_choose_spec(&record.target),record.name,source,owner,zone(record.member_zone));
+    }
+    if effect.downcast_ref::<ironsmith_core::effect::RememberOriginalMovementArrivalsEffect>().is_some() {
+        return "remember the original cards exiled this way".to_string();
+    }
+    if let Some(inspection)=effect.downcast_ref::<crate::effects::GrantExileControllerInspectionEffect>() {
+        return format!("Allow the controllers of {} to look at {} for as long as it remains exiled",describe_choose_spec(&inspection.sources),describe_choose_spec(&inspection.target));
+    }
     if let Some(designation) = effect.downcast_ref::<crate::effects::SetPermanentDesignationEffect>() {
         return match &designation.designation {
+            ironsmith_core::PermanentDesignation::CustomStatusInZone { name, zone, present, carry_to_stack } => {
+                let zone = match zone { crate::zone::Zone::Command => "in the command zone", crate::zone::Zone::Exile => "in exile", _ => "in its zone" };
+                if *present { format!("Give {} the {name} status {zone}{}", describe_choose_spec(&designation.target), if *carry_to_stack { " and on the spell it becomes" } else { "" }) }
+                else { format!("Remove the {name} status from {} {zone}", describe_choose_spec(&designation.target)) }
+            },
             ironsmith_core::PermanentDesignation::Harnessed => format!("If {} isn't harnessed, it becomes harnessed", describe_choose_spec(&designation.target)),
+            ironsmith_core::PermanentDesignation::CustomStatusUntilEvent { name, event } => format!("Give {} the {name} status until it {}", describe_choose_spec(&designation.target), match event { ironsmith_core::CustomStatusExpiryEvent::TurnsFaceUp => "turns face up", ironsmith_core::CustomStatusExpiryEvent::PhasesIn => "phases in" }),
             ironsmith_core::PermanentDesignation::CustomStatus { name, until_end_of_turn } => format!("Give {} the {name} status{}", describe_choose_spec(&designation.target), if *until_end_of_turn { " until end of turn" } else { "" }),
         };
+    }
+    if let Some(program) = effect.downcast_ref::<crate::effects::FirstResolutionEachTurnEffect>() {
+        return format!("Resolve the first {} ability you control this turn as follows: {}", program.label, describe_effect_list(&program.effects));
+    }
+    if let Some(program) = effect.downcast_ref::<crate::effects::NamedActionProgramEffect>() {
+        let header = match program.completion {
+            ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted => "as follows",
+            ironsmith_core::effect::NamedActionProgramCompletion::NonemptyObjects => "with tokens created this way if any are created",
+            ironsmith_core::effect::NamedActionProgramCompletion::ProposedObjects => "on the proposed objects as follows",
+            ironsmith_core::effect::NamedActionProgramCompletion::ProposedObjectsWithAvailableChoices => "on the proposed objects as follows, completing the action only if all choices were available",
+            ironsmith_core::effect::NamedActionProgramCompletion::AcceptedPayment => "with objects chosen this way if the following cost is paid",
+        };
+        let actor = if program.player == crate::target::PlayerFilter::You { "Perform".to_owned() }
+            else { format!("{} performs", describe_player_filter(&program.player)) };
+        return format!("{actor} the {} action {header}: {}", program.label, describe_effect_list(&program.effects));
+    }
+    if let Some(action) = effect.downcast_ref::<crate::effects::PerformNamedActionEffect>() {
+        let objects = if let Some((_, prior)) = action.prior_objects {
+            if prior == ironsmith_core::PriorEffectAction::CountersPut { " with objects given counters this way".into() }
+            else { format!(" with objects {} this way", crate::compiled_text::normalize_common::describe_prior_effect_action(prior)) }
+        } else {action.objects.as_ref().map(|objects| format!(" with {}", describe_choose_spec(objects))).unwrap_or_default()};
+        return if let Some(performer)=&action.performer {format!("Have {} perform the {} action{}",describe_choose_spec(performer),action.label,objects)}else{format!("Perform the {} action{}", action.label, objects)};
     }
     if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
         if keyword.action == crate::events::KeywordActionKind::Harness && keyword.amount == 1 {

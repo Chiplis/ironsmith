@@ -353,10 +353,7 @@ impl SimultaneousEffectProposal for PreparedPayment {
             receipt = crate::effects::composition::compose_original_commits_with_projection_outputs(
                 vec![receipt],
                 Box::new(|outcomes| {
-                    EffectOutcome::aggregate_with_primary_result(
-                        EffectOutcome::resolved(),
-                        outcomes,
-                    )
+                    acknowledged_payment_program_outcome(outcomes)
                 }),
             );
         }
@@ -457,6 +454,27 @@ pub(crate) fn acknowledged_total_cost<T>(
         Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
         Err(_) => Ok(None),
     }
+}
+
+/// Only a validated native total-cost owner calls this projection. A physical
+/// component's zero/prevented/replaced result remains in the aggregate history,
+/// but is not the enclosing program's control-flow result. Preserve all actual
+/// original action/choice/quantity/event memory for explicit "this way" readers.
+pub(crate) fn acknowledged_payment_program_outcome(outcomes: Vec<EffectOutcome>) -> EffectOutcome {
+    let mut aggregate = EffectOutcome::aggregate_with_primary_result(
+        EffectOutcome::resolved(), outcomes,
+    );
+    let mut primary = aggregate.instruction_result().clone();
+    primary.status = crate::effect::OutcomeStatus::Succeeded;
+    primary.value = crate::effect::OutcomeValue::None;
+    primary.execution_facts.retain(|fact| !matches!(fact,
+        crate::effect::ExecutionFact::Accepted | crate::effect::ExecutionFact::Declined
+            | crate::effect::ExecutionFact::TargetInvalid | crate::effect::ExecutionFact::Prevented
+            | crate::effect::ExecutionFact::Protected | crate::effect::ExecutionFact::Impossible
+            | crate::effect::ExecutionFact::Replaced
+    ));
+    aggregate.instruction_result = Some(Box::new(primary));
+    aggregate
 }
 
 /// Ordinary requests use the sequential payment owner, rather than preparing

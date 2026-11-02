@@ -5461,6 +5461,7 @@ fn condition_source_for_enter_with_counter_filter(
 /// Permanents matching a filter enter with permanent characteristic changes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterWithCharacteristicsForFilter {
+    pub face_down: bool,
     pub filter: ObjectFilter,
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
@@ -5469,6 +5470,7 @@ pub struct EnterWithCharacteristicsForFilter {
 }
 
 impl EnterWithCharacteristicsForFilter {
+    pub fn face_down(filter:ObjectFilter)->Self { Self{face_down:true,filter,added_card_types:Vec::new(),added_subtypes:Vec::new(),power:2,toughness:2} }
     pub fn new(
         filter: ObjectFilter,
         added_card_types: Vec<CardType>,
@@ -5477,6 +5479,7 @@ impl EnterWithCharacteristicsForFilter {
         toughness: i32,
     ) -> Self {
         Self {
+            face_down:false,
             filter,
             added_card_types,
             added_subtypes,
@@ -5493,6 +5496,7 @@ impl StaticAbilityKind for EnterWithCharacteristicsForFilter {
 
     fn display(&self) -> String {
         let subject = self.filter.description();
+        if self.face_down { return format!("{subject} enter face-down"); }
         let plural = !subject.starts_with("a ")
             && !subject.starts_with("an ")
             && !subject.starts_with("this ")
@@ -5534,9 +5538,10 @@ impl StaticAbilityKind for EnterWithCharacteristicsForFilter {
             controller,
             WouldEnterBattlefieldMatcher::new(self.filter.clone()),
             ReplacementAction::EnterWithCharacteristics {
+                face_down:self.face_down,
                 added_card_types: self.added_card_types.clone(),
                 added_subtypes: self.added_subtypes.clone(),
-                set_base_power_toughness: Some((self.power, self.toughness)),
+                set_base_power_toughness: (!self.face_down).then_some((self.power, self.toughness)),
             },
         ))
     }
@@ -6148,3 +6153,11 @@ impl StaticAbilityKind for PlaneswalkersYouControlDontDieAtZeroLoyalty {
         "Planeswalkers you control aren't put into their owners' graveyards for having 0 loyalty".into()
     }
 }
+
+mod named_action_replacement;
+pub use named_action_replacement::{NamedActionReplacement, NamedActionFirstThenOtherMode};
+
+mod copy_source_selection_replacement;
+pub use copy_source_selection_replacement::CopySourceSelectionReplacement;
+mod card_creation_selection_replacement;
+pub use card_creation_selection_replacement::CardCreationSelectionReplacement;

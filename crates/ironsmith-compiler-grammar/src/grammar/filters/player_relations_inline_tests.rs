@@ -408,3 +408,23 @@ fn damage_to_object_history_keeps_the_recipient_reference() {
         constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             && constraint.relation == crate::target::TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only: false }));
 }
+
+
+#[test]
+fn bare_graveyard_entry_predicate_preserves_the_existing_origin_and_turn_qualifier() {
+    for words in [
+        vec!["put", "there", "from", "battlefield", "this", "turn"],
+        vec!["that", "was", "put", "there", "from", "battlefield", "this", "turn"],
+    ] {
+        assert_eq!(parse_put_there_from_battlefield_this_turn_words(&words), Some(words.len()));
+    }
+    for text in ["put there from the battlefield this turn", "put there from battlefield this turn"] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let filter = crate::object_filters::parse_object_filter(&tokens, false).unwrap();
+        assert!(filter.entered_graveyard_this_turn);
+        assert!(filter.entered_graveyard_from_battlefield_this_turn);
+        assert!(!filter.entered_graveyard_from_library_this_turn);
+    }
+    assert!(parse_put_there_from_battlefield_this_turn_words(&["put", "there", "from", "library", "this", "turn"]).is_none());
+    assert!(parse_put_there_from_battlefield_this_turn_words(&["put", "there", "from", "battlefield", "last", "turn"]).is_none());
+}

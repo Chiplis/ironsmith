@@ -15,6 +15,7 @@ mod damage_and_cost_rewrites;
 mod finalization_support;
 mod linked_exile;
 mod source_numbers;
+mod source_names;
 mod first_draw_reveals;
 mod trigger_definitions;
 mod activation_definitions;

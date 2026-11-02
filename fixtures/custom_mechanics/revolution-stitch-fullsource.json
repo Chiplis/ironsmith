@@ -1,0 +1,2132 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "sha256": "ace692b92427156ca7b153706071365ffdde27c00303f8a52ac297ee2a4a84f1",
+    "policy": "All15 exact formal producer/consumer faces. Fourteen declare Stitch; Stonegraf supplies an alternative price; Master also grants a token ability. Originals immutable; root materializes production frontend."
+  },
+  "mechanics": [
+    {
+      "id": "rev-stitch-061",
+      "keyword": "Stitch",
+      "original_reminder": "You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Affliction of Undeath_IWH",
+          "source_card_key": "Affliction of Undeath_IWH",
+          "name": "Affliction of Undeath",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nChoose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Affliction of Undeath",
+              "role": "front",
+              "type_line": "Sorcery",
+              "mana_cost": "{1}{B}{B}",
+              "rules_text": "Choose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nChoose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Affliction of Undeath",
+            "cardName": "Affliction of Undeath",
+            "manaCost": "{1}{B}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*IWH U*",
+            "rulesText": "Choose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*",
+            "flavorText": "*Stitchers give little consideration to where they source the corpses for their experiments, or who they were in life.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "98",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "rename": "Deadly Invitation_IWH",
+            "artist": "Donald Caron",
+            "sdn": 6886,
+            "version": 20260330,
+            "key": "Affliction of Undeath_IWH",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Affliction of Undeath_IWH",
+            "printKeys": [
+              "Affliction of Undeath_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ],
+            "ctags": [
+              "renamed"
+            ],
+            "pr": 0,
+            "pm": 5.784526391901663,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nChoose one —\n• Each creature gets -2/-2 until end of turn.\n• Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 4/4 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4.",
+          "original_printed_rules_text": "Choose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Affliction of Undeath",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nChoose one —\n• Each creature gets -2/-2 until end of turn.\n• Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 4/4 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4.",
+              "original_printed_rules_text": "Choose one —\n• Each creature gets -2/-2 until end of turn.\n• Stitch 4. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-062",
+      "keyword": "Stitch",
+      "original_reminder": "You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Ambitious Necrologist_IWH",
+          "source_card_key": "Ambitious Necrologist_IWH",
+          "name": "Ambitious Necrologist",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Human Scientist\nPower/Toughness: 2/4\nWhen this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nZombie creatures you control have deathtouch.",
+          "source_faces": [
+            {
+              "name": "Ambitious Necrologist",
+              "role": "front",
+              "type_line": "Creature — Human Scientist",
+              "mana_cost": "{3}{B}",
+              "rules_text": "When this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nZombie creatures you control have deathtouch.",
+              "power": "2",
+              "toughness": "4",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Human Scientist\nPower/Toughness: 2/4\nWhen this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nZombie creatures you control have deathtouch."
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Ambitious Necrologist",
+            "cardName": "Ambitious Necrologist",
+            "manaCost": "{3}{B}",
+            "typeLine": "Creature — Human Scientist",
+            "rarityLine": "*IWH U*",
+            "rulesText": "When this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nZombie creatures you control have deathtouch.",
+            "flavorText": "*“At last, my grand project begins!”*\n",
+            "power": "2",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "99",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 2/2 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Pedro Sena",
+            "sdn": 6823,
+            "version": 20260330,
+            "key": "Ambitious Necrologist_IWH",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Ambitious Necrologist_IWH",
+            "printKeys": [
+              "Ambitious Necrologist_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Scientist\nPower/Toughness: 2/4\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nZombie creatures you control have deathtouch.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, stitch 2.\nZombie creatures you control have deathtouch.",
+          "original_printed_rules_text": "When this creature enters, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)\nZombie creatures you control have deathtouch.",
+          "executable_faces": [
+            {
+              "name": "Ambitious Necrologist",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Scientist\nPower/Toughness: 2/4\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nZombie creatures you control have deathtouch.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, stitch 2.\nZombie creatures you control have deathtouch.",
+              "original_printed_rules_text": "When this creature enters, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)\nZombie creatures you control have deathtouch."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Cornered by the Dead_IWH",
+          "source_card_key": "Cornered by the Dead_IWH",
+          "name": "Cornered by the Dead",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nEach opponent sacrifices a creature of their choice. Stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Cornered by the Dead",
+              "role": "front",
+              "type_line": "Sorcery",
+              "mana_cost": "{2}{B}",
+              "rules_text": "Each opponent sacrifices a creature of their choice. Stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nEach opponent sacrifices a creature of their choice. Stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Cornered by the Dead",
+            "cardName": "Cornered by the Dead",
+            "manaCost": "{2}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*IWH C*",
+            "rulesText": "Each opponent sacrifices a creature of their choice. Stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+            "flavorText": "*Avacyn's abandoned churches shield against the darkness no longer.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "110",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 2/2 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "David Auden Nash",
+            "sdn": 6866,
+            "version": 20260330,
+            "key": "Cornered by the Dead_IWH",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Cornered by the Dead_IWH",
+            "printKeys": [
+              "Cornered by the Dead_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "reveternalpauper",
+              "revplanechase",
+              "archaeologist"
+            ],
+            "pr": 0,
+            "pm": 7.230657989877079,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nEach opponent sacrifices a creature of their choice. Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each opponent sacrifices a creature of their choice. Stitch 2.",
+          "original_printed_rules_text": "Each opponent sacrifices a creature of their choice. Stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Cornered by the Dead",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nEach opponent sacrifices a creature of their choice. Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each opponent sacrifices a creature of their choice. Stitch 2.",
+              "original_printed_rules_text": "Each opponent sacrifices a creature of their choice. Stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Distilled Essence_IWH",
+          "source_card_key": "Distilled Essence_IWH",
+          "name": "Distilled Essence",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nCounter target spell unless its controller pays {2}. If they do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Distilled Essence",
+              "role": "front",
+              "type_line": "Instant",
+              "mana_cost": "{1}{U}",
+              "rules_text": "Counter target spell unless its controller pays {2}. If they do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nCounter target spell unless its controller pays {2}. If they do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Distilled Essence",
+            "cardName": "Distilled Essence",
+            "manaCost": "{1}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*IWH C*",
+            "rulesText": "Counter target spell unless its controller pays {2}. If they do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+            "flavorText": "*“Always remember the golden ratio: ten parts skaab brains to one part geist-fuel.”\n—Stitcher Geralf*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "58",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 2/2 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Steve Hamilton",
+            "sdn": 6903,
+            "version": 20260330,
+            "key": "Distilled Essence_IWH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Distilled Essence_IWH",
+            "printKeys": [
+              "Distilled Essence_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "reveternalpauper",
+              "revplanechase",
+              "archaeologist"
+            ],
+            "pr": 0,
+            "pm": 17.35357917570499,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nCounter target spell unless its controller pays {2}. If they do, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Counter target spell unless its controller pays {2}. If they do, stitch 2.",
+          "original_printed_rules_text": "Counter target spell unless its controller pays {2}. If they do, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Distilled Essence",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nCounter target spell unless its controller pays {2}. If they do, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Counter target spell unless its controller pays {2}. If they do, stitch 2.",
+              "original_printed_rules_text": "Counter target spell unless its controller pays {2}. If they do, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Gravestitched Fledgling_IWH",
+          "source_card_key": "Gravestitched Fledgling_IWH",
+          "name": "Gravestitched Fledgling",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}\nType: Creature — Zombie Drake\nPower/Toughness: 1/1\nFlying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Gravestitched Fledgling",
+              "role": "front",
+              "type_line": "Creature — Zombie Drake",
+              "mana_cost": "{U}",
+              "rules_text": "Flying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+              "power": "1",
+              "toughness": "1",
+              "original_text": "Mana cost: {U}\nType: Creature — Zombie Drake\nPower/Toughness: 1/1\nFlying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Gravestitched Fledgling",
+            "cardName": "Gravestitched Fledgling",
+            "manaCost": "{U}",
+            "typeLine": "Creature — Zombie Drake",
+            "rarityLine": "*IWH C*",
+            "rulesText": "Flying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "1",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "66",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 2/2 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Chun Lo",
+            "sdn": 6951,
+            "version": 20260330,
+            "key": "Gravestitched Fledgling_IWH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Gravestitched Fledgling_IWH",
+            "printKeys": [
+              "Gravestitched Fledgling_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "reveternalpauper",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Creature — Zombie Drake\nPower/Toughness: 1/1\nFlying, vigilance\nWhen this creature dies, you may exile it. If you do, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2.",
+          "original_printed_rules_text": "Flying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Gravestitched Fledgling",
+              "executable_text": "Mana cost: {U}\nType: Creature — Zombie Drake\nPower/Toughness: 1/1\nFlying, vigilance\nWhen this creature dies, you may exile it. If you do, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2.",
+              "original_printed_rules_text": "Flying, vigilance\nWhen this creature dies, you may exile it. If you do, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Havengul Prodigy_IWH",
+          "source_card_key": "Havengul Prodigy_IWH",
+          "name": "Havengul Prodigy",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 0/3\nWhen this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+          "source_faces": [
+            {
+              "name": "Havengul Prodigy",
+              "role": "front",
+              "type_line": "Creature — Human Wizard",
+              "mana_cost": "{1}{U}",
+              "rules_text": "When this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+              "power": "0",
+              "toughness": "3",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 0/3\nWhen this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control."
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Havengul Prodigy",
+            "cardName": "Havengul Prodigy",
+            "manaCost": "{1}{U}",
+            "typeLine": "Creature — Human Wizard",
+            "rarityLine": "*IWH R*",
+            "rulesText": "When this creature enters, stitch 2. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)*\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+            "flavorText": "",
+            "power": "0",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "67",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 2/2 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Livia Prima",
+            "sdn": 6963,
+            "version": 20260330,
+            "key": "Havengul Prodigy_IWH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Havengul Prodigy_IWH",
+            "printKeys": [
+              "Havengul Prodigy_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 0/3\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, stitch 2.\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+          "original_printed_rules_text": "When this creature enters, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+          "executable_faces": [
+            {
+              "name": "Havengul Prodigy",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 0/3\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 2/2 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, stitch 2.\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control.",
+              "original_printed_rules_text": "When this creature enters, stitch 2. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 2/2 blue Zombie creature token.)\nWhenever you cast an instant or sorcery spell, put a +1/+1 counter on target Zombie you control."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-063",
+      "keyword": "Stitch",
+      "original_reminder": "To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Fleshwrithe Apparatus_IWH",
+          "source_card_key": "Fleshwrithe Apparatus_IWH",
+          "name": "Fleshwrithe Apparatus",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}\nType: Artifact\nFlash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped. *(To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Fleshwrithe Apparatus",
+              "role": "front",
+              "type_line": "Artifact",
+              "mana_cost": "{1}",
+              "rules_text": "Flash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped. *(To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {1}\nType: Artifact\nFlash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped. *(To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Fleshwrithe Apparatus",
+            "cardName": "Fleshwrithe Apparatus",
+            "manaCost": "{1}",
+            "typeLine": "Artifact",
+            "rarityLine": "*IWH U*",
+            "rulesText": "Flash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped. *(To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "",
+            "cmc": 1,
+            "cardType": "Artifact",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "287",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 4/4 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Maros Manhardt)",
+            "sdn": 6924,
+            "version": 20260330,
+            "key": "Fleshwrithe Apparatus_IWH",
+            "colorIdentity": [],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Fleshwrithe Apparatus_IWH",
+            "printKeys": [
+              "Fleshwrithe Apparatus_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {1}\nType: Artifact\nFlash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 4/4 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. The token enters tapped.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped.",
+          "original_printed_rules_text": "Flash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped. (To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Fleshwrithe Apparatus",
+              "executable_text": "Mana cost: {1}\nType: Artifact\nFlash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 4/4 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. The token enters tapped.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped.",
+              "original_printed_rules_text": "Flash\n{3}, {T}, Sacrifice this artifact: It deals 3 damage to target creature or planeswalker.\n{5}, Exile this card from your graveyard: Stitch 4. The token enters tapped. (To stitch 4, you may exile a creature card and an instant or sorcery card from your graveyard to create a 4/4 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-064",
+      "keyword": "Stitch",
+      "original_reminder": "To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Grand Necrotect_IWH",
+          "source_card_key": "Grand Necrotect_IWH",
+          "name": "Grand Necrotect",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}\nType: Creature — Zombie Warlock\nPower/Toughness: 0/3\n{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery. *(To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Grand Necrotect",
+              "role": "front",
+              "type_line": "Creature — Zombie Warlock",
+              "mana_cost": "{U}",
+              "rules_text": "{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery. *(To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.)*",
+              "power": "0",
+              "toughness": "3",
+              "original_text": "Mana cost: {U}\nType: Creature — Zombie Warlock\nPower/Toughness: 0/3\n{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery. *(To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Grand Necrotect",
+            "cardName": "Grand Necrotect",
+            "manaCost": "{U}",
+            "typeLine": "Creature — Zombie Warlock",
+            "rarityLine": "*IWH U*",
+            "rulesText": "{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery. *(To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "0",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "64",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 8/8 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Tatiana Pavlova",
+            "sdn": 6947,
+            "version": 20260330,
+            "key": "Grand Necrotect_IWH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Grand Necrotect_IWH",
+            "printKeys": [
+              "Grand Necrotect_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Creature — Zombie Warlock\nPower/Toughness: 0/3\n{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 8/8 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. Activate only as a sorcery.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery.",
+          "original_printed_rules_text": "{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery. (To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Grand Necrotect",
+              "executable_text": "Mana cost: {U}\nType: Creature — Zombie Warlock\nPower/Toughness: 0/3\n{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 8/8 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery.",
+              "original_printed_rules_text": "{T}: Any number of target players each mill a card.\n{3}{U}{U}, {T}, Exile this creature: Stitch 8. Activate only as a sorcery. (To stitch 8, you may exile a creature card and an instant or sorcery card from your graveyard to create a 8/8 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-065",
+      "keyword": "Stitch",
+      "original_reminder": "You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Horrific Stitching_IWH",
+          "source_card_key": "Horrific Stitching_IWH",
+          "name": "Horrific Stitching",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nStitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+          "source_faces": [
+            {
+              "name": "Horrific Stitching",
+              "role": "front",
+              "type_line": "Sorcery",
+              "mana_cost": "{2}{B}{B}",
+              "rules_text": "Stitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nStitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards."
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Horrific Stitching",
+            "cardName": "Horrific Stitching",
+            "manaCost": "{2}{B}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*IWH R*",
+            "rulesText": "Stitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "121",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 3/3 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Kun Vic",
+            "sdn": 6975,
+            "version": 20260404,
+            "key": "Horrific Stitching_IWH",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Horrific Stitching_IWH",
+            "printKeys": [
+              "Horrific Stitching_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nPerform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 3/3 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stitch 3.\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+          "original_printed_rules_text": "Stitch 3. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+          "executable_faces": [
+            {
+              "name": "Horrific Stitching",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Sorcery\nPerform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 3/3 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stitch 3.\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards.",
+              "original_printed_rules_text": "Stitch 3. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)\nChoose up to one —\n• Each player sacrifices two creatures.\n• Each player discards two cards."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Master Skaabstitcher_IWH",
+          "source_card_key": "Master Skaabstitcher_IWH",
+          "name": "Master Skaabstitcher",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nWhen this creature enters, stitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”",
+          "source_faces": [
+            {
+              "name": "Master Skaabstitcher",
+              "role": "front",
+              "type_line": "Creature — Human Wizard",
+              "mana_cost": "{3}{U}{U}",
+              "rules_text": "When this creature enters, stitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”",
+              "power": "2",
+              "toughness": "4",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nWhen this creature enters, stitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Master Skaabstitcher",
+            "cardName": "Master Skaabstitcher",
+            "manaCost": "{3}{U}{U}",
+            "typeLine": "Creature — Human Wizard",
+            "rarityLine": "*IWH M*",
+            "rulesText": "When this creature enters, stitch 3. *(You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "mythic rare",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "76",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 3/3 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Anton Nazarenko",
+            "sdn": 7001,
+            "version": 20260330,
+            "key": "Master Skaabstitcher_IWH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "mythic rare"
+            ],
+            "firstPrint": "Master Skaabstitcher_IWH",
+            "printKeys": [
+              "Master Skaabstitcher_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 3/3 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nAs you perform the stitch action, tokens you create gain \"Whenever this creature deals combat damage to a player, copy an instant or sorcery card in exile from the stitched collection. You may cast the copy without paying its mana cost.\"",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, stitch 3.\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”",
+          "original_printed_rules_text": "When this creature enters, stitch 3. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”",
+          "executable_faces": [
+            {
+              "name": "Master Skaabstitcher",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 3/3 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].\nAs you perform the stitch action, tokens you create gain \"Whenever this creature deals combat damage to a player, copy an instant or sorcery card in exile from the stitched collection. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, stitch 3.\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”",
+              "original_printed_rules_text": "When this creature enters, stitch 3. (You may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)\nAs you stitch a token, it gains “Whenever this creature deals combat damage to a player, copy an instant or sorcery card stitched with it. You may cast the copy without paying its mana cost.”"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-066",
+      "keyword": "Stitch",
+      "original_reminder": "To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:It's Alive!_IWH",
+          "source_card_key": "It's Alive!_IWH",
+          "name": "It's Alive!",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "It's Alive!",
+              "role": "front",
+              "type_line": "Sorcery",
+              "mana_cost": "{3}{B}{B}",
+              "rules_text": "Return target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "It's Alive!",
+            "cardName": "It's Alive!",
+            "manaCost": "{3}{B}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*IWH U*",
+            "rulesText": "Return target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 5,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "125",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused */* Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Katerina Ladon",
+            "sdn": 6986,
+            "version": 20260330,
+            "key": "It's Alive!_IWH",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "It's Alive!_IWH",
+            "printKeys": [
+              "It's Alive!_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield. With X equal to that creature's power, do the following: [Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a X/X blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].].",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power.",
+          "original_printed_rules_text": "Return target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power. (To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "It's Alive!",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield. With X equal to that creature's power, do the following: [Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a X/X blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].].",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power.",
+              "original_printed_rules_text": "Return target creature card from your graveyard to the battlefield. Stitch X, where X is that creature's power. (To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Nephalia Heartsewer_IWH",
+          "source_card_key": "Nephalia Heartsewer_IWH",
+          "name": "Nephalia Heartsewer",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}{B}\nType: Creature — Human Warlock Scientist\nPower/Toughness: 1/3\n{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Nephalia Heartsewer",
+              "role": "front",
+              "type_line": "Creature — Human Warlock Scientist",
+              "mana_cost": "{U}{B}",
+              "rules_text": "{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+              "power": "1",
+              "toughness": "3",
+              "original_text": "Mana cost: {U}{B}\nType: Creature — Human Warlock Scientist\nPower/Toughness: 1/3\n{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Nephalia Heartsewer",
+            "cardName": "Nephalia Heartsewer",
+            "manaCost": "{U}{B}",
+            "typeLine": "Creature — Human Warlock Scientist",
+            "rarityLine": "*IWH R*",
+            "rulesText": "{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue/Black} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "267",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused */* Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "alexvnart",
+            "sdn": 7014,
+            "version": 20260330,
+            "key": "Nephalia Heartsewer_IWH",
+            "colorIdentity": [
+              "U",
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "rare",
+              "special"
+            ],
+            "firstPrint": "Nephalia Heartsewer_IWH",
+            "printKeys": [
+              "Nephalia Heartsewer_IWH",
+              "Nephalia Heartsewer_PRO_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ],
+            "pr": 0,
+            "pm": 26.030368763557483,
+            "psr": 0,
+            "psm": 50.314465408805034
+          },
+          "executable_text": "Mana cost: {U}{B}\nType: Creature — Human Warlock Scientist\nPower/Toughness: 1/3\n{T}: Draw a card, then discard a card.\n{X}, {T}: Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a X/X blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. The token enters tapped.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped.",
+          "original_printed_rules_text": "{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped. (To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Nephalia Heartsewer",
+              "executable_text": "Mana cost: {U}{B}\nType: Creature — Human Warlock Scientist\nPower/Toughness: 1/3\n{T}: Draw a card, then discard a card.\n{X}, {T}: Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a X/X blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. The token enters tapped.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped.",
+              "original_printed_rules_text": "{T}: Draw a card, then discard a card.\n{X}, {T}: Stitch X. The token enters tapped. (To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Plunder the Grafs_IWH",
+          "source_card_key": "Plunder the Grafs_IWH",
+          "name": "Plunder the Grafs",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {X}{U}{U}\nType: Sorcery\nAny number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Plunder the Grafs",
+              "role": "front",
+              "type_line": "Sorcery",
+              "mana_cost": "{X}{U}{U}",
+              "rules_text": "Any number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+              "power": "",
+              "toughness": "",
+              "original_text": "Mana cost: {X}{U}{U}\nType: Sorcery\nAny number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Plunder the Grafs",
+            "cardName": "Plunder the Grafs",
+            "manaCost": "{X}{U}{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*IWH U*",
+            "rulesText": "Any number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card. *(To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "83",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused */* Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Tom Zarka",
+            "sdn": 7034,
+            "version": 20260330,
+            "key": "Plunder the Grafs_IWH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Plunder the Grafs_IWH",
+            "printKeys": [
+              "Plunder the Grafs_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {X}{U}{U}\nType: Sorcery\nAny number of target players each mill twice X cards. Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a X/X blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. Then if you control three or more Zombies, draw a card.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Any number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card.",
+          "original_printed_rules_text": "Any number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card. (To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Plunder the Grafs",
+              "executable_text": "Mana cost: {X}{U}{U}\nType: Sorcery\nAny number of target players each mill twice X cards. Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a X/X blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. Then if you control three or more Zombies, draw a card.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Any number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card.",
+              "original_printed_rules_text": "Any number of target players each mill twice X cards. Stitch X. Then if you control three or more Zombies, draw a card. (To stitch X, you may exile a creature card and an instant or sorcery card from your graveyard to create an X/X blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-067",
+      "keyword": "Stitch",
+      "original_reminder": "To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Overfueled Abomination_IWH",
+          "source_card_key": "Overfueled Abomination_IWH",
+          "name": "Overfueled Abomination",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Zombie Mutant\nPower/Toughness: 3/2\nMenace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature. *(To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*",
+          "source_faces": [
+            {
+              "name": "Overfueled Abomination",
+              "role": "front",
+              "type_line": "Creature — Zombie Mutant",
+              "mana_cost": "{4}{B}",
+              "rules_text": "Menace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature. *(To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*",
+              "power": "3",
+              "toughness": "2",
+              "original_text": "Mana cost: {4}{B}\nType: Creature — Zombie Mutant\nPower/Toughness: 3/2\nMenace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature. *(To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*"
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Overfueled Abomination",
+            "cardName": "Overfueled Abomination",
+            "manaCost": "{4}{B}",
+            "typeLine": "Creature — Zombie Mutant",
+            "rarityLine": "*IWH C*",
+            "rulesText": "Menace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature. *(To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 5,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "129",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "tokenscripts": {
+              "r": [
+                [
+                  "Infused 3/3 Zombie",
+                  1
+                ]
+              ]
+            },
+            "artist": "Anatolii Leoshko",
+            "sdn": 7028,
+            "version": 20260330,
+            "key": "Overfueled Abomination_IWH",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Overfueled Abomination_IWH",
+            "printKeys": [
+              "Overfueled Abomination_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "reveternalpauper",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Zombie Mutant\nPower/Toughness: 3/2\nMenace\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 3/3 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. If you don't create a token this way, put two +1/+1 counters on this creature.",
+          "custom_keyword_identities": [
+            "stitch"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature.",
+          "original_printed_rules_text": "Menace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature. (To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)",
+          "executable_faces": [
+            {
+              "name": "Overfueled Abomination",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Zombie Mutant\nPower/Toughness: 3/2\nMenace\nWhen this creature enters, Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a 3/3 blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]]. If you don't create a token this way, put two +1/+1 counters on this creature.",
+              "custom_keyword_identities": [
+                "stitch"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature.",
+              "original_printed_rules_text": "Menace\nWhen this creature enters, stitch 3. If you don't create a token this way, put two +1/+1 counters on this creature. (To stitch 3, you may exile a creature card and an instant or sorcery card from your graveyard to create a 3/3 blue Zombie creature token.)"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "rev-stitch-linked-prices",
+      "source_inventory_id": "rev:rules:13:701.83.:Stitch",
+      "keyword": "Stitch",
+      "original_reminder": "",
+      "rule_reference": "701.83.",
+      "rule_text": {
+        "name": "701.83.",
+        "rule": "Stitch",
+        "subrules": [
+          {
+            "name": "701.83a",
+            "rule": "To stitch X, a player may exile a creature card from their graveyard and an instant or sorcery card from their graveyard. If they do, they create an X/X blue Zombie creature token.",
+            "custom": true
+          },
+          {
+            "name": "701.83b",
+            "rule": "The cards exiled with the stitch ability are \"stitched with\" the token. This designation has no rules meaning other than to act as a marker that other effects can identify.",
+            "custom": true
+          },
+          {
+            "name": "701.83c",
+            "rule": "Effects that occur when or as \"you stitch a token\" refer to creating a token with the stitch ability.",
+            "custom": true
+          },
+          {
+            "name": "701.83d",
+            "rule": "An effect may allow a player to pay an alternate cost \"to stitch\". This alternate cost can be paid in place of exiling a creature card from their graveyard and an instant or sorcery card from their graveyard.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Affliction of Undeath",
+          "Ambitious Necrologist",
+          "Cornered by the Dead",
+          "Distilled Essence",
+          "Fleshwrithe Apparatus",
+          "Grand Necrotect",
+          "Gravestitched Fledgling",
+          "Havengul Prodigy",
+          "Horrific Stitching",
+          "It's Alive!",
+          "Master Skaabstitcher",
+          "Nephalia Heartsewer",
+          "Overfueled Abomination",
+          "Plunder the Grafs",
+          "Stonegraf Awakener"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "support_status": "candidate_existing_operations",
+      "executable_definitions": [
+        {
+          "keyword": "Stitch {Number}",
+          "reminder": "Perform the stitch action with tokens created this way if any are created: [You may pay the cost \"Exile a creature card from your graveyard; Exile an instant or sorcery card from your graveyard\". If you do, do the following: [Remember the original cards exiled this way. Create a {Number}/{Number} blue Zombie creature token. Record the remembered cards in the stitched collection of the created tokens while those members remain in exile.]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "stitch",
+            "eventLabel": "stitch"
+          },
+          "collectionReferences": [
+            {
+              "participle": "stitched",
+              "label": "stitched"
+            }
+          ],
+          "operationPaymentAlternative": {
+            "defaultPhrase": "a creature card and an instant or sorcery card"
+          }
+        }
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Stonegraf Awakener_IWH",
+          "source_card_key": "Stonegraf Awakener_IWH",
+          "name": "Stonegraf Awakener",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}{B}\nType: Creature — Zombie Warlock\nPower/Toughness: 2/2\nMenace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card.",
+          "source_faces": [
+            {
+              "name": "Stonegraf Awakener",
+              "role": "front",
+              "type_line": "Creature — Zombie Warlock",
+              "mana_cost": "{U}{B}",
+              "rules_text": "Menace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card.",
+              "power": "2",
+              "toughness": "2",
+              "original_text": "Mana cost: {U}{B}\nType: Creature — Zombie Warlock\nPower/Toughness: 2/2\nMenace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card."
+            }
+          ],
+          "source_metadata": {
+            "fullName": "Stonegraf Awakener",
+            "cardName": "Stonegraf Awakener",
+            "manaCost": "{U}{B}",
+            "typeLine": "Creature — Zombie Warlock",
+            "rarityLine": "*IWH U*",
+            "rulesText": "Menace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card.",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue/Black} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IWH",
+            "cardID": "276",
+            "designer": "Matt",
+            "script": "",
+            "notes": [],
+            "artist": "Iwo Widuliński",
+            "sdn": 7080,
+            "version": 20260330,
+            "key": "Stonegraf Awakener_IWH",
+            "colorIdentity": [
+              "U",
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IWH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Stonegraf Awakener_IWH",
+            "printKeys": [
+              "Stonegraf Awakener_IWH"
+            ],
+            "formats": [
+              "revolution",
+              "brawl",
+              "reveternal",
+              "revplanechase",
+              "archaeologist"
+            ]
+          },
+          "executable_text": "Mana cost: {U}{B}\nType: Creature — Zombie Warlock\nPower/Toughness: 2/2\nMenace\nOther Zombies you control get +1/+1.\nYou may pay the cost \"exile a Zombie card from your graveyard\" rather than the cost of performing the stitch action.",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card.",
+          "original_printed_rules_text": "Menace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card.",
+          "executable_faces": [
+            {
+              "name": "Stonegraf Awakener",
+              "executable_text": "Mana cost: {U}{B}\nType: Creature — Zombie Warlock\nPower/Toughness: 2/2\nMenace\nOther Zombies you control get +1/+1.\nYou may pay the cost \"exile a Zombie card from your graveyard\" rather than the cost of performing the stitch action.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card.",
+              "original_printed_rules_text": "Menace\nOther Zombies you control get +1/+1.\nYou may exile a Zombie card from your graveyard to stitch rather than a creature card and an instant or sorcery card."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    }
+  ]
+}

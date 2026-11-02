@@ -594,6 +594,8 @@ pub(super) fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) 
         || copy.enters_tapped
         || copy.has_haste
         || copy.loses_soulbond
+        || copy.ability_loss_until.is_some()
+        || !copy.removed_ability_designations.is_empty()
         || copy.enters_attacking
         || copy.attack_target_mode.is_some()
         || copy.exile_at_end_of_combat
@@ -3576,7 +3578,7 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
         || grant.during_turns_cast_another_spell
-        || grant.while_player_controls.is_some()
+        || (grant.while_player_controls.is_some() || grant.control_duration.is_some())
         || grant.permanents_enter_tapped
         || grant.cast_pool_is_plural
         || grant.spell_cost_reduction.is_some()
@@ -6024,7 +6026,7 @@ pub(super) fn describe_for_players_simple_iterated_action(
     let subject = if matches!(for_players.filter, PlayerFilter::ControlsMost { .. }) {
         leader_subject = capitalize_first(&for_players.filter.description());
         leader_subject.as_str()
-    } else if matches!(for_players.filter, PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. }) {
+    } else if matches!(for_players.filter, PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. }) {
         leader_subject = format!(
             "Each {}",
             strip_leading_article(&for_players.filter.description())

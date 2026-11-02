@@ -82,6 +82,10 @@ mod static_line_readings;
 #[path = "lines_ability/optional_tap_power_cost.rs"]
 mod optional_tap_power_cost;
 
+pub(crate) fn parse_optional_tap_power_granted_policy(tokens:&[OwnedLexToken])->Result<Option<StaticAbility>,CardTextError>{
+    optional_tap_power_cost::read_granted_policy(tokens)
+}
+
 pub(crate) fn parse_optional_payment_modifier_program(tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardTextError> {
     optional_tap_power_cost::read(tokens)
 }
@@ -100,6 +104,7 @@ pub(crate) fn parse_descriptive_static_program(parse_tokens: &[OwnedLexToken]) -
                         crate::model::ast::SubjectVerbActionAst::KeywordActions(crate::model::ast::KeywordActionAst::PairUnpairedCreatures))]),
                     choices: Vec::new(), intervening_if: Some(PredicateAst::UnpairedCreaturesCanPair), presentation_label: None,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             }), effects_ast: None, reference_imports: Default::default(), trigger_spec: None,
         })));

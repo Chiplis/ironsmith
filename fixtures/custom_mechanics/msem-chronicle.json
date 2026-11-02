@@ -1,0 +1,810 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "complete_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "scope": "Chronicle formal702.275a, all19complete actual declaration cards; name-only Chronicler/Chronicles hits excluded from mechanic cohort"
+  },
+  "mechanics": [
+    {
+      "id": "msem-820",
+      "keyword": "Chronicle",
+      "original_reminder": "As this enters and after your draw step, add a lore counter. Stop after III.",
+      "executable_reminder": "This permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number.",
+      "source_cards": [
+        "Astral Capricine",
+        "Astral Cerberus",
+        "Astral Leech",
+        "Astral Leucrocota",
+        "Astral Man-o'-War",
+        "Blood-Cantor of Mogis",
+        "Disciple of Passage",
+        "Enigmazoa",
+        "Equinautilus",
+        "Gigascorpion",
+        "Nestraider",
+        "Nightpiercer Unicorn",
+        "Nylea's Tracker",
+        "Nyxborn Octopus",
+        "Oread of Rising Chaos",
+        "Purphoros's Gemback",
+        "Satyr Instigator",
+        "Servant of Athreos",
+        "Springstep Dryad"
+      ],
+      "rule_reference": "702.275.",
+      "rule_text": [
+        {
+          "name": "702.275a",
+          "rule": "Chronicle is a static ability found on chronicle cards. “Chronicle” means “As this permanent enters the battlefield, put a lore counter on it,” and “As your precombat main phase begins, put a lore counter on this permanent unless it has a number of lore counters greater than or equal to its final chapter number.” The latter is a turn-based action and does not use the stack.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Astral Capricine_TTR",
+          "source_card_key": "Astral Capricine_TTR",
+          "name": "Astral Capricine",
+          "original_text": "Mana cost: {W}{W}{W}\nType: Enchantment Creature — Goat\nPower/Toughness: 3/3\nFirst strike\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Put a +1/+1 counter on each of up to two other target creatures you control.\n[Lore III] Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Astral Capricine",
+              "original_text": "Mana cost: {W}{W}{W}\nType: Enchantment Creature — Goat\nPower/Toughness: 3/3\nFirst strike\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Put a +1/+1 counter on each of up to two other target creatures you control.\n[Lore III] Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens."
+            }
+          ],
+          "executable_text": "Mana cost: {W}{W}{W}\nType: Enchantment Creature — Goat\nPower/Toughness: 3/3\nFirst strike\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Put a +1/+1 counter on each of up to two other target creatures you control.\nIII — Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens.",
+          "executable_faces": [
+            {
+              "name": "Astral Capricine",
+              "executable_text": "Mana cost: {W}{W}{W}\nType: Enchantment Creature — Goat\nPower/Toughness: 3/3\nFirst strike\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Put a +1/+1 counter on each of up to two other target creatures you control.\nIII — Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nChronicle\nI, II — Put a +1/+1 counter on each of up to two other target creatures you control.\nIII — Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens.",
+              "original_printed_rules_text": "First strike\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Put a +1/+1 counter on each of up to two other target creatures you control.\nIII — Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike\nChronicle\nI, II — Put a +1/+1 counter on each of up to two other target creatures you control.\nIII — Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens.",
+          "original_printed_rules_text": "First strike\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Put a +1/+1 counter on each of up to two other target creatures you control.\nIII — Remove all lore counters from Astral Capricine. Create two 0/1 white Goat creature tokens.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Astral Cerberus_TTR",
+          "source_card_key": "Astral Cerberus_TTR",
+          "name": "Astral Cerberus",
+          "original_text": "Mana cost: {R}{R}{R}\nType: Enchantment Creature — Dog\nPower/Toughness: 3/3\nMenace\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Exile the top card of your library. You may play that card this turn.\n[Lore III] Remove all lore counters from \nAstral Cerberus. It deals 3 damage to up to one target creature.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Astral Cerberus",
+              "original_text": "Mana cost: {R}{R}{R}\nType: Enchantment Creature — Dog\nPower/Toughness: 3/3\nMenace\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Exile the top card of your library. You may play that card this turn.\n[Lore III] Remove all lore counters from \nAstral Cerberus. It deals 3 damage to up to one target creature."
+            }
+          ],
+          "executable_text": "Mana cost: {R}{R}{R}\nType: Enchantment Creature — Dog\nPower/Toughness: 3/3\nMenace\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Exile the top card of your library. You may play that card this turn.\nIII — Remove all lore counters from\nAstral Cerberus. It deals 3 damage to up to one target creature.",
+          "executable_faces": [
+            {
+              "name": "Astral Cerberus",
+              "executable_text": "Mana cost: {R}{R}{R}\nType: Enchantment Creature — Dog\nPower/Toughness: 3/3\nMenace\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Exile the top card of your library. You may play that card this turn.\nIII — Remove all lore counters from\nAstral Cerberus. It deals 3 damage to up to one target creature.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nChronicle\nI, II — Exile the top card of your library. You may play that card this turn.\nIII — Remove all lore counters from\nAstral Cerberus. It deals 3 damage to up to one target creature.",
+              "original_printed_rules_text": "Menace\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Exile the top card of your library. You may play that card this turn.\nIII — Remove all lore counters from \nAstral Cerberus. It deals 3 damage to up to one target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nChronicle\nI, II — Exile the top card of your library. You may play that card this turn.\nIII — Remove all lore counters from\nAstral Cerberus. It deals 3 damage to up to one target creature.",
+          "original_printed_rules_text": "Menace\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Exile the top card of your library. You may play that card this turn.\nIII — Remove all lore counters from \nAstral Cerberus. It deals 3 damage to up to one target creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Astral Leech_TTR",
+          "source_card_key": "Astral Leech_TTR",
+          "name": "Astral Leech",
+          "original_text": "Mana cost: {B}{B}{B}\nType: Enchantment Creature — Leech\nPower/Toughness: 3/3\nDeathtouch\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] You may sacrifice another creature. If you do, draw a card.\n[Lore III] Remove all lore counters from Astral Leech. Each opponent sacrifices a creature.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Astral Leech",
+              "original_text": "Mana cost: {B}{B}{B}\nType: Enchantment Creature — Leech\nPower/Toughness: 3/3\nDeathtouch\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] You may sacrifice another creature. If you do, draw a card.\n[Lore III] Remove all lore counters from Astral Leech. Each opponent sacrifices a creature."
+            }
+          ],
+          "executable_text": "Mana cost: {B}{B}{B}\nType: Enchantment Creature — Leech\nPower/Toughness: 3/3\nDeathtouch\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — You may sacrifice another creature. If you do, draw a card.\nIII — Remove all lore counters from Astral Leech. Each opponent sacrifices a creature.",
+          "executable_faces": [
+            {
+              "name": "Astral Leech",
+              "executable_text": "Mana cost: {B}{B}{B}\nType: Enchantment Creature — Leech\nPower/Toughness: 3/3\nDeathtouch\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — You may sacrifice another creature. If you do, draw a card.\nIII — Remove all lore counters from Astral Leech. Each opponent sacrifices a creature.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nChronicle\nI, II — You may sacrifice another creature. If you do, draw a card.\nIII — Remove all lore counters from Astral Leech. Each opponent sacrifices a creature.",
+              "original_printed_rules_text": "Deathtouch\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — You may sacrifice another creature. If you do, draw a card.\nIII — Remove all lore counters from Astral Leech. Each opponent sacrifices a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Deathtouch\nChronicle\nI, II — You may sacrifice another creature. If you do, draw a card.\nIII — Remove all lore counters from Astral Leech. Each opponent sacrifices a creature.",
+          "original_printed_rules_text": "Deathtouch\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — You may sacrifice another creature. If you do, draw a card.\nIII — Remove all lore counters from Astral Leech. Each opponent sacrifices a creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Astral Leucrocota_TTR",
+          "source_card_key": "Astral Leucrocota_TTR",
+          "name": "Astral Leucrocota",
+          "original_text": "Mana cost: {G}{G}{G}\nType: Enchantment Creature — Beast\nPower/Toughness: 4/4\nTrample\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Creatures you control gain vigilance until end of turn.\n[Lore III] Remove all lore counters from Astral Leucrocota. You gain 4 life.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Astral Leucrocota",
+              "original_text": "Mana cost: {G}{G}{G}\nType: Enchantment Creature — Beast\nPower/Toughness: 4/4\nTrample\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Creatures you control gain vigilance until end of turn.\n[Lore III] Remove all lore counters from Astral Leucrocota. You gain 4 life."
+            }
+          ],
+          "executable_text": "Mana cost: {G}{G}{G}\nType: Enchantment Creature — Beast\nPower/Toughness: 4/4\nTrample\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Creatures you control gain vigilance until end of turn.\nIII — Remove all lore counters from Astral Leucrocota. You gain 4 life.",
+          "executable_faces": [
+            {
+              "name": "Astral Leucrocota",
+              "executable_text": "Mana cost: {G}{G}{G}\nType: Enchantment Creature — Beast\nPower/Toughness: 4/4\nTrample\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Creatures you control gain vigilance until end of turn.\nIII — Remove all lore counters from Astral Leucrocota. You gain 4 life.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nChronicle\nI, II — Creatures you control gain vigilance until end of turn.\nIII — Remove all lore counters from Astral Leucrocota. You gain 4 life.",
+              "original_printed_rules_text": "Trample\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Creatures you control gain vigilance until end of turn.\nIII — Remove all lore counters from Astral Leucrocota. You gain 4 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nChronicle\nI, II — Creatures you control gain vigilance until end of turn.\nIII — Remove all lore counters from Astral Leucrocota. You gain 4 life.",
+          "original_printed_rules_text": "Trample\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Creatures you control gain vigilance until end of turn.\nIII — Remove all lore counters from Astral Leucrocota. You gain 4 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Astral Man-o'-War_TTR",
+          "source_card_key": "Astral Man-o'-War_TTR",
+          "name": "Astral Man-o'-War",
+          "original_text": "Mana cost: {U}{U}{U}\nType: Enchantment Creature — Jellyfish\nPower/Toughness: 2/4\nFlying\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Draw a card, then discard a card.\n[Lore III] Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Astral Man-o'-War",
+              "original_text": "Mana cost: {U}{U}{U}\nType: Enchantment Creature — Jellyfish\nPower/Toughness: 2/4\nFlying\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Draw a card, then discard a card.\n[Lore III] Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand."
+            }
+          ],
+          "executable_text": "Mana cost: {U}{U}{U}\nType: Enchantment Creature — Jellyfish\nPower/Toughness: 2/4\nFlying\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Draw a card, then discard a card.\nIII — Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand.",
+          "executable_faces": [
+            {
+              "name": "Astral Man-o'-War",
+              "executable_text": "Mana cost: {U}{U}{U}\nType: Enchantment Creature — Jellyfish\nPower/Toughness: 2/4\nFlying\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Draw a card, then discard a card.\nIII — Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nChronicle\nI, II — Draw a card, then discard a card.\nIII — Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand.",
+              "original_printed_rules_text": "Flying\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Draw a card, then discard a card.\nIII — Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nChronicle\nI, II — Draw a card, then discard a card.\nIII — Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand.",
+          "original_printed_rules_text": "Flying\nChronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Draw a card, then discard a card.\nIII — Remove all lore counters from Astral Man-o'-War. Return up to one target creature you don't control to its owner's hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Blood-Cantor of Mogis_TTR",
+          "source_card_key": "Blood-Cantor of Mogis_TTR",
+          "name": "Blood-Cantor of Mogis",
+          "original_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Minotaur Shaman\nPower/Toughness: 2/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Target creature you control gets +1/+0 until end of turn.\n[Lore III] Target creature you control gets +2/+0 until end of turn.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blood-Cantor of Mogis",
+              "original_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Minotaur Shaman\nPower/Toughness: 2/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Target creature you control gets +1/+0 until end of turn.\n[Lore III] Target creature you control gets +2/+0 until end of turn."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Minotaur Shaman\nPower/Toughness: 2/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Target creature you control gets +1/+0 until end of turn.\nIII — Target creature you control gets +2/+0 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Blood-Cantor of Mogis",
+              "executable_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Minotaur Shaman\nPower/Toughness: 2/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Target creature you control gets +1/+0 until end of turn.\nIII — Target creature you control gets +2/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Target creature you control gets +1/+0 until end of turn.\nIII — Target creature you control gets +2/+0 until end of turn.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Target creature you control gets +1/+0 until end of turn.\nIII — Target creature you control gets +2/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Target creature you control gets +1/+0 until end of turn.\nIII — Target creature you control gets +2/+0 until end of turn.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Target creature you control gets +1/+0 until end of turn.\nIII — Target creature you control gets +2/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Disciple of Passage_TTR",
+          "source_card_key": "Disciple of Passage_TTR",
+          "name": "Disciple of Passage",
+          "original_text": "Mana cost: {2}{W}\nType: Enchantment Creature — Centaur Cleric\nPower/Toughness: 1/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\n[Lore III] Target opponent skips their next combat phase.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Disciple of Passage",
+              "original_text": "Mana cost: {2}{W}\nType: Enchantment Creature — Centaur Cleric\nPower/Toughness: 1/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\n[Lore III] Target opponent skips their next combat phase."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}\nType: Enchantment Creature — Centaur Cleric\nPower/Toughness: 1/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\nIII — Target opponent skips their next combat phase.",
+          "executable_faces": [
+            {
+              "name": "Disciple of Passage",
+              "executable_text": "Mana cost: {2}{W}\nType: Enchantment Creature — Centaur Cleric\nPower/Toughness: 1/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\nIII — Target opponent skips their next combat phase.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\nIII — Target opponent skips their next combat phase.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\nIII — Target opponent skips their next combat phase."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\nIII — Target opponent skips their next combat phase.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Until your next turn, up to one target creature can't attack or block and its activated abilities can't be activated.\nIII — Target opponent skips their next combat phase.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Enigmazoa_TTR",
+          "source_card_key": "Enigmazoa_TTR",
+          "name": "Enigmazoa",
+          "original_text": "Mana cost: {2}{U}\nType: Enchantment Creature — Jellyfish Beast\nPower/Toughness: 1/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Scry 1.\n[Lore III] Target creature you control can't be blocked until end of turn.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Enigmazoa",
+              "original_text": "Mana cost: {2}{U}\nType: Enchantment Creature — Jellyfish Beast\nPower/Toughness: 1/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Scry 1.\n[Lore III] Target creature you control can't be blocked until end of turn."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{U}\nType: Enchantment Creature — Jellyfish Beast\nPower/Toughness: 1/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Scry 1.\nIII — Target creature you control can't be blocked until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Enigmazoa",
+              "executable_text": "Mana cost: {2}{U}\nType: Enchantment Creature — Jellyfish Beast\nPower/Toughness: 1/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Scry 1.\nIII — Target creature you control can't be blocked until end of turn.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Scry 1.\nIII — Target creature you control can't be blocked until end of turn.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Scry 1.\nIII — Target creature you control can't be blocked until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Scry 1.\nIII — Target creature you control can't be blocked until end of turn.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Scry 1.\nIII — Target creature you control can't be blocked until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Equinautilus_TTR",
+          "source_card_key": "Equinautilus_TTR",
+          "name": "Equinautilus",
+          "original_text": "Mana cost: {1}{U}\nType: Enchantment Creature — Horse Nautilus\nPower/Toughness: 1/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Until your next turn, target creature an opponent controls gets -1/-0.\n[Lore III] Scry 2, then draw a card.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Equinautilus",
+              "original_text": "Mana cost: {1}{U}\nType: Enchantment Creature — Horse Nautilus\nPower/Toughness: 1/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Until your next turn, target creature an opponent controls gets -1/-0.\n[Lore III] Scry 2, then draw a card."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Enchantment Creature — Horse Nautilus\nPower/Toughness: 1/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Until your next turn, target creature an opponent controls gets -1/-0.\nIII — Scry 2, then draw a card.",
+          "executable_faces": [
+            {
+              "name": "Equinautilus",
+              "executable_text": "Mana cost: {1}{U}\nType: Enchantment Creature — Horse Nautilus\nPower/Toughness: 1/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Until your next turn, target creature an opponent controls gets -1/-0.\nIII — Scry 2, then draw a card.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Until your next turn, target creature an opponent controls gets -1/-0.\nIII — Scry 2, then draw a card.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Until your next turn, target creature an opponent controls gets -1/-0.\nIII — Scry 2, then draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Until your next turn, target creature an opponent controls gets -1/-0.\nIII — Scry 2, then draw a card.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Until your next turn, target creature an opponent controls gets -1/-0.\nIII — Scry 2, then draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Gigascorpion_TTR",
+          "source_card_key": "Gigascorpion_TTR",
+          "name": "Gigascorpion",
+          "original_text": "Mana cost: {4}{G}\nType: Enchantment Creature — Scorpion\nPower/Toughness: 5/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Put a +1/+1 counter on up to one other target creature you control.\n[Lore III] Target creature must be blocked this turn if able.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gigascorpion",
+              "original_text": "Mana cost: {4}{G}\nType: Enchantment Creature — Scorpion\nPower/Toughness: 5/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Put a +1/+1 counter on up to one other target creature you control.\n[Lore III] Target creature must be blocked this turn if able."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{G}\nType: Enchantment Creature — Scorpion\nPower/Toughness: 5/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Put a +1/+1 counter on up to one other target creature you control.\nIII — Target creature must be blocked this turn if able.",
+          "executable_faces": [
+            {
+              "name": "Gigascorpion",
+              "executable_text": "Mana cost: {4}{G}\nType: Enchantment Creature — Scorpion\nPower/Toughness: 5/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Put a +1/+1 counter on up to one other target creature you control.\nIII — Target creature must be blocked this turn if able.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Put a +1/+1 counter on up to one other target creature you control.\nIII — Target creature must be blocked this turn if able.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Put a +1/+1 counter on up to one other target creature you control.\nIII — Target creature must be blocked this turn if able."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Put a +1/+1 counter on up to one other target creature you control.\nIII — Target creature must be blocked this turn if able.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Put a +1/+1 counter on up to one other target creature you control.\nIII — Target creature must be blocked this turn if able.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Nestraider_TTR",
+          "source_card_key": "Nestraider_TTR",
+          "name": "Nestraider",
+          "original_text": "Mana cost: {1}{B}\nType: Enchantment Creature — Horror\nPower/Toughness: 3/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Each player loses 1 life.\n[Lore III] Create a 1/1 black Harpy creature token with flying.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nestraider",
+              "original_text": "Mana cost: {1}{B}\nType: Enchantment Creature — Horror\nPower/Toughness: 3/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Each player loses 1 life.\n[Lore III] Create a 1/1 black Harpy creature token with flying."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Enchantment Creature — Horror\nPower/Toughness: 3/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Each player loses 1 life.\nIII — Create a 1/1 black Harpy creature token with flying.",
+          "executable_faces": [
+            {
+              "name": "Nestraider",
+              "executable_text": "Mana cost: {1}{B}\nType: Enchantment Creature — Horror\nPower/Toughness: 3/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Each player loses 1 life.\nIII — Create a 1/1 black Harpy creature token with flying.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Each player loses 1 life.\nIII — Create a 1/1 black Harpy creature token with flying.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Each player loses 1 life.\nIII — Create a 1/1 black Harpy creature token with flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Each player loses 1 life.\nIII — Create a 1/1 black Harpy creature token with flying.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Each player loses 1 life.\nIII — Create a 1/1 black Harpy creature token with flying.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Nightpiercer Unicorn_TTR",
+          "source_card_key": "Nightpiercer Unicorn_TTR",
+          "name": "Nightpiercer Unicorn",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] You gain 1 life.\n[Lore III] Target creature you control gains first strike until end of turn.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nightpiercer Unicorn",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] You gain 1 life.\n[Lore III] Target creature you control gains first strike until end of turn."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — You gain 1 life.\nIII — Target creature you control gains first strike until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Nightpiercer Unicorn",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Unicorn\nPower/Toughness: 2/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — You gain 1 life.\nIII — Target creature you control gains first strike until end of turn.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — You gain 1 life.\nIII — Target creature you control gains first strike until end of turn.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — You gain 1 life.\nIII — Target creature you control gains first strike until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — You gain 1 life.\nIII — Target creature you control gains first strike until end of turn.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — You gain 1 life.\nIII — Target creature you control gains first strike until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Nylea's Tracker_TTR",
+          "source_card_key": "Nylea's Tracker_TTR",
+          "name": "Nylea's Tracker",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Enchantment Creature — Wolf\nPower/Toughness: 3/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Target creature you control can't be blocked by creatures with power 2 or less this turn.\n[Lore III] Draw a card.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nylea's Tracker",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Enchantment Creature — Wolf\nPower/Toughness: 3/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Target creature you control can't be blocked by creatures with power 2 or less this turn.\n[Lore III] Draw a card."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Enchantment Creature — Wolf\nPower/Toughness: 3/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Target creature you control can't be blocked by creatures with power 2 or less this turn.\nIII — Draw a card.",
+          "executable_faces": [
+            {
+              "name": "Nylea's Tracker",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Enchantment Creature — Wolf\nPower/Toughness: 3/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Target creature you control can't be blocked by creatures with power 2 or less this turn.\nIII — Draw a card.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Target creature you control can't be blocked by creatures with power 2 or less this turn.\nIII — Draw a card.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Target creature you control can't be blocked by creatures with power 2 or less this turn.\nIII — Draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Target creature you control can't be blocked by creatures with power 2 or less this turn.\nIII — Draw a card.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Target creature you control can't be blocked by creatures with power 2 or less this turn.\nIII — Draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Nyxborn Octopus_TTR",
+          "source_card_key": "Nyxborn Octopus_TTR",
+          "name": "Nyxborn Octopus",
+          "original_text": "Mana cost: {3}{U}\nType: Enchantment Creature — Octopus\nPower/Toughness: 3/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Tap target creature you don't control.\n[Lore III] Tap target creature you don't control. It doesn't untap during its controller's next untap step.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nyxborn Octopus",
+              "original_text": "Mana cost: {3}{U}\nType: Enchantment Creature — Octopus\nPower/Toughness: 3/3\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Tap target creature you don't control.\n[Lore III] Tap target creature you don't control. It doesn't untap during its controller's next untap step."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{U}\nType: Enchantment Creature — Octopus\nPower/Toughness: 3/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Tap target creature you don't control.\nIII — Tap target creature you don't control. It doesn't untap during its controller's next untap step.",
+          "executable_faces": [
+            {
+              "name": "Nyxborn Octopus",
+              "executable_text": "Mana cost: {3}{U}\nType: Enchantment Creature — Octopus\nPower/Toughness: 3/3\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Tap target creature you don't control.\nIII — Tap target creature you don't control. It doesn't untap during its controller's next untap step.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Tap target creature you don't control.\nIII — Tap target creature you don't control. It doesn't untap during its controller's next untap step.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Tap target creature you don't control.\nIII — Tap target creature you don't control. It doesn't untap during its controller's next untap step."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Tap target creature you don't control.\nIII — Tap target creature you don't control. It doesn't untap during its controller's next untap step.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Tap target creature you don't control.\nIII — Tap target creature you don't control. It doesn't untap during its controller's next untap step.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Oread of Rising Chaos_TTR",
+          "source_card_key": "Oread of Rising Chaos_TTR",
+          "name": "Oread of Rising Chaos",
+          "original_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Nymph\nPower/Toughness: 3/1\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] You may discard a card. If you do, draw a card.\n[Lore III] Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Oread of Rising Chaos",
+              "original_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Nymph\nPower/Toughness: 3/1\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] You may discard a card. If you do, draw a card.\n[Lore III] Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Nymph\nPower/Toughness: 3/1\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — You may discard a card. If you do, draw a card.\nIII — Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+          "executable_faces": [
+            {
+              "name": "Oread of Rising Chaos",
+              "executable_text": "Mana cost: {2}{R}\nType: Enchantment Creature — Nymph\nPower/Toughness: 3/1\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — You may discard a card. If you do, draw a card.\nIII — Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — You may discard a card. If you do, draw a card.\nIII — Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — You may discard a card. If you do, draw a card.\nIII — Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — You may discard a card. If you do, draw a card.\nIII — Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — You may discard a card. If you do, draw a card.\nIII — Create a token that's a copy of another target creature you control, except it has haste. Sacrifice it at the beginning of the next end step.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Purphoros's Gemback_TTR",
+          "source_card_key": "Purphoros's Gemback_TTR",
+          "name": "Purphoros's Gemback",
+          "original_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Ox\nPower/Toughness: 2/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Purphoros's Gemback deals 1 damage to target player or planeswalker.\n[Lore III] Create a Treasure token. *(It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)*",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Purphoros's Gemback",
+              "original_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Ox\nPower/Toughness: 2/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Purphoros's Gemback deals 1 damage to target player or planeswalker.\n[Lore III] Create a Treasure token. *(It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Ox\nPower/Toughness: 2/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Purphoros's Gemback deals 1 damage to target player or planeswalker.\nIII — Create a Treasure token.",
+          "executable_faces": [
+            {
+              "name": "Purphoros's Gemback",
+              "executable_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Ox\nPower/Toughness: 2/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Purphoros's Gemback deals 1 damage to target player or planeswalker.\nIII — Create a Treasure token.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Purphoros's Gemback deals 1 damage to target player or planeswalker.\nIII — Create a Treasure token.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Purphoros's Gemback deals 1 damage to target player or planeswalker.\nIII — Create a Treasure token. (It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Purphoros's Gemback deals 1 damage to target player or planeswalker.\nIII — Create a Treasure token.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Purphoros's Gemback deals 1 damage to target player or planeswalker.\nIII — Create a Treasure token. (It's an artifact with “{T}, Sacrifice this artifact: Add one mana of any color.”)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Satyr Instigator_TTR",
+          "source_card_key": "Satyr Instigator_TTR",
+          "name": "Satyr Instigator",
+          "original_text": "Mana cost: {3}{R}\nType: Enchantment Creature — Satyr Shaman\nPower/Toughness: 3/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Create a 1/1 red Satyr creature token with “This creature can't block.”\n[Lore III] Creatures you control get +1/+0 until end of turn.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Satyr Instigator",
+              "original_text": "Mana cost: {3}{R}\nType: Enchantment Creature — Satyr Shaman\nPower/Toughness: 3/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Create a 1/1 red Satyr creature token with “This creature can't block.”\n[Lore III] Creatures you control get +1/+0 until end of turn."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{R}\nType: Enchantment Creature — Satyr Shaman\nPower/Toughness: 3/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Create a 1/1 red Satyr creature token with “This creature can't block.”\nIII — Creatures you control get +1/+0 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Satyr Instigator",
+              "executable_text": "Mana cost: {3}{R}\nType: Enchantment Creature — Satyr Shaman\nPower/Toughness: 3/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Create a 1/1 red Satyr creature token with “This creature can't block.”\nIII — Creatures you control get +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Create a 1/1 red Satyr creature token with “This creature can't block.”\nIII — Creatures you control get +1/+0 until end of turn.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Create a 1/1 red Satyr creature token with “This creature can't block.”\nIII — Creatures you control get +1/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Create a 1/1 red Satyr creature token with “This creature can't block.”\nIII — Creatures you control get +1/+0 until end of turn.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Create a 1/1 red Satyr creature token with “This creature can't block.”\nIII — Creatures you control get +1/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Servant of Athreos_TTR",
+          "source_card_key": "Servant of Athreos_TTR",
+          "name": "Servant of Athreos",
+          "original_text": "Mana cost: {4}{B}\nType: Enchantment Creature — Skeleton\nPower/Toughness: 4/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Mill two cards.\n[Lore III] Return target creature card from your graveyard to your hand.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Servant of Athreos",
+              "original_text": "Mana cost: {4}{B}\nType: Enchantment Creature — Skeleton\nPower/Toughness: 4/4\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Mill two cards.\n[Lore III] Return target creature card from your graveyard to your hand."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{B}\nType: Enchantment Creature — Skeleton\nPower/Toughness: 4/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Mill two cards.\nIII — Return target creature card from your graveyard to your hand.",
+          "executable_faces": [
+            {
+              "name": "Servant of Athreos",
+              "executable_text": "Mana cost: {4}{B}\nType: Enchantment Creature — Skeleton\nPower/Toughness: 4/4\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Mill two cards.\nIII — Return target creature card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Mill two cards.\nIII — Return target creature card from your graveyard to your hand.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Mill two cards.\nIII — Return target creature card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Mill two cards.\nIII — Return target creature card from your graveyard to your hand.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Mill two cards.\nIII — Return target creature card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Springstep Dryad_TTR",
+          "source_card_key": "Springstep Dryad_TTR",
+          "name": "Springstep Dryad",
+          "original_text": "Mana cost: {2}{G}\nType: Enchantment Creature — Nymph Dryad\nPower/Toughness: 3/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Another target creature you control gets +1/+1 until end of turn.\n[Lore III] Search your library for a basic land card, put it onto the battlefield, then shuffle.",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Springstep Dryad",
+              "original_text": "Mana cost: {2}{G}\nType: Enchantment Creature — Nymph Dryad\nPower/Toughness: 3/2\nChronicle *(As this enters and after your draw step, add a lore counter. Stop after III.)*\n[Lore I-II] Another target creature you control gets +1/+1 until end of turn.\n[Lore III] Search your library for a basic land card, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Enchantment Creature — Nymph Dryad\nPower/Toughness: 3/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Another target creature you control gets +1/+1 until end of turn.\nIII — Search your library for a basic land card, put it onto the battlefield, then shuffle.",
+          "executable_faces": [
+            {
+              "name": "Springstep Dryad",
+              "executable_text": "Mana cost: {2}{G}\nType: Enchantment Creature — Nymph Dryad\nPower/Toughness: 3/2\nThis permanent enters with a lore counter on it. As your precombat main phase begins, put a lore counter on this permanent as a turn-based action, unless it has at least as many lore counters as its final chapter number\nI, II — Another target creature you control gets +1/+1 until end of turn.\nIII — Search your library for a basic land card, put it onto the battlefield, then shuffle.",
+              "custom_keyword_identities": [
+                "chronicle"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Chronicle\nI, II — Another target creature you control gets +1/+1 until end of turn.\nIII — Search your library for a basic land card, put it onto the battlefield, then shuffle.",
+              "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Another target creature you control gets +1/+1 until end of turn.\nIII — Search your library for a basic land card, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [
+            "chronicle"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Chronicle\nI, II — Another target creature you control gets +1/+1 until end of turn.\nIII — Search your library for a basic land card, put it onto the battlefield, then shuffle.",
+          "original_printed_rules_text": "Chronicle (As this enters and after your draw step, add a lore counter. Stop after III.)\nI, II — Another target creature you control gets +1/+1 until end of turn.\nIII — Search your library for a basic land card, put it onto the battlefield, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "implemented_candidate_unverified",
+      "semantic_equivalence": "Formal702.275a: ordinary enters-with lore replacement plus declared native no-stack precombat lore action stopping at current final chapter. Chronicle identity remains custom keyword identity; no Saga type or Saga sacrifice introduced."
+    }
+  ]
+}

@@ -982,7 +982,7 @@ pub(crate) fn protection_from_subject_with_origin(
             let controller = reference.controller;
             let context = game.filter_context_for(controller, Some(reference_id));
             let colors = source.protection_colors(game, view);
-            game.battlefield.iter().copied().any(|id| {
+            crate::object_query::candidate_ids_for_filter(game, filter).into_iter().any(|id| {
                 !game.is_phased_out(id)
                     && protection_current_characteristics(game, id, view).is_some_and(|chars| !chars.colors.intersection(colors).is_empty())
                     && game.object(id).is_some_and(|object| filter.matches_with_view(object, &context, game, view))
@@ -2165,6 +2165,7 @@ mod tests {
     fn add_static_ability(obj: &mut Object, ability: StaticAbility) {
         obj.abilities_mut().push(Ability {
             kind: AbilityKind::Static(ability),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     }

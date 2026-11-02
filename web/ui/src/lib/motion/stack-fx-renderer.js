@@ -1,3 +1,4 @@
+import { prepareShaderProgram } from "../shader-program.js";
 // One WebGL2 surface for stack light. Particle records are uploaded only on
 // emission; the vertex shader evaluates drag, gravity, spin and lifetime.
 const CAPACITY = 900;
@@ -102,23 +103,6 @@ void main() {
   float alpha = tint.a*coverage;
   result = vec4(rgb*alpha,alpha);
 }`;
-function program(gl, vs, fs) {
-  const shaders = [];
-  const result = gl.createProgram();
-  try {
-    for (const [type, source] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
-      const shader = gl.createShader(type);
-      shaders.push(shader);
-      gl.shaderSource(shader, source); gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
-      gl.attachShader(result, shader);
-    }
-    gl.linkProgram(result);
-    if (!gl.getProgramParameter(result, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(result));
-    return result;
-  } catch (error) { gl.deleteProgram(result); throw error; }
-  finally { for (const shader of shaders) gl.deleteShader(shader); }
-}
 const colors = new Map();
 function color(rgb, alpha) {
   if (!colors.has(rgb)) colors.set(rgb, rgb.split(',').map(value => Number(value.trim()) / 255));
@@ -130,11 +114,16 @@ export class StackFxRenderer {
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false });
     if (!gl) throw new Error('WebGL2 unavailable');
     this.gl = gl;
-    this.particleProgram = program(gl, vertex, fragment);
-    this.shapeProgram = program(gl, shapeVertex, shapeFragment);
-    this.particleResolution = gl.getUniformLocation(this.particleProgram, 'resolution');
-    this.particleTime = gl.getUniformLocation(this.particleProgram, 'time');
-    this.shapeResolution = gl.getUniformLocation(this.shapeProgram, 'resolution');
+    this.programs = [prepareShaderProgram(gl, vertex, fragment), prepareShaderProgram(gl, shapeVertex, shapeFragment)];
+    [this.particleProgram, this.shapeProgram] = this.programs.map(job => job.program);
+    this.ready = Promise.all(this.programs.map(job => job.ready)).then(results => {
+      if (this.disposed || results.some(result => !result)) return false;
+      this.particleResolution = gl.getUniformLocation(this.particleProgram, 'resolution');
+      this.particleTime = gl.getUniformLocation(this.particleProgram, 'time');
+      this.shapeResolution = gl.getUniformLocation(this.shapeProgram, 'resolution');
+      this.initialized = true;
+      return true;
+    });
     this.particleVao = gl.createVertexArray(); gl.bindVertexArray(this.particleVao);
     this.corners = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.corners);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
@@ -195,6 +184,7 @@ export class StackFxRenderer {
   glow(x,y,radius,rgb,alpha=1) { this.box(x,y,radius,radius,rgb,alpha,[1,0,0,0],radius); }
   rect(x,y,w,h,rgb,alpha,outline=false) { this.box(x+w/2,y+h/2,w/2+2,h/2+2,rgb,alpha,outline?[3,w/2,h/2,10]:[0,0,0,0]); }
   render(now) {
+    if (!this.initialized || this.disposed) return;
     const {gl}=this; gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
     // Flush emissions together immediately before drawing. Per-spark uploads
     // repeatedly touch a buffer the preceding frame may still be reading.
@@ -227,6 +217,7 @@ export class StackFxRenderer {
     const {gl}=this;
     for (const buffer of [this.corners,this.particles,this.shapeBuffer]) gl.deleteBuffer(buffer);
     for (const vao of [this.particleVao,this.shapeVao]) gl.deleteVertexArray(vao);
-    gl.deleteProgram(this.particleProgram); gl.deleteProgram(this.shapeProgram);
+    this.disposed = true;
+    this.programs.forEach(job => job.dispose());
   }
 }

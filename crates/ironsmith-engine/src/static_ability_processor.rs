@@ -192,7 +192,7 @@ fn append_late_static_effects(
                 (grant_may_emit_effects || abilities_grant_continuous_levels(&source.abilities))
                     && game
                         .object(source.object_id)
-                        .is_some_and(|object| object.zone == Zone::Battlefield)
+                        .is_some_and(|object| object.zone != Zone::Battlefield || !game.is_phased_out(source.object_id))
             })
             .map(|source| source.object_id)
             .collect::<Vec<_>>();
@@ -667,9 +667,10 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
     effects
 }
 
-/// Granted static abilities may themselves generate effects in the ability
-/// layer or later layers. Read their recipients after grants/removals without
-/// replacing the earlier text-box abilities used for layers before six.
+/// Granted static abilities can emit later-layer effects. A granted source-only
+/// subtype definition also emits its ordinary layer-four effect; it is never
+/// promoted to an intrinsic characteristic-defining ability. Read the actual
+/// recipient zone without replacing its printed/copied text-box abilities.
 /// Whether a granted ability could itself emit a later-layer continuous effect.
 ///
 /// Flag-only keywords and nonstatic abilities cannot, so an ordinary ability
@@ -679,6 +680,10 @@ fn registered_grant_may_emit_late_effects(effect: &ContinuousEffect) -> bool {
     use crate::continuous::Modification;
     match &effect.modification {
         Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
+        // Borrowed complete static abilities can emit an anthem or another
+        // continuous rule just like a directly granted static ability. Their
+        // concrete donor payloads are discovered in the ordinary late pass.
+        Modification::CopyStaticAbilityVariants { .. } => true,
         Modification::SetAbilities(abilities) => abilities.iter().any(crate::linked_exile::is_class_linked_exile_wrapper),
         Modification::AddAbilityGeneric(ability) => match &ability.kind {
             AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
@@ -704,6 +709,13 @@ fn abilities_grant_continuous_levels(text_abilities: &[crate::ability::Ability])
     })
 }
 
+// Explicitly authored recipient-zone domains also scope the granted rule.
+// A merely specific object ID or unconstrained card filter supplies no zone.
+fn grant_filter_has_zone_scope(filter: &crate::target::ObjectFilter) -> bool {
+    filter.zone.is_some() || (!filter.any_of.is_empty()
+        && filter.any_of.iter().all(grant_filter_has_zone_scope))
+}
+
 fn generate_granted_late_static_effects(
     game: &GameState,
     object_id: ObjectId,
@@ -721,14 +733,35 @@ fn generate_granted_late_static_effects(
             continue;
         };
         let Some(origin) = chars.abilities.origin(ability_index).cloned() else { continue; };
-        if !ability.functions_in(&Zone::Battlefield) || (0..text_abilities.len())
+        if !ability.functions_in(&object.zone) || (0..text_abilities.len())
             .any(|index| text_abilities.origin(index) == Some(&origin)) { continue; }
+        if granted.characteristic_defining_subtypes().is_some() && !origin.is_rules_text() {
+            let ordinary = if chars.card_types.iter().any(|kind| matches!(kind,
+                crate::types::CardType::Instant | crate::types::CardType::Sorcery))
+            { Zone::Stack } else { Zone::Battlefield };
+            let default_zones = crate::ability::Ability::static_ability(granted.clone()).functional_zones;
+            let explicit_ability_zones = ability.functional_zones != default_zones;
+            let scoped_grant = registered.iter().any(|candidate| {
+                let same_origin = match &origin {
+                    crate::continuous::AbilityOrigin::Effect { effect, .. }
+                    | crate::continuous::AbilityOrigin::Borrowed { effect, .. } =>
+                        *effect == crate::continuous::AbilityEffectOrigin::from(candidate),
+                    _ => false,
+                };
+                same_origin && matches!(&candidate.applies_to,
+                    EffectTarget::Filter(filter) if grant_filter_has_zone_scope(filter))
+            });
+            if object.zone != ordinary && !explicit_ability_zones && !scoped_grant { continue; }
+        }
         let originating_source = chars
             .abilities
             .origin(ability_index)
             .and_then(crate::continuous::AbilityOrigin::effect_source);
         for (branch, mut effect) in granted.generate_effects(object_id, chars.controller, game).into_iter().enumerate() {
-            if effect.modification.layer() < Layer::Ability {
+            if effect.modification.layer() < Layer::Ability
+                && !(granted.characteristic_defining_subtypes().is_some()
+                    && matches!(&effect.modification, Modification::AddSubtypes(_)))
+            {
                 continue;
             }
             if let Some(source) = originating_source
@@ -917,7 +950,8 @@ pub fn try_generate_continuous_effects_from_static_abilities(
         let grant_may_emit = available.iter().any(registered_grant_may_emit_late_effects);
         let recipients = sources.iter().filter(|source|
             (grant_may_emit || abilities_grant_continuous_levels(&source.abilities))
-                && game.object(source.object_id).is_some_and(|object| object.zone == Zone::Battlefield))
+                && game.object(source.object_id).is_some_and(|object|
+                    object.zone != Zone::Battlefield || !game.is_phased_out(source.object_id)))
             .map(|source| source.object_id).collect::<Vec<_>>();
         let chars = crate::continuous::calculate_characteristics_batch_with_effects(
             &recipients, game.objects_map(), &before_pt, &game.battlefield,
@@ -926,7 +960,8 @@ pub fn try_generate_continuous_effects_from_static_abilities(
         for source in &mut sources {
             let Some(chars) = chars.get(&source.object_id) else { continue; };
             source.group_roots.extend(static_group_roots(&chars.abilities));
-            for ability in chars.abilities.iter().filter(|ability| ability.functions_in(&Zone::Battlefield)) {
+            for ability in chars.abilities.iter().filter(|ability| game.object(source.object_id)
+                .is_some_and(|object| ability.functions_in(&object.zone))) {
                 if let AbilityKind::Static(ability) = &ability.kind {
                     mana_pt |= ability.validate_mana_scalar_ranges(game, source.object_id, chars.controller)?;
                 }

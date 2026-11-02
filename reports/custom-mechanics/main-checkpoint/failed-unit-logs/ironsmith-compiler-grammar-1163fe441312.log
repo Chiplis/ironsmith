@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'activation_and_restrictions::activation_costs::durationless_filtered_unpreventability_admission_tests::timed_or_imperative_damage_programs_remain_resolving' panicked at crates/ironsmith-compiler-grammar/src/activation_and_restrictions/activation_costs.rs:2237:49:
+called `Result::unwrap()` on an `Err` value: ParseError("unsupported subject target phrase (clause: 'damage dealt by red creatures')")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test activation_and_restrictions::activation_costs::durationless_filtered_unpreventability_admission_tests::timed_or_imperative_damage_programs_remain_resolving ... FAILED
+
+failures:
+
+failures:
+    activation_and_restrictions::activation_costs::durationless_filtered_unpreventability_admission_tests::timed_or_imperative_damage_programs_remain_resolving
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.05s
+

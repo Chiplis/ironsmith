@@ -143,6 +143,19 @@ fn assemble_triggered_line(
     triggered: RecognizedTriggeredLine,
 ) -> Result<RewriteSemanticItem, CardTextError> {
     let mut info = triggered.info;
+    // All recognition entry points converge here. Presentation labels may
+    // already be stripped from the trigger body, but the retained authored
+    // token stream still owns its complete ability group. Retain only the
+    // grammar-proven designation fact; do not replace parsed event/effect
+    // facts or infer ownership from rendered trigger text.
+    let authored = crate::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+        &info.source_tokens,
+    );
+    for designation in authored.ability_designations {
+        if !info.semantic_facts.ability_designations.contains(&designation) {
+            info.semantic_facts.ability_designations.push(designation);
+        }
+    }
     let mut compiler_ability = *info
         .semantic_facts
         .triggered_ability
@@ -316,4 +329,32 @@ fn assemble_saga_chapter(
         text: saga.text,
         effects_ast: saga.effects_ast,
     }))
+}
+
+#[cfg(test)]
+mod triggered_group_source_ownership {
+    use super::*;
+    #[test]
+    fn assembly_retains_authored_group_after_an_alternate_recognition_entry() {
+        for (text, expected) in [
+            ("Keyword ability \"echoing\" — Whenever this creature attacks, you gain 1 life.", Some("echoing")),
+            ("Keyword ability \"resilience\" — When this permanent dies, exile it, then create a token that's a copy of it, except it's 1/1 and it doesn't have custom keyword \"resilience\"", Some("resilience")),
+            ("Whenever this creature attacks, you gain 1 life.", None),
+        ] {
+            let card=ironsmith_core::card::CardBuilder::new(crate::ids::CardId::from_raw(1),"Assembly witness")
+                .card_types(vec![crate::CardType::Creature]);
+            let document=crate::preprocess::preprocess_document(card,text).unwrap();
+            let recognized=crate::document_parser::recognize_document(&document,false).unwrap();
+            let mut trigger=recognized.lines.into_iter().find_map(|line|match line {
+                RecognizedLine::Triggered(trigger)=>Some(trigger),_=>None,
+            }).expect("complete recognized trigger");
+            // Simulate an alternate entry that retained its authored source
+            // and parsed program, but not dispatch's designation annotation.
+            trigger.info.semantic_facts.ability_designations.clear();
+            let parsed=assemble_triggered_line(trigger).unwrap();
+            let RewriteSemanticItem::ParsedLine(parsed)=parsed else {panic!("complete semantic line")};
+            assert_eq!(parsed.semantic_facts.ability_designations,expected.into_iter().map(str::to_string).collect::<Vec<_>>());
+            assert_eq!(parsed.chunks.len(),1,"the entire trigger program remains one owned group");
+        }
+    }
 }

@@ -11,6 +11,15 @@ mod r#conditional_cast_prohibition;
 #[path = "../conditional_skip_upkeep_reachability.rs"]
 mod r#conditional_skip_upkeep_reachability;
 
+#[path = "../custom_composable_attack_group.rs"]
+mod r#custom_composable_attack_group;
+
+#[path = "../custom_mixed_quoted_token_rules.rs"]
+mod r#custom_mixed_quoted_token_rules;
+
+#[path = "../custom_selected_sacrifice_prices.rs"]
+mod r#custom_selected_sacrifice_prices;
+
 #[path = "../damage_reference_quantities.rs"]
 mod r#damage_reference_quantities;
 

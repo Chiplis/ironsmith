@@ -747,6 +747,7 @@ fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    if let Some(marker) = parse_custom_keyword_identity_grant_component(ability_tokens)? { return Ok(Some(marker)); }
     // `gains "Crash Land — Whenever this Vehicle deals damage, ..."`: the
     // quoted trigger's ability-word label is its presentation label, kept on
     // the granted triggered ability exactly as on a printed line.
@@ -1095,7 +1096,8 @@ fn granted_ability_conjunction_is_keyword_list(abilities: &[GrantedAbilityAst]) 
             GrantedAbilityAst::StaticAbility(ability) => {
                 matches!(
                     ability.as_ref(),
-                    StaticAbilityAst::AttachmentRestriction { .. }
+                    StaticAbilityAst::CopySourceSelectionReplacement { .. }
+                | StaticAbilityAst::AttachmentRestriction { .. }
                 )
             }
             _ => false,
@@ -1111,6 +1113,41 @@ fn split_quoted_granted_ability_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[O
         .skip(open + 1)
         .find_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index))?;
     let tail_start = close + 1;
+    // A quoted identity operand can be followed by an Oxford-comma list of
+    // independent quoted programs. The first quote is not necessarily the
+    // first ability: retain its introducing words with that item, then parse
+    // every sibling separately rather than treating the entire suffix as one
+    // compact token rule.
+    if tokens.get(tail_start).is_some_and(|token| token.is_comma()) {
+        let items = split_top_level_granted_ability_items(tokens);
+        let has_quoted_program = items.iter().any(|item| {
+            let item = strip_leading_token_words_any(item, &["and", "and/or"]);
+            item.first().is_some_and(|token| token.kind == TokenKind::Quote)
+                && item.last().is_some_and(|token| token.kind == TokenKind::Quote)
+                && item.iter().filter(|token| token.kind == TokenKind::Quote).count() == 2
+        });
+        if items.len() > 1 && has_quoted_program {
+            return Some(items.into_iter().map(|item|
+                strip_leading_token_words_any(item, &["and", "and/or"])).collect());
+        }
+}
+
+    // A quoted identity is the operand of `custom keyword`, rather than a
+    // quoted executable ability. Keep the complete identity together when
+    // decomposing a following independently quoted program.
+    if open == 2 && tokens[0].is_word("custom") && tokens[1].is_word("keyword") {
+        let tail = trim_lexed_commas(&tokens[tail_start..]);
+        if tail.first().is_some_and(|token| token.is_word("and")) {
+            let program = trim_lexed_commas(&tail[1..]);
+            if program.first().is_some_and(|token| token.kind == TokenKind::Quote)
+                && program.last().is_some_and(|token| token.kind == TokenKind::Quote)
+                && program.iter().filter(|token| token.kind == TokenKind::Quote).count() == 2
+            {
+                return Some(vec![&tokens[..=close], program]);
+            }
+        }
+        return None;
+    }
     if tokens.get(tail_start).and_then(OwnedLexToken::as_word) == Some("and") {
         let prefix = trim_lexed_commas(tokens.get(..open)?);
         let quoted = tokens.get(open..=close)?;
@@ -1260,6 +1297,25 @@ fn parse_granted_abilities_for_gain_clause_unchecked(
     clause_words: &[&str],
     allow_choice: bool,
 ) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
+    if allow_choice && ability_tokens.iter().any(|token|token.kind==TokenKind::Quote) {
+        let mut quoted=false;let mut start=0;let mut segments=Vec::new();
+        for (index,token) in ability_tokens.iter().enumerate() {
+            if token.kind==TokenKind::Quote {quoted=!quoted;}
+            if !quoted && token.is_word("or") {segments.push(&ability_tokens[start..index]);start=index+1;}
+        }
+        if !segments.is_empty() {
+            segments.push(&ability_tokens[start..]);
+            let mut choices=Vec::new();
+            for segment in segments {
+                let segment=crate::util::trim_edge_punctuation_tokens(segment);
+                if segment.is_empty() {return Err(CardTextError::ParseError("a granted ability choice has an empty alternative".into()));}
+                let (mut abilities,_)=parse_granted_abilities_for_gain_clause_unchecked(segment,clause_words,false)?;
+                if abilities.is_empty() {return Err(CardTextError::ParseError("a granted ability choice has an unread alternative".into()));}
+                choices.push(if abilities.len()==1 {abilities.remove(0)}else{GrantedAbilityAst::Bundle(abilities)});
+            }
+            return Ok((choices,true));
+        }
+    }
     if let Some(segments) = split_quoted_granted_ability_list(ability_tokens) {
         let mut abilities = Vec::new();
         for segment in segments {
@@ -1534,6 +1590,33 @@ pub fn parse_granted_abilities_for_token_definition(
     definition: &TokenDefinitionSpec,
     ability_tokens: &[OwnedLexToken],
 ) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
+    // The chapter reader installs this exact quoted chapter in a complete
+    // blueprint. Other cached rule spans may come from a reminder probe or
+    // a later `They have` sentence; those still need the established grant
+    // owner and cannot be suppressed by this chapter-specific proof.
+    let is_chapter=crate::util::parse_saga_chapter_prefix_tokens(ability_tokens).is_some();
+    let installed = match definition {
+        TokenDefinitionSpec::Creature(shape) => Some(&shape.rules.token_rules),
+        TokenDefinitionSpec::Artifact(shape) => Some(&shape.token_rules),
+        TokenDefinitionSpec::Enchantment(shape) => Some(&shape.token_rules),
+        _ => None,
+    };
+    if let (Some(first), Some(last), Some(rules)) = (ability_tokens.first(), ability_tokens.last(), installed)
+        && is_chapter
+        && first.span.start < last.span.end
+        && rules.generic_rule_spans.iter().any(|(start, end)| *start <= first.span.start && *end >= last.span.end)
+    {
+        return Ok(Vec::new());
+    }
+    // The compact definition slice can omit quoted suffixes; in that route
+    // this grant owns the same ordinary chapter instead of the blueprint.
+    if is_chapter
+        && let Some(ability) = crate::keyword_static::parse_triggered_granted_ability(ability_tokens)?
+    {
+        return Ok(vec![GrantedAbilityAst::ParsedObjectAbility {
+            ability: Box::new(ability), display: crate::lexer::render_token_slice(ability_tokens),
+        }]);
+    }
     let (name, _, _) = token_definition_source_identity(definition)?;
     // A quoted token ability may carry its normal rules-text label (for
     // example, `Landfall — Whenever ...`). The label is presentation, while
@@ -1959,6 +2042,7 @@ pub fn parse_simple_gain_ability_clause_lexed(
     if let Some(effects) = parse_mana_cost_keyword_grant(tokens)? {
         return Ok(single_or_sequence_effect(effects));
     }
+    if let Some(effect)=parse_conditional_keyword_snapshot_grant(tokens)? {return Ok(Some(effect));}
     if let Some(effect) = parse_activated_ability_snapshot_grant(tokens)? { return Ok(Some(effect)); }
     parse_simple_ability_modifier_clause_lexed(tokens, false)
 }
@@ -3258,6 +3342,7 @@ pub(crate) fn parse_mana_cost_keyword_grant(
 fn parse_gain_ability_sentence_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects)=parse_current_identity_grant_condition_suffix(tokens)?{return Ok(Some(effects));}
     if let Some(effects) = parse_mana_cost_keyword_grant(tokens)? {
         return Ok(Some(effects));
     }
@@ -3550,4 +3635,191 @@ mod keyword_prohibition_list_tests {
             assert_eq!(mode, ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain);
         }
     }
+}
+
+
+/// A custom identity marker is independent of the executable abilities
+/// granted alongside it. The quoted name is an opaque, bounded operand.
+pub(crate) fn parse_custom_keyword_identity_grant_component(tokens: &[OwnedLexToken]) -> Result<Option<Vec<GrantedAbilityAst>>,CardTextError> {
+    let mut end=tokens.len();
+    while end>0 && matches!(tokens[end-1].kind,TokenKind::Comma|TokenKind::Period|TokenKind::Semicolon) {end-=1;}
+    let tokens=&tokens[..end];
+    let Some(((),name))=crate::grammar::primitives::parse_prefix(tokens,crate::grammar::primitives::phrase(&["custom","keyword"])) else{return Ok(None);};
+    if name.len()<3 || name.first().is_none_or(|token|token.kind!=TokenKind::Quote)||name.last().is_none_or(|token|token.kind!=TokenKind::Quote) {
+        return Err(CardTextError::ParseError("custom keyword grant requires one complete quoted name".into()));
+    }
+    let words=&name[1..name.len()-1];
+    if words.is_empty() || words.iter().any(|token|token.kind!=TokenKind::Word) {
+        return Err(CardTextError::ParseError("custom keyword grant name cannot contain another ability or suffix".into()));
+    }
+    let name=crate::lexer::render_token_slice(words).trim().to_string();
+    if name.len()>64 || !name.chars().all(|character|character.is_ascii_alphabetic()||matches!(character,' '|'-'|'\'')) {
+        return Err(CardTextError::ParseError("invalid custom keyword identity name".into()));
+    }
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(
+        crate::model::CompilerStaticAbilityCore::custom_keyword_identity(name),
+    )))]))
+}
+
+/// A present-state condition on a resolving grant remains a condition, not
+/// a latched duration: losing and regaining the property can hide/restore the
+/// grant while its separately expressed exact-object lifetime still holds.
+fn parse_current_identity_grant_condition_suffix(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
+    let mut quotes=Vec::new();let mut split=None;
+    for (index,token) in tokens.iter().enumerate(){
+        if matches!(token.kind,TokenKind::Quote|TokenKind::Apostrophe){if quotes.last()==Some(&token.kind){quotes.pop();}else{quotes.push(token.kind);}continue;}
+        if quotes.is_empty()&&token.is_word("only")&&tokens.get(index+1).is_some_and(|next|next.is_word("while")){split=Some(index);}
+    }
+    let Some(split)=split else{return Ok(None);};
+    if !tokens[..split].iter().any(|token|token.is_any_word(&["gain","gains","have","has"])) {return Ok(None);}
+    let condition=&tokens[split+2..];
+    let Some(has)=condition.iter().position(|token|token.is_word("has"))else{return Err(CardTextError::ParseError("current grant condition requires an object and a property".into()));};
+    let subject=crate::lexer::parser_token_word_refs(&condition[..has]);
+    let reference=match subject.as_slice(){
+        ["the","exiled","card"]=>crate::tag::CompilerReferenceTag::PriorExiledCard,
+        ["the","iterated","card"|"object"]=>crate::tag::CompilerReferenceTag::CurrentIteratedObject,
+        _=>return Err(CardTextError::ParseError("unsupported current grant condition object reference".into())),
+    };
+    let property=&condition[has+1..];
+    let Some(((),name))=crate::grammar::primitives::parse_prefix(property,crate::grammar::primitives::phrase(&["custom","keyword"]))else{return Err(CardTextError::ParseError("current grant condition requires a structured keyword identity".into()));};
+    let mut end=name.len();while end>0&&matches!(name[end-1].kind,TokenKind::Period|TokenKind::Comma|TokenKind::Semicolon){end-=1;}let name=&name[..end];
+    if name.len()<3||!matches!(name[0].kind,TokenKind::Quote|TokenKind::Apostrophe)||name.last().is_none_or(|token|token.kind!=name[0].kind)||name[1..name.len()-1].iter().any(|token|token.kind!=TokenKind::Word){return Err(CardTextError::ParseError("current grant condition needs one complete quoted keyword name".into()));}
+    let name=crate::lexer::render_token_slice(&name[1..name.len()-1]).trim().to_string();
+    if name.is_empty()||name.len()>64||!name.chars().all(|character|character.is_ascii_alphabetic()||matches!(character,' '|'-'|'\'')){return Err(CardTextError::ParseError("invalid current grant keyword identity".into()));}
+    let Some(mut effects)=parse_gain_ability_sentence_inner(&tokens[..split])?else{return Err(CardTextError::ParseError("current property condition requires a complete grant".into()));};
+    let mut filter=ObjectFilter::default();filter.match_current_state=true;filter.ability_markers.push(format!("custom keyword:{name}"));
+    let predicate=PredicateAst::TaggedMatches(reference.bind(),filter);
+    for effect in &mut effects{
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Grants(action),..})=effect else{return Err(CardTextError::ParseError("current property condition requires a direct ability grant".into()));};
+        let slot=match action{
+            GrantActionAst::GrantAbilitiesToTarget{condition,..}|GrantActionAst::GrantAbilitiesAll{condition,..}=>condition,
+            _=>return Err(CardTextError::ParseError("unsupported current property grant family".into())),
+        };
+        *slot=Some(match slot.take(){Some(existing)=>PredicateAst::And(Box::new(existing),Box::new(predicate.clone())),None=>predicate.clone()});
+    }
+    crate::word_claims::claim_tokens(&tokens[split..]);Ok(Some(effects))
+}
+
+#[cfg(test)]
+mod current_identity_grant_condition_tests {
+    use super::*;
+    #[test]
+    fn current_identity_guard_is_structural_and_separate_from_duration(){
+        let tokens=crate::lexer::lex_line("That creature gains flying until end of turn only while the exiled card has custom keyword \"Witness\".",0).unwrap();
+        let effects=parse_gain_ability_sentence_inner(&tokens).unwrap().unwrap();
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst{action:SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget{duration,condition:Some(PredicateAst::TaggedMatches(tag,filter)),..}),..})=&effects[0]else{panic!("conditional grant")};
+        assert_eq!(*duration,Until::EndOfTurn);assert_eq!(tag.key,crate::tag::CompilerReferenceTag::PriorExiledCard.key());assert!(filter.match_current_state);assert_eq!(filter.ability_markers,vec!["custom keyword:Witness"]);
+    }
+    #[test]
+    fn current_identity_guard_rejects_unowned_or_partial_property_text(){
+        for text in ["That creature gains flying only while the exiled card has custom keyword Witness.","That creature gains flying only while the exiled card has custom keyword \"Witness\" then draw a card."]{
+            assert!(parse_gain_ability_sentence_inner(&crate::lexer::lex_line(text,0).unwrap()).is_err(),"{text}");
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod quoted_chapter_owner_tests {
+    use super::*;
+    fn blueprint(rules: crate::model::token_definition::TokenRulesSurfaces) -> TokenDefinitionSpec {
+        TokenDefinitionSpec::Enchantment(crate::model::token_definition::EnchantmentTokenShape {
+            name: "Saga".into(), text_roles: None, subtypes: vec![crate::types::Subtype::Saga],
+            legendary: false, colors: Default::default(), token_rules: rules,
+        })
+    }
+    #[test]
+    fn uncached_chapter_prefix_precedes_label_stripping_and_retains_its_full_program() {
+        let tokens=crate::lexer::lex_line("IV — Draw a card. You gain 2 life.",0).unwrap();
+        let grants=parse_granted_abilities_for_token_definition(&blueprint(Default::default()),&tokens).unwrap();
+        let [GrantedAbilityAst::ParsedObjectAbility { ability, .. }]=grants.as_slice()else{panic!("one chapter owner: {grants:?}")};
+        assert!(matches!(ability.trigger_spec.as_deref(),Some(TriggerSpec::SagaChapter(chapters))if chapters==&[4]));
+        assert_eq!(ability.effects_ast.as_ref().unwrap().len(),2,"neither ordinary instruction may be lost");
+    }
+    #[test]
+    fn already_owned_exact_quote_spans_do_not_install_the_chapters_twice() {
+        let text="Create a colorless Saga enchantment token with \"I — Draw a card.\" and \"III — You gain 2 life.\".";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        let rules=crate::grammar::token_definitions::parse_token_rules_surfaces_for_named_token(&tokens,None);
+        assert!(rules.unread_rules.is_empty(),"chapters must have executable owners: {rules:?}");
+        assert_eq!(rules.parsed_abilities.len(),2);
+        assert!(matches!(rules.parsed_abilities[0].trigger_spec.as_deref(),Some(TriggerSpec::SagaChapter(chapters))if chapters==&[1]));
+        assert!(matches!(rules.parsed_abilities[1].trigger_spec.as_deref(),Some(TriggerSpec::SagaChapter(chapters))if chapters==&[3]));
+        let definition=blueprint(rules);
+        let quotes=tokens.iter().enumerate().filter_map(|(index,t)| (t.kind==TokenKind::Quote).then_some(index)).collect::<Vec<_>>();
+        for pair in quotes.chunks_exact(2){assert!(parse_granted_abilities_for_token_definition(&definition,&tokens[pair[0]+1..pair[1]]).unwrap().is_empty(),"the blueprint owns this exact quote");}
+        let independent=crate::lexer::lex_line("III — Draw two cards.",0).unwrap();
+        assert_eq!(parse_granted_abilities_for_token_definition(&definition,&independent).unwrap().len(),1,"a different source span is independently authored, not text-deduplicated");
+    }
+    #[test]
+    fn a_chapter_with_unknown_body_cannot_be_downgraded_to_a_label_or_empty_grant() {
+        let tokens=crate::lexer::lex_line("III — Unsupported chapter operation.",0).unwrap();
+        assert!(parse_granted_abilities_for_token_definition(&blueprint(Default::default()),&tokens).is_err());
+    }
+}
+
+#[cfg(test)]
+mod mixed_identity_quoted_token_sibling_tests {
+    use super::*;
+
+    #[test]
+    fn quoted_identity_oxford_comma_retains_each_independent_rule() {
+        let tokens = crate::lexer::lex_line(
+            "custom keyword \"witness\", and \"Whenever this creature attacks, you gain 1 life.\" and “This creature can't block.”", 0,
+        ).unwrap();
+        let segments = split_quoted_granted_ability_list(&tokens).unwrap();
+        assert_eq!(segments.len(), 3);
+        assert!(segments[0].first().unwrap().is_word("custom"));
+        assert!(segments[1].first().unwrap().kind == TokenKind::Quote);
+        assert!(segments[2].first().unwrap().kind == TokenKind::Quote);
+        let words = crate::lexer::parser_token_word_refs(&tokens);
+        let (abilities, choice) = parse_granted_abilities_for_gain_clause(&tokens, &words, false).unwrap();
+        assert!(!choice);
+        assert_eq!(abilities.len(), 3, "identity, trigger and restriction each retain an executable owner");
+    }
+}
+
+/// A trailing historical condition transfers the actual keyword payload,
+/// including every independently parameterized protection ability.
+pub(super) fn snapshot_keyword_ids(tokens:&[OwnedLexToken])->Option<Vec<StaticAbilityId>> {
+    if tokens.iter().any(|token|token.kind==TokenKind::Quote){return None;}
+    let words=crate::lexer::token_word_refs(tokens);
+    let mut ids=Vec::new();let mut offset=0;
+    while offset<words.len(){
+        if words[offset]=="and" {
+            if ids.is_empty() || offset+1==words.len() || words.get(offset+1)==Some(&"and") {return None;}
+            offset+=1;continue;
+        }
+        let (id,used)=if words[offset]=="protection"{(StaticAbilityId::Protection,1)}else{
+            let (crate::util::FilterKeywordConstraint::Static(id),used)=crate::util::parse_filter_keyword_constraint_words(&words[offset..])? else{return None;};(id,used)
+        };
+        if !id.is_keyword(){return None;}if !ids.contains(&id){ids.push(id);}offset+=used;
+    }
+    (!ids.is_empty()).then_some(ids)
+}
+fn parse_conditional_keyword_snapshot_grant(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
+    let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+    let mut quoted=false;
+    let outside:Vec<_>=tokens.iter().enumerate().filter_map(|(index,token)|{
+        if token.kind==TokenKind::Quote {quoted=!quoted;return None;}
+        (!quoted).then_some(index)
+    }).collect();
+    let Some(gain)=outside.iter().copied().find(|index|tokens[*index].is_any_word(&["gain","gains"]))else{return Ok(None);};
+    let Some(until)=outside.iter().copied().find(|index|tokens[*index].is_word("until"))else{return Ok(None);};
+    let Some(condition)=outside.iter().copied().find(|index|tokens[*index].is_word("if"))else{return Ok(None);};
+    let Some(had)=outside.iter().copied().find(|index|tokens[*index].is_word("had"))else{return Ok(None);};
+    if gain==0||until<=gain+1||condition!=until+4||had<=condition+1
+        || !tokens[until..condition].iter().zip(["until","end","of","turn"]).all(|(token,word)|token.is_word(word)){return Ok(None);}
+    let Some(keywords)=snapshot_keyword_ids(&tokens[gain+1..until])else{return Ok(None);};
+    // One historical condition establishes one family. A conjunctive
+    // multi-family condition needs an all-families predicate, not independent
+    // copies of whichever families happen to be present. Repeated same-true
+    // clauses extend independent family transfers only after this admission.
+    if keywords.len()!=1 {return Ok(None);}
+    if snapshot_keyword_ids(&tokens[had+1..]).as_ref()!=Some(&keywords){return Ok(None);}
+    let target=parse_target_phrase(&tokens[..gain])?;let source=parse_target_phrase(&tokens[condition+1..had])?;
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor,PlayerAst::You,
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom{target,source,keywords,duration:Until::EndOfTurn,last_known:true}))))
 }

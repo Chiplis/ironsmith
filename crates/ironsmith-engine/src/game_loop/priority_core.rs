@@ -311,7 +311,7 @@ pub(super) fn priority_actor_for_action(
 ) -> Result<Option<PlayerId>, GameLoopError> {
     if matches!(action, LegalAction::PassPriority) { return Ok(game.turn.priority_player); }
     for player in game.priority_team_players() {
-        if let LegalAction::SpecialAction(action @ crate::special_actions::SpecialAction::Foretell { card_id }) = action
+        if let LegalAction::SpecialAction(action @ (crate::special_actions::SpecialAction::Foretell { card_id } | crate::special_actions::SpecialAction::PrepareExile { card_id, .. })) = action
             && game.is_hidden_card_placeholder(*card_id)
         {
             match crate::special_actions::can_perform_check(action, game, player) {

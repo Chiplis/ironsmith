@@ -74,9 +74,19 @@ fn frozen_bodies_compile_strictly_with_a_resolution_cast_choice() {
             "{name}"
         );
         for definition in definitions(name) {
-            let debug = format!("{definition:?}");
-            assert!(debug.contains("ChooseObjectsEffect"), "{name}: {debug}");
-            assert!(debug.contains("CastTaggedEffect"), "{name}: {debug}");
+            fn inspect(effect:&ironsmith::Effect, found:&mut (usize,usize)) {
+                found.0+=usize::from(effect.downcast_ref::<ironsmith::effects::ChooseObjectsEffect>().is_some());
+                found.1+=usize::from(effect.downcast_ref::<ironsmith::effects::CastTaggedEffect>().is_some());
+                effect.visit_child_effects(&mut |child|inspect(child,found));
+            }
+            let mut found=(0,0);
+            if let Some(program)=&definition.spell_effect {for effect in program.all_effects(){inspect(effect,&mut found);}}
+            for ability in &definition.abilities {
+                let program=match &ability.kind {AbilityKind::Triggered(ability)=>Some(&ability.effects),AbilityKind::Activated(ability)=>Some(&ability.effects),_=>None};
+                if let Some(program)=program {for effect in program.all_effects(){inspect(effect,&mut found);}}
+            }
+            assert!(found.0>0,"{name}: an actual resolving collection choice is retained");
+            assert!(found.1>0,"{name}: the selected cards have actual cast instructions");
         }
     }
 }
@@ -233,5 +243,59 @@ fn izzet_chemister_casts_only_its_linked_exiles_for_free() {
         resolve_stack_entry_with(&mut game, &mut TakeEverything).unwrap();
         assert_eq!(game.player(A).unwrap().hand.len(), hand_before + 1);
         assert_eq!(game.player(A).unwrap().mana_pool, mana_before);
+    }
+}
+
+/// The original complete body must offer zero or several cards, rather than
+/// capture the collection and silently cast only its first member.
+#[test]
+fn hellcarver_chooses_none_or_several_original_exiles_and_casts_each_selected_spell() {
+    for definition in definitions("Hellcarver Demon") {
+        for take_two in [false,true] {
+            let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            game.turn.active_player=A;game.turn.priority_player=Some(A);
+            game.turn.phase=ironsmith::game_state::Phase::FirstMain;game.turn.step=None;
+            let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+            let body=definition.abilities.iter().find_map(|ability|match &ability.kind {
+                AbilityKind::Triggered(trigger)=>Some(trigger.effects.clone()),_=>None,
+            }).unwrap();
+            let filler=ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(),"Sacrifice witness")
+                .card_types(vec![ironsmith::CardType::Creature]).power_toughness(ironsmith::PowerToughness::fixed(1,2)).build();
+            let permanent=game.create_object_from_definition(&filler,A,Zone::Battlefield);let permanent=game.object(permanent).unwrap().stable_id;
+            let hand=game.create_object_from_definition(&filler,A,Zone::Hand);let hand=game.object(hand).unwrap().stable_id;
+            let mut original=Vec::new();let mut spell_names=std::collections::HashSet::new();
+            for i in 0..6 {
+                let name=format!("Original exile member {i}");
+                let card=if i==5 {ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(),&name).card_types(vec![ironsmith::CardType::Land]).build()}
+                    else {spell_names.insert(name.clone());ironsmith::CardDefinitionBuilder::new(ironsmith::CardId::new(),&name)
+                        .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::ManaSymbol::Generic(5)]))
+                        .card_types(vec![ironsmith::CardType::Sorcery]).with_spell_effect(vec![ironsmith::Effect::gain_life(i+2)]).build()};
+                let id=game.create_object_from_definition(&card,A,Zone::Library);original.push(game.object(id).unwrap().stable_id);
+            }
+            let unrelated=game.create_object_from_definition(&filler,A,Zone::Exile);
+            let mut dm=SelectOriginalExiles {take_two,offered:Default::default()};
+            resolve_ability(&mut game,source,body,vec![],&mut dm);
+            assert_eq!(dm.offered,spell_names,"only the five original nonland exiles are offered, not an unrelated exile");
+            assert_eq!(game.stack.len(),if take_two{2}else{0},"the original optional any-number choice controls the number of actual casts");
+            let cast_names:std::collections::HashSet<_>=game.stack.iter().map(|entry|game.object(entry.object_id).unwrap().name.to_string()).collect();
+            let expected=if take_two{["Original exile member 0".to_string(),"Original exile member 1".to_string()].into_iter().collect()}else{Default::default()};
+            assert_eq!(cast_names,expected);assert_eq!(game.player(A).unwrap().mana_pool.total(),0);
+            assert_eq!(game.object(unrelated).unwrap().zone,Zone::Exile);
+            for (index,stable) in original.into_iter().enumerate(){let id=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.object(id).unwrap().zone,if take_two&&index<2{Zone::Stack}else{Zone::Exile});}
+            for stable in [permanent,hand]{let id=game.find_object_by_stable_id(stable).unwrap();assert_eq!(game.object(id).unwrap().zone,Zone::Graveyard,"the preceding sacrifice/discard instructions execute once");}
+            while !game.stack.is_empty(){resolve_stack_entry_with(&mut game,&mut SelectFirstDecisionMaker).unwrap();}
+            assert_eq!(game.player(A).unwrap().life,if take_two{25}else{20},"both selected original spells actually resolve, without paying their printed costs");
+        }
+    }
+}
+struct SelectOriginalExiles {take_two:bool,offered:std::collections::HashSet<String>}
+impl DecisionMaker for SelectOriginalExiles {
+    fn decide_boolean(&mut self,_:&GameState,_:&BooleanContext)->bool{true}
+    fn decide_objects(&mut self,game:&GameState,ctx:&SelectObjectsContext)->Vec<ObjectId>{
+        if !ctx.candidates.is_empty()&&ctx.candidates.iter().all(|candidate|game.object(candidate.id).is_some_and(|object|object.zone==Zone::Exile)) {
+            self.offered.extend(ctx.candidates.iter().map(|candidate|game.object(candidate.id).unwrap().name.to_string()));
+            return ctx.candidates.iter().filter(|candidate|self.take_two&&matches!(game.object(candidate.id).unwrap().name.as_str(),"Original exile member 0"|"Original exile member 1")).map(|candidate|candidate.id).collect();
+        }
+        SelectFirstDecisionMaker.decide_objects(game,ctx)
     }
 }

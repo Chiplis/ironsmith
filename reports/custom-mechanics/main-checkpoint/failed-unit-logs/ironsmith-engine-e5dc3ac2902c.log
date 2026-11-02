@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'effects::cards::create_cards_entry::tests::suspended_as_enters_choice_rolls_back_all_real_cards_and_entry_choices' panicked at crates/ironsmith-engine/src/effects/cards/create_cards_entry.rs:288:9:
+assertion `left == right` failed
+  left: Some(2)
+ right: Some(0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::cards::create_cards_entry::tests::suspended_as_enters_choice_rolls_back_all_real_cards_and_entry_choices ... FAILED
+
+failures:
+
+failures:
+    effects::cards::create_cards_entry::tests::suspended_as_enters_choice_rolls_back_all_real_cards_and_entry_choices
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.06s
+

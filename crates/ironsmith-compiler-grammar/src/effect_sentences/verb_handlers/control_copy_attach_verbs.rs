@@ -110,19 +110,20 @@ fn compose_put_all_filtered_looked_cards_to_zone(
     chosen_tag: TagKey,
     chosen_zone: Zone,
 ) -> Vec<EffectAst> {
-    filter.zone = Some(Zone::Library);
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: looked_tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
+    // "From among them" names the retained producer packet. It is not
+    // necessarily still in the library: a preceding mill produced graveyard
+    // arrivals. Filter those exact current incarnations without inventing a
+    // source zone or searching unrelated cards in the destination zone.
+    filter.zone = None;
+    filter.match_current_state = true;
     vec![
         EffectAst::SnapshotLastObjectTag {
-            into: crate::tag::TagRef::of(looked_tag),
+            into: crate::tag::TagRef::of(looked_tag.clone()),
         },
-        EffectAst::subject_verb_tag_matching_objects(
+        EffectAst::subject_verb_filtered_tagged_objects(
             filter,
-            vec![Zone::Library],
             crate::tag::TagRef::of(chosen_tag.clone()),
+            vec![crate::tag::TagRef::of(looked_tag.clone())],
         ),
         EffectAst::MoveTaggedGroupToZone {
             tag: crate::tag::TagRef::of(chosen_tag),

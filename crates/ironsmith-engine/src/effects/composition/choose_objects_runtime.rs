@@ -1149,6 +1149,27 @@ fn normalize_chosen_aggregate_constraint(
         Some(_) => return chosen,
         None => i32::MIN,
     };
+    if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives {
+        let total = |ids: &[ObjectId]| crate::targeting::aggregate_object_set_value(game, ids.iter().copied(), constraint.metric);
+        if chosen.len() >= min && total(&chosen) as usize == chosen.len() && total(&chosen) >= minimum && total(&chosen) <= maximum { return chosen; }
+        let mut states = std::collections::BTreeMap::from([(0i32, Vec::<ObjectId>::new())]);
+        for id in chosen.iter().chain(candidates.iter()).copied() {
+            let colors = crate::targeting::aggregate_object_value(game, id, constraint.metric);
+            for (mask, selection) in states.clone() {
+                if selection.contains(&id) || selection.len() >= max { continue; }
+                for slot in 0..5 {
+                    let bit = 1 << slot;
+                    if colors & bit == 0 || mask & bit != 0 { continue; }
+                    let mut next = selection.clone(); next.push(id);
+                    states.entry(mask | bit).or_insert(next);
+                }
+            }
+        }
+        return states.into_iter().filter(|(mask, selection)| {
+            let count = mask.count_ones() as i32;
+            count >= minimum && count <= maximum && selection.len() >= min
+        }).min_by_key(|(_, selection)| selection.len()).map(|(_, selection)| selection).unwrap_or_default();
+    }
     if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes {
         let total = |ids: &[ObjectId]| {
             crate::targeting::aggregate_object_set_value(
@@ -1458,9 +1479,19 @@ pub(crate) fn fixed_choice_requirement_is_unmet(
 
     let chooser_id =
         crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
-    // Whether a hidden hand holds enough matches is known only to its owner;
-    // withholding the offer on that basis would desync the peers.
-    if hidden_hand_choice(effect, game, ctx, chooser_id)?
+    // Zone sizes and ownership are public even when card identities are not.
+    // An unfiltered cross-zone choice can therefore require its full count
+    // without revealing anything about the cards in a hidden hand.
+    fn identity_independent(filter: &ObjectFilter) -> bool {
+        let mut bare = filter.clone();
+        let branches = std::mem::take(&mut bare.any_of);
+        bare.zone = None;
+        bare.owner = None;
+        bare.controller = None;
+        bare == ObjectFilter::default() && branches.iter().all(identity_independent)
+    }
+    // Matching a specific card identity in a hidden hand remains private.
+    if (hidden_hand_choice(effect, game, ctx, chooser_id)? && !identity_independent(&effect.filter))
         || hidden_library_pool_choice(effect, game, ctx, chooser_id)?
     {
         return Ok(false);

@@ -532,7 +532,11 @@ struct SyncHiddenIdentityObligation {
     #[serde(default)]
     filter_context: SyncObligationFilterContext,
     description: String,
-    /// "matches", "does_not_match", "cast_face_down", or "foretell".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preparation_method_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exile_preparation: Option<ironsmith::alternative_cast::ExilePreparation>,
+    /// The exact public claim family.
     check: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     face_down_kind: Option<String>,
@@ -581,12 +585,13 @@ fn sync_hidden_identity_obligation(
     obligation: &ironsmith::game_state::HiddenIdentityObligation,
 ) -> Result<SyncHiddenIdentityObligation, String> {
     use ironsmith::game_state::HiddenIdentityCheck;
-    let (check, face_down_kind, permission_source) = match obligation.check {
+    let (check, face_down_kind, permission_source) = match &obligation.check {
         HiddenIdentityCheck::Matches => ("matches".to_string(), None, None),
         HiddenIdentityCheck::DoesNotMatch => ("does_not_match".to_string(), None, None),
         HiddenIdentityCheck::Foretell => ("foretell".to_string(), None, None),
+        HiddenIdentityCheck::ExilePreparation { .. } => ("exile_preparation".to_string(),None,None),
         HiddenIdentityCheck::CastFaceDown(kind) => {
-            let (kind, source) = sync_face_down_kind_fields(kind);
+            let (kind, source) = sync_face_down_kind_fields(*kind);
             ("cast_face_down".to_string(), Some(kind), source)
         }
     };
@@ -606,6 +611,8 @@ fn sync_hidden_identity_obligation(
         filter_context: SyncObligationFilterContext::from_context(&obligation.filter_ctx)
             .map_err(describe)?,
         description: obligation.description.clone(),
+        preparation_method_index: match &obligation.check { HiddenIdentityCheck::ExilePreparation { method_index, .. }=>Some(*method_index),_=>None },
+        exile_preparation: match &obligation.check {HiddenIdentityCheck::ExilePreparation {preparation,..}=>Some(preparation.clone()),_=>None},
         check,
         face_down_kind,
         permission_source,

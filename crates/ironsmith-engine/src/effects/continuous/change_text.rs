@@ -175,7 +175,8 @@ mod tests {
             StaticAbility::protection(ProtectionFrom::Color(ColorSet::BLUE))));
         let values = crate::snapshot::CopiableValues::from_object(game.object(donor).unwrap());
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(donor, A, vec![target],
-            Modification::CopyOf { retain_original_name: false, target_id: donor, copiable_values: Box::new(values),
+            Modification::CopyOf {
+retain_original_types: false, retain_original_name: false, target_id: donor, copiable_values: Box::new(values),
                 preserve_source_abilities: false, name_override: None, name_override_surface: None,
                 add_supertypes: Vec::new() }));
         game.refresh_continuous_state().unwrap();

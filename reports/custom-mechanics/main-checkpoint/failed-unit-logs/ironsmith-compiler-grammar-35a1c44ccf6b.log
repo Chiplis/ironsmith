@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'keyword_static::costs_replacements_and_permissions::one_mana_of_any_color_reader_tests::literal_any_color_is_not_an_unconstrained_hybrid_reduction' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs:11608:71:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::costs_replacements_and_permissions::one_mana_of_any_color_reader_tests::literal_any_color_is_not_an_unconstrained_hybrid_reduction ... FAILED
+
+failures:
+
+failures:
+    keyword_static::costs_replacements_and_permissions::one_mana_of_any_color_reader_tests::literal_any_color_is_not_an_unconstrained_hybrid_reduction
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.02s
+

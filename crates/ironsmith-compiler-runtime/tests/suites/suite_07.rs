@@ -17,6 +17,12 @@ mod r#compound_static_bodies;
 #[path = "../counter_removal_references.rs"]
 mod r#counter_removal_references;
 
+#[path = "../custom_cast_exile_lifetime.rs"]
+mod r#custom_cast_exile_lifetime;
+
+#[path = "../custom_resource_token_composition.rs"]
+mod r#custom_resource_token_composition;
+
 #[path = "../delayed_damage_event_watchers.rs"]
 mod r#delayed_damage_event_watchers;
 

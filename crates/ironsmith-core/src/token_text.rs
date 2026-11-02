@@ -128,10 +128,10 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<std::borrow::Cow<'st
         Walrus=>"Walrus", Weasel=>"Weasel", Llama=>"Llama",
         Plains=>"Plains", Island=>"Island", Swamp=>"Swamp", Mountain=>"Mountain", Forest=>"Forest",
         Desert=>"Desert", Urzas=>"Urza's", Cave=>"Cave", Gate=>"Gate", Locus=>"Locus", Town=>"Town",
-        Lair=>"Lair", Mine=>"Mine", Planet=>"Planet", PowerPlant=>"Power-Plant", Sphere=>"Sphere", Tower=>"Tower",
+        Lair=>"Lair", Mine=>"Mine", Planet=>"Planet", Satrapy=>"Satrapy", PowerPlant=>"Power-Plant", Sphere=>"Sphere", Tower=>"Tower",
         Attraction=>"Attraction", Bobblehead=>"Bobblehead", Book=>"Book", Clue=>"Clue", Contraption=>"Contraption",
         ArtifactOmen=>"Omen", ArtifactInscription=>"Inscription", Idol=>"Idol", Equipment=>"Equipment", Food=>"Food", Fortification=>"Fortification", Gold=>"Gold", Incubator=>"Incubator",
-        Junk=>"Junk", Lander=>"Lander", Map=>"Map", Mutagen=>"Mutagen", Treasure=>"Treasure", Vehicle=>"Vehicle",
+        Junk=>"Junk", Lander=>"Lander", Map=>"Map", Mutagen=>"Mutagen", Monument=>"Monument", Treasure=>"Treasure", Vehicle=>"Vehicle",
         Blood=>"Blood", Infinity=>"Infinity", Powerstone=>"Powerstone", Spacecraft=>"Spacecraft", Stone=>"Stone",
         Vibranium=>"Vibranium", Heartwood=>"Heartwood", Communicator=>"Communicator", Aura=>"Aura", Background=>"Background", Cartouche=>"Cartouche",
         Case=>"Case", Class=>"Class", Curse=>"Curse", Room=>"Room", Role=>"Role", Rune=>"Rune", Saga=>"Saga",
@@ -151,9 +151,12 @@ mod tests {
     use super::*;
     #[test]
     fn canonical_word_table_covers_the_existing_token_subtype_vocabularies() {
-        for subtype in Subtype::all_creature_types().iter().chain(Subtype::all_land_types())
+        let missing: Vec<_> = Subtype::all_creature_types().iter().chain(Subtype::all_land_types())
             .chain(Subtype::all_artifact_types()).chain(Subtype::all_enchantment_types())
-        { assert!(token_subtype_rules_word(*subtype).is_some(), "missing canonical word for {subtype:?}"); }
+            .filter(|subtype| token_subtype_rules_word(**subtype).is_none()).copied().collect();
+        assert!(missing.is_empty(), "missing canonical token words: {missing:?}");
+        assert_eq!(subtype_derived_token_name(&[Subtype::Satrapy]).as_deref(), Some("Satrapy Token"));
+        assert_eq!(subtype_derived_token_name(&[Subtype::Monument]).as_deref(), Some("Monument Token"));
         assert_eq!(subtype_derived_token_name(&[Subtype::Dwarf, Subtype::Berserker]).as_deref(), Some("Dwarf Berserker Token"));
         assert_eq!(subtype_derived_token_name(&[Subtype::AssemblyWorker, Subtype::TimeLord, Subtype::Ctan, Subtype::Shiar]).as_deref(),
             Some("Assembly-Worker Time Lord C'tan Shi'ar Token"));
@@ -172,7 +175,7 @@ mod tests {
     #[test]
     fn omitted_roles_preserve_historical_native_debug_identity_input() {
         let legacy = crate::CreateTokenEffect::one(());
-        let expected = "CreateTokenEffect { token: (), count: Fixed(1), controller: You, controller_target: None, use_source_chosen_color: false, use_source_chosen_creature_type: false, actor_surface_explicit: false, suppress_aura_attachment_choice: false, ability_presentation: None, enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_blocking: None, exile_at_end_of_combat: false, sacrifice_at_end_of_combat: false, sacrifice_at_next_end_step: false, exile_at_next_end_step: false, next_end_step_player: Any, link_source_exiled_this_resolution: false }";
+        let expected = "CreateTokenEffect { token: (), count: Fixed(1), controller: You, controller_target: None, use_source_chosen_color: false, use_source_chosen_creature_type: false, actor_surface_explicit: false, suppress_aura_attachment_choice: false, ability_presentation: None, enters_tapped: false, enters_attacking: false, attack_target_mode: None, enters_blocking: None, exile_at_end_of_combat: false, sacrifice_at_end_of_combat: false, sacrifice_at_next_end_step: false, exile_at_next_end_step: false, next_end_step_player: Any, link_source_exiled_this_resolution: false, link_only_last_source_exiled: false }";
         assert_eq!(format!("{legacy:?}"), expected);
         let current = legacy.with_text_roles(TokenTextRoles::authored(TokenNameTextRole::Explicit, 0));
         assert!(format!("{current:?}").contains("text_roles: Some("));

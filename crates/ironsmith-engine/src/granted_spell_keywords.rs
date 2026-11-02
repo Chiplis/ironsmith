@@ -252,6 +252,7 @@ fn offspring_entry_trigger_grant(
             intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(reference)),
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
@@ -297,6 +298,7 @@ fn sticker_kicker_entry_trigger_grant(
             intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(reference)),
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
@@ -397,3 +399,63 @@ pub(crate) fn demonstrate_triggered_ability() -> crate::ability::TriggeredAbilit
 #[cfg(test)]
 #[path = "granted_spell_keyword_acquisition_tests.rs"]
 mod acquisition_tests;
+
+/// Freeze applicable optional payment alternatives during announcement. The
+/// authored cost slot and its label remain unchanged; only its payment branches grow.
+pub(crate) fn optional_cost_payment_alternatives(game:&GameState,spell_id:ObjectId,caster:PlayerId)->Option<Vec<OptionalCost>> {
+ let Some(mut spell)=game.object(spell_id).cloned() else{return None};
+ // An already announced concrete price packet is authoritative, even if its provider leaves.
+ if spell.optional_costs_before_payment_alternatives.is_some(){return None;}
+ let mut spell_for_filter=spell.clone();
+ if let Some(chars)=game.current_characteristics(spell_id){
+  spell_for_filter.name=chars.name;spell_for_filter.card_types=chars.card_types;
+  spell_for_filter.subtypes=chars.subtypes;spell_for_filter.supertypes=chars.supertypes;
+  spell_for_filter.color_override=Some(chars.colors);
+ }
+ let mut prices=Vec::new();
+ {
+  let view=crate::derived_view::DerivedGameView::new(game);
+  for source in game.battlefield.iter().copied().filter(|id|!game.is_phased_out(*id)) {
+   let Some(abilities)=view.static_abilities_rc(source) else{continue};
+   for ability in abilities.iter(){
+    if !ability.is_active(game,source){continue}
+    let Some(model)=ability.compiled_model() else{continue};
+    let payload=match &model.payload {ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>&ability.payload,payload=>payload};
+    let ironsmith_core::StaticAbilityPayload::OptionalCostPaymentAlternative {filter,reference,replacement}=payload else{continue};
+    let Some(owner)=game.object(source) else{continue};
+    let context=game.filter_context_for(game.controller_of(owner),Some(source)).with_caster(Some(caster)).with_prospective_cast(spell_id);
+    let mut filter=filter.clone();filter.zone=None;
+    if filter.matches_non_recursive(&spell_for_filter,&context,game){prices.push((reference.clone(),replacement.clone()));}
+   }
+  }
+ }
+ let mut changed=false;
+ for optional in &mut spell.optional_costs {
+  for (reference,replacement) in &prices {
+   if !optional.reference.matches_query(reference){continue}
+   let mut branches=optional.cost.as_one_of().map(<[_]>::to_vec).unwrap_or_else(||vec![optional.cost.clone()]);
+   let equivalent=|left:&TotalCost,right:&TotalCost| {
+    let normalize=|total:&TotalCost| total.clone().try_map(|cost| {
+     cost.compiled_model().cloned().ok_or(())?.try_map_effect(|effect|effect.serialized_model().map(str::to_owned).ok_or(()))
+    }).ok();
+    match (normalize(left),normalize(right)){(Some(left),Some(right))=>left==right,_=>false}
+   };
+   if !branches.iter().any(|branch|equivalent(branch,replacement)){branches.push(replacement.clone());optional.cost=TotalCost::one_of(branches);changed=true;}
+  }
+ }
+ for optional in &mut spell.optional_costs {
+  let Some(keyword)=optional.reference.custom_keyword.as_deref() else{continue};
+  let branches=crate::named_casting_price_reduction::alternatives(game,spell_id,caster,keyword,&optional.cost);
+  if branches.len()>1 {optional.cost=TotalCost::one_of(branches);changed=true;}
+  else if let Some(branch)=branches.into_iter().next() {if branch.display()!=optional.cost.display(){optional.cost=branch;changed=true;}}
+ }
+ changed.then(||spell.optional_costs.to_vec())
+}
+
+pub(crate) fn ensure_optional_cost_payment_alternatives(game:&mut GameState,spell_id:ObjectId,caster:PlayerId)->bool {
+ let Some(prices)=optional_cost_payment_alternatives(game,spell_id,caster) else{return false};
+ if let Some(spell)=game.object_mut(spell_id){
+  if spell.optional_costs_before_payment_alternatives.is_none(){spell.optional_costs_before_payment_alternatives=Some(spell.optional_costs.clone());}
+  spell.optional_costs=prices.into();true
+ }else{false}
+}

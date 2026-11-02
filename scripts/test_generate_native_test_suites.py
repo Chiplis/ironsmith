@@ -69,6 +69,52 @@ class NativeTestSuites(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             SUITES.outputs(self.root)
 
+    def test_explicit_standalone_and_declared_helpers_do_not_enter_suites(self):
+        package = self.root / "crates" / "ironsmith-compiler-runtime"
+        manifest = package / "Cargo.toml"
+        manifest.write_text(manifest.read_text() + '\n[[test]]\nname = "dedicated"\npath = "tests/alpha.rs"\n')
+        (package / "tests" / "shared_support.rs").write_text(SUITES.HELPER_MARKER + "\npub fn helper() {}\n")
+        files = self.generate()
+        members = [member for path, text in files.items() if path.parent.name == "suites" and package in path.parents for member in re.findall(r'mod r#(\w+);', text)]
+        self.assertEqual(members, ["beta"])
+        self.assertIn('name = "dedicated"', manifest.read_text())
+        self.assertEqual(files, SUITES.outputs(self.root))
+
+    def test_helper_role_is_explicit_and_cannot_hide_test_declarations(self):
+        tests = self.root / "crates" / "ironsmith-tools" / "tests"
+        helper = tests / "ordinary_support.rs"
+        helper.write_text("pub fn helper() {}\n")
+        self.assertTrue(any('../ordinary_support.rs' in text for text in SUITES.outputs(self.root).values()))
+        helper.write_text(SUITES.HELPER_MARKER + "\n#[test]\nfn hidden() {}\n")
+        with self.assertRaisesRegex(ValueError, "contains test/bench"):
+            SUITES.outputs(self.root)
+
+    def test_duplicate_explicit_source_is_rejected_before_generating_wrappers(self):
+        package = self.root / "crates" / "ironsmith-tools"
+        manifest = package / "Cargo.toml"
+        manifest.write_text(manifest.read_text() + '\n[[test]]\nname = "first"\npath = "tests/alpha.rs"\n\n[[test]]\nname = "second"\npath = "tests/alpha.rs"\n')
+        with self.assertRaisesRegex(ValueError, "registered twice"):
+            SUITES.outputs(self.root)
+
+    def test_guard_counts_standalone_plus_suites_and_excludes_only_declared_helpers(self):
+        package = self.root / "crates" / "ironsmith-tools"
+        manifest = package / "Cargo.toml"
+        manifest.write_text(manifest.read_text() + '\n[[test]]\nname = "dedicated"\npath = "tests/alpha.rs"\n')
+        helper = package / "tests" / "shared_support.rs"
+        helper.write_text(SUITES.HELPER_MARKER + "\npub fn helper() {}\n")
+        self.generate()
+        binary = self.root / "coverage-union-check"
+        subprocess.run(["rustc", "--edition=2024", "--test", str(Path(__file__).with_name("native-test-suite-coverage.rs")), "-o", str(binary)], env=dict(os.environ, CARGO_MANIFEST_DIR=str(package)), check=True, capture_output=True)
+        def run():
+            return subprocess.run([str(binary)], capture_output=True, text=True)
+        self.assertEqual(run().returncode, 0)
+        wrapper = package / "tests" / "suites" / "suite_00.rs"
+        original = wrapper.read_text()
+        wrapper.write_text(original + '\n#[path = "../alpha.rs"]\nmod duplicate_direct;\n')
+        self.assertIn("registered twice", run().stdout)
+        wrapper.write_text(original + '\n#[path = "../shared_support.rs"]\nmod hidden_helper;\n')
+        self.assertIn("helper-only file in suite", run().stdout)
+
     def test_guard_rejects_missing_and_duplicate_members(self):
         self.generate()
         package = self.root / "crates" / "ironsmith-tools"

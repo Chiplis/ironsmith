@@ -189,7 +189,9 @@ pub(crate) fn production_satisfies_cost(
     cost.spending_restrictions().iter().all(|rule| match rule {
         // This restriction belongs to the final generic-pip allocation, not
         // to each unit offered for fixed/base/tax obligations.
-        ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => true,
+        ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }
+        | ironsmith_core::mana::ManaSpendingRestriction::AtLeastColors(_)
+        | ironsmith_core::mana::ManaSpendingRestriction::GenericManaByMinusOneCounters => true,
         // No mana unit, tracked or not, may be spent on this cost.
         ironsmith_core::mana::ManaSpendingRestriction::NoMana => false,
         ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) => {
@@ -199,7 +201,8 @@ pub(crate) fn production_satisfies_cost(
         }
         // Per-unit color and snow requirements are judged on each unit by
         // `unit_satisfies_cost`, not on the producer alone.
-        ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor
+        ironsmith_core::mana::ManaSpendingRestriction::UnspentActivationColors
+        | ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor
         | ironsmith_core::mana::ManaSpendingRestriction::Colors(_)
         | ironsmith_core::mana::ManaSpendingRestriction::Colorless
         | ironsmith_core::mana::ManaSpendingRestriction::Snow => true,

@@ -327,7 +327,8 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
 }
 
 pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches_exact_tokens(tokens, &["activate", "this", "ability", "only", "once"])
+    matches_prefix_tokens(tokens, &["active", "only"])
+        || matches_exact_tokens(tokens, &["activate", "this", "ability", "only", "once"])
         || matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES)
         || matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES)
         || matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP)

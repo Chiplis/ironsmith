@@ -383,7 +383,7 @@ impl EffectExecutor for RevealSourceFromHandEffect {
                 EffectOutcome::count(0),
             ));
         };
-        if source.owner != ctx.controller || source.zone != Zone::Hand {
+        if source.owner != ctx.controller || source.zone != self.activation_source_zone.unwrap_or(Zone::Hand) {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));
@@ -431,7 +431,7 @@ impl CostExecutableEffect for RevealSourceFromHandEffect {
                 "source card is not available to reveal".to_string(),
             ));
         };
-        if object.owner != controller || object.zone != Zone::Hand {
+        if object.owner != controller || object.zone != self.activation_source_zone.unwrap_or(Zone::Hand) {
             return Err(CostValidationError::Other(
                 "source card is not in your hand".to_string(),
             ));

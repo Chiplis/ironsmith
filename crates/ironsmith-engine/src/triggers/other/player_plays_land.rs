@@ -59,6 +59,19 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         {
             return false;
         }
+        if !filter.custom_statuses.is_empty() || !filter.excluded_custom_statuses.is_empty() {
+            let origin=e.origin_snapshot.as_ref().filter(|origin|origin.zone==e.from_zone
+                && e.snapshot.as_ref().is_some_and(|completed|completed.stable_id==origin.stable_id));
+            let Some(origin)=origin else {
+                ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "land-play status predicate lacks its exact source-zone receipt".into()));
+                return false;
+            };
+            if !filter.custom_statuses.iter().all(|name|origin.custom_statuses.contains(name))
+                || filter.excluded_custom_statuses.iter().any(|name|origin.custom_statuses.contains(name)) { return false; }
+            filter.custom_statuses.clear();
+            filter.excluded_custom_statuses.clear();
+        }
         match e.required_completed_snapshot() {
             Ok(snapshot) => super::permanent_lifecycle::matches_completed(&filter, snapshot, ctx),
             Err(error) => {
@@ -142,6 +155,29 @@ mod tests {
             );
             assert_eq!(trigger.matches(&event, &ctx), expected);
         }
+    }
+
+    #[test]
+    fn played_card_status_uses_exact_origin_without_marking_the_entered_permanent() {
+        use crate::{card::CardBuilder,game_state::GameState,ids::{CardId,ObjectId,PlayerId},types::CardType,zone::Zone};
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);let a=PlayerId(0);
+        let card=CardBuilder::new(CardId::new(),"Origin land").card_types(vec![CardType::Land]).build();
+        let origin=game.create_object_from_card(&card,a,Zone::Exile);
+        game.set_custom_status_in_zone(origin,"archived",Zone::Exile,true);
+        let snapshot=crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(game.object(origin).unwrap(),&game).unwrap();
+        let land=game.move_object(origin,Zone::Battlefield,crate::events::EventCause::effect()).unwrap();
+        assert!(!game.has_custom_status(land,"archived"));
+        let mut filter=ObjectFilter::land();filter.custom_statuses.push("archived".into());
+        let trigger=PlayerPlaysLandTrigger::new(PlayerFilter::You,filter);
+        let ctx=TriggerContext::for_source(ObjectId::from_raw(99),a,&game);
+        let base=LandPlayedEvent::with_current_snapshot(land,a,Zone::Exile,Zone::Battlefield,&game).unwrap();
+        let event=|e|TriggerEvent::new_with_provenance(e,crate::provenance::ProvNodeId::default());
+        assert!(!trigger.matches(&event(base.clone()),&ctx),"no receipt cannot borrow world LKI");
+        assert!(trigger.matches(&event(base.clone().with_origin_snapshot(snapshot.clone())),&ctx));
+        let mut unrelated=snapshot.clone();unrelated.stable_id=crate::ids::StableId::from(ObjectId::from_raw(81234));
+        assert!(!trigger.matches(&event(base.clone().with_origin_snapshot(unrelated)),&ctx));
+        let mut unmarked=snapshot;unmarked.custom_statuses.clear();
+        assert!(!trigger.matches(&event(base.with_origin_snapshot(unmarked)),&ctx));
     }
 
     #[test]

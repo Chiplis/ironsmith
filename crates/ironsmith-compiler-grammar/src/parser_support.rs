@@ -182,6 +182,7 @@ fn parse_when_you_do_followup_intro_inner<'a>(
 ) -> Result<(), ErrMode<ContextError>> {
     alt((
         grammar::phrase(&["when", "you", "do"]),
+        grammar::phrase(&["when", "no", "choice", "was", "available", "this", "way"]),
         grammar::phrase(&["whenever", "you", "do"]),
     ))
     .void()

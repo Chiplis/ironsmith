@@ -9,6 +9,8 @@ import {fallbackCardFrameColors} from '@/lib/default-card-frames';
 import stockFrames from '@/lib/default-card-frames.generated.json';
 import useUiText from '@/i18n/useUiText';
 import {rulesSourceFrame} from '@/lib/rules-source-frame';
+import {splitLoyaltyAbility} from '@/lib/loyalty-ability';
+import '@/styles/card-typography.css';
 import './card-frame-presentation.css';
 
 // Shipped stock frames need no renderer; rules-source cards keep their CSS frame.
@@ -23,11 +25,15 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   const tone=cardFrameTone({cards:[face,card],manaCost:face.mana_cost??card.mana_cost,typeLine:type});
   const art=cardArtCropUrl(imageUrl);
   const sourceFrame=rulesSourceFrame(card);
+  const planeswalker=!multipart && (/\bPlaneswalker\b/i.test(type||'')
+    || cardFrameRules(face).split('\n').some(line=>splitLoyaltyAbility(line)));
   const colors=cardArtColors(face);
   const frameColors=/\bLand\b/i.test(type||'')
     ? fallbackCardFrameColors({cards:[face,card],typeLine:type}) : colors;
   const frameKey=frameColors.join('')||(/\bLand\b/i.test(type||'')?'land':/\bArtifact\b/i.test(type||'')?'C':'colorless');
-  const stock=baked&&!sourceFrame?stockFrames[frameKey]:null;
+  // Ordinary stock plates reserve most of the face for art. Loyalty abilities
+  // need the taller rules area of a planeswalker, including in the fallback.
+  const stock=baked&&!sourceFrame&&!planeswalker?stockFrames[frameKey]:null;
   const box=name=>stock?{
     left:`${100*stock.style[`--printed-${name}-x`]/stock.style['--printed-scan-width']}%`,
     top:`${100*stock.style[`--printed-${name}-y`]/stock.style['--printed-scan-height']}%`,
@@ -66,6 +72,7 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   const stats=face.power!=null&&face.toughness!=null?`${face.power}/${face.toughness}`
     :face.power_toughness??face.defense??face.loyalty;
   return <article className="simple-card-frame" data-frame-mode={stock?"baked":"simple"} data-card-frame-tone={tone.tone}
+    data-frame-layout={planeswalker?'planeswalker':undefined}
     data-interactive-rules={rulesContent ? "true" : undefined}
     data-rules-source={sourceFrame ? card.source_kind : undefined}
     style={{...tone.style,...(sourceFrame ? {'--rules-source-color':sourceFrame.color} : {})}} aria-label={face.name||card.name||ui('Card details')}>

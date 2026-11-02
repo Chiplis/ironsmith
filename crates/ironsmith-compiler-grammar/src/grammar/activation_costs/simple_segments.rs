@@ -18,7 +18,7 @@ pub fn parse_bare_symbol_segment_tokens(
 ) -> Option<ActivationCostSegmentCst> {
     crate::grammar::primitives::probe_all(
         tokens,
-        parse_bare_symbol_segment_lexed,
+        alt((parse_counted_energy_payment, parse_bare_symbol_segment_lexed)),
         "activation-bare-symbol-segment",
     )
 }
@@ -50,6 +50,7 @@ pub fn parse_pay_segment_tokens(
         return Ok(ActivationCostSegmentCst::DynamicMana(cost));
     }
     let reference = match words.as_slice() {
+        ["pay", "this", "cards" | "card's" | "creatures" | "creature's" | "permanents" | "permanent's", "mana", "cost"] => Some(crate::target::ChooseSpec::Source),
         ["pay", "its", "mana", "cost"] => Some(crate::target::ChooseSpec::tagged(
             crate::tag::CompilerReferenceTag::It.key(),
         )),
@@ -625,6 +626,15 @@ mod tests {
 mod referenced_mana_cost_tests {
     use super::*;
     #[test]
+    fn explicit_source_mana_cost_is_independent_of_outer_selection_tags() {
+        for text in ["Pay this card's mana cost", "Pay this creature's mana cost", "Pay this permanent's mana cost"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let ActivationCostSegmentCst::DynamicMana(cost)=parse_pay_segment_tokens(&tokens).unwrap() else {panic!("source referenced mana cost expected");};
+            assert!(matches!(cost.mana_cost_of.as_deref(),Some(crate::target::ChooseSpec::Source)));
+        }
+        assert!(parse_pay_segment_tokens(&crate::lexer::lex_line("Pay this card's mana cost banana",0).unwrap()).is_err());
+    }
+    #[test]
     fn referenced_mana_costs_are_typed_and_do_not_accept_partial_suffixes() {
         for text in ["Pay its mana cost", "Pay enchanted creature's mana cost"] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
@@ -648,4 +658,20 @@ mod referenced_mana_cost_tests {
             );
         }
     }
+    #[test]
+    fn counted_energy_symbols_are_typed_costs_with_or_without_an_explicit_pay_verb() {
+        for text in ["eight {E}", "8 {E}", "Pay eight {E}", "Pay 8 {E}"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let cost=if tokens.first().is_some_and(|token|token.is_word("pay")) {
+                parse_pay_segment_tokens(&tokens).unwrap()
+            } else {
+                parse_bare_symbol_segment_tokens(&tokens).expect("complete bare energy cost")
+            };
+            assert!(matches!(cost, ActivationCostSegmentCst::Energy(8)), "{text}");
+        }
+        for text in ["eight {E} extra", "eight {E} {U}", "eight {E} then draw a card"] {
+            assert!(parse_bare_symbol_segment_tokens(&crate::lexer::lex_line(text, 0).unwrap()).is_none(), "{text}");
+        }
+    }
+
 }

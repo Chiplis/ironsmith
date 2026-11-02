@@ -254,9 +254,11 @@ fn cone_keeps_all_three_dice_bodies_and_timed_entry_restriction(){
         let def=compile_to_runtime_definition("Late","Type: Creature — Bear\nPower/Toughness: 2/3",false).unwrap();
         let hand=g.create_object_from_definition(&def,B,Zone::Hand);let receipt=g.move_object_with_etb_processing_with_dm(hand,Zone::Battlefield,&mut dm).unwrap();
         let late=receipt.original.into_result().unwrap().new_id;assert_eq!(g.is_tapped(late),result==20);
-        untap(&mut g,A);
+        // A duration ending at turn start is expired by the turn owner,
+        // not by the untap-step-only helper used for freeze counters above.
+        g.next_turn();assert_eq!(g.turn.active_player,A);
         let hand=g.create_object_from_definition(&def,B,Zone::Hand);let receipt=g.move_object_with_etb_processing_with_dm(hand,Zone::Battlefield,&mut dm).unwrap();
-        assert!(!g.is_tapped(receipt.original.into_result().unwrap().new_id));
+        assert!(!g.is_tapped(receipt.original.into_result().unwrap().new_id),"until your next turn ends before that turn's untap step");
     }}
 }
 #[test]
@@ -467,7 +469,7 @@ fn malformed_conditional_bodies_cannot_be_accepted_losslessly() {
     for (name,_) in CONDITIONAL_CANDIDATES {
         let rows=fixtures();let row=rows.iter().find(|row|row["name"]==name).unwrap();
         for text in [
-            row["text"].as_str().unwrap().replace("next untap steps","next two untap steps"),
+            row["text"].as_str().unwrap().replace("next untap steps","next two two untap steps"),
             format!("{} Except on Tuesdays.",row["text"].as_str().unwrap()),
             row["text"].as_str().unwrap().replace("during their controllers' next untap steps","until their controllers' next untap steps"),
         ] {
@@ -595,4 +597,17 @@ fn icy_blast_x_three_is_not_capped_at_send_to_sleeps_two_targets() {
         for player in [A, B, C] { untap(&mut g, player); }
         for id in targets { assert!(!g.is_tapped(id)); }
     }
+}
+
+#[test]
+fn supported_two_step_conditional_freeze_expires_after_two_actual_untap_steps(){
+ for (name,_) in CONDITIONAL_CANDIDATES{
+  let row=fixtures().into_iter().find(|row|row["name"]==name).unwrap();let text=row["text"].as_str().unwrap().replace("next untap steps","next two untap steps");
+  let (direct,loss)=ironsmith_compiler::parse_loss::capture(||compile_to_runtime_definition(name,&text,false));assert!(!loss.is_lossy(),"{}",loss.reasons_text());let direct=direct.unwrap();
+  let (artifact,loss)=ironsmith_compiler::parse_loss::capture(||compile_to_artifact(name,&text,false));assert!(!loss.is_lossy(),"{}",loss.reasons_text());let(artifact,_)=artifact.unwrap();let decoded=CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();let indirect=ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap();
+  for definition in [direct,indirect]{let mut g=game();set_condition(&mut g,name,true);let target=creature(&mut g,B);let mut dm=Choices{x:1,targets:vec![Target::Object(target)],..Default::default()};cast(&mut g,&definition,&mut dm);settle(&mut g,&mut dm);
+   for _ in 0..2{untap(&mut g,B);assert!(g.is_tapped(target),"{name}: each of the next two steps is skipped");}
+   untap(&mut g,B);assert!(!g.is_tapped(target),"{name}: the third untap is not frozen");
+  }
+ }
 }

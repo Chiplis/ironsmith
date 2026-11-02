@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact source retained; generic counter-absence designation lifetime awaits integration."
+  },
+  "mechanics": [
+    {
+      "id": "msem-371",
+      "keyword": "Autocrat",
+      "original_reminder": "If you don't control an autocrat, put X +1/+1 counters on this. It becomes an autocrat until it has no +1/+1 counters on it.",
+      "executable_reminder": "If you don't control a permanent with the autocrat status, put {Number} +1/+1 counters on this creature. Give this creature the autocrat status until it has no +1/+1 counters.",
+      "source_cards": [
+        "Hegemony Monarch"
+      ],
+      "rule_reference": "701.99.",
+      "rule_text": [
+        {
+          "name": "701.99a",
+          "rule": "\u201cAutocrat N\u201d means \u201cIf you don\u2019t control an autocrat, put X +1/+1 counters on this. It becomes an autocrat until it has no +1/+1 counters on it.\u201d",
+          "custom": true
+        },
+        {
+          "name": "701.99b",
+          "rule": "\u201cAn autocrat\u201d is a designation that has no rules meaning other than to act as a marker that the autocrat action and other spells and abilities can identify. Only permanents can be or become an autocrat. Once a permanent becomes an autocrat, it stays an autocrat until it leaves the battlefield or has no +1/+1 counters on it. Being an autocrat is neither an ability nor part of the permanent\u2019s copiable values.",
+          "custom": true
+        },
+        {
+          "name": "701.99c",
+          "rule": "If a permanent\u2019s ability instructs a player to \u201cautocrat X,\u201d other abilities of that permanent may also refer to X. The value of X in those abilities is equal to the value of X as that permanent became an autocrat.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hegemony Monarch_OTH",
+          "name": "Hegemony Monarch",
+          "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Elf Warrior Druid\nPower/Toughness: 2/2\n{2}{G}: Exile up to three cards from graveyards. Autocrat X, where X is the number of cards exiled this way. *(If you don't control an autocrat, put X +1/+1 counters on this. It becomes an autocrat until it has no +1/+1 counters on it.)*\nWhenever Hegemony Monarch attacks, you may exile target card from a graveyard. If you do, untap it and it gains trample until end of turn.",
+          "executable_text": null,
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature \u2014 Elf Warrior Druid",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Hegemony Monarch_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hegemony Monarch",
+              "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Elf Warrior Druid\nPower/Toughness: 2/2\n{2}{G}: Exile up to three cards from graveyards. Autocrat X, where X is the number of cards exiled this way. *(If you don't control an autocrat, put X +1/+1 counters on this. It becomes an autocrat until it has no +1/+1 counters on it.)*\nWhenever Hegemony Monarch attacks, you may exile target card from a graveyard. If you do, untap it and it gains trample until end of turn."
+            }
+          ]
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Autocrat {Number}",
+          "reminder": "If you don't control a permanent with the autocrat status, put {Number} +1/+1 counters on this creature. Give this creature the autocrat status until it has no +1/+1 counters."
+        }
+      ],
+      "support_status": "candidate_requires_next_wave_reader",
+      "behavioral_assertions": [
+        {
+          "id": "counter-absent-designation",
+          "status": "pending",
+          "test_reference": "custom_counter_status_lifetimes",
+          "observable": "Designation ends when the last relevant counter disappears, never revives upon later placement, clears on zone change, and is not applied if counters are prevented."
+        }
+      ]
+    }
+  ]
+}

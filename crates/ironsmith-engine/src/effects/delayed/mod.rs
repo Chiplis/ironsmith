@@ -12,4 +12,4 @@ pub use schedule_delayed_trigger::{DelayedTriggerPrepayment, ScheduleDelayedTrig
 pub use schedule_effects_when_tagged_leaves::{
     ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
 };
-pub use trigger_queue::{DelayedTriggerConfig, queue_delayed_trigger};
+pub use trigger_queue::{DelayedTriggerConfig, queue_delayed_trigger, try_queue_delayed_trigger};

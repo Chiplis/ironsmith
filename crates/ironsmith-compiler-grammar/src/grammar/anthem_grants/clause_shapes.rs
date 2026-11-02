@@ -203,20 +203,15 @@ fn parse_prefix_condition_kind(input: &mut LexStream<'_>) -> WResult<AnthemPrefi
 /// arm a serial ", and" / ", or" opens. Middle arms that carry a grant verb
 /// are the body's own list, so the first comma stays the boundary there.
 pub fn leading_condition_boundary_comma(tokens: &[OwnedLexToken]) -> Option<usize> {
-    // A quoted granted ability's own commas never extend the condition.
-    let unquoted = tokens
-        .iter()
-        .position(|token| token.kind == crate::lexer::TokenKind::Quote)
-        .unwrap_or(tokens.len());
-    let first = tokens
-        .iter()
-        .position(|token| token.kind == crate::lexer::TokenKind::Comma)?;
-    let commas = tokens[..unquoted]
-        .iter()
-        .enumerate()
-        .filter(|(_, token)| token.kind == crate::lexer::TokenKind::Comma)
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
+    // Quotes may belong to the condition's status/name as well as a
+    // granted ability. Only punctuation outside every quoted span separates
+    // condition arms or the following subject.
+    let mut quoted = false;
+    let commas = tokens.iter().enumerate().filter_map(|(index, token)| {
+        if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+        (!quoted && token.kind == crate::lexer::TokenKind::Comma).then_some(index)
+    }).collect::<Vec<_>>();
+    let first = *commas.first()?;
     for (position, &comma) in commas.iter().enumerate().skip(1) {
         let opens_last_arm = tokens
             .get(comma + 1)

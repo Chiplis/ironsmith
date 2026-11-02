@@ -1,0 +1,265 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "number-gated characteristic sections",
+  "notes": [
+    "Pending parent-run source, gameplay and artifact checks. Exact originals retained; generic source number proof and choice-completion events required."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-700",
+      "keyword": "Mimic",
+      "original_reminder": "{2}: This takes the shape of your choice. Mimic only as a sorcery.",
+      "executable_reminder": "{Cost}: Choose a number for this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Forest Dragon Telo"
+      ],
+      "rule_reference": "702.249.",
+      "rule_text": [
+        {
+          "name": "702.249a",
+          "rule": "Mimic is an activated ability. “Mimic (cost)” means “(Cost): Choose a number. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.249b",
+          "rule": "Any number can be chosen. If the permanent does not have a shape associated with that number, it will only have its base characteristics.",
+          "custom": true
+        },
+        {
+          "name": "702.249c",
+          "rule": "Abilities of a permanent with mimic that trigger when it \"takes this shape\" trigger after its mimic ability resolves, if it has that ability. These will trigger even if the creature did not change into this shape from another one.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Forest Dragon Telo_HZN",
+          "name": "Forest Dragon Telo",
+          "original_text": "Mana cost: {G}{U}{R}\nType: Creature — Elf Shapeshifter\nPower/Toughness: 3/3\nMimic {2} *({2}: This takes the shape of your choice. Mimic only as a sorcery.)* [3/3]\n[shape 1] Flying, double strike [3/3]\n[shape 2] Hexproof\n{T}: Put two +1/+1 counters on Forest Dragon Telo. [3/3]",
+          "executable_text": "Mana cost: {G}{U}{R}\nType: Creature — Elf Shapeshifter\nPower/Toughness: 3/3\n{2}: Choose a number for this permanent. Activate only as a sorcery.\nAs long as the last number chosen for this permanent is 1, this permanent has base power and toughness 3/3.\nAs long as the last number chosen for this permanent is 1, this permanent has \"Flying, double strike.\"\nAs long as the last number chosen for this permanent is 2, this permanent has base power and toughness 3/3.\nAs long as the last number chosen for this permanent is 2, this permanent has \"Hexproof.\"\nAs long as the last number chosen for this permanent is 2, this permanent has \"{T}: Put two +1/+1 counters on Forest Dragon Telo.\"",
+          "mana_cost": "{G}{U}{R}",
+          "type_line": "Creature — Elf Shapeshifter",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Forest Dragon Telo_HZN",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Forest Dragon Telo",
+              "original_text": "Mana cost: {G}{U}{R}\nType: Creature — Elf Shapeshifter\nPower/Toughness: 3/3\nMimic {2} *({2}: This takes the shape of your choice. Mimic only as a sorcery.)* [3/3]\n[shape 1] Flying, double strike [3/3]\n[shape 2] Hexproof\n{T}: Put two +1/+1 counters on Forest Dragon Telo. [3/3]"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Forest Dragon Telo",
+              "executable_text": "Mana cost: {G}{U}{R}\nType: Creature — Elf Shapeshifter\nPower/Toughness: 3/3\n{2}: Choose a number for this permanent. Activate only as a sorcery.\nAs long as the last number chosen for this permanent is 1, this permanent has base power and toughness 3/3.\nAs long as the last number chosen for this permanent is 1, this permanent has \"Flying, double strike.\"\nAs long as the last number chosen for this permanent is 2, this permanent has base power and toughness 3/3.\nAs long as the last number chosen for this permanent is 2, this permanent has \"Hexproof.\"\nAs long as the last number chosen for this permanent is 2, this permanent has \"{T}: Put two +1/+1 counters on Forest Dragon Telo.\"",
+              "custom_keyword_identities": [
+                "mimic"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mimic {2}  [3/3]\n[shape 1] Flying, double strike [3/3]\n[shape 2] Hexproof\n{T}: Put two +1/+1 counters on Forest Dragon Telo. [3/3]",
+              "original_printed_rules_text": "Mimic {2} ({2}: This takes the shape of your choice. Mimic only as a sorcery.) [3/3]\n[shape 1] Flying, double strike [3/3]\n[shape 2] Hexproof\n{T}: Put two +1/+1 counters on Forest Dragon Telo. [3/3]"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mimic"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Mimic {2}  [3/3]\n[shape 1] Flying, double strike [3/3]\n[shape 2] Hexproof\n{T}: Put two +1/+1 counters on Forest Dragon Telo. [3/3]",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Mimic {2} ({2}: This takes the shape of your choice. Mimic only as a sorcery.) [3/3]\n[shape 1] Flying, double strike [3/3]\n[shape 2] Hexproof\n{T}: Put two +1/+1 counters on Forest Dragon Telo. [3/3]"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mimic",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Choose a number for this permanent. Activate only as a sorcery.",
+          "numberedCharacteristics": true
+        }
+      ]
+    },
+    {
+      "id": "msem-701",
+      "keyword": "Mimic",
+      "original_reminder": "Discard a card as a sorcery: This takes the shape of your choice.",
+      "executable_reminder": "{Cost}: Choose a number for this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Soulshifter"
+      ],
+      "rule_reference": "702.249.",
+      "rule_text": [
+        {
+          "name": "702.249a",
+          "rule": "Mimic is an activated ability. “Mimic (cost)” means “(Cost): Choose a number. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.249b",
+          "rule": "Any number can be chosen. If the permanent does not have a shape associated with that number, it will only have its base characteristics.",
+          "custom": true
+        },
+        {
+          "name": "702.249c",
+          "rule": "Abilities of a permanent with mimic that trigger when it \"takes this shape\" trigger after its mimic ability resolves, if it has that ability. These will trigger even if the creature did not change into this shape from another one.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Soulshifter_OTH",
+          "name": "Soulshifter",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Skeleton Shapeshifter\nPower/Toughness: 1/1\nMimic—Discard a card *(Discard a card as a sorcery: This takes the shape of your choice.)* [1/1]\n[Shape 1] Menace\nSoulshifter gets +1/+1 for each creature card in your graveyard. [1/1]\n[Shape 2] Deathtouch\nWhenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand. [2/2]",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Skeleton Shapeshifter\nPower/Toughness: 1/1\nDiscard a card: Choose a number for this permanent. Activate only as a sorcery.\nAs long as the last number chosen for this permanent is 1, this permanent has base power and toughness 1/1.\nAs long as the last number chosen for this permanent is 1, this permanent has \"Menace.\"\nAs long as the last number chosen for this permanent is 1, this permanent has \"Soulshifter gets +1/+1 for each creature card in your graveyard.\"\nAs long as the last number chosen for this permanent is 2, this permanent has base power and toughness 2/2.\nAs long as the last number chosen for this permanent is 2, this permanent has \"Deathtouch.\"\nAs long as the last number chosen for this permanent is 2, this permanent has \"Whenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand.\"",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Skeleton Shapeshifter",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Soulshifter_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Soulshifter",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Skeleton Shapeshifter\nPower/Toughness: 1/1\nMimic—Discard a card *(Discard a card as a sorcery: This takes the shape of your choice.)* [1/1]\n[Shape 1] Menace\nSoulshifter gets +1/+1 for each creature card in your graveyard. [1/1]\n[Shape 2] Deathtouch\nWhenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand. [2/2]"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Soulshifter",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Skeleton Shapeshifter\nPower/Toughness: 1/1\nDiscard a card: Choose a number for this permanent. Activate only as a sorcery.\nAs long as the last number chosen for this permanent is 1, this permanent has base power and toughness 1/1.\nAs long as the last number chosen for this permanent is 1, this permanent has \"Menace.\"\nAs long as the last number chosen for this permanent is 1, this permanent has \"Soulshifter gets +1/+1 for each creature card in your graveyard.\"\nAs long as the last number chosen for this permanent is 2, this permanent has base power and toughness 2/2.\nAs long as the last number chosen for this permanent is 2, this permanent has \"Deathtouch.\"\nAs long as the last number chosen for this permanent is 2, this permanent has \"Whenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand.\"",
+              "custom_keyword_identities": [
+                "mimic"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mimic—Discard a card  [1/1]\n[Shape 1] Menace\nSoulshifter gets +1/+1 for each creature card in your graveyard. [1/1]\n[Shape 2] Deathtouch\nWhenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand. [2/2]",
+              "original_printed_rules_text": "Mimic—Discard a card (Discard a card as a sorcery: This takes the shape of your choice.) [1/1]\n[Shape 1] Menace\nSoulshifter gets +1/+1 for each creature card in your graveyard. [1/1]\n[Shape 2] Deathtouch\nWhenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand. [2/2]"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mimic"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Mimic—Discard a card  [1/1]\n[Shape 1] Menace\nSoulshifter gets +1/+1 for each creature card in your graveyard. [1/1]\n[Shape 2] Deathtouch\nWhenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand. [2/2]",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Mimic—Discard a card (Discard a card as a sorcery: This takes the shape of your choice.) [1/1]\n[Shape 1] Menace\nSoulshifter gets +1/+1 for each creature card in your graveyard. [1/1]\n[Shape 2] Deathtouch\nWhenever Soulshifter deals combat damage to a player, you may return target creature card from your graveyard to your hand. [2/2]"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mimic",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Choose a number for this permanent. Activate only as a sorcery.",
+          "numberedCharacteristics": true
+        }
+      ]
+    },
+    {
+      "id": "msem-702",
+      "keyword": "Mimic",
+      "original_reminder": "{G}{U}{R}: This takes the shape of your choice. Mimic only as a sorcery.",
+      "executable_reminder": "{Cost}: Choose a number for this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Graduate of Illusions"
+      ],
+      "rule_reference": "702.249.",
+      "rule_text": [
+        {
+          "name": "702.249a",
+          "rule": "Mimic is an activated ability. “Mimic (cost)” means “(Cost): Choose a number. Activate only as a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.249b",
+          "rule": "Any number can be chosen. If the permanent does not have a shape associated with that number, it will only have its base characteristics.",
+          "custom": true
+        },
+        {
+          "name": "702.249c",
+          "rule": "Abilities of a permanent with mimic that trigger when it \"takes this shape\" trigger after its mimic ability resolves, if it has that ability. These will trigger even if the creature did not change into this shape from another one.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Graduate of Illusions_HQZ",
+          "name": "Graduate of Illusions",
+          "original_text": "Mana cost: {G}{U}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/4\nMimic {G}{U}{R} *({G}{U}{R}: This takes the shape of your choice. Mimic only as a sorcery.)* [4/4]\n[Shape 1] Trample, hexproof [4/4]\n[Shape 2] Whenever Graduate of Illusions takes this shape, put three +1/+1 counters on it. *(It can take it multiple times in a row.)* [4/4]",
+          "executable_text": "Mana cost: {G}{U}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/4\n{G}{U}{R}: Choose a number for this permanent. Activate only as a sorcery.\nAs long as the last number chosen for this permanent is 1, this permanent has base power and toughness 4/4.\nAs long as the last number chosen for this permanent is 1, this permanent has \"Trample, hexproof.\"\nAs long as the last number chosen for this permanent is 2, this permanent has base power and toughness 4/4.\nAs long as the last number chosen for this permanent is 2, this permanent has \"Whenever a number is chosen for this permanent, put three +1/+1 counters on it.\"",
+          "mana_cost": "{G}{U}{R}",
+          "type_line": "Creature — Human Wizard",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Graduate of Illusions_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Graduate of Illusions",
+              "original_text": "Mana cost: {G}{U}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/4\nMimic {G}{U}{R} *({G}{U}{R}: This takes the shape of your choice. Mimic only as a sorcery.)* [4/4]\n[Shape 1] Trample, hexproof [4/4]\n[Shape 2] Whenever Graduate of Illusions takes this shape, put three +1/+1 counters on it. *(It can take it multiple times in a row.)* [4/4]"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Graduate of Illusions",
+              "executable_text": "Mana cost: {G}{U}{R}\nType: Creature — Human Wizard\nPower/Toughness: 4/4\n{G}{U}{R}: Choose a number for this permanent. Activate only as a sorcery.\nAs long as the last number chosen for this permanent is 1, this permanent has base power and toughness 4/4.\nAs long as the last number chosen for this permanent is 1, this permanent has \"Trample, hexproof.\"\nAs long as the last number chosen for this permanent is 2, this permanent has base power and toughness 4/4.\nAs long as the last number chosen for this permanent is 2, this permanent has \"Whenever a number is chosen for this permanent, put three +1/+1 counters on it.\"",
+              "custom_keyword_identities": [
+                "mimic"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mimic {G}{U}{R}  [4/4]\n[Shape 1] Trample, hexproof [4/4]\n[Shape 2] Whenever Graduate of Illusions takes this shape, put three +1/+1 counters on it.  [4/4]",
+              "original_printed_rules_text": "Mimic {G}{U}{R} ({G}{U}{R}: This takes the shape of your choice. Mimic only as a sorcery.) [4/4]\n[Shape 1] Trample, hexproof [4/4]\n[Shape 2] Whenever Graduate of Illusions takes this shape, put three +1/+1 counters on it. (It can take it multiple times in a row.) [4/4]"
+            }
+          ],
+          "custom_keyword_identities": [
+            "mimic"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Mimic {G}{U}{R}  [4/4]\n[Shape 1] Trample, hexproof [4/4]\n[Shape 2] Whenever Graduate of Illusions takes this shape, put three +1/+1 counters on it.  [4/4]",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Mimic {G}{U}{R} ({G}{U}{R}: This takes the shape of your choice. Mimic only as a sorcery.) [4/4]\n[Shape 1] Trample, hexproof [4/4]\n[Shape 2] Whenever Graduate of Illusions takes this shape, put three +1/+1 counters on it. (It can take it multiple times in a row.) [4/4]"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mimic",
+          "template": "{Cost}",
+          "reminder": "{Cost}: Choose a number for this permanent. Activate only as a sorcery.",
+          "numberedCharacteristics": true
+        }
+      ]
+    }
+  ]
+}

@@ -773,4 +773,9 @@ pub enum IfResultPredicate {
     /// the preceding pump left the source's power exactly at this value.
     /// Appended.
     SourcePowerBecomes(u32),
+    /// Exact original produced objects, distinct from accepted optional costs.
+    ResultObjectsMatch { filter: crate::filter::ObjectFilter, negated: bool },
+    /// The prior exact instruction had no eligible choice; not a declined action.
+    ChoiceUnavailable,
+    NamedActionCompleted { label:String },
 }

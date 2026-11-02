@@ -86,6 +86,7 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
         Ability::static_ability(StaticAbility::attached_ability_grant(
             Ability {
                 kind: AbilityKind::Triggered(granted_trigger),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             },
             "enchanted creature has whenever this creature attacks if its toughness is 3 or less put a +1/+1 counter on it".to_string(),

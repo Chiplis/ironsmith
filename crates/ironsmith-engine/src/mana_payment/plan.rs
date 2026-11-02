@@ -254,6 +254,7 @@ pub enum ManaPaymentSourceKind {
     Improvise,
     Delve,
     Waterbend,
+    PutMinusOneCounter,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,6 +285,7 @@ pub enum PlannedPipPayment {
     Improvise(ObjectId),
     Delve(ObjectId),
     Waterbend(ObjectId),
+    PutMinusOneCounter(ObjectId),
     Assist {
         player: PlayerId,
         symbol: ManaSymbol,

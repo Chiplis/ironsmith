@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'keyword_static::complete_granted_cost_boundary_tests::recognized_complete_cost_definitions_remain_reachable_before_the_outer_guard' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs:7106:13:
+assertion failed: has_owned_granted_cost_companion(&tokens).unwrap()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::complete_granted_cost_boundary_tests::recognized_complete_cost_definitions_remain_reachable_before_the_outer_guard ... FAILED
+
+failures:
+
+failures:
+    keyword_static::complete_granted_cost_boundary_tests::recognized_complete_cost_definitions_remain_reachable_before_the_outer_guard
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.02s
+

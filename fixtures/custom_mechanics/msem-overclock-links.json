@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "directed named permanent relationships",
+  "notes": [
+    "Generic link capability and full source candidate pending parent native verification. Rule702.258a defines distinct local durations;702.258d adds shared sufficient termination events."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-724",
+      "keyword": "Overclock",
+      "original_reminder": "You may have this creature overclock an artifact you control when either enters. If you do, it stops overclocking any other artifacts.",
+      "executable_reminder": "When this creature enters, if you control this creature and another artifact, you may choose another artifact you control. If you do, link this permanent to it by the overclock relation for as long as both remain permanents on the battlefield under your control.\nWhenever an artifact you control enters, if you control this creature and that artifact, you may link this permanent to that artifact by the overclock relation for as long as both remain creatures on the battlefield under your control.",
+      "source_cards": [
+        "Amateur Munitionist"
+      ],
+      "rule_reference": "702.258.",
+      "rule_text": [
+        {
+          "name": "702.258a",
+          "rule": "Overclock is a keyword that represents two triggered abilities. “Overclock” means “When this creature enters, if you control both this creature and another artifact, you may overclock another artifact you control for as long as both remain permanents on the battlefield under your control or until this creature overclocks another artifact” and “Whenever an artifact you control enters, if you control both that artifact and this creature, you may overclock this artifact for as long as both remain creatures on the battlefield under your control or until that creature overclocks another artifact.”",
+          "custom": true
+        },
+        {
+          "name": "702.258b",
+          "rule": "An artifact becomes “overclocked” with another as the result of a overclock ability. Abilities may refer to an overclocked artifact, the artifact a creature overclocks, or whether an artifact is overclocked.",
+          "custom": true
+        },
+        {
+          "name": "702.258c",
+          "rule": "A creature can only overclock one artifact, however an artifact may be overclocked by multiple creatures.",
+          "custom": true
+        },
+        {
+          "name": "702.258d",
+          "rule": "An overclocked artifact stops being overclocked if any of the following occur: another player gains control of it or the creature overclocking it; it or the creature overclocking it leaves the battlefield; or the creature overclocking it overclocks another artifact.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Amateur Munitionist_OTH",
+          "name": "Amateur Munitionist",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Human Artificer\nPower/Toughness: 2/3\nOverclock *(You may have this creature overclock an artifact you control when either enters. If you do, it stops overclocking any other artifacts.)*\nOverclocked artifact has “{R}, {T}: This artifact deals 1 damage to any target.”",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Artificer\nPower/Toughness: 2/3\nWhen this creature enters, if you control this creature and another artifact, you may choose another artifact you control. If you do, link this permanent to it by the overclock relation for as long as both remain permanents on the battlefield under your control.\nWhenever an artifact you control enters, if you control this creature and that artifact, you may link this permanent to that artifact by the overclock relation for as long as both remain creatures on the battlefield under your control\nartifact linked by overclock to this permanent has “{R}, {T}: This artifact deals 1 damage to any target.”",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Human Artificer",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Amateur Munitionist_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Amateur Munitionist",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Human Artificer\nPower/Toughness: 2/3\nOverclock *(You may have this creature overclock an artifact you control when either enters. If you do, it stops overclocking any other artifacts.)*\nOverclocked artifact has “{R}, {T}: This artifact deals 1 damage to any target.”"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Amateur Munitionist",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Artificer\nPower/Toughness: 2/3\nWhen this creature enters, if you control this creature and another artifact, you may choose another artifact you control. If you do, link this permanent to it by the overclock relation for as long as both remain permanents on the battlefield under your control.\nWhenever an artifact you control enters, if you control this creature and that artifact, you may link this permanent to that artifact by the overclock relation for as long as both remain creatures on the battlefield under your control\nartifact linked by overclock to this permanent has “{R}, {T}: This artifact deals 1 damage to any target.”",
+              "custom_keyword_identities": [
+                "overclock"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Overclock\nOverclocked artifact has “{R}, {T}: This artifact deals 1 damage to any target.”",
+              "original_printed_rules_text": "Overclock (You may have this creature overclock an artifact you control when either enters. If you do, it stops overclocking any other artifacts.)\nOverclocked artifact has “{R}, {T}: This artifact deals 1 damage to any target.”"
+            }
+          ],
+          "custom_keyword_identities": [
+            "overclock"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Overclock\nOverclocked artifact has “{R}, {T}: This artifact deals 1 damage to any target.”",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Overclock (You may have this creature overclock an artifact you control when either enters. If you do, it stops overclocking any other artifacts.)\nOverclocked artifact has “{R}, {T}: This artifact deals 1 damage to any target.”"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Overclock",
+          "reminder": "When this creature enters, if you control this creature and another artifact, you may choose another artifact you control. If you do, link this permanent to it by the overclock relation for as long as both remain permanents on the battlefield under your control.\nWhenever an artifact you control enters, if you control this creature and that artifact, you may link this permanent to that artifact by the overclock relation for as long as both remain creatures on the battlefield under your control.",
+          "permanentLinkRelation": "overclock"
+        }
+      ],
+      "semantic_equivalence": "pending_native_verification",
+      "source_rule_interpretation": "702.258a defines two triggered abilities with distinct durations: source-entry both permanents; artifact-entry both creatures.702.258d adds shared termination on either object changing controller or leaving the battlefield, or this source linking another artifact. Its if-any wording does not erase either local duration. The generic directed relation is exclusive per source/name and captures its original controller, preserving these shared bounds."
+    }
+  ]
+}

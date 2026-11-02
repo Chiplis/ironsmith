@@ -8,6 +8,15 @@ mod r#consumer_mana_spending;
 #[path = "../copular_contraction_animation.rs"]
 mod r#copular_contraction_animation;
 
+#[path = "../custom_attack_trigger_projection.rs"]
+mod r#custom_attack_trigger_projection;
+
+#[path = "../custom_composed_zone_payment.rs"]
+mod r#custom_composed_zone_payment;
+
+#[path = "../custom_middle_fullsource.rs"]
+mod r#custom_middle_fullsource;
+
 #[path = "../effect_granted_casting_prices.rs"]
 mod r#effect_granted_casting_prices;
 

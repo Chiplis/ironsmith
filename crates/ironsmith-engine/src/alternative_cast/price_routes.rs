@@ -100,6 +100,17 @@ pub(crate) fn proposed_face(
     if !matches!(origin, CastingMethod::Fuse) {
         face.split_combined = None;
     }
+    let selected_index = match origin {
+        CastingMethod::Alternative(index) => Some(*index),
+        CastingMethod::PlayFrom { use_alternative, .. }
+        | CastingMethod::SplitOtherHalfPlayFrom { use_alternative, .. } => *use_alternative,
+        _ => None,
+    };
+    if let Some((cost, power_toughness)) = selected_index
+        .and_then(|index| face.alternative_casts.get(index))
+        .and_then(|method| method.casting_characteristics()) {
+        face.apply_cast_characteristic_overlay(cost, power_toughness);
+    }
     if let Some(index) = prototype {
         let method = face.alternative_casts.get(index)?;
         let (cost, power_toughness) = (
@@ -143,6 +154,7 @@ fn face_query(
         return Ok(None);
     };
     let needs_overlay = prototype.is_some()
+        || face.prototype_cast_state.is_some()
         || spell.split_combined.is_some()
         || matches!(
             origin,

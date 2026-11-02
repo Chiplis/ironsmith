@@ -345,6 +345,9 @@ pub struct ReplacementExecutionContext {
     /// Set by an entry program that taps the entering source ("You may have
     /// this land enter tapped", Mariposa Military Base): it enters tapped.
     pub entry_tapped: bool,
+    /// Designations proposed for the entering incarnation, not its source-zone card.
+    pub entry_designations: Vec<ironsmith_core::PermanentDesignation>,
+    pub entry_named_actions: Vec<(String,crate::player::ManaPool)>,
 }
 
 impl Default for ReplacementExecutionContext {
@@ -360,6 +363,8 @@ impl Default for ReplacementExecutionContext {
             simultaneous_zone_destinations: HashMap::new(),
             entry_redirect: None,
             entry_tapped: false,
+            entry_designations: Vec::new(),
+            entry_named_actions: Vec::new(),
         }
     }
 }
@@ -399,6 +404,7 @@ pub struct ExecutionContext<'a> {
     /// Linked pair and rules-text acquisition captured when the ability was admitted.
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub(crate) card_definition_scopes: Vec<crate::effects::cards::CardDefinitionScope>,
     /// The controller of the source.
     pub controller: PlayerId,
     /// Resolved targets for the effect.
@@ -467,6 +473,9 @@ pub struct ExecutionContext<'a> {
     /// tag all destroyed creatures). Use `get_tagged_first()` for single-object patterns and
     /// `get_tagged_all()` for multi-object patterns.
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Cast dependencies acquired by this exact ability may not follow a
+    /// physical card's stable ID into a different incarnation.
+    pub exact_object_reference_tags: HashSet<TagKey>,
     /// Suspended instruction-local selection cursors. Context checkpoints own
     /// their rollback; payment frames start with their own selection state.
     pub(crate) object_selection_progress:
@@ -552,6 +561,11 @@ pub struct ExecutionContext<'a> {
     /// Aura enters attached to X (CR 303.4f) and stays in its zone when it
     /// can't legally enchant X (CR 303.4i) instead of choosing on its own.
     pub(crate) pending_entry_attachment: Option<crate::target::ChooseSpec>,
+    /// Only the exact preceding entry instruction may supply this packet.
+    pub(crate) entry_attachment_receipts: Option<Vec<crate::effect::EntryAttachmentReceipt>>,
+    /// Lexical operation identity; token proposals acquire current providers.
+    pub(crate) named_action_token_scope: Option<(String, PlayerId)>,
+    pub(crate) named_action_created_objects: Option<Vec<ObjectSnapshot>>,
     /// Continuous effects this resolution has registered so far, in order.
     /// "You may pay [cost] to end this effect" (Licids) ends exactly these.
     pub(crate) created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
@@ -625,6 +639,7 @@ execution_context_checkpoint! {
     source: ObjectId,
     linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    card_definition_scopes: Vec<crate::effects::cards::CardDefinitionScope>,
     controller: PlayerId,
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
@@ -651,6 +666,7 @@ execution_context_checkpoint! {
     target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     source_snapshot: Option<ObjectSnapshot>,
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    exact_object_reference_tags: HashSet<TagKey>,
     object_selection_progress: HashMap<ObjectSelectionProgressKey, ObjectSelectionProgress>,
     tagged_players: HashMap<TagKey, Vec<PlayerId>>,
     face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
@@ -678,6 +694,9 @@ execution_context_checkpoint! {
     resolution_object_id_floor: Option<ObjectId>,
     public_search_reveal_tag: Option<TagKey>,
     pending_entry_attachment: Option<crate::target::ChooseSpec>,
+    entry_attachment_receipts: Option<Vec<crate::effect::EntryAttachmentReceipt>>,
+    named_action_token_scope: Option<(String, PlayerId)>,
+    named_action_created_objects: Option<Vec<ObjectSnapshot>>,
     created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
 }
 
@@ -711,6 +730,7 @@ payment_execution_inputs! {
         payment_target_reference: Option<PaymentTargetReference>,
         linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
         source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    card_definition_scopes: Vec<crate::effects::cards::CardDefinitionScope>,
         activation_origin: Option<crate::continuous::AbilityOrigin>,
         activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
         prospective_cost_payment: bool,
@@ -741,11 +761,11 @@ payment_execution_inputs! {
     local {
         source, controller, targets, announced_targets, targets_are_cost_choices,
         target_assignments, target_distributions, x_value, effect_outcomes,
-        optional_action, source_snapshot, tagged_objects, object_selection_progress, optional_identity_guard,
+        optional_action, source_snapshot, tagged_objects, exact_object_reference_tags, object_selection_progress, optional_identity_guard,
         do_this_limit, chosen_modes, cause, provenance, replacement,
         executing_effect, shared_team_structure_operations, created_extra_turn_index,
-        restarted_game, resolution_control, public_search_reveal_tag, pending_entry_attachment,
-        created_continuous_effects,
+        restarted_game, resolution_control, public_search_reveal_tag, pending_entry_attachment, entry_attachment_receipts,
+        named_action_token_scope, named_action_created_objects, created_continuous_effects,
     }
 }
 
@@ -843,6 +863,7 @@ impl<'a> ExecutionContext<'a> {
             source,
             linked_exile_owner: None,
             source_number_owner: None,
+            card_definition_scopes: Vec::new(),
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -870,6 +891,7 @@ impl<'a> ExecutionContext<'a> {
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
+            exact_object_reference_tags: HashSet::new(),
             object_selection_progress: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
@@ -897,6 +919,9 @@ impl<'a> ExecutionContext<'a> {
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
+            entry_attachment_receipts: None,
+            named_action_token_scope: None,
+            named_action_created_objects: None,
             created_continuous_effects: Vec::new(),
         }
     }
@@ -918,6 +943,7 @@ impl<'a> ExecutionContext<'a> {
             source,
             linked_exile_owner: None,
             source_number_owner: None,
+            card_definition_scopes: Vec::new(),
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -945,6 +971,7 @@ impl<'a> ExecutionContext<'a> {
             target_snapshots: HashMap::new(),
             source_snapshot: None,
             tagged_objects: HashMap::new(),
+            exact_object_reference_tags: HashSet::new(),
             object_selection_progress: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
@@ -972,6 +999,9 @@ impl<'a> ExecutionContext<'a> {
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
+            entry_attachment_receipts: None,
+            named_action_token_scope: None,
+            named_action_created_objects: None,
             created_continuous_effects: Vec::new(),
         }
     }
@@ -983,6 +1013,7 @@ impl<'a> ExecutionContext<'a> {
             source: self.source,
             linked_exile_owner: self.linked_exile_owner,
             source_number_owner: self.source_number_owner,
+            card_definition_scopes: self.card_definition_scopes,
             controller: self.controller,
             targets: self.targets,
             announced_targets: self.announced_targets,
@@ -1010,6 +1041,7 @@ impl<'a> ExecutionContext<'a> {
             target_snapshots: self.target_snapshots,
             source_snapshot: self.source_snapshot,
             tagged_objects: self.tagged_objects,
+            exact_object_reference_tags: self.exact_object_reference_tags,
             object_selection_progress: self.object_selection_progress,
             tagged_players: self.tagged_players,
             face_down_exile_viewers: self.face_down_exile_viewers,
@@ -1037,6 +1069,9 @@ impl<'a> ExecutionContext<'a> {
             resolution_object_id_floor: self.resolution_object_id_floor,
             public_search_reveal_tag: self.public_search_reveal_tag,
             pending_entry_attachment: self.pending_entry_attachment,
+            entry_attachment_receipts: self.entry_attachment_receipts,
+            named_action_token_scope: self.named_action_token_scope,
+            named_action_created_objects: self.named_action_created_objects,
             created_continuous_effects: self.created_continuous_effects,
         }
     }
@@ -1539,6 +1574,7 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn with_tagged_objects(mut self, tags: HashMap<TagKey, Vec<ObjectSnapshot>>) -> Self {
+        self.exact_object_reference_tags.clear();
         self.tagged_objects = tags;
         if !self.tagged_objects.contains_key(&TagKey::from("__it__"))
             && let Some(triggering) = self
@@ -1686,6 +1722,7 @@ impl<'a> ExecutionContext<'a> {
         definition: Option<ironsmith_core::LinkedExileDefinition>,
     ) -> Self {
         self.activation_definition = definition;
+        self.cause.activation_definition = definition;
         self
     }
 
@@ -1798,8 +1835,9 @@ impl<'a> ExecutionContext<'a> {
     /// Subsequent effects can reference these objects using
     /// `PlayerFilter::ControllerOf(ObjectRef::tagged(tag))` etc.
     pub fn tag_object(&mut self, tag: impl Into<TagKey>, snapshot: ObjectSnapshot) {
+        let tag=tag.into();self.exact_object_reference_tags.remove(&tag);
         self.tagged_objects
-            .entry(tag.into())
+            .entry(tag)
             .or_default()
             .push(snapshot);
     }
@@ -1813,6 +1851,9 @@ impl<'a> ExecutionContext<'a> {
     /// replaces the seeded history. Filter references to "cards exiled with
     /// ~" still read the full link set through the filter context.
     pub fn tag_source_exiled_result(&mut self, snapshot: ObjectSnapshot) {
+        let last=crate::tag::TagKey::from(ironsmith_core::tag::LAST_EXILED_RESULT_TAG);
+        self.set_tagged_objects(last.clone(),vec![snapshot.clone()]);
+        self.exact_object_reference_tags.insert(last);
         if self
             .source_snapshot
             .as_ref()
@@ -1830,15 +1871,17 @@ impl<'a> ExecutionContext<'a> {
 
     /// Tag multiple objects at once under the same tag.
     pub fn tag_objects(&mut self, tag: impl Into<TagKey>, snapshots: Vec<ObjectSnapshot>) {
+        let tag=tag.into();self.exact_object_reference_tags.remove(&tag);
         self.tagged_objects
-            .entry(tag.into())
+            .entry(tag)
             .or_default()
             .extend(snapshots);
     }
 
     /// Append object snapshots under a tag, skipping objects already present.
     pub fn tag_objects_unique(&mut self, tag: impl Into<TagKey>, snapshots: Vec<ObjectSnapshot>) {
-        let entry = self.tagged_objects.entry(tag.into()).or_default();
+        let tag=tag.into();self.exact_object_reference_tags.remove(&tag);
+        let entry = self.tagged_objects.entry(tag).or_default();
         for snapshot in snapshots {
             if !entry
                 .iter()
@@ -1854,12 +1897,14 @@ impl<'a> ExecutionContext<'a> {
         &mut self, tags: impl IntoIterator<Item = TagKey>, run: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let previous = tags.into_iter().map(|tag| {
-            let old = self.tagged_objects.remove(&tag); (tag, old)
+            let exact=self.exact_object_reference_tags.remove(&tag);
+            let old = self.tagged_objects.remove(&tag); (tag, old, exact)
         }).collect::<Vec<_>>();
         let result = run(self);
-        for (tag, old) in previous {
-            self.tagged_objects.remove(&tag);
-            if let Some(old) = old { self.tagged_objects.insert(tag, old); }
+        for (tag, old, exact) in previous {
+            self.tagged_objects.remove(&tag);self.exact_object_reference_tags.remove(&tag);
+            if let Some(old) = old { self.tagged_objects.insert(tag.clone(), old); }
+            if exact {self.exact_object_reference_tags.insert(tag);}
         }
         result
     }
@@ -1871,8 +1916,11 @@ impl<'a> ExecutionContext<'a> {
         run: impl FnOnce(&mut Self) -> R,
     ) -> R {
         let tag = tag.into();
+        let previous_exact=self.exact_object_reference_tags.remove(&tag);
         let previous = self.tagged_objects.insert(tag.clone(), objects);
         let result = run(self);
+        self.exact_object_reference_tags.remove(&tag);
+        if previous_exact {self.exact_object_reference_tags.insert(tag.clone());}
         match previous {
             Some(objects) => {
                 self.tagged_objects.insert(tag, objects);
@@ -1885,11 +1933,13 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn set_tagged_objects(&mut self, tag: impl Into<TagKey>, snapshots: Vec<ObjectSnapshot>) {
-        self.tagged_objects.insert(tag.into(), snapshots);
+        let tag=tag.into();self.exact_object_reference_tags.remove(&tag);
+        self.tagged_objects.insert(tag, snapshots);
     }
 
     /// Clear a specific object tag.
     pub fn clear_object_tag(&mut self, tag: impl AsRef<str>) -> Option<Vec<ObjectSnapshot>> {
+        self.exact_object_reference_tags.remove(tag.as_ref());
         self.tagged_objects.remove(tag.as_ref())
     }
 
@@ -2589,5 +2639,18 @@ mod payment_target_reference_tests {
         invalid_resolution.target_assignments[0].range = 0..0;
         PaymentExecutionInputs::capture_for_payment(&invalid_resolution).restore_ref(&mut payment);
         assert!(matches!(resolve_objects_from_spec(&game, &spec, &payment), Err(ExecutionError::InvalidTarget)));
+    }
+}
+
+#[cfg(test)]
+mod captured_cast_reference_shadow_tests {
+    use super::*;
+    #[test]
+    fn local_tag_rebinding_clears_captured_exactness_and_scope_restores_it(){
+        let mut ctx=ExecutionContext::new_default(ObjectId(1),PlayerId(0));let tag=TagKey::from("shared");
+        ctx.set_tagged_objects(tag.clone(),Vec::new());ctx.exact_object_reference_tags.insert(tag.clone());
+        ctx.with_object_tag(tag.clone(),Vec::new(),|ctx|{assert!(!ctx.exact_object_reference_tags.contains(&tag));});
+        assert!(ctx.exact_object_reference_tags.contains(&tag));
+        ctx.set_tagged_objects(tag.clone(),Vec::new());assert!(!ctx.exact_object_reference_tags.contains(&tag));
     }
 }

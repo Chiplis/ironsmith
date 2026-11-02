@@ -68,6 +68,15 @@ pub struct WaterbendPaymentScope {
     /// payment is not the waterbend keyword action.
     #[cfg_attr(feature = "serde", serde(default))]
     pub creatures_only: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub artifacts_only: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tap_payment_methods: Vec<TapPaymentMethod>,
+    /// Supplemental source-wide methods never replace the authored scope.
+    #[cfg_attr(feature = "serde", serde(default = "native_tap_permission_default"))]
+    pub native_tap_permission: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub native_capacity: Option<WaterbendCapacity>,
 }
 
 impl ManaCost {
@@ -81,7 +90,7 @@ impl ManaCost {
         };
         self.waterbend_payment_scope = Some(WaterbendPaymentScope {
             obligations: vec![amount.clone()], capacity: WaterbendCapacity::Amount(amount), x_pip_binding: None,
-            creatures_only: false,
+            creatures_only: false, artifacts_only: false, tap_payment_methods: Vec::new(), native_tap_permission: true, native_capacity: None,
         });
         self
     }
@@ -97,6 +106,19 @@ impl ManaCost {
         cost
     }
 
+    /// Untapped artifacts may pay generic mana in the final total cost.
+    pub fn with_artifact_tap_payment(self) -> Self {
+        let mut cost = self.with_waterbend();
+        if let Some(scope) = cost.waterbend_payment_scope.as_mut() {
+            scope.artifacts_only = true;
+            for obligation in &mut scope.obligations { obligation.descriptive = true; }
+        }
+        cost
+    }
+    pub fn has_artifact_tap_payment(&self) -> bool {
+        self.waterbend_payment_scope.as_ref().is_some_and(|scope| scope.artifacts_only)
+    }
+
     pub fn with_creature_tap_payment(self) -> Self {
         let mut cost = self.with_waterbend();
         if let Some(scope) = cost.waterbend_payment_scope.as_mut() {
@@ -104,6 +126,19 @@ impl ManaCost {
             for obligation in &mut scope.obligations { obligation.descriptive = true; }
         }
         cost
+    }
+
+    pub fn with_creature_tap_payment_methods(mut self, methods: Vec<TapPaymentMethod>) -> Self {
+        if self.waterbend_payment_scope.is_none() {
+            self=self.with_creature_tap_payment();
+            // The descriptive shell exposes supplemental methods to the same
+            // planner, but grants no independent unnamed payment permission.
+            self.waterbend_payment_scope.as_mut().unwrap().native_tap_permission=false;
+        }
+        if let Some(scope)=self.waterbend_payment_scope.as_mut(){
+            for method in methods{if !scope.tap_payment_methods.contains(&method){scope.tap_payment_methods.push(method);}}
+        }
+        self
     }
 
     /// Whether the scoped tap payment admits only creatures and is not a
@@ -120,7 +155,7 @@ impl ManaCost {
         let Some(scope) = &self.waterbend_payment_scope else { return self.to_oracle(); };
         // The creature tap payment is a rider on the ordinary price, not a
         // printed Waterbend component.
-        if scope.creatures_only { return self.to_oracle(); }
+        if scope.creatures_only || scope.artifacts_only { return self.to_oracle(); }
         let mut remainder = self.pips_with_bound_x_expanded();
         let mut parts = Vec::new();
         for obligation in &scope.obligations {
@@ -166,10 +201,17 @@ impl ManaCost {
     }
 
     pub fn waterbend_capacity_checked(&self, x: u32) -> Option<u32> {
+        let native=self.native_waterbend_capacity_checked(x)?;
+        let supplemental=self.waterbend_payment_scope.as_ref().is_some_and(|scope|!scope.tap_payment_methods.is_empty());
+        Some(if supplemental {native.max(self.generic_payment_amount(x))} else {native})
+    }
+    pub fn native_waterbend_capacity(&self,x:u32)->u32{self.native_waterbend_capacity_checked(x).unwrap_or(0)}
+    fn native_waterbend_capacity_checked(&self, x: u32) -> Option<u32> {
         let Some(scope) = &self.waterbend_payment_scope else { return Some(0); };
         if scope.obligations.is_empty() { return None; }
         let original = scope.obligations.iter().try_fold(0u32, |total, part| total.checked_add(part.amount(x)?))?;
-        Some(scope.capacity.amount(x)?.min(original).min(self.generic_payment_amount(x)))
+        let capacity=scope.native_capacity.as_ref().unwrap_or(&scope.capacity).amount(x)?.min(original).min(self.generic_payment_amount(x));
+        Some(if scope.native_tap_permission {capacity} else {0})
     }
 
     /// A still-unexpanded bound component keeps its own declaration when a
@@ -200,6 +242,7 @@ impl ManaCost {
             announced_x: scope.x_pip_binding,
             descriptive: false,
         };
+        if let Some(native)=scope.native_capacity.take(){scope.native_capacity=Some(WaterbendCapacity::Minimum(Box::new(native),amount.clone()));}
         scope.capacity = WaterbendCapacity::Minimum(Box::new(scope.capacity.clone()), amount);
     }
 
@@ -238,7 +281,13 @@ impl ManaCost {
                 self.waterbend_payment_scope = Some(WaterbendPaymentScope { obligations,
                     capacity: WaterbendCapacity::Sum(Box::new(a.capacity.clone()), Box::new(b.capacity.clone())),
                     x_pip_binding: None,
-                    creatures_only: a.creatures_only && b.creatures_only,
+                    creatures_only: match (a.native_tap_permission,b.native_tap_permission) {(true,false)=>a.creatures_only,(false,true)=>b.creatures_only,_=>a.creatures_only&&b.creatures_only},
+                    artifacts_only: match (a.native_tap_permission,b.native_tap_permission) {(true,false)=>a.artifacts_only,(false,true)=>b.artifacts_only,_=>a.artifacts_only&&b.artifacts_only},
+                    tap_payment_methods: a.tap_payment_methods.iter().chain(&b.tap_payment_methods).cloned().collect(),
+                    native_tap_permission: a.native_tap_permission || b.native_tap_permission,
+                    native_capacity: Some(WaterbendCapacity::Sum(
+                        Box::new(if a.native_tap_permission {a.native_capacity.clone().unwrap_or_else(||a.capacity.clone())} else {zero_tap_capacity()}),
+                        Box::new(if b.native_tap_permission {b.native_capacity.clone().unwrap_or_else(||b.capacity.clone())} else {zero_tap_capacity()}))),
                 });
             },
         }
@@ -325,4 +374,26 @@ mod constrained_x_coexistence_contracts {
                 "an independently declared X=2 cannot be relabeled as the other component's X=3");
         }
     }
+}
+
+/// Alternative source-wide permissions admitted by this exact frozen mana price.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub struct TapPaymentMethod {
+    pub name: Option<String>,
+    pub exclude_source: bool,
+}
+
+fn native_tap_permission_default()->bool{true}
+
+fn zero_tap_capacity()->WaterbendCapacity{WaterbendCapacity::Amount(WaterbendObligation{fixed:0,x_symbols:0,announced_x:None,descriptive:true})}
+#[cfg(test)]mod supplemental_tap_composition_tests{
+ use super::*;
+ #[test]fn supplemental_component_join_does_not_broaden_native_artifact_share(){
+  let native=ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]).with_artifact_tap_payment();
+  let supplemental=ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]).with_creature_tap_payment_methods(vec![TapPaymentMethod{name:Some("stellar weaving".into()),exclude_source:true}]);
+  let combined=native.combined_with(&supplemental);
+  assert_eq!(combined.native_waterbend_capacity(0),1);assert_eq!(combined.waterbend_capacity(0),3);
+  assert!(combined.has_artifact_tap_payment());assert!(!combined.has_creature_tap_payment());
+ }
 }

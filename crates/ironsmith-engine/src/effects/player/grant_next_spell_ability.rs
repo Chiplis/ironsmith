@@ -27,6 +27,10 @@ impl EffectExecutor for GrantNextSpellAbilityEffect {
                 "a next-spell incarnation rider must be a static ability".into(),
             ));
         }
+        if self.mode == ironsmith_core::NextSpellGrantMode::EntryFollowup
+            && (self.repeat_for_turn || !matches!(self.ability.kind, crate::ability::AbilityKind::Triggered(_))) {
+            return Err(ExecutionError::InternalError("a next-spell entry followup requires one complete external triggered program".into()));
+        }
         let mut filter = self.filter.clone();
         if filter.chosen_creature_type {
             let subtype = game
@@ -53,10 +57,13 @@ impl EffectExecutor for GrantNextSpellAbilityEffect {
             player,
             ctx.source,
             filter,
-            self.ability.clone(),
+            ctx.bind_definition_scope_ability(self.ability.clone())?,
             1,
             self.mode,
         );
+        if self.repeat_for_turn {
+            if let Some(grant)=game.effect_store.temporary_spell_ability_grants.last_mut(){grant.repeat_for_turn=true;}
+        }
         Ok(EffectOutcome::resolved())
     }
 }

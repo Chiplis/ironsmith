@@ -860,3 +860,22 @@ fn creature_its_blocking_is_an_attacker_the_source_blocks() {
         assert!(!filter.blocking, "{text}: the candidate is the attacker, not a blocker");
     }
 }
+
+#[test]
+fn explicit_nonbattlefield_scope_intersects_the_complete_card_type_union() {
+    let tokens = lex_line("instant and sorcery card you own that isn't on the battlefield", 0).unwrap();
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
+    let zones = [Zone::Hand, Zone::Library, Zone::Graveyard, Zone::Exile, Zone::Command, Zone::Stack, Zone::Ante];
+    assert_eq!(filter.any_of.len(), zones.len(), "{filter:#?}");
+    for (branch, zone) in filter.any_of.iter().zip(zones) {
+        assert_eq!(branch.zone, Some(zone), "{filter:#?}");
+        let mut characteristic = branch.clone();
+        characteristic.zone = None;
+        characteristic.stack_kind = None;
+        let mut expected = crate::object_filters::parse_object_filter_lexed(
+            &lex_line("instant and sorcery card you own", 0).unwrap(), false).unwrap();
+        expected.zone = None;
+        expected.stack_kind = None;
+        assert_eq!(characteristic, expected, "zone scoping must preserve both types and owner");
+    }
+}

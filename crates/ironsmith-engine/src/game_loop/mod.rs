@@ -76,12 +76,15 @@ mod exile_play;
 mod mandatory_loop;
 mod priority_apply;
 mod priority_cast;
+mod retained_occurrence;
+pub(crate) use retained_occurrence::{RetainedActivatedOccurrence, announce_retained_activated_occurrence_without_costs, defer_forced_trigger_occurrences};
 mod priority_core;
 mod priority_mana;
 mod priority_state;
 mod spell_cost_references;
 mod saga;
 pub(crate) use sba_triggers::announce_trigger_target_distributions;
+pub(crate) use sba_triggers::complete_trigger_class_choices_before_continuation;
 pub(crate) use targeting::{
     extract_target_requirements_with_modes,
     extract_target_requirements_with_modes_and_announcements,
@@ -126,6 +129,7 @@ pub(crate) use self::priority_cast::{
     EffectDrivenCastOutputs, cast_spell_from_resolving_effect_with_context,
     cast_spell_from_resolving_effect_with_outputs, cast_spell_from_resolving_effect_with_price,
     cast_spell_from_resolving_effect_with_price_and_outputs,
+    cast_spell_from_resolving_effect_with_named_price_lock_and_outputs,
     cast_spell_from_resolving_effect_with_price_lock_and_outputs, cast_spell_from_revealed_miracle,
     cast_spell_from_revealed_miracle_with_outputs,
 };
@@ -150,7 +154,7 @@ pub(crate) use self::priority_cast::{
     attack_mana_ability_window_context, blocker_mana_ability_window_context,
     card_cost_choice_reveal_policy, cast_spell_from_resolving_effect,
 };
-pub(crate) use self::priority_mana::propose_spell_cast;
+pub(crate) use self::priority_mana::{propose_spell_cast,propose_spell_cast_with_dm};
 pub use self::priority_mana::{
     apply_decision_context_with_dm, expand_mana_cost_to_display_pips, mana_ability_is_undo_safe,
 };
@@ -170,3 +174,5 @@ pub use self::targeting::{
 
 #[cfg(test)]
 mod creature_type_announcement_tests;
+
+mod splice_reveal;

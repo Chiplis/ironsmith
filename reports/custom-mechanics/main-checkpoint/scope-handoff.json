@@ -1,0 +1,984 @@
+{
+  "status": "FROZEN_INCOMPLETE_SCOPE_AND_VALIDATION_HANDOFF_NO_COMPLETION_CLAIM",
+  "stop_reason": "Parent relayed explicit user quota instruction: merge current work; track remaining issues for later. Research stopped at this snapshot.",
+  "inventory": {
+    "seed_reminder_rows": 971,
+    "keyword_families": 197,
+    "formal_named_rules": 205,
+    "categories": 18,
+    "collector_groups": 223,
+    "physical_source_keys": 4022,
+    "source_cases": 4210,
+    "verified": false
+  },
+  "scope_policy": {
+    "explicit_user_casting_exclusions": [
+      "MSEM Function",
+      "MSEM Lucid",
+      "REV Chant"
+    ],
+    "source_authored_existing_operations_remain_in_scope": [
+      "Compose",
+      "Reprise",
+      "Journey in both formats",
+      "Chronicle",
+      "ordinary abilities on category consumers"
+    ],
+    "user_unresolved_NOT_implemented_and_NOT_whole_family_exclusions": [
+      {
+        "source": "Tunu",
+        "family": "Conjure",
+        "boundary": "omitted/unspecified destination; preserve original rather than invent destination"
+      },
+      {
+        "source": "Cosmic Glitch",
+        "family": "Glitch",
+        "boundary": "ambiguous counter quantity; preserve original rather than invent count"
+      }
+    ],
+    "other_new_game_rule_boundaries_as_recorded": [
+      {
+        "mechanic": "Archive",
+        "scope": "msem",
+        "formal_reference": "702.219.",
+        "reason": "Creates independently addressable additional libraries and custom empty-library state-based behavior; one existing library cannot represent it.",
+        "authority_status": "explicit_scope_exclusion_confirmed_by_parent_or_current_owner"
+      },
+      {
+        "mechanic": "Ride",
+        "scope": "msem",
+        "formal_reference": "702.261.",
+        "reason": "MSEM702.261b introduces a new Ride state-based action; prior source/plumbing candidates do not establish equivalence.",
+        "authority_status": "explicit_parent_exclusion_confirmed_by_boundary_owner"
+      },
+      {
+        "mechanic": "Codex",
+        "scope": "msem",
+        "formal_reference": "702.265.",
+        "reason": "Creates additional face-up libraries with persistent ownership and undefined-library selection rules.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Lucid",
+        "scope": "msem",
+        "formal_reference": "702.304.",
+        "reason": "User excludes Lucid-specific modal casting rules: MSEM601.2b moves exiled Lucid donors to graveyard during announcement before targets601.2c;702.304a\u2013g adds a selected donor mode, preserving per-mode costs and star/pawprint eligibility.700.2a explicitly governs gained Lucid modes. Ordinary resolution exile remains an available generic component, but does not fulfill the excluded full keyword.",
+        "authority_status": "explicit_scope_exclusion_confirmed_by_parent_or_current_owner"
+      },
+      {
+        "mechanic": "Additional Libraries",
+        "scope": "msem",
+        "formal_reference": "740.",
+        "reason": "Adds independent library zones, draw-library choice, undefined-library resolution and library disappearance as new game rules.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Discovery Cards",
+        "scope": "msem",
+        "formal_reference": "741.",
+        "reason": "Mandatory precombat-main progress counter placement is a new turn-based action without the stack, beyond ordinary triggered token/counter composition.",
+        "authority_status": "explicit_scope_exclusion_confirmed_by_parent_or_current_owner"
+      },
+      {
+        "mechanic": "Mystery Cards",
+        "scope": "msem",
+        "formal_reference": "742.",
+        "reason": "Adds a decoded-all-mysteries state-based transformation; ordinary triggered transformation changes the priority window.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Quest Cards",
+        "scope": "msem",
+        "formal_reference": "744.",
+        "reason": "Adds final-quest state-based sacrifice keyed to pending quest abilities; ordinary triggered sacrifice and Saga substitution are not equivalent.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Wu Xing Cards",
+        "scope": "msem",
+        "formal_reference": "746.",
+        "reason": "C746.1 introduces a new copiable characteristic and initialization when type changes; no number-counter approximation.",
+        "authority_status": "explicit_parent_exclusion_confirmed_by_boundary_owner"
+      },
+      {
+        "mechanic": "Tale Cards",
+        "scope": "msem",
+        "formal_reference": "753.",
+        "reason": "Permanent entry/gaining a Tale inherently creates and retains a spell copy in exile, an explicit exception to704.5e, with cast-once category tracking. This adds new copy/SBA/category rules.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Run Your Next Program",
+        "scope": "rev",
+        "formal_reference": "701.81.",
+        "reason": "Full Revolution rule505.6 adds a mandatory precombat-main turn-based run-next-program action without the stack. Rule303.9a also adds inherent designation choices as Subroutines enter, change type or change control. These are new game rules, not missing reminder readers.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Undercover",
+        "scope": "rev",
+        "formal_reference": "702.196.",
+        "reason": "Formal702.196c explicitly overrides public reveal of a departing face-down permanent under400.6/707.9; ordinary explicit face-down exile still reveals that departure in official engine regression. Exclusion covers28actual Undercover declarations only. Solo Officer retained as independently in-scope ordinary filtered face-down entry query.",
+        "authority_status": "explicit_scope_exclusion_confirmed_by_parent_or_current_owner"
+      },
+      {
+        "mechanic": "Tunneler",
+        "scope": "rev",
+        "formal_reference": "702.209.",
+        "reason": "Introduces game-wide open/closed tunnels, inherent entering/untapping options and beginning-of-combat closing rules beyond the printed source ability.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Chant",
+        "scope": "rev",
+        "formal_reference": "702.223.",
+        "reason": "User excludes Chant-specific casting rules: REV601.2b exiles selected Chant donors from hand during announcement before targets601.2c;702.223 adds their bracketed text, chooses added targets normally, and pays the additional[cost] later. The donor exile is separate from that additional price; treating both as a late cost is not equivalent.",
+        "authority_status": "explicit_scope_exclusion_confirmed_by_parent_or_current_owner"
+      },
+      {
+        "mechanic": "Campaign Cards",
+        "scope": "rev",
+        "formal_reference": "740.",
+        "reason": "Adds strategy progress and a Campaign-specific final-strategy state-based sacrifice. Replacing it with an ordinary trigger or a Saga changes timing and identity.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Discharge Cards",
+        "scope": "rev",
+        "formal_reference": "743.",
+        "reason": "Permanent entry/gaining Discharge inherently creates and retains a spell copy in exile, an explicit exception to704.5e, with a linked removable-counter casting cost. This adds new copy/SBA/category rules.",
+        "authority_status": "sourced_boundary_claim_not_readjudicated_in_this_audit"
+      },
+      {
+        "mechanic": "Function",
+        "scope": "msem",
+        "formal_reference": null,
+        "reason": "Donor sacrifice before targets and donated-price availability casting procedure.",
+        "authority_status": "explicit_user_exclusion_retained_in_source_rules_scope_decisions"
+      },
+      {
+        "mechanic": "Aetherize",
+        "scope": "msem",
+        "formal_reference": null,
+        "reason": "Required departure-trigger ordering is not ordinary effect/trigger timing.",
+        "authority_status": "explicit_source_boundary_in_linked_actions_boundary_followup"
+      },
+      {
+        "mechanic": "Operation Cards",
+        "scope": "rev",
+        "formal_reference": null,
+        "reason": "Opponent-only protector restriction and zero-defense graveyard SBA exemption; full21source bodies depend on intrinsic Battle exceptions.",
+        "authority_status": "explicit_parent_exclusion_after_current_scope_review"
+      },
+      {
+        "mechanic": "Add to your evil plan",
+        "scope": "both",
+        "formal_reference": null,
+        "reason": "Unconditional global7mana batch-cast special action including empty plan/shared player quota; all46 operative sources preserved.",
+        "authority_status": "explicit_parent_exclusion_after_current_scope_review"
+      }
+    ],
+    "warning": "Source-free turn actions, new intrinsic characteristics/zones, SBA/protector exceptions are excluded only to the exact evidenced mechanism or actor. Stale Journey/Chronicle exclusions are rejected. Sourced-boundary-claim statuses above are not freshly adjudicated by this audit."
+  },
+  "finite_remaining_checklist": [
+    {
+      "id": "unit-failures",
+      "action": "Resolve and rerun current selected unit failures and inventory mismatches; preserve exact negatives and ordinary-operation semantics.",
+      "evidence": "reports/custom-mechanics/selected-units-r1-summary.json",
+      "counts": {
+        "passed": 341,
+        "failed": 30,
+        "inventory_mismatch": 3
+      },
+      "mechanism_groups": [
+        "native real-card creation/reveal offers and entry transactions",
+        "zone movement admission/composite and expiry",
+        "private-cost reservation identity and class-event identity",
+        "characteristic-gain trigger union",
+        "literal status/linked-face bounded player programs",
+        "optional creation/payment result predicates",
+        "custom keyword identity historical/granted bodies",
+        "attached/static ability composition and derived casting costs",
+        "conditional copy characteristics",
+        "color-specific mana reduction and linked-exile population conditions"
+      ],
+      "note": "Snapshot before SIXTH; fixes assigned/staged are not new pass evidence."
+    },
+    {
+      "id": "remaining-source-locators",
+      "action": "Reconcile the seven in-scope group-local canonical gaps below against exact full-source fixtures and proofs. Repair identity/selection mapping rather than invent another mechanic implementation.",
+      "groups": [
+        {
+          "group": "msem:keyword:harmonize",
+          "mechanic": "harmonize",
+          "count": 1,
+          "keys": [
+            "msem:Woopip Chef_EAU"
+          ],
+          "existing_group_case_count": 68,
+          "known_classification": "group-local canonical locator gap; independent source-program case already exists elsewhere",
+          "cross_group_materialized_case_keys": [
+            "msem:Woopip Chef_EAU"
+          ]
+        },
+        {
+          "group": "msem:keyword:harmony",
+          "mechanic": "harmony",
+          "count": 66,
+          "keys": [
+            "msem:Aleud Warcaller_OTH",
+            "msem:Almgrove Bladesinger_ACA",
+            "msem:Almgrove Ensemble_ACA",
+            "msem:Almgrove Performer_ACA",
+            "msem:Almgrove Spellblade_ACA",
+            "msem:Arcane Saxophone_EAU",
+            "msem:Arpechian Bellowers_ACA",
+            "msem:Art Studio_EAU",
+            "msem:Automated Maestromancer_EAU",
+            "msem:Autumnal Resonants_ACA",
+            "msem:Avalanche Drummer_OTH",
+            "msem:Aven Acoustimancer_EAU",
+            "msem:Beautiful Crescendo_EAU",
+            "msem:Bouquet Singer_EAU",
+            "msem:Captivating Jester_EAU",
+            "msem:Chaotic Pupil_ACA",
+            "msem:Chilling Musician_EAU",
+            "msem:Cocky Bladesinger_ACA",
+            "msem:Creeping Pianist_EAU",
+            "msem:Demanding Pupil_ACA",
+            "msem:Dragonglass Harp_OTH",
+            "msem:Dramatic Artist_EAU",
+            "msem:Enter the Mosh Pit_OTH",
+            "msem:Enthralling Actor_EAU",
+            "msem:Entrancing Melody_ACA",
+            "msem:Exciting Band_EAU",
+            "msem:Fellor War-Skald_OTH",
+            "msem:Festival Songstress_EAU",
+            "msem:Focused Apprentice_ACA",
+            "msem:Gentle Lullaby_ACA",
+            "msem:Gilded Duo_ACA",
+            "msem:Glamorous Aerialist_EAU",
+            "msem:Harpstring Ranger_ACA",
+            "msem:Herald of Festivities_EAU",
+            "msem:Horn Run Huntcaller_OTH",
+            "msem:Illumination Savant_ACA",
+            "msem:Improvising Automaton_EAU",
+            "msem:Inspiring Band_EAU",
+            "msem:Learn Through Error_ACA",
+            "msem:Lightning and Thunder_ACA",
+            "msem:Lilia of the Soul_OTH",
+            "msem:New Alores Fiddler_EAU",
+            "msem:Plume de Val Singer_EAU",
+            "msem:Pretentious Performer_EAU",
+            "msem:Pyrodancer_EAU",
+            "msem:Radiant Outburst_EAU",
+            "msem:Rejoicing Aristocrats_EAU",
+            "msem:Riverguide Harpist_EAU",
+            "msem:Sending Stones_ACA",
+            "msem:Sensory Stimulation_ACA",
+            "msem:Siamang Tale-Singer_OTH",
+            "msem:Sing Through Steel_ACA",
+            "msem:Soul of New Alores_EAU",
+            "msem:Speed Reader_ACA",
+            "msem:Starfall Instructor_ACA",
+            "msem:Streetside Entertainer_EAU",
+            "msem:Strict Instructor_ACA",
+            "msem:Supernal Icon_ACA",
+            "msem:The Song of the Universe_OTH",
+            "msem:Trumpeting Pathmaker_OTH",
+            "msem:Twilight Dancer_ACA",
+            "msem:Twirling Duet_EAU",
+            "msem:Updraft Dancer_ACA",
+            "msem:Wildheart Chorister_OTH",
+            "msem:Wind Savant_ACA",
+            "msem:Yita, Almgrove Prodigy_ACA"
+          ],
+          "existing_group_case_count": 68,
+          "known_classification": "group-local canonical locator gap; independent source-program case already exists elsewhere",
+          "cross_group_materialized_case_keys": [
+            "msem:Aleud Warcaller_OTH",
+            "msem:Almgrove Bladesinger_ACA",
+            "msem:Almgrove Ensemble_ACA",
+            "msem:Almgrove Performer_ACA",
+            "msem:Almgrove Spellblade_ACA",
+            "msem:Arcane Saxophone_EAU",
+            "msem:Arpechian Bellowers_ACA",
+            "msem:Art Studio_EAU",
+            "msem:Automated Maestromancer_EAU",
+            "msem:Autumnal Resonants_ACA",
+            "msem:Avalanche Drummer_OTH",
+            "msem:Aven Acoustimancer_EAU",
+            "msem:Beautiful Crescendo_EAU",
+            "msem:Bouquet Singer_EAU",
+            "msem:Captivating Jester_EAU",
+            "msem:Chaotic Pupil_ACA",
+            "msem:Chilling Musician_EAU",
+            "msem:Cocky Bladesinger_ACA",
+            "msem:Creeping Pianist_EAU",
+            "msem:Demanding Pupil_ACA",
+            "msem:Dragonglass Harp_OTH",
+            "msem:Dramatic Artist_EAU",
+            "msem:Enter the Mosh Pit_OTH",
+            "msem:Enthralling Actor_EAU",
+            "msem:Entrancing Melody_ACA",
+            "msem:Exciting Band_EAU",
+            "msem:Fellor War-Skald_OTH",
+            "msem:Festival Songstress_EAU",
+            "msem:Focused Apprentice_ACA",
+            "msem:Gentle Lullaby_ACA",
+            "msem:Gilded Duo_ACA",
+            "msem:Glamorous Aerialist_EAU",
+            "msem:Harpstring Ranger_ACA",
+            "msem:Herald of Festivities_EAU",
+            "msem:Horn Run Huntcaller_OTH",
+            "msem:Illumination Savant_ACA",
+            "msem:Improvising Automaton_EAU",
+            "msem:Inspiring Band_EAU",
+            "msem:Learn Through Error_ACA",
+            "msem:Lightning and Thunder_ACA",
+            "msem:Lilia of the Soul_OTH",
+            "msem:New Alores Fiddler_EAU",
+            "msem:Plume de Val Singer_EAU",
+            "msem:Pretentious Performer_EAU",
+            "msem:Pyrodancer_EAU",
+            "msem:Radiant Outburst_EAU",
+            "msem:Rejoicing Aristocrats_EAU",
+            "msem:Riverguide Harpist_EAU",
+            "msem:Sending Stones_ACA",
+            "msem:Sensory Stimulation_ACA",
+            "msem:Siamang Tale-Singer_OTH",
+            "msem:Sing Through Steel_ACA",
+            "msem:Soul of New Alores_EAU",
+            "msem:Speed Reader_ACA",
+            "msem:Starfall Instructor_ACA",
+            "msem:Streetside Entertainer_EAU",
+            "msem:Strict Instructor_ACA",
+            "msem:Supernal Icon_ACA",
+            "msem:The Song of the Universe_OTH",
+            "msem:Trumpeting Pathmaker_OTH",
+            "msem:Twilight Dancer_ACA",
+            "msem:Twirling Duet_EAU",
+            "msem:Updraft Dancer_ACA",
+            "msem:Wildheart Chorister_OTH",
+            "msem:Wind Savant_ACA",
+            "msem:Yita, Almgrove Prodigy_ACA"
+          ]
+        },
+        {
+          "group": "msem:keyword:rhapsody",
+          "mechanic": "rhapsody",
+          "count": 7,
+          "keys": [
+            "msem:Hand of the Triumvirate_AVX",
+            "msem:Oltenen Paradise-Seeker_AVX",
+            "msem:Reckless Guardian_AVX",
+            "msem:Skytouch Distorter_AVX",
+            "msem:Triumvirate Bellringer_AVX",
+            "msem:Triumvirate Inductee_AVX",
+            "msem:Unstable Prophet_AVX"
+          ],
+          "existing_group_case_count": 18,
+          "known_classification": "canonical source-input/selection coverage unresolved; do not infer unsupported behavior",
+          "cross_group_materialized_case_keys": []
+        },
+        {
+          "group": "msem:keyword:stardom",
+          "mechanic": "stardom",
+          "count": 4,
+          "keys": [
+            "msem:Blackhat Apothecary_AEK",
+            "msem:Iason, Voice of the Admirers_AEK",
+            "msem:Sunshine Icon_AEK",
+            "msem:Twilight Dreamer_AEK"
+          ],
+          "existing_group_case_count": 24,
+          "known_classification": "canonical source-input/selection coverage unresolved; do not infer unsupported behavior",
+          "cross_group_materialized_case_keys": []
+        },
+        {
+          "group": "rev:keyword:coalesce",
+          "mechanic": "coalesce",
+          "count": 17,
+          "keys": [
+            "rev:revolution:Baptize in His Brilliance_GQC",
+            "rev:revolution:Behold Bizarre Sublimity_GQC",
+            "rev:revolution:Embrace Unending Frost_GQC",
+            "rev:revolution:Fashion Temples from Flesh_GQC",
+            "rev:revolution:Flourish in Calamity_GQC",
+            "rev:revolution:Grasp at Frail Dreams_GQC",
+            "rev:revolution:Grind Vacant Husks_GQC",
+            "rev:revolution:Lay Waste to Civilization_GQC",
+            "rev:revolution:Play the Mortal Fool_GQC",
+            "rev:revolution:Preach His Hallowed Gospel_GQC",
+            "rev:revolution:Realize the Delicate Ideal_GQC",
+            "rev:revolution:Rekindle Orphic Memories_GQC",
+            "rev:revolution:Seek His Blessed Light_GQC",
+            "rev:revolution:Shed the Human Rind_GQC",
+            "rev:revolution:Stitch Ephemeral Sinew_GQC",
+            "rev:revolution:Suffer Vile Retribution_GQC",
+            "rev:revolution:Thrive in Exotic Chaos_GQC"
+          ],
+          "existing_group_case_count": 17,
+          "known_classification": "invalid doubled scope prefix; actual rev:key candidates present",
+          "cross_group_materialized_case_keys": []
+        },
+        {
+          "group": "rev:keyword:make a pledge",
+          "mechanic": "make a pledge",
+          "count": 17,
+          "keys": [
+            "rev:Ardent Voter_CNY",
+            "rev:Ballot Registrar_CNY",
+            "rev:Declamation Podium_CNY",
+            "rev:Demographer_CNY",
+            "rev:Eager Voter_CNY",
+            "rev:Estranged Aristocrat_CNY",
+            "rev:Grassroots Campaigners_CNY",
+            "rev:Gubernatorial Fundraiser_CNY",
+            "rev:Idealistic Voter_CNY",
+            "rev:Incumbency_CNY",
+            "rev:Informed Voter_CNY",
+            "rev:International Development_CNY",
+            "rev:Killing in the Name of . . ._CNY",
+            "rev:Lofty Voter_CNY",
+            "rev:Magnetic Rhetorician_CNY",
+            "rev:Mellan, Defense Attorney_CNY",
+            "rev:Minister of Utility_CNY"
+          ],
+          "existing_group_case_count": 35,
+          "known_classification": "group-local canonical locator gap; independent source-program case already exists elsewhere",
+          "cross_group_materialized_case_keys": [
+            "rev:Ardent Voter_CNY",
+            "rev:Ballot Registrar_CNY",
+            "rev:Declamation Podium_CNY",
+            "rev:Demographer_CNY",
+            "rev:Eager Voter_CNY",
+            "rev:Estranged Aristocrat_CNY",
+            "rev:Grassroots Campaigners_CNY",
+            "rev:Gubernatorial Fundraiser_CNY",
+            "rev:Idealistic Voter_CNY",
+            "rev:Incumbency_CNY",
+            "rev:Informed Voter_CNY",
+            "rev:International Development_CNY",
+            "rev:Killing in the Name of . . ._CNY",
+            "rev:Lofty Voter_CNY",
+            "rev:Magnetic Rhetorician_CNY",
+            "rev:Mellan, Defense Attorney_CNY",
+            "rev:Minister of Utility_CNY"
+          ]
+        },
+        {
+          "group": "rev:category:741.",
+          "mechanic": "policy cards",
+          "count": 10,
+          "keys": [
+            "rev:revolution:Ascend to Power//Omnipotence_CNY",
+            "rev:revolution:Distributive Justice//Equality_CNY",
+            "rev:revolution:Free Market//Industrialism_CNY",
+            "rev:revolution:Golden Age//Harmony_CNY",
+            "rev:revolution:Meeting of the Elites//Aristocracy_CNY",
+            "rev:revolution:Research Grant//Progress_CNY",
+            "rev:revolution:Security Initiative//Surveillance State_CNY",
+            "rev:revolution:Silence the Opposition//Authoritarianism_CNY",
+            "rev:revolution:Sparks of a Revolution//Freedom_CNY",
+            "rev:revolution:Together in Arms//Communitarianism_CNY"
+          ],
+          "existing_group_case_count": 10,
+          "known_classification": "invalid doubled scope prefix; actual rev:key candidates present",
+          "cross_group_materialized_case_keys": []
+        }
+      ]
+    },
+    {
+      "id": "formal-scope-ledger",
+      "action": "Refresh stale formal/category warnings from actual delivered exact proofs; require explicit proof for zero-source Idolize/Results Table rows. Do not resurrect stale Journey/Chronicle exclusions.",
+      "evidence": "reports/custom-mechanics/whole-source-audits/universal-endgate/remaining-formal-scope-gates.json",
+      "note": "Most old13 gates already show owner_exact_full_source_inventory in live groups. This audit stopped before owner confirmation reconciliation."
+    },
+    {
+      "id": "fresh-whole-source-validation",
+      "action": "After final merge and real materialization, run registered custom_complete_mechanic_source_endgate over exact current manifest; preserve all physical faces and raw originals.",
+      "target": "custom_complete_mechanic_source_endgate",
+      "manifest": "fixtures/custom_mechanics/custom-source-endgate.json",
+      "cases": 4210,
+      "note": "Universal collector compilation/artifact parity does not prove gameplay."
+    },
+    {
+      "id": "fresh-native-scenarios",
+      "action": "Run current registered native target set and substantive source scenarios on final source epoch. Prior bounded223 baseline has409failed+22ignored and no postrepair whole-batch pass claim.",
+      "baseline": {
+        "required_targets": 223,
+        "completed_targets": 223,
+        "passed_targets": 118,
+        "failed_targets": 105,
+        "unfinished_targets": [],
+        "all223_completed": true,
+        "inputs_frozen_through_completion": true,
+        "original_completed_reused_without_rebuild": 51,
+        "subsequent_batch_size": 20,
+        "cases": 4751,
+        "passed_cases": 4320,
+        "nonpassing_cases": 431,
+        "input_fingerprint_count": 6646,
+        "source_drift": 0,
+        "output": "/tmp/custom-mechanics-bounded-223-r4",
+        "actual_failed_executions": 409,
+        "ignored_executions": 22,
+        "ignored_accounting": "tail inspection:2 standalone ignored controls +10 Wymi cases repeated in2 targets; 431 means all nonpassing, not all failures"
+      },
+      "baseline_nonpassing_targets": [
+        "custom_abilities_tail",
+        "custom_accomplice_full_sources",
+        "custom_activation_color_history",
+        "custom_ada_player_scalar_projection",
+        "custom_ada_specialized_packets",
+        "custom_ada_specialized_recipients",
+        "custom_ada_target_projection",
+        "custom_ada_vector_packets",
+        "custom_atomic_transform_characteristics",
+        "custom_attain_next_wave",
+        "custom_bless_full_source",
+        "custom_breach_next_wave",
+        "custom_cache_linked",
+        "custom_cast_announcement_payments",
+        "custom_casting_costs",
+        "custom_choice_label_parity",
+        "custom_coalesce_composition",
+        "custom_colored_resource_costs",
+        "custom_compose_full_sources",
+        "custom_consume_full_source",
+        "custom_coordinated_object_groups",
+        "custom_creed_permission_authority",
+        "custom_crumble_composition",
+        "custom_crumble_next_wave",
+        "custom_engorge_sources",
+        "custom_eureka_sources",
+        "custom_experience_complete",
+        "custom_fabled_sources",
+        "custom_favored_indulgence_sources",
+        "custom_filtered_face_down_entry",
+        "custom_final_all_sources_next_wave",
+        "custom_gallery",
+        "custom_gestalt_merge",
+        "custom_golden_age_designation",
+        "custom_gorge_subject_completion",
+        "custom_growth_actions",
+        "custom_inscribe",
+        "custom_inscribe_exact_relation_sources",
+        "custom_inscribe_grant_lifetime",
+        "custom_inscribe_mass_capture",
+        "custom_inscribe_subtype_lifetime",
+        "custom_inscribe_whole_sources",
+        "custom_integrate_fullsource",
+        "custom_intrinsic_paid_actions",
+        "custom_journey_source_programs",
+        "custom_leitmotif_complete_source",
+        "custom_linked_face_down",
+        "custom_linked_face_tokens",
+        "custom_links_delayed_exile_sources",
+        "custom_links_gestalt_sources",
+        "custom_links_slipstream_sources",
+        "custom_malign_unite_sources",
+        "custom_mechanic_word_coverage",
+        "custom_mettalia_collection_colors",
+        "custom_mimic_numbered",
+        "custom_module",
+        "custom_next_spell_bounded_followup",
+        "custom_optional_cost_acknowledgement",
+        "custom_optional_text_fragments",
+        "custom_permanent_links",
+        "custom_player_counter_rules",
+        "custom_player_named_action_history",
+        "custom_pledge_sources_next",
+        "custom_premonition_full_source",
+        "custom_recurring_spell_grants",
+        "custom_reprise",
+        "custom_resolution_recipe_multiplicity",
+        "custom_revolution_actions",
+        "custom_solidarity_possess_fullsource",
+        "custom_source_collections",
+        "custom_source_metadata_admission",
+        "custom_spellcharge_full_sources",
+        "custom_spirited",
+        "custom_stitch_source_operations_next",
+        "custom_subtype_family_associations",
+        "custom_syzygy_sources",
+        "custom_tether",
+        "custom_time_after_time_lifecycle",
+        "custom_token_actions",
+        "custom_token_conditional_exile_permission",
+        "custom_weapon_supplied_source_tokens",
+        "scoped_action_prohibitions",
+        "suite_00",
+        "suite_01",
+        "suite_02",
+        "suite_04",
+        "suite_05",
+        "suite_06",
+        "suite_07",
+        "suite_08",
+        "suite_09",
+        "suite_10",
+        "suite_13",
+        "suite_14",
+        "suite_15",
+        "suite_16",
+        "suite_17",
+        "suite_18",
+        "suite_19",
+        "suite_20",
+        "suite_21",
+        "suite_22",
+        "suite_23",
+        "timed_event_program_replacement",
+        "wymi_complete"
+      ],
+      "note": "Current registration count reached300 before SIXTH; all current targets must come from Cargo, not this historic count."
+    },
+    {
+      "id": "wymi",
+      "action": "Keep remaining Wymi groups explicit; do not mark entirefamily complete from one parser patch.",
+      "evidence": "tmp/custom-mechanics/next-wave/revolution_actions/wymi-gap-ownership/case-groups.json",
+      "groups": {
+        "conditional_copy_collision": {
+          "cases": [
+            44,
+            45,
+            57,
+            69,
+            81,
+            93
+          ],
+          "candidate": "b4da2515",
+          "status": "pending fresh native"
+        },
+        "mutate_casting_metadata": {
+          "cases": [
+            184,
+            186,
+            187,
+            190,
+            191,
+            194,
+            196,
+            198,
+            200,
+            202,
+            204,
+            206,
+            208,
+            210,
+            212,
+            214
+          ],
+          "candidate": "casting_merged_casting_abilities_v2/181ec16f",
+          "status": "bounded review clear; native unverified"
+        },
+        "flipped_noncreature_PT": {
+          "cases": [
+            51,
+            117,
+            118,
+            119,
+            120,
+            121
+          ],
+          "candidate": "b474f696 diagnosticONLY051",
+          "status": "unresolved semantic/adapter boundary"
+        },
+        "token_period": {
+          "cases": [
+            261,
+            262
+          ],
+          "candidate": "7473+14593",
+          "status": "native unverified"
+        },
+        "token_name_and_equip": {
+          "cases": [
+            263
+          ],
+          "status": "unresolved"
+        },
+        "pinned_upstream_ignored": {
+          "cases": [
+            216,
+            217,
+            218,
+            219,
+            220,
+            221,
+            222,
+            223,
+            224,
+            225
+          ],
+          "status": "ignored, not passes; no new blanket scope exclusion"
+        }
+      }
+    },
+    {
+      "id": "dewshaper-and-sixth",
+      "action": "Finish parent-assigned Dewshaper and selected-unit repairs; preserve/review SIXTH8758 typed append and root fixes, then verify actual current source.",
+      "note": "SIXTH packaging reviewed; this is not native behavior certification. No fresh Dewshaper outcome asserted here."
+    },
+    {
+      "id": "schema-and-golden",
+      "action": "After all final merges/unit fixes stabilize, refresh current20 full source bindings and golden/artifact checks. Do not reuse earlier cf00 binding as final proof after additional edits.",
+      "historical19": "leave unchanged",
+      "note": "No repeated schema audit was performed during this scope task."
+    },
+    {
+      "id": "evidence-ledger",
+      "action": "Refresh coverage/endgate/evidence reports using explicit source-case bindings and pre-build-fingerprinted results; keep availability, strict whole-source compilation, route independence, and native gameplay as separate fields.",
+      "evidence": "scripts/custom-mechanics/source-evidence-ledger.py",
+      "stale_current_state": "coverage.json still excludes Journey; current-source-evidence.json has0runs/0verifiedrows, so neither establishes completion."
+    }
+  ],
+  "unit_failure_snapshot": [
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::cards::create_cards::tests::definition_substitution_preserves_actor_count_destination_and_library_position",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-3736347ed85c.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::cards::create_cards::tests::duplicate_back_face_name_selects_the_supplied_physical_front_card",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8cddcfb5fad2.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::cards::create_cards::tests::random_batch_selects_one_matching_identity_for_all_copies",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-bc69b418a037.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::cards::create_cards_entry::tests::suspended_as_enters_choice_rolls_back_all_real_cards_and_entry_choices",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-e5dc3ac2902c.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::cards::reveal_action_offer::tests::decline_then_accept_uses_one_shared_player_allowance_and_exact_arrival",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-35d23557dfe4.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::cards::reveal_action_offer::tests::replacement_child_exiling_same_revealed_card_is_not_the_original_reveal_action",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-8ee0518133ac.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::consult_helpers::replacement_bottom_owner_contract_tests::reveal_offer_departure_retains_original_consultation_match_and_cleanup_identity",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-21d399782321.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "effects::zones::battlefield_entry::tests::described_entry_eligibility_uses_projected_card_types_without_leaking_to_siblings",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-c38d6785c3ac.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "game_state::zone_movement_admission_tests::a_composite_original_checks_every_component_before_any_entry_program_or_removal",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-b67ba2d748a6.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "game_state::zone_movement_admission_tests::end_of_turn_rule_expires_and_card_copy_is_not_a_physical_card",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-529d21438507.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "special_actions::private_cost_admission::tests::reservation_binds_authenticated_hidden_generation_and_immutable_ciphertext_anchor",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-b0b694293c7f.log"
+    },
+    {
+      "package": "ironsmith-engine",
+      "test": "triggers::class_event_choice::tests::official_class_uses_owned_program_identity_not_presentation_or_body_similarity",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-engine-ec008238b3a7.log"
+    },
+    {
+      "package": "ironsmith-compiler-resolve",
+      "filter": "reference_resolution::persistent_rule_",
+      "expected": 0,
+      "matches": [
+        "reference_resolution::persistent_rule_numeric_scope_tests::registration_result_cannot_supply_future_that_many_but_local_child_result_can",
+        "reference_resolution::persistent_rule_reference_scope_tests::future_choice_does_not_replace_registration_antecedents",
+        "reference_resolution::persistent_rule_reference_scope_tests::future_player_reference_is_seeded_from_its_trigger_not_registration_actor"
+      ],
+      "status": "inventory_mismatch"
+    },
+    {
+      "package": "ironsmith-compiler-lowering",
+      "filter": "explicit_damage_source_keeps_target_legality_after_reference_capture",
+      "expected": 1,
+      "matches": [],
+      "status": "inventory_mismatch"
+    },
+    {
+      "package": "ironsmith-compiler-lowering",
+      "filter": "unsized_animation_never_invents_or_freezes_a_base_characteristic",
+      "expected": 1,
+      "matches": [],
+      "status": "inventory_mismatch"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "activation_and_restrictions::activation_costs::durationless_filtered_unpreventability_admission_tests::timed_or_imperative_damage_programs_remain_resolving",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1163fe441312.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "activation_and_restrictions::trigger_clause_core::semantic_trigger_programs::characteristic_gain_clause_tests::distinct_event_union_keeps_its_typed_gain_arm",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-577704e21c18.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "custom_status::literal_status_operand_tests::status_operand_uses_authored_literal_surface_not_source_alias_spelling",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-09f3538c5c7d.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "effect_sentences::chain_carry::nested_bounded_player_instruction::target_player_program_is_one_clause_under_an_ordinary_conditional",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-962846272668.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "effect_sentences::document_readings::quoted_optional_price_owner_tests::a_nested_paid_creation_program_keeps_its_trailing_entry_rider",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-2b74ffa816d9.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "effect_sentences::gain_ability::granted_component_readings::named_payment_component_tests::exact_source_payment_rule_precedes_prefix_restriction_with_or_without_outer_quote_role",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b4e577da614c.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "effect_sentences::gain_ability::tests::custom_keyword_identity_component_is_bounded_and_composes_with_real_activation",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b1aaca4419ce.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "effect_sentences::gain_ability::tests::historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-006892828244.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "grammar::filters::predicate_phrases::tests::custom_identity_had_reads_historical_evidence_without_performing_a_program",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-0ec3d6d9273d.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "grammar::modal_results::tests::created_result_descriptor_keeps_the_complete_ordinary_object_filter",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-c776e97b3d45.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::attached_static_line_migration_tests::attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-b2d780d0e604.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::complete_granted_cost_boundary_tests::derived_flashback_companion_preserves_the_whole_permission_on_both_reader_routes",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-76106678d0ff.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::complete_granted_cost_boundary_tests::recognized_complete_cost_definitions_remain_reachable_before_the_outer_guard",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-cc17d8e9104b.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::compound_static_body_tests::filtered_face_down_entry_is_one_typed_replacement_without_custom_keyword_semantics",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-1ebcb3bb34ff.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::conditional_copy_characteristics::tests::complete_exception_keeps_the_entering_token_condition_and_both_changes",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-87986d9d7f26.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::costs_replacements_and_permissions::one_mana_of_any_color_reader_tests::literal_any_color_is_not_an_unconstrained_hybrid_reduction",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-35a1c44ccf6b.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::distributive_player_keyword_tests::chosen_quality_grants_keep_both_player_and_source_and_each_is_only_distributive",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-adca77c998ad.log"
+    },
+    {
+      "package": "ironsmith-compiler-grammar",
+      "test": "keyword_static::present_linked_exile_condition_tests::complete_custom_identity_population_is_counted_in_its_own_linked_exile",
+      "status": "failed",
+      "log": "/tmp/custom-mechanics-selected-units-r1/ironsmith-compiler-grammar-ed18e06f9e10.log"
+    }
+  ],
+  "input_fingerprints": [
+    {
+      "path": "fixtures/custom_mechanics/custom-source-endgate.json",
+      "sha256": "95929c925f953c47f27c2dd438364683a1a1e90d10a323a7d5225997fa3081dd"
+    },
+    {
+      "path": "fixtures/custom_mechanics/user-casting-scope-boundaries.json",
+      "sha256": "6fb7939a00a2e42cd3844df8c208d807508da88b859968a950956baaba0b7cc5"
+    },
+    {
+      "path": "reports/custom-mechanics/coverage.json",
+      "sha256": "0966d38178e3b078b85b779b254d9f80c471cbe84163444b1e1bd0a4457387be"
+    },
+    {
+      "path": "reports/custom-mechanics/current-source-evidence.json",
+      "sha256": "7f86cf0cce9afb1d5155483d2856b1451d96209744a5e08c329ab384358f2dcf"
+    },
+    {
+      "path": "reports/custom-mechanics/selected-units-r1-summary.json",
+      "sha256": "3951b208a0c555fb1b96ac3b800e90b6a0c61c13f354f0c043aab1af238f3566"
+    },
+    {
+      "path": "reports/custom-mechanics/bounded223-baseline-final.json",
+      "sha256": "534601214d041d2bb30f7e940f89a28a5f8dad41a2c3e3c0971fadeb9de47ae9"
+    },
+    {
+      "path": "reports/custom-mechanics/whole-source-audits/universal-endgate/source-equation-overrides.json",
+      "sha256": "8dcda3e527af8452fcf09c88d036bfa7ff0fd4785d1c9816c5c5ab98f9bcaa82"
+    },
+    {
+      "path": "reports/custom-mechanics/whole-source-audits/universal-endgate/remaining-formal-scope-gates.json",
+      "sha256": "2015ab03932639180667e3030462ff863648d8a484556feddb2728e420cc2a47"
+    },
+    {
+      "path": "tmp/custom-mechanics/next-wave/revolution_actions/wymi-gap-ownership/case-groups.json",
+      "sha256": "a98adb7056ec49becc882f2a92c3b8d58ad325c6b376704f1a395252be818d56"
+    }
+  ],
+  "execution": "Static read/hash/reconciliation only. No builds/tests/materialization/live writes; no source/mechanic support inferred from counts or packet presence."
+}

@@ -205,6 +205,7 @@ struct SplitRewriteActivatedEffectText {
     /// "For each mana in this ability's activation cost, you may tap an
     /// untapped creature you control rather than pay that mana."
     creature_tap_payment: bool,
+    artifact_tap_payment: bool,
 }
 
 fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
@@ -319,12 +320,15 @@ fn finalize_rewrite_activated_effect_sentences(
     let mut ability_cant_be_copied = false;
     let mut x_spending_rules = Vec::new();
     let mut creature_tap_payment = false;
+    let mut artifact_tap_payment = false;
 
     for tokens in merge_copy_retarget_sentences(sentence_tokens) {
         let sentence = render_token_slice(&tokens).trim().to_string();
         let restriction_kind = activated_grammar::classify_activated_restriction_sentence(&tokens);
         if crate::consumer_mana::is_creature_tap_payment_sentence(&tokens) {
             creature_tap_payment = true;
+        } else if crate::consumer_mana::is_artifact_tap_payment_sentence(&tokens) {
+            artifact_tap_payment = true;
         } else if let Some(rule) = crate::consumer_mana::x_spending_rule(&tokens) {
             if !x_spending_rules.contains(&rule) {
                 x_spending_rules.push(rule);
@@ -389,6 +393,7 @@ fn finalize_rewrite_activated_effect_sentences(
         ability_cant_be_copied,
         x_spending_rules,
         creature_tap_payment,
+        artifact_tap_payment,
     }
 }
 

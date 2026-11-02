@@ -358,7 +358,7 @@ impl<'a> CanonicalReferenceResolver<'a> {
                 self.join(ReferenceJoinKindAst::Modal, env, branches)
             }
             EffectAst::Permissions(PermissionEffectAst::May { effects })
-            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. })
             | EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { effects, .. })
             | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { effects, .. })
             | EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless { effects, .. }) => {

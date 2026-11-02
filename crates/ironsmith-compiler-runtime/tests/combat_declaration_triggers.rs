@@ -547,6 +547,48 @@ fn yuriko_combat_restriction_preserves_mana_abilities_and_expires_with_the_phase
         }
     }
 }
+// Diagnostic-only lower-level replay runs on a discarded checkpoint AFTER
+// the actual stack resolver has failed. It cannot replace the real cast or
+// resolution assertions, and does not claim to reproduce all stack bindings.
+fn settle_hezrou_with_diagnostics(g: &mut GameState, dm: &mut Choices, route: usize, stage: &str) {
+    for _ in 0..32 {
+        if g.stack.is_empty() { return; }
+        let before = g.clone();
+        if let Err(error) = resolve_stack_entry_with(g, dm) {
+            let entry = before.stack.last().expect("pending real stack entry");
+            let source = before.object(entry.object_id).expect("real stack source");
+            eprintln!("HEZROU_RESOLUTION_FAILURE route={route} stage={stage} error={error:?} source={:?} name={} zone={:?} card_types={:?} method={:?} targets={:?} assignments={:?} ability_program={:?} spell_program={:?}",
+                entry.object_id,source.name,source.zone,source.card_types,entry.casting_method,entry.targets,entry.target_assignments,entry.ability_effects,source.spell_effect);
+            for object in before.objects_in_zone(Zone::Battlefield) {
+                eprintln!("HEZROU_HISTORY object={object:?} blocked={} was_blocked={} current_combat={}",
+                    before.creature_blocked_this_turn(object),before.creature_was_blocked_this_turn(object),before.combat.is_some());
+            }
+            let program = entry.ability_effects.clone().or_else(||source.spell_effect.as_ref().map(|p|(**p).clone()));
+            if let Some(program) = program {
+                let effects = program.all_effects_owned();
+                for (index,effect) in effects.iter().enumerate() {
+                    eprintln!("HEZROU_INSTRUCTION route={route} stage={stage} index={index} effect={effect:?}");
+                }
+                if entry.targets.is_empty() && entry.target_assignments.is_empty() {
+                    let mut replay = before.clone();
+                    let mut replay_dm = Choices {target: dm.target, option: dm.option, accept: dm.accept};
+                    let mut ctx = ExecutionContext::new(entry.object_id,entry.controller,&mut replay_dm);
+                    ctx.x_value=entry.x_value;
+                    ctx.source_snapshot=Some(ironsmith::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(source,&before));
+                    for (index,effect) in effects.iter().enumerate() {
+                        let result=ironsmith::effects::execute_effect(&mut replay,effect,&mut ctx);
+                        eprintln!("HEZROU_DISCARDED_REPLAY route={route} stage={stage} index={index} result={result:?}");
+                        if result.is_err() { break; }
+                    }
+                }
+            }
+            panic!("actual Hezrou stack resolution failed route={route} stage={stage}: {error:?}");
+        }
+        put_triggers_on_stack_with_dm(g, &mut TriggerQueue::new(), dm).unwrap();
+    }
+    panic!("unsettled actual Hezrou stack route={route} stage={stage}");
+}
+
 #[test]
 fn hezrou_adventure_uses_completed_block_history_and_exile_cast_permission() {
     for index in 0..2 {
@@ -575,7 +617,7 @@ fn hezrou_adventure_uses_completed_block_history_and_exile_cast_permission() {
             },
             &mut dm,
         );
-        settle(&mut g, &mut dm);
+        settle_hezrou_with_diagnostics(&mut g, &mut dm, index, "adventure");
         assert_eq!(g.current_power(blocker), Some(1));
         assert_eq!(g.current_power(idle), Some(2));
         let exile = g.find_object_by_stable_id(stable).unwrap();
@@ -591,7 +633,7 @@ fn hezrou_adventure_uses_completed_block_history_and_exile_cast_permission() {
             },
             &mut dm,
         );
-        settle(&mut g, &mut dm);
+        settle_hezrou_with_diagnostics(&mut g, &mut dm, index, "creature-from-exile");
         let permanent = g.find_object_by_stable_id(stable).unwrap();
         assert_eq!(g.object(permanent).unwrap().zone, Zone::Battlefield);
         assert_eq!(g.current_power(permanent), Some(6));

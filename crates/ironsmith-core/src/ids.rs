@@ -108,10 +108,30 @@ impl From<StableId> for ObjectId {
     }
 }
 
+fn allocate_card_definition_id(counter: &AtomicU32) -> Result<u32, &'static str> {
+    counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |next| {
+        (next != 0).then(|| next.checked_add(1)).flatten()
+    }).map_err(|_| "card definition ID namespace exhausted")
+}
+
+fn reserve_card_definition_ids(counter: &AtomicU32, last: u32) -> Result<(), &'static str> {
+    let next = last.checked_add(1).filter(|next| *next < u32::MAX)
+        .ok_or("explicit card definition IDs leave no generated namespace")?;
+    counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+        (current != 0 && current < u32::MAX).then_some(current.max(next))
+    }).map(|_| ()).map_err(|_| "card definition ID namespace exhausted")
+}
+
 impl CardId {
     /// Create a new card ID with auto-incrementing counter.
     pub fn new() -> Self {
-        Self(CARD_ID_COUNTER.fetch_add(1, Ordering::SeqCst))
+        Self(allocate_card_definition_id(&CARD_ID_COUNTER).expect("card definition ID namespace exhausted"))
+    }
+
+    /// Reserve an explicit compiler input namespace before allocating dependencies.
+    /// Imported artifact IDs remain lexical and must not use this reservation.
+    pub fn reserve_generated_namespace_through(last: Self) -> Result<(), &'static str> {
+        reserve_card_definition_ids(&CARD_ID_COUNTER, last.0)
     }
 
     /// Create a card ID from a specific value (for when you need explicit control).
@@ -209,5 +229,33 @@ mod tests {
         assert_ne!(c1, c2);
         assert_eq!(c1.0, 100);
         assert_eq!(c2.0, 200);
+    }
+}
+
+#[cfg(test)]
+mod generated_card_namespace_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_source_and_other_face_are_reserved_without_rewinding() {
+        let counter = AtomicU32::new(1);
+        reserve_card_definition_ids(&counter, 2).unwrap();
+        assert_eq!(allocate_card_definition_id(&counter), Ok(3));
+        reserve_card_definition_ids(&counter, 1).unwrap();
+        assert_eq!(allocate_card_definition_id(&counter), Ok(4));
+        // A new runtime match does not reset this definition namespace.
+        assert_eq!(allocate_card_definition_id(&counter), Ok(5));
+        assert_eq!(CardId::from_raw(2).0, 2);
+    }
+
+    #[test]
+    fn exhausted_reservation_and_allocation_fail_without_wrapping() {
+        let counter = AtomicU32::new(17);
+        assert!(reserve_card_definition_ids(&counter, u32::MAX).is_err());
+        assert!(reserve_card_definition_ids(&counter, u32::MAX - 1).is_err());
+        assert_eq!(counter.load(Ordering::SeqCst), 17);
+        let exhausted = AtomicU32::new(u32::MAX);
+        assert!(allocate_card_definition_id(&exhausted).is_err());
+        assert_eq!(exhausted.load(Ordering::SeqCst), u32::MAX);
     }
 }

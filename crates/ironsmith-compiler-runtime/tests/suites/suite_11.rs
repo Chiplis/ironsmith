@@ -17,6 +17,9 @@ mod r#conditional_anaphoric_restrictions;
 #[path = "../conditional_damage_amounts.rs"]
 mod r#conditional_damage_amounts;
 
+#[path = "../custom_motivate_receipts.rs"]
+mod r#custom_motivate_receipts;
+
 #[path = "../damage_for_each_multiplier.rs"]
 mod r#damage_for_each_multiplier;
 

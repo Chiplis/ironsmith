@@ -765,6 +765,7 @@ fn exile_cycling_card_to_graveyard_replacement_matches_battlefield_zone_change()
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Hand],
     };
     let cycling_card = CardDefinitionBuilder::new(CardId::from_raw(4501), "Cycling Creature Probe")

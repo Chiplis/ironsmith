@@ -39,6 +39,7 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 mod alternating_teams;
+mod exile_relationships;
 mod attack_direction;
 mod attractions;
 mod commander_draft;
@@ -56,6 +57,7 @@ mod duration_windows;
 mod mana_activation_guards;
 pub(crate) use duration_windows::DurationWindowStart;
 mod monarch;
+mod permanent_links;
 mod object_state_and_events;
 pub(crate) use object_state_and_events::AuthoredAbilityDuplicatePolicy;
 mod opaque_library_epochs;
@@ -68,6 +70,8 @@ mod range_of_influence;
 mod restart;
 mod schemes;
 mod subgames;
+#[cfg(test)]
+mod zone_movement_admission_tests;
 mod team_game;
 mod team_vs_team;
 mod turns_and_tracking;
@@ -250,6 +254,16 @@ pub struct PendingReplacementChoice {
     pub player: PlayerId,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ActivationGroupReceipt {
+    pub family: u32,
+    pub source: ObjectId,
+    pub acquisition: crate::continuous::AbilityOrigin,
+    pub group: u32,
+    pub step: u32,
+    pub rule: ironsmith_core::ActivationGroupRule,
+}
+
 /// Bookkeeping contributed by one exhaust activation announcement. A nested
 /// payment can cancel this contribution without undoing completed child actions.
 #[derive(Debug, Clone)]
@@ -262,6 +276,7 @@ pub struct ExhaustActivationAnnouncement {
     was_activated: bool,
     was_exhausted: bool,
     was_in_progress: bool,
+    group_receipt: Option<(ActivationGroupReceipt, bool)>,
 }
 
 /// Result of moving an object to the battlefield with ETB replacement processing.
@@ -273,6 +288,8 @@ pub struct EntersResult {
     pub new_id: ObjectId,
     /// Whether the permanent entered tapped
     pub enters_tapped: bool,
+    /// Supplied attachment instruction and actual native entry verdict.
+    pub entry_attachment: Option<crate::effect::EntryAttachmentChoice>,
 }
 
 /// Completed original entry operation and instructions added by replacements.
@@ -459,6 +476,16 @@ struct MetadataStateStore {
 }
 
 /// Battlefield-only flags grouped behind copy-on-write storage for cheap clones.
+/// One noncopiable exact-performer history record owns both scalar counts
+/// and current-turn recipients. A new object incarnation has another key.
+#[derive(Debug,Clone,Default)]
+pub(crate) struct NamedActionHistoryEntry {
+    total:u32,
+    turn:u32,
+    turn_count:u32,
+    recipients_this_turn:HashSet<ObjectId>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct BattlefieldFlags {
     /// Tapped permanents on the battlefield.
@@ -525,6 +552,10 @@ struct BattlefieldFlags {
     harnessed: HashSet<ObjectId>,
     /// true expires at cleanup, false lasts until this incarnation leaves.
     custom_statuses: HashMap<ObjectId, std::collections::BTreeMap<String, bool>>,
+    /// Noncopiable action history for one exact battlefield incarnation:
+    /// (lifetime total, most recent turn ordinal, total during that turn).
+    named_action_counts: HashMap<ObjectId, std::collections::BTreeMap<String,NamedActionHistoryEntry>>,
+    custom_status_event_expiry: HashMap<ObjectId, std::collections::BTreeMap<String, std::collections::BTreeSet<ironsmith_core::CustomStatusExpiryEvent>>>,
     /// Creatures that are renowned.
     renowned: HashSet<ObjectId>,
     /// Entry lore processing completed for this battlefield incarnation, even
@@ -572,9 +603,12 @@ struct BattlefieldFlags {
     /// at most the recorded result while rolling to visit their Attractions
     /// (Ferris Wheel).
     phase_out_holds_until_visit_roll: HashMap<ObjectId, (PlayerId, u32)>,
+    phase_out_holds_until_nth_spell: HashMap<ObjectId, (PlayerId, u32)>,
     /// The permanents each source has phased out ("that hasn't been phased
     /// out with this Attraction", Ferris Wheel), per source incarnation.
     phased_out_with_source: HashMap<ObjectId, HashSet<ObjectId>>,
+    /// Exact direct-phase-out incarnations awaiting this turn's cleanup.
+    phase_out_holds_until_end_of_turn: HashMap<ObjectId, u32>,
 }
 
 /// Exile/casting permission flags grouped behind copy-on-write storage.
@@ -596,6 +630,8 @@ struct CastPermissionFlags {
     foretold_cards: HashMap<ObjectId, u32>,
     /// Same preparation behavior, without Foretell/Plot designations.
     descriptive_exile_preparations: HashSet<ObjectId>,
+    selected_exile_preparations: HashMap<ObjectId, usize>,
+    exile_preparation_grants: HashMap<ObjectId, crate::alternative_cast::GrantSelection>,
     /// Cards exiled after resolving as Adventure spells, with the player who
     /// controlled the Adventure spell (CR 715.3d: "that player may cast it").
     adventure_exiled: HashMap<ObjectId, PlayerId>,
@@ -627,6 +663,9 @@ struct ObjectAnnotationStore {
     /// ("note one of its creature types that hasn't been noted for Volo's
     /// Journal").
     noted_creature_types: HashMap<ObjectId, Vec<Subtype>>,
+    /// Names belong to an incarnation, independently of its current abilities.
+    /// Old IDs remain available to pending abilities/LKI; new IDs inherit none.
+    noted_card_names: HashMap<crate::linked_exile::LinkedExileOwner, Vec<String>>,
     /// Die results stored on an object ("roll five six-sided dice and store
     /// those results on it", Centaur of Attention): the die size and the
     /// results, in roll order. A new object (CR 400.7) has none.
@@ -691,11 +730,14 @@ struct CommanderTracking {
 /// Exile and stack-origin tracking grouped behind copy-on-write storage.
 #[derive(Debug, Clone, Default)]
 struct ExileTracking {
+    /// Exact zone objects whose named designations follow their next move to
+    /// the stack. Any other move consumes the instruction without transferring it.
+    cast_continuation_statuses: HashMap<ObjectId, HashSet<String>>,
     /// Which players may inspect a face-down card in exile.
     face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
     /// Exact exiled incarnation -> source permanent whose current controller
     /// receives permission to look. Earned permissions also persist above.
-    face_down_exile_view_sources: HashMap<ObjectId, ObjectId>,
+    face_down_exile_view_sources: HashMap<ObjectId, HashSet<ObjectId>>,
     /// Snapshot of a card just before it moved to the stack for casting.
     cast_origin_snapshots: HashMap<ObjectId, ObjectSnapshot>,
     /// Original incarnation and zone for completed casts, retained across turns
@@ -708,6 +750,9 @@ struct ExileTracking {
     warped_cards: HashSet<ObjectId>,
     /// Imprinted cards keyed by source permanent.
     imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Named physical-card associations use exact zone incarnations. These
+    /// are rules state, independent of any printed ability/acquisition.
+    named_exile_relationships: BTreeMap<(String, ObjectId), Vec<ObjectId>>,
     /// Cards exiled by a specific source object ID.
     exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
     /// Objects whose "cards exiled with <source>" pool is another object's
@@ -759,6 +804,7 @@ struct CombatTransientState {
     combat_defending_players: Vec<(PlayerId, Vec<PlayerId>)>,
     /// Soulbond pairings (stored bidirectionally: A -> B and B -> A).
     soulbond_pairs: crate::incremental::TrackedValue<HashMap<ObjectId, ObjectId>>,
+    directed_permanent_links: crate::incremental::TrackedValue<HashMap<(ObjectId, String), permanent_links::DirectedPermanentLink>>,
     /// Attack targets captured while paying Ninjutsu costs.
     ninjutsu_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
     /// Attack targets captured while paying Sneak costs.
@@ -942,6 +988,8 @@ struct AuxiliaryTrackingState {
     /// simultaneous event (CR 603.2c), and "one or more" triggers group on
     /// its identity.
     simultaneous_action_scope: Option<SimultaneousActionScope>,
+    /// Original admission rules shared by every member of this physical action.
+    zone_movement_admission: Option<ZoneMovementAdmission>,
     /// Exact library placements owned by one simultaneous physical action.
     /// Retained original frames can resume that batch after an added program;
     /// distinct instructions have distinct batch IDs. Cleared each turn.
@@ -1029,12 +1077,21 @@ struct SimultaneousActionScope {
     opened_by_lookback: bool,
 }
 
+/// Immutable restriction receipt for one simultaneous physical operation.
+/// This is not a source provider cache: outside its operation admission is fresh.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ZoneMovementAdmission {
+    pub(crate) rules: Vec<(Zone, Option<Zone>, Option<(Zone, bool)>, bool)>,
+    pub(crate) failed: bool,
+}
+
 /// Immutable native grouping/look-back for a retained physical original.
 /// Added programs use their own scope after this frame has been released.
 #[derive(Debug, Clone)]
 pub(crate) struct CapturedSimultaneousOriginalFrame {
     scope: Option<SimultaneousActionScope>,
     lookback: Option<Vec<ObjectSnapshot>>,
+    zone_movement_admission: Option<ZoneMovementAdmission>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1297,6 +1354,13 @@ pub struct TurnStore {
     pub exhaust_activations_in_progress: HashSet<(ObjectId, usize)>,
     /// Activation totals that survive turns and control changes, but not object identity changes.
     pub ability_activations_per_object: HashMap<(ObjectId, crate::continuous::AbilityOrigin), u32>,
+    /// Actual physical colors spent across turns, keyed by exact incarnation,
+    /// acquisition and retained ability definition. None denotes missing proof.
+    pub activation_mana_colors: HashMap<(ObjectId, crate::continuous::AbilityOrigin, Option<ironsmith_core::LinkedExileDefinition>), Option<crate::color::ColorSet>>,
+    /// Committed activation evidence, retained across turns and scoped to the
+    /// actual activator and exact incarnation/acquisition/definition.
+    pub ability_activations_by_actor: HashMap<(ObjectId, crate::continuous::AbilityOrigin, ironsmith_core::LinkedExileDefinition, PlayerId), u32>,
+    pub activation_group_receipts: HashSet<ActivationGroupReceipt>,
     /// Trigger totals that survive turns and control changes, scoped to incarnation/acquisition.
     pub triggers_fired_per_object: HashMap<(ObjectId, crate::triggers::TriggerIdentity), u32>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
@@ -1336,6 +1400,17 @@ pub struct TurnStore {
     pub adapt_ignores_counters: Vec<(ObjectId, u32)>,
 }
 
+/// Noncopiable source-owned object membership. Both endpoints name exact
+/// incarnations in declared zones; unrelated ability grants never create links.
+#[derive(Debug, Clone)]
+pub struct SourceObjectCollection {
+    pub source: ObjectId,
+    pub source_zone: Option<Zone>,
+    pub name: String,
+    pub member_zone: Zone,
+    pub members: Vec<ObjectId>,
+}
+
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
 #[derive(Debug, Clone)]
 pub struct EffectStore {
@@ -1347,8 +1422,14 @@ pub struct EffectStore {
     pub cant_effects: CantEffectTracker,
     /// Tracker for "spend mana as though it were mana of any color" effects.
     pub mana_spend_effects: ManaSpendEffectTracker,
+    pub activation_cost_alternatives: Vec<crate::activation_cost_alternatives::ActivationCostAlternative>,
+    pub named_action_uses: HashMap<crate::action_use_receipts::ActionUseKey, (u32, u32)>,
+    pub source_object_collections: Vec<SourceObjectCollection>,
     pub delayed_triggers: Vec<crate::triggers::DelayedTrigger>,
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    pub(crate) departure_hand_reveal_frames: std::collections::HashMap<ObjectId,crate::effects::player::HandRevealFrame>,
+    pub(crate) pending_hand_reveal_windows: Vec<crate::effects::player::HandRevealWindow>,
+    pub(crate) hand_reveal_events_captured: std::collections::HashMap<(u32,usize),crate::triggers::TriggerEvent>,
     /// Scoped committed-action evidence, independent of trigger queue draining.
     pub(crate) instruction_result_records: Vec<Vec<crate::effect::ExecutionFact>>,
     /// Scoped observations retained for deferred action completion, independent
@@ -1362,6 +1443,7 @@ pub struct EffectStore {
     /// spell cast while another spell or ability is resolving. They wait here
     /// until the outer resolution boundary can put them into its trigger queue.
     pub pending_trigger_entries: Vec<crate::triggers::TriggeredAbilityEntry>,
+    pub(crate) pending_trigger_class_choices: Vec<crate::triggers::class_event_choice::PendingTriggerClassChoice>,
     /// Reflexive triggered abilities ("when you do, ...") that have triggered
     /// and wait to be put on the stack; their targets are chosen then.
     pub(crate) pending_reflexive_triggers:
@@ -1404,6 +1486,10 @@ pub struct EffectStore {
     pub temporary_spell_ability_grants: Vec<TemporarySpellAbilityGrantEffectInstance>,
     /// Repeatable priority special actions granted by resolving effects this turn.
     pub repeatable_mana_payment_actions: Vec<RepeatableManaPaymentAction>,
+    /// Exact source/face/ability occurrence that has used a once-only static
+    /// action. It does not renew when indices shift, control changes, or a
+    /// later turn begins; a new zone incarnation has a different object id.
+    pub intrinsic_immediate_actions_used: HashSet<(ObjectId, Option<CardId>, crate::continuous::AbilityOrigin)>,
     /// Active restriction effects (spell/ability-based "can't" effects).
     pub restriction_effects: Vec<RestrictionEffectInstance>,
     /// Active goad effects (a creature attacks each combat and attacks a player
@@ -1429,7 +1515,9 @@ impl EffectStore {
     /// future trigger work that an empty wire queue cannot replace.
     pub fn has_pending_trigger_work(&self) -> bool {
         !self.pending_trigger_events.is_empty()
+            || !self.pending_hand_reveal_windows.is_empty()
             || !self.pending_trigger_entries.is_empty()
+            || !self.pending_trigger_class_choices.is_empty()
             || !self.pending_reflexive_triggers.is_empty()
     }
 }
@@ -1442,12 +1530,19 @@ impl Default for EffectStore {
             prevention_effects: PreventionEffectManager::new(),
             cant_effects: CantEffectTracker::new(),
             mana_spend_effects: ManaSpendEffectTracker::new(),
+            activation_cost_alternatives: Vec::new(),
+            named_action_uses: HashMap::new(),
+            source_object_collections: Vec::new(),
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
+            pending_hand_reveal_windows: Vec::new(),
+            departure_hand_reveal_frames: std::collections::HashMap::new(),
+            hand_reveal_events_captured: std::collections::HashMap::new(),
             instruction_result_records: Vec::new(),
             action_observation_records: Vec::new(),
             retained_original_observation_scopes: Vec::new(),
             pending_trigger_entries: Vec::new(),
+            pending_trigger_class_choices: Vec::new(),
             pending_reflexive_triggers: Vec::new(),
             next_reflexive_trigger_id: 0,
             next_stack_ability_id: STACK_ABILITY_ID_BASE,
@@ -1463,6 +1558,7 @@ impl Default for EffectStore {
             temporary_spell_cost_reductions: Vec::new(),
             temporary_spell_ability_grants: Vec::new(),
             repeatable_mana_payment_actions: Vec::new(),
+            intrinsic_immediate_actions_used: HashSet::new(),
             restriction_effects: Vec::new(),
             goad_effects: Vec::new(),
             attack_player_requirements: Vec::new(),
@@ -1583,6 +1679,8 @@ struct RuntimeCacheState {
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
     static_effect_discovery_limits: crate::static_ability_processor::StaticEffectDiscoveryLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
+    /// Private unindexed real cards, with no historical source zone.
+    originless_card_entries: HashMap<ObjectId, crate::events::CreateCardsEvent>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
     observed_stack: RefCell<Option<crate::incremental::ChangeCursor>>,
     random_state: Cell<u64>,
@@ -1659,6 +1757,7 @@ impl Clone for RuntimeCacheState {
             static_effect_discovery_limits: self.static_effect_discovery_limits,
             // All speculative/nested work belongs to one host computation.
             token_creation_meter: self.token_creation_meter.clone(),
+            originless_card_entries: self.originless_card_entries.clone(),
             observed_players: RefCell::new(self.observed_players.borrow().clone()),
             observed_stack: RefCell::new(self.observed_stack.borrow().clone()),
             random_state: Cell::new(self.random_state.get()),
@@ -1723,6 +1822,7 @@ impl RuntimeCacheState {
             token_creation_limits: Default::default(),
             static_effect_discovery_limits: Default::default(),
             token_creation_meter: None,
+            originless_card_entries: HashMap::new(),
             observed_players: RefCell::new(None),
             observed_stack: RefCell::new(None),
             random_state: Cell::new(GameState::normalize_random_seed(0)),
@@ -2188,6 +2288,7 @@ pub struct ConditionalBeBlockedRestriction {
 
 #[derive(Debug, Clone, Default)]
 pub struct CantEffectTracker {
+    pub cant_move_between_zones: Vec<(Zone, Option<Zone>, Option<(Zone, bool)>, bool)>,
     pub cast_or_activate_payment_restrictions: Vec<ScopedCastOrActivatePaymentRestriction>,
     /// Players who can't gain life.
     /// Example: Sulfuric Vortex, Erebos, God of the Dead
@@ -2857,6 +2958,8 @@ impl RestrictionEffectInstance {
         }
 
         match self.duration {
+            crate::effect::Until::OpponentsNextTurn => !(current_turn > self.expires_end_of_turn
+                && game.active_players().iter().any(|player| game.are_opponents(self.controller, *player))),
             crate::effect::Until::YourNextTurn | crate::effect::Until::PlayersNextTurn { .. } => {
                 !(current_turn > self.expires_end_of_turn
                     && game.is_active_player(self.duration.next_turn_owner(self.controller)))
@@ -2958,6 +3061,7 @@ impl GoadEffectInstance {
 
 #[derive(Debug, Clone)]
 pub struct TemporarySpellCostReductionEffectInstance {
+    pub starts_next_turn_of: Option<PlayerId>,
     pub player: PlayerId,
     pub source: ObjectId,
     pub duration_controller: PlayerId,
@@ -2974,10 +3078,12 @@ pub struct TemporarySpellCostReductionEffectInstance {
 }
 
 impl TemporarySpellCostReductionEffectInstance {
+    pub fn is_active(&self, game: &GameState) -> bool {
+        self.starts_next_turn_of.is_none() && !self.is_expired(game)
+    }
     pub fn is_expired(&self, game: &GameState) -> bool {
-        if self.remaining_uses == 0 {
-            return true;
-        }
+        if self.remaining_uses == 0 { return true; }
+        if self.starts_next_turn_of.is_some() { return false; }
         match self.duration {
             crate::effect::Until::YourNextTurn => {
                 game.turn.turn_number > self.expires_end_of_turn
@@ -2991,6 +3097,7 @@ impl TemporarySpellCostReductionEffectInstance {
 
 #[derive(Debug, Clone)]
 pub struct TemporarySpellAbilityGrantEffectInstance {
+    pub repeat_for_turn: bool,
     pub player: PlayerId,
     pub source: ObjectId,
     pub filter: crate::target::ObjectFilter,
@@ -3000,9 +3107,23 @@ pub struct TemporarySpellAbilityGrantEffectInstance {
     pub mode: ironsmith_core::NextSpellGrantMode,
 }
 
-/// A repeatable special action available at instant timing through end of turn.
+/// Independent eligibility restrictions on an immediate paid action. Defaults
+/// preserve an unrestricted priority action. Uses belong to the registered
+/// offer, so changing zones cannot renew a once-only permission.
+#[derive(Debug, Default, Clone)]
+pub struct ImmediateActionRestrictions {
+    pub source_controller_acts: bool,
+    pub face_down_exile_cast: Option<ironsmith_core::DescribedFaceDownCastPermission>,
+    pub source_zone: Option<crate::zone::Zone>,
+    pub sorcery_speed: bool,
+    pub source_attacking: bool,
+    pub remaining_uses: Option<u32>,
+}
+
+/// A paid action whose instructions execute immediately without the stack.
 #[derive(Debug, Clone)]
 pub struct RepeatableManaPaymentAction {
+    pub restrictions: ImmediateActionRestrictions,
     pub player: PlayerId,
     pub source: ObjectId,
     pub controller: PlayerId,
@@ -3041,7 +3162,7 @@ impl RepeatableManaPaymentAction {
 
 impl TemporarySpellAbilityGrantEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
-        self.remaining_uses == 0 || current_turn > self.expires_end_of_turn
+        (!self.repeat_for_turn && self.remaining_uses == 0) || current_turn > self.expires_end_of_turn
     }
 }
 
@@ -3194,6 +3315,7 @@ impl CantEffectTracker {
         self.cast_or_activate_payment_restrictions.extend(other.cast_or_activate_payment_restrictions);
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
+        self.cant_move_between_zones.extend(other.cant_move_between_zones);
         self.cant_search_own_library_from_own_effects
             .extend(other.cant_search_own_library_from_own_effects);
         self.targeting_as_though_overrides
@@ -3422,6 +3544,7 @@ impl CantEffectTracker {
     /// Clear all tracked "can't" effects.
     /// Called when rebuilding the tracker from current game state.
     pub fn clear(&mut self) {
+        self.cant_move_between_zones.clear();
         self.cast_or_activate_payment_restrictions.clear();
         self.cant_gain_life.clear();
         self.cant_search.clear();
@@ -5123,6 +5246,8 @@ impl StackEntry {
 pub struct GameState {
     /// Monotonic, game-local vocabulary from admitted card definitions.
     custom_subtypes: Vec<Subtype>,
+    named_ability_counter_programs: std::collections::BTreeMap<crate::object::CounterType, Vec<crate::ability::Ability>>,
+    pub(crate) object_groups: crate::object_groups::ObjectGroupStore,
     // Players
     pub players: crate::incremental::TrackedValue<Vec<Player>>,
 
@@ -5190,6 +5315,8 @@ pub struct GameState {
     /// mulligan/opening-action procedure and a fresh turn structure are still
     /// owed by the host loop before turn 1 begins.
     restart_starting_procedure_pending: bool,
+    /// Frozen once after setup/opening procedures, before the first turn.
+    initial_object_states: Option<HashMap<StableId, (Zone, bool)>>,
     /// CR 726.4: battlefield entries a restarting effect's later instructions
     /// ("then put those cards onto the battlefield") owe the new game. They
     /// run once the new game's rule 103 procedure is done, just before turn
@@ -5218,6 +5345,7 @@ pub struct GameState {
     pub initiative: Option<PlayerId>,
     /// Players who have earned the city's blessing designation this game.
     citys_blessing: HashSet<PlayerId>,
+    named_player_designations: HashMap<PlayerId, HashSet<String>>,
     /// Players who have an enduring story (Storied) this game.
     enduring_story: HashSet<PlayerId>,
     battlefield_flags: Arc<BattlefieldFlags>,
@@ -5468,11 +5596,15 @@ impl GameState {
         } else {
             self.capture_simultaneous_combat_lookback()
         };
+        let zone_movement_admission = if pinning && self.auxiliary_tracking.simultaneous_action_scope.is_none() {
+            Some(self.capture_zone_movement_admission())
+        } else { None };
         let tracking = self.auxiliary_tracking_mut();
         tracking.simultaneous_event_lookback = lookback;
         tracking.simultaneous_combat_lookback = combat_lookback;
         match (pinning, tracking.simultaneous_action_scope) {
             (true, None) => {
+                tracking.zone_movement_admission = zone_movement_admission;
                 tracking.simultaneous_action_scope = Some(SimultaneousActionScope {
                     batch: None,
                     opened_by_lookback: true,
@@ -5480,6 +5612,7 @@ impl GameState {
             }
             (false, Some(scope)) if scope.opened_by_lookback => {
                 tracking.simultaneous_action_scope = None;
+                tracking.zone_movement_admission = None;
             }
             _ => {}
         }
@@ -5547,6 +5680,8 @@ impl GameState {
         if self.auxiliary_tracking.simultaneous_action_scope.is_some() {
             return false;
         }
+        let admission = self.capture_zone_movement_admission();
+        self.auxiliary_tracking_mut().zone_movement_admission = Some(admission);
         self.auxiliary_tracking_mut().simultaneous_action_scope = Some(SimultaneousActionScope {
             batch: None,
             opened_by_lookback: false,
@@ -5564,6 +5699,8 @@ impl GameState {
         if self.auxiliary_tracking.simultaneous_action_scope.is_some() {
             return false;
         }
+        let admission = self.capture_zone_movement_admission();
+        self.auxiliary_tracking_mut().zone_movement_admission = Some(admission);
         self.auxiliary_tracking_mut().simultaneous_action_scope = Some(SimultaneousActionScope {
             batch: Some(batch),
             opened_by_lookback: false,
@@ -5576,6 +5713,7 @@ impl GameState {
             self.finalize_milling_event_snapshots();
             let batch = self.auxiliary_tracking.simultaneous_action_scope.and_then(|scope| scope.batch);
             self.auxiliary_tracking_mut().simultaneous_action_scope = None;
+            self.auxiliary_tracking_mut().zone_movement_admission = None;
             self.reconcile_library_top_identity();
             if let Some(batch) = batch { self.finish_phase_duration_returns(batch); }
         }
@@ -5613,6 +5751,7 @@ impl GameState {
         CapturedSimultaneousOriginalFrame {
             scope: self.auxiliary_tracking.simultaneous_action_scope,
             lookback: self.auxiliary_tracking.simultaneous_event_lookback.clone(),
+            zone_movement_admission: self.auxiliary_tracking.zone_movement_admission.clone(),
         }
     }
 
@@ -5626,6 +5765,7 @@ impl GameState {
     ) -> Result<T, E> {
         let tracking = self.auxiliary_tracking_mut();
         let parent_scope = std::mem::replace(&mut tracking.simultaneous_action_scope, frame.scope);
+        let parent_admission = std::mem::replace(&mut tracking.zone_movement_admission, frame.zone_movement_admission.clone());
         let parent_lookback = std::mem::replace(
             &mut tracking.simultaneous_event_lookback,
             frame.lookback.clone(),
@@ -5636,6 +5776,7 @@ impl GameState {
         }
         let tracking = self.auxiliary_tracking_mut();
         tracking.simultaneous_action_scope = parent_scope;
+        tracking.zone_movement_admission = parent_admission;
         tracking.simultaneous_event_lookback = parent_lookback;
         if frame.scope != parent_scope {
             self.reconcile_library_top_identity();
@@ -5782,6 +5923,8 @@ impl GameState {
 
         Self {
             custom_subtypes: Vec::new(),
+            named_ability_counter_programs: std::collections::BTreeMap::new(),
+            object_groups: crate::object_groups::ObjectGroupStore::default(),
             players: players.into(),
             object_store: ObjectStore::default(),
             stack: Vec::new().into(),
@@ -5820,6 +5963,7 @@ impl GameState {
             subgame_parent: None,
             subgame_starting_procedure_pending: false,
             restart_starting_procedure_pending: false,
+            initial_object_states: None,
             pending_restart_battlefield_entries: Vec::new(),
             subgame_just_resumed: false,
             choice_store: Arc::new(ChoiceStore::default()),
@@ -5841,6 +5985,7 @@ impl GameState {
             monarch: None,
             initiative: None,
             citys_blessing: HashSet::new(),
+            named_player_designations: HashMap::new(),
             enduring_story: HashSet::new(),
             battlefield_flags: Arc::new(BattlefieldFlags::default()),
             combat_transients: Arc::new(CombatTransientState::default()),
@@ -6318,6 +6463,20 @@ impl GameState {
         true
     }
 
+    pub fn note_card_name_for_owner(&mut self,owner:crate::linked_exile::LinkedExileOwner,name:impl Into<String>)->bool {
+        let name=name.into();let name=name.trim();
+        if name.is_empty() || self.noted_card_names_for_owner(&owner).iter().any(|noted|crate::filter::names_match(noted,name)){return false;}
+        self.object_annotations_mut().noted_card_names.entry(owner).or_default().push(name.to_owned());
+        self.mark_continuous_state_dirty();self.bump_mutation_revision();true
+    }
+    pub fn noted_card_names_for_owner(&self,owner:&crate::linked_exile::LinkedExileOwner)->&[String]{
+        self.object_annotations.noted_card_names.get(owner).map(Vec::as_slice).unwrap_or(&[])
+    }
+    /// Inspection only. Rules readers must use their exact linked acquisition.
+    pub fn noted_card_names_for_source(&self,source:ObjectId)->Vec<String>{
+        self.object_annotations.noted_card_names.iter().filter(|(owner,_)|owner.host==source).flat_map(|(_,names)|names.iter().cloned()).collect()
+    }
+
     pub fn noted_creature_types_for_source(&self, source: ObjectId) -> &[Subtype] {
         self.object_annotations
             .noted_creature_types
@@ -6373,6 +6532,14 @@ impl GameState {
             *counts.entry(*result).or_default() += 1;
         }
         counts.values().copied().max().unwrap_or(0)
+    }
+
+    /// A prohibited reversion cannot erase an already accepted controller
+    /// merely because its supporting layer-2 effect has ended. The retained
+    /// state is incarnation-local and released when the prohibition ends.
+    pub(crate) fn initial_controller_with_control_prohibitions(&self, object:ObjectId, initial:PlayerId)->PlayerId {
+        let Some(previous)=self.battlefield_flags.controller_at_last_refresh.get(&object).copied() else {return initial;};
+        if self.control_acquisition_allowed(object,previous,initial) {initial} else {previous}
     }
 
     /// Query assembled prohibitions without recursing into layer calculation.
@@ -7628,7 +7795,13 @@ impl GameState {
     /// The caller must have started from a clean state and must know the
     /// activation had no other game effect; see `mana_ability_is_undo_safe`.
     pub(crate) fn retain_continuous_state_after_mana_activation(&self) -> bool {
-        if self.continuous_effects_are_tap_sensitive() {
+        // Static rule evaluators can retain tapped-state dependencies without
+        // generating a continuous effect (for example, a lasting designation
+        // whose threshold has not yet been met). Do not erase that invalidation.
+        if self.derived_state_read_tapped()
+            || self.runtime_cache.derived_tap_reads_before_dirty.get()
+            || self.continuous_effects_are_tap_sensitive()
+        {
             return false;
         }
         if self.runtime_cache.continuous_state_revision.get()
@@ -7675,12 +7848,25 @@ impl GameState {
     /// at publication as well. Fixed bonuses can still depend on turn history.
     fn invalidate_continuous_history_modifiers(&self) {
         if !self.runtime_cache.continuous_state_dirty.get()
-            && self
+            && (self
                 .cached_continuous_effects_snapshot_arc()
                 .iter()
                 .any(|effect| effect.condition.is_some()
                     || Self::effect_target_is_turn_context_sensitive(&effect.applies_to)
                     || Self::modification_is_turn_context_sensitive(&effect.modification))
+                // A lasting static designation may read history without
+                // producing any continuous effect until its clauses are met.
+                || self.battlefield.iter().copied().any(|id| {
+                    self.current_characteristics(id).is_some_and(|characteristics| {
+                        characteristics.static_abilities.iter().any(|ability| {
+                            matches!(ability.keyword_marker_mechanic(), Some(
+                                ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation {
+                                    history_requirements, ..
+                                }
+                            ) if !history_requirements.is_empty())
+                        })
+                    })
+                }))
         {
             self.mark_continuous_state_dirty();
         }
@@ -8657,6 +8843,15 @@ impl GameState {
     pub(crate) fn activate_restrictions_starting_this_turn(&mut self) {
         let active_players = self.turn_players();
         let current_turn = self.turn.turn_number;
+        // Cost rules begin at the turn boundary, before priority or any
+        // turn-step actions, without creating a stack object.
+        for effect in &mut self.effect_store.temporary_spell_cost_reductions {
+            if effect.starts_next_turn_of.is_some_and(|player| active_players.contains(&player)) {
+                effect.starts_next_turn_of = None;
+                effect.duration = crate::effect::Until::EndOfTurn;
+                effect.expires_end_of_turn = current_turn;
+            }
+        }
         let had_restrictions = !self.effect_store.restriction_effects.is_empty();
         for effect in &mut self.effect_store.restriction_effects {
             if effect
@@ -8754,6 +8949,7 @@ impl GameState {
     ) {
         self.effect_store.temporary_spell_cost_reductions.push(
             TemporarySpellCostReductionEffectInstance {
+                starts_next_turn_of: None,
                 player,
                 source,
                 duration_controller,
@@ -8821,6 +9017,7 @@ impl GameState {
     ) {
         self.effect_store.temporary_spell_cost_reductions.push(
             TemporarySpellCostReductionEffectInstance {
+                starts_next_turn_of: None,
                 player,
                 source,
                 duration_controller,
@@ -8853,6 +9050,7 @@ impl GameState {
     ) {
         self.effect_store.temporary_spell_cost_reductions.push(
             TemporarySpellCostReductionEffectInstance {
+                starts_next_turn_of: None,
                 player,
                 source,
                 duration_controller,
@@ -8897,6 +9095,7 @@ impl GameState {
     ) {
         self.effect_store.temporary_spell_ability_grants.push(
             TemporarySpellAbilityGrantEffectInstance {
+                repeat_for_turn: false,
                 player,
                 source,
                 filter,
@@ -9084,6 +9283,7 @@ impl GameState {
                         effect.mode,
                         ironsmith_core::NextSpellGrantMode::Ability
                             | ironsmith_core::NextSpellGrantMode::IncarnationAbility
+                            | ironsmith_core::NextSpellGrantMode::EntryFollowup
                     )
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
@@ -9106,12 +9306,29 @@ impl GameState {
                             effect.mode,
                             ironsmith_core::NextSpellGrantMode::Ability
                                 | ironsmith_core::NextSpellGrantMode::IncarnationAbility
+                            | ironsmith_core::NextSpellGrantMode::EntryFollowup
                         )
                     })
-                    .map(|effect| (effect.mode, effect.ability.clone()))
+                    .map(|effect| (effect.mode, effect.source, effect.ability.clone()))
             })
             .collect::<Vec<_>>();
-        for (mode, ability) in granted_abilities {
+        for (mode, source, ability) in granted_abilities {
+            if mode == ironsmith_core::NextSpellGrantMode::EntryFollowup {
+                if let crate::ability::AbilityKind::Triggered(triggered) = ability.kind {
+                    let matcher = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                        .from(Zone::Stack).to(Zone::Battlefield).this();
+                    let mut program = triggered.effects;
+                    // These references belong to the future entry event, not
+                    // to the activation that registered the next-spell offer.
+                    program.object_reference_imports.retain(|tag| !matches!(tag.as_str(), "triggering" | "it" | "__it__"));
+                    let mut config = crate::effects::delayed::trigger_queue::DelayedTriggerConfig::new(
+                        crate::triggers::Trigger::new(matcher), program, true, vec![spell_id], player,
+                    ).with_ability_source(Some(source)).with_choices(triggered.choices);
+                    config.intervening_if = triggered.intervening_if;
+                    crate::effects::delayed::trigger_queue::queue_delayed_trigger(self, config);
+                }
+                continue;
+            }
             if mode == ironsmith_core::NextSpellGrantMode::IncarnationAbility {
                 if let crate::ability::AbilityKind::Static(ability) = ability.kind {
                     self.grant_incarnation_static_ability(spell_id, ability);
@@ -9129,12 +9346,13 @@ impl GameState {
                 .effect_store
                 .temporary_spell_ability_grants
                 .get_mut(idx)
-                && effect.remaining_uses > 0
+                && effect.remaining_uses > 0 && !effect.repeat_for_turn
             {
                 effect.remaining_uses -= 1;
             }
         }
         crate::granted_spell_keywords::acquire_spell_keywords_for_cast(self, spell_id, player);
+        crate::granted_optional_spell_costs::acquire_for_cast(self, spell_id, player);
     }
 
     /// Pure timing query against the already selected prospective face. It
@@ -9160,7 +9378,8 @@ impl GameState {
                     && !grant.is_expired(self.turn.turn_number)
                     && match grant.mode {
                         ironsmith_core::NextSpellGrantMode::Ability
-                        | ironsmith_core::NextSpellGrantMode::IncarnationAbility => false,
+                        | ironsmith_core::NextSpellGrantMode::IncarnationAbility
+                        | ironsmith_core::NextSpellGrantMode::EntryFollowup => false,
                         ironsmith_core::NextSpellGrantMode::CastTiming => !land_play,
                         ironsmith_core::NextSpellGrantMode::PlayTiming => true,
                     }
@@ -10301,17 +10520,19 @@ impl GameState {
 
     /// Can the permanent be destroyed?
     pub fn can_be_destroyed(&self, permanent: ObjectId) -> bool {
-        self.effect_store.cant_effects.can_be_destroyed(permanent)
+        !self.is_originless_card_entry_pending(permanent)
+            && self.effect_store.cant_effects.can_be_destroyed(permanent)
     }
 
     /// Can the permanent be regenerated?
     pub fn can_be_regenerated(&self, permanent: ObjectId) -> bool {
-        self.effect_store.cant_effects.can_be_regenerated(permanent)
+        !self.is_originless_card_entry_pending(permanent)
+            && self.effect_store.cant_effects.can_be_regenerated(permanent)
     }
 
     /// Can the permanent be sacrificed?
     pub fn can_be_sacrificed(&self, permanent: ObjectId) -> bool {
-        self.object(permanent)
+        !self.is_originless_card_entry_pending(permanent) && self.object(permanent)
             .is_some_and(|object| object.zone == Zone::Battlefield)
             && !self.is_phased_out(permanent)
             && self.effect_store.cant_effects.can_be_sacrificed(permanent)
@@ -10693,9 +10914,77 @@ impl GameState {
     }
 
     /// Adds an object to the game.
-    pub fn add_object(&mut self, object: Object) {
+    /// Admit an independently compiled ability-counter definition. A name has
+    /// one meaning within a game; conflicting definitions fail before mutation.
+    /// The template outlives its provider and is not itself an object ability.
+    pub fn register_named_ability_counter(
+        &mut self, kind: crate::object::CounterType, abilities: Vec<crate::ability::Ability>,
+    ) -> Result<(), String> {
+        self.register_named_ability_counters(&[(kind, abilities)])
+    }
+
+    /// Preflight the entire incoming vocabulary before publishing any program
+    /// or rebinding any existing counter occurrence.
+    pub fn register_named_ability_counters(
+        &mut self, programs: &[(crate::object::CounterType, Vec<crate::ability::Ability>)],
+    ) -> Result<(), String> {
+        let mut staged = std::collections::BTreeMap::new();
+        for (kind, abilities) in programs {
+            let kind = *kind;
+            if let crate::object::CounterType::Named(name) = kind {
+                let canonical = ironsmith_core::counter::normalize_named_counter_name(name.as_ref())?;
+                if canonical != name.as_ref() { return Err("named ability-counter registry requires a canonical counter identity".into()); }
+            }
+        if !matches!(kind, crate::object::CounterType::Named(_)) {
+            return Err("custom ability programs require a named counter identity".into());
+        }
+        use crate::marker::CounterTypeExt as _;
+        let intrinsic_named = kind.is_ability_counter() || [
+            crate::object::CounterType::Flying,crate::object::CounterType::FirstStrike,crate::object::CounterType::DoubleStrike,
+            crate::object::CounterType::Deathtouch,crate::object::CounterType::Decayed,crate::object::CounterType::Hexproof,
+            crate::object::CounterType::Indestructible,crate::object::CounterType::Lifelink,crate::object::CounterType::Menace,
+            crate::object::CounterType::Reach,crate::object::CounterType::Trample,crate::object::CounterType::Vigilance,crate::object::CounterType::Haste,
+        ].iter().any(|official|matches!(kind,crate::object::CounterType::Named(name) if official.description().eq_ignore_ascii_case(name.as_ref())));
+        if intrinsic_named { return Err("an intrinsic keyword counter cannot be redefined by a custom program".into()); }
+        if abilities.iter().all(|ability|matches!(&ability.kind,crate::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())) {
+            return Err("an ability counter must carry an executable ability beyond its identity marker".into());
+        }
+        if let Some(previous) = self.named_ability_counter_programs.get(&kind) {
+            if !crate::ability_program_identity::ability_programs_equivalent(previous, abilities) { return Err("conflicting named ability-counter definition".into()); }
+        }
+            if let Some(previous) = staged.insert(kind, abilities.clone()) {
+                if !crate::ability_program_identity::ability_programs_equivalent(&previous, abilities) { return Err("conflicting named ability-counter definitions in one admission".into()); }
+            }
+        }
+        for (kind, abilities) in staged {
+            if self.named_ability_counter_programs.contains_key(&kind) { continue; }
+            self.named_ability_counter_programs.insert(kind, abilities.clone());
+            let ids = self.objects.keys().copied().collect::<Vec<_>>();
+            for id in ids {
+                if let Some(object) = self.object_mut(id) { object.counters.bind_named_ability_program(kind, abilities.clone()); }
+            }
+            self.mark_continuous_state_dirty();
+        }
+        Ok(())
+    }
+
+    /// Admit all programs of a supplied source definition as one transaction.
+    pub fn register_ability_counter_definitions(&mut self, definition: &crate::cards::CardDefinition) -> Result<(), String> {
+        let programs = definition.ability_counter_definitions.iter().map(|(name, program)| {
+            ironsmith_core::counter::normalize_named_counter_name(name)
+                .map(|name| (crate::object::CounterType::Named(name.into()), program.clone()))
+        }).collect::<Result<Vec<_>, _>>()?;
+        self.register_named_ability_counters(&programs)
+    }
+
+    /// Record a native object without asserting that a creation has arrived
+    /// in any game zone. Only originless entry preparation uses this path.
+    fn record_new_object(&mut self, mut object: Object) -> (Zone, ObjectId, PlayerId) {
+        for (kind, program) in &self.named_ability_counter_programs {
+            object.counters.bind_named_ability_program(*kind, program.clone());
+        }
         for subtype in object.subtypes.iter().copied().filter(|ty| ty.is_custom_vocabulary()) {
-            if !self.custom_subtypes.contains(&subtype) { self.custom_subtypes.push(subtype); }
+            ironsmith_core::custom_subtypes::merge_subtype_associations(&mut self.custom_subtypes, subtype);
         }
         self.custom_subtypes.sort_by_key(|ty| format!("{ty:?}"));
         self.mark_continuous_state_dirty();
@@ -10710,8 +10999,12 @@ impl GameState {
         self.objects.insert(id, Arc::new(object));
         self.object_store.render_changes.record(id);
         self.stable_id_index.insert(stable_id, id);
-        self.bump_zone_revision(zone);
 
+        (zone, id, owner)
+    }
+
+    fn index_new_object_zone(&mut self, zone: Zone, id: ObjectId, owner: PlayerId) {
+        self.bump_zone_revision(zone);
         // Update zone indexes
         match zone {
             Zone::Battlefield => {
@@ -10757,6 +11050,11 @@ impl GameState {
         self.debug_assert_zone_consistency();
     }
 
+    pub fn add_object(&mut self, object: Object) {
+        let (zone, id, owner) = self.record_new_object(object);
+        self.index_new_object_zone(zone, id, owner);
+    }
+
     /// Creates an object from a card and adds it to the specified zone.
     pub fn create_object_from_card(
         &mut self,
@@ -10790,6 +11088,17 @@ impl GameState {
         id
     }
 
+    /// Resolve family metadata against this game's explicitly admitted
+    /// vocabulary. Legacy values retain their spelling identity; another
+    /// artifact may supply additional associations of that same identity.
+    pub fn admitted_subtype(&self, subtype: crate::types::Subtype) -> crate::types::Subtype {
+        let crate::types::Subtype::Custom(incoming)=subtype else{return subtype;};
+        match self.custom_subtypes.iter().find(|candidate|**candidate==subtype) {
+            Some(crate::types::Subtype::Custom(known))=>crate::types::Subtype::Custom(incoming.union_associations(*known)),
+            _=>subtype,
+        }
+    }
+
     /// Official vocabulary plus this game's referenced custom types, in stable order.
     pub fn subtypes_in_family(&self, family: crate::types::SubtypeFamily) -> Vec<Subtype> {
         let mut result: Vec<_> = family.all_subtypes().iter().copied()
@@ -10801,10 +11110,7 @@ impl GameState {
     pub fn register_card_subtypes(&mut self, card: &crate::card::Card) {
         let mut changed = false;
         for subtype in card.custom_subtypes.iter().chain(&card.subtypes).copied() {
-            if subtype.is_custom_vocabulary() && !self.custom_subtypes.contains(&subtype) {
-                self.custom_subtypes.push(subtype);
-                changed = true;
-            }
+            changed |= ironsmith_core::custom_subtypes::merge_subtype_associations(&mut self.custom_subtypes, subtype);
         }
         if changed {
             self.custom_subtypes.sort_by_key(|ty| (format!("{:?}", ty), ty.to_string()));
@@ -10814,12 +11120,11 @@ impl GameState {
     }
 
     /// Creates an object from a CardDefinition (includes abilities and spell effects).
-    pub fn create_object_from_definition(
-        &mut self,
-        def: &crate::cards::CardDefinition,
-        owner: PlayerId,
-        zone: Zone,
-    ) -> ObjectId {
+    fn instantiate_card_definition(
+        &mut self, def: &crate::cards::CardDefinition, owner: PlayerId, zone: Zone,
+    ) -> Object {
+        self.register_ability_counter_definitions(def)
+            .expect("conflicting supplied named ability-counter definition");
         self.register_card_subtypes(&def.card);
         self.prime_linked_face_definitions(def);
         let id = self.new_object_id();
@@ -10846,6 +11151,17 @@ impl GameState {
                     .into(),
             );
         }
+        object
+    }
+
+    pub fn create_object_from_definition(
+        &mut self,
+        def: &crate::cards::CardDefinition,
+        owner: PlayerId,
+        zone: Zone,
+    ) -> ObjectId {
+        let mut object = self.instantiate_card_definition(def, owner, zone);
+        let id = object.id;
         if zone == Zone::Battlefield
             && let Some(loyalty) = object.base_loyalty
             && loyalty > 0
@@ -10859,6 +11175,44 @@ impl GameState {
         id
     }
 
+    pub(crate) fn stage_originless_card_entry(
+        &mut self, definition: &crate::cards::CardDefinition,
+        mut creation: crate::events::CreateCardsEvent,
+    ) -> ObjectId {
+        let mut definition = definition.clone();
+        definition.card.is_token = false;
+        let object = self.instantiate_card_definition(&definition, creation.player, Zone::Battlefield);
+        let id = object.id;
+        creation.amount = 1; creation.selection_finalized = true;
+        self.runtime_cache.originless_card_entries.insert(id, creation);
+        self.record_new_object(object);
+        id
+    }
+
+    pub(crate) fn is_originless_card_entry_pending(&self, id: ObjectId) -> bool {
+        self.runtime_cache.originless_card_entries.contains_key(&id)
+    }
+
+    /// Used only by the isolated native prospective-entry query world.
+    pub(crate) fn activate_originless_entry_projection(&mut self, id: ObjectId) {
+        self.runtime_cache.originless_card_entries.remove(&id);
+    }
+
+    fn materialize_originless_card_entry(&mut self, id: ObjectId, zone: Zone) -> Option<ObjectId> {
+        self.runtime_cache.originless_card_entries.remove(&id)?;
+        let owner = self.object(id)?.owner;
+        self.object_mut(id)?.zone = zone;
+        self.index_new_object_zone(zone, id, owner);
+        if zone == Zone::Battlefield {
+            self.set_summoning_sick(id);
+            self.effect_store.continuous_effects.record_entry(id);
+            self.restamp_object_stickers(id);
+            self.handle_day_night_object_entered(id);
+            self.note_attraction_entered_battlefield(id);
+        }
+        Some(id)
+    }
+
     /// Put a token made from `def` directly into `zone` as a setup action,
     /// outside any effect: no creation event, replacement or trigger.
     pub fn create_token_object_from_definition(
@@ -10867,6 +11221,8 @@ impl GameState {
         controller: PlayerId,
         zone: Zone,
     ) -> ObjectId {
+        self.register_ability_counter_definitions(def)
+            .expect("conflicting supplied token ability-counter definition");
         let id = self.new_object_id();
         let mut object = self.object_from_token_definition(id, def, controller);
         object.zone = zone;
@@ -10907,6 +11263,8 @@ impl GameState {
         def: &crate::cards::CardDefinition,
         controller: PlayerId,
     ) -> Object {
+        self.register_ability_counter_definitions(def)
+            .expect("conflicting supplied token ability-counter definition");
         self.register_card_subtypes(&def.card);
         self.prime_linked_face_definitions(def);
         let handles = self.object_store.shared_handles_for_definition(def);

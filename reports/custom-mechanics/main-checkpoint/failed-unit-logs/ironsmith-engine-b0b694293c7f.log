@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'special_actions::private_cost_admission::tests::reservation_binds_authenticated_hidden_generation_and_immutable_ciphertext_anchor' panicked at crates/ironsmith-engine/src/special_actions/private_cost_admission_tests.rs:92:89:
+called `Result::unwrap_err()` on an `Ok` value: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test special_actions::private_cost_admission::tests::reservation_binds_authenticated_hidden_generation_and_immutable_ciphertext_anchor ... FAILED
+
+failures:
+
+failures:
+    special_actions::private_cost_admission::tests::reservation_binds_authenticated_hidden_generation_and_immutable_ciphertext_anchor
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.05s
+

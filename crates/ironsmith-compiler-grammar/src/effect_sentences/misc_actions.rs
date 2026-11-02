@@ -789,6 +789,21 @@ pub fn parse_get(
         ));
     }
 
+    // A player can receive any typed counter kind. Consume the complete
+    // quantity and counter noun, leaving qualified/conditional tails to their
+    // enclosing readers rather than silently dropping them.
+    if let Some(player) = extract_subject_player(subject)
+        && let Some(filter) = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
+        && let Some((count, used)) = parse_value(tokens)
+        && used < tokens.len()
+        && tokens.last().is_some_and(|token| token.is_any_word(&["counter", "counters"]))
+        && let Some(kind) = crate::grammar::filters::parse_counter_type_from_tokens(&tokens[used..])
+    {
+        return Ok(EffectAst::subject_verb_put_counters(
+            kind, count, TargetAst::Player(filter, span_from_tokens(tokens)), None, false,
+        ));
+    }
+
     if let Some(effect) = parse_emblem_action(tokens, subject) {
         return Ok(effect);
     }
@@ -1257,3 +1272,23 @@ mod tests;
 #[path = "misc_actions/resource.rs"]
 mod resource_programs;
 pub use resource_programs::parse_pay;
+
+#[cfg(test)]
+mod generic_player_counter_get_regressions {
+    use super::*;
+    #[test]
+    fn named_player_counters_reuse_typed_put_counter_operation() {
+        for counter in ["corruption", "restlessness"] {
+            let tokens = crate::lexer::lex_line(&format!("three {counter} counters"), 0).unwrap();
+            let effect = parse_get(&tokens, Some(SubjectAst::Player(PlayerAst::Target))).unwrap();
+            let text = format!("{effect:?}");
+            assert!(text.contains("PutCounters"), "{text}");
+            assert!(text.contains("Fixed(3)"), "{text}");
+        }
+    }
+    #[test]
+    fn named_counter_reader_does_not_discard_qualified_tail() {
+        let tokens = crate::lexer::lex_line("three corruption counters if you control a creature", 0).unwrap();
+        assert!(parse_get(&tokens, Some(SubjectAst::Player(PlayerAst::Target))).is_err());
+    }
+}

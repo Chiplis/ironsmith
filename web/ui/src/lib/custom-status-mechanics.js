@@ -1,10 +1,11 @@
 import { customKeywordForms } from './keyword-forms.js';
+import { expandStatusEventReferences } from './status-event-references.js';
 import { bindReminderParameters, parseParameterDeclaration, reminderParameters } from './reminder-costs.js';
 
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const selfAction = def => new RegExp(`\\b${escape(def.keyword)}\\s+(this (?:creature|permanent|artifact|enchantment|land|planeswalker|battle|card))\\b`, 'gi');
 function explicitStatusName(def) {
-  const names = [...String(def.reminder).matchAll(/\bgive\s+(?:this (?:creature|permanent|artifact|enchantment|land|planeswalker|battle|card)|target (?:creature|permanent)|it)\s+the\s+([a-z][a-z '-]*?)\s+status\b/gi)]
+  const names = [...String(def.reminder).matchAll(/\bgive\s+(?:this (?:creature|permanent|artifact|enchantment|land|planeswalker|battle|card)|target (?:creature|permanent)|the most recently exiled card|it)\s+the\s+([a-z][a-z '-]*?)\s+status\b/gi)]
     .map(match => match[1].toLowerCase());
   const unique = [...new Set(names)];
   return unique.length === 1 ? unique[0] : null;
@@ -15,7 +16,7 @@ export function mentionsStatus(text, def) {
   return isStatusMechanic(def) && new RegExp(`\\b(?:${escape(def.keyword)}|${escape(statusName(def))})\\b`, 'i').test(text);
 }
 export function expandStatusActions(text, def) {
-  if (!isStatusMechanic(def)) return text;
+  if (def.perObjectProgram || !isStatusMechanic(def)) return text;
   return text.replace(selfAction(def), (_, subject) => `give ${subject} the ${statusName(def)} status`);
 }
 
@@ -37,11 +38,17 @@ export function expandStatusGrants(text, def, expand) {
 export function expandStatusReferences(text, def) {
   if (!isStatusMechanic(def)) return text;
   const name = statusName(def), form = escape(name);
+  // The contraction is a state reference, but a quoted literal name is data.
+  // Granted rule bodies are expanded in their own ordinary program scope.
+  const contraction = new RegExp(`\\bit['’]s\\s+${form}\\b`, 'gi');
+  text = text.split(/("[^"\n]*"|“[^”\n]*”)/g).map((part, index) => index % 2 ? part
+    : part.replace(contraction, `it is ${name}`)).join('');
   // These references also occur inside granted, quoted abilities.
-  return text
+  return expandStatusEventReferences(text, name)
     .replace(new RegExp(`\\battacks while ${form}\\b`, 'gi'), `with the ${name} status attacks`)
     .replace(new RegExp(`\\b(?:isn't|is not) ${form}\\b`, 'gi'), `does not have the ${name} status`)
     .replace(new RegExp(`\\b(?:becomes|become) ${form}\\b`, 'gi'), `gains the ${name} status`)
     .replace(new RegExp(`\\b(?:is|are) ${form}\\b`, 'gi'), `has the ${name} status`)
-    .replace(new RegExp(`\\b${form} (creatures?|permanents?|artifacts?|enchantments?|lands?|planeswalkers?|battles?)\\b`, 'gi'), `$1 with the ${name} status`);
+    .replace(new RegExp(`\\b(?:a|an) ${form} (creatures?|permanents?|artifacts?|enchantments?|lands?|planeswalkers?|battles?|cards?|spells?)\\b`, 'gi'), (_,noun) => `${/^[aeiou]/i.test(noun)?'an':'a'} ${noun} with the ${name} status`)
+    .replace(new RegExp(`\\b${form} (creatures?|permanents?|artifacts?|enchantments?|lands?|planeswalkers?|battles?|cards?|spells?)\\b`, 'gi'), `$1 with the ${name} status`);
 }

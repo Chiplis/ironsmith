@@ -586,3 +586,21 @@ fn suffix_this_turn_tagged_combat_damage_uses_captured_marker() {
     assert!(debug.contains("TaggedObjectConstraint"), "{debug}");
     assert!(debug.contains("Draw"), "{debug}");
 }
+
+
+#[test]
+fn delayed_indefinite_attacker_repeats_and_retains_ordinary_effect_program() {
+    for text in [
+        "Whenever a creature attacks this turn, it gets +1/+1 and gains trample until end of turn.",
+        "This turn, whenever a creature you control attacks, it gets +1/+1 until end of turn.",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens).unwrap().unwrap();
+        let [EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {trigger: TriggerSpec::Attacks(_), effects: body, one_shot: false, attach_to_previous_ability: false, ..})] = effects.as_slice() else {
+            panic!("expected repeating per-attacker delayed rule: {effects:#?}");
+        };
+        assert!(!body.is_empty());
+    }
+    let targeted = crate::lexer::lex_line("target creature attacks", 0).unwrap();
+    assert!(next_attack_trigger_from_core(&targeted).is_none(), "a target requires its own declaration");
+}

@@ -9,14 +9,54 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-// Version 19 admits retained-snapshot quantities, dynamic copy loyalty, exact
-// tagged permissions, public selections and source-linked exile programs.
+// Version 20 admits the complete coherent custom-mechanics typed model and
+// explicit policies, including terminal recipes, source choices and class events.
 // Historical artifacts remain unchanged and require recompilation for admission.
-// Next-turn play permissions distinguish the effect controller from the holder.
-// See architecture/relative-permission-boundaries-schema.descriptor.
-pub const FORMAT_VERSION: u32 = 19;
+// See architecture/custom-mechanics-coherent-schema-v20.descriptor.
+pub const FORMAT_VERSION: u32 = 20;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "33b646cf7f54b723344f032e2ad2f1ee48846b86ffc8e4f789a8ffa41984649b";
+    "3535ad1d61837fa1fb4977a9cd4a556c4fa93d126829cfc5282675e18259ffcd";
+
+/// Validate the executable metadata supported by standalone supplied-source inputs.
+/// Provenance is independent from executable dependencies: unsupported dependency
+/// programs must never disappear through serde's ordinary unknown-field handling.
+pub fn validate_standalone_supplied_definition_metadata(
+    text: &str,
+    metadata: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    for key in ["token", "isToken", "is_token"] {
+        if let Some(value)=metadata.get(key).filter(|value|!value.is_null()) {
+            if value!=&Value::Bool(false) {return Err(format!("supplied real-card definition cannot carry {key}"));}
+        }
+    }
+    if text.lines().any(|line|line.split_once(':').is_some_and(|(heading,value)|
+        heading.trim().eq_ignore_ascii_case("type") && value.split_whitespace().next().is_some_and(|word|word.eq_ignore_ascii_case("token")))) {
+        return Err("supplied real-card definition cannot have a Token type header".into());
+    }
+    for key in ["customTokens","custom_tokens","customTokenFaces","custom_token_faces",
+        "customKeywordCounterDefinitions","custom_keyword_counter_definitions",
+        "abilityCounterDefinitions","ability_counter_definitions","faces","sourceFaces","source_faces","executableFaces","executable_faces"] {
+        if let Some(value)=metadata.get(key).filter(|value|!value.is_null()) {
+            if !value.as_array().is_some_and(Vec::is_empty) {
+                return Err(format!("standalone supplied definition cannot drop unsupported {key}; provide a complete typed dependency graph"));
+            }
+        }
+    }
+    for key in ["otherFaceId","other_face_id","otherFaceName","other_face_name",
+        "meldPartnerName","meld_partner_name","linkedFaceDefinition","linked_face_definition"] {
+        if metadata.get(key).is_some_and(|value|!value.is_null() && value.as_str()!=Some("")) {
+            return Err(format!("standalone supplied definition cannot drop linked-face metadata {key}"));
+        }
+    }
+    for key in ["linkedFaceLayout","linked_face_layout","sourceLayout","source_layout","sourceShape","source_shape","layout"] {
+        if let Some(value)=metadata.get(key).filter(|value|!value.is_null()) {
+            if !value.as_str().is_some_and(|value|matches!(value.trim().to_ascii_lowercase().as_str(),""|"none"|"normal"|"single")) {
+                return Err(format!("standalone supplied definition cannot represent {key}"));
+            }
+        }
+    }
+    Ok(())
+}
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -479,7 +519,7 @@ mod tests {
 
     #[test]
     fn current_golden_matches_the_integrated_source() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v19-relative-boundaries.json");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v20-custom-mechanics-coherent.json");
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
         if std::env::var_os("IRONSMITH_UPDATE_ARTIFACT_GOLDEN").is_some() {
             std::fs::write(&path, &actual).unwrap();
@@ -547,10 +587,49 @@ mod tests {
     }
 
     #[test]
+    fn historical_v19_golden_is_immutable_and_rejected_by_coherent_v20_admission() {
+        let bytes = include_bytes!("../fixtures/v19-relative-boundaries.json");
+        assert_eq!(sha256_hex(bytes), "ecc37c21eacb99a50f08b7440a9f712f22bdfd9e0e043798e4b34f3c3156160a");
+        let historical: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(historical["formatVersion"], 19);
+        assert_eq!(historical["engineSchemaHash"], "33b646cf7f54b723344f032e2ad2f1ee48846b86ffc8e4f789a8ffa41984649b");
+        assert!(CompiledCardArtifact::from_json(bytes).is_err());
+    }
+
+    #[test]
+    fn coherent_descriptor_binds_all_model_extensions_not_only_terminal_recipes() {
+        let bytes = include_bytes!("../../../architecture/custom-mechanics-coherent-schema-v20.descriptor");
+        let descriptor: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(descriptor["artifact_format"], 20);
+        for field in ["BecomeCreatureTypeChoiceEffect.use_source_chosen_type", "ObjectCharacteristicRelationKind.HasUnrepresentedSubtype", "StaticAbilityPayload.TriggerClassEventChoice", "StaticAbilityPayload.SpellResolutionDestinationProgram", "EventCause.resolving_ability_designations", "LinkPermanentsEffect"] {
+            assert!(descriptor["contracts"][field].as_str().is_some_and(|value| !value.is_empty()), "{field}");
+        }
+        assert_eq!(descriptor["core_schema_tree"]["files"]["crates/ironsmith-core/src/effect.rs"], sha256_hex(include_bytes!("../../ironsmith-core/src/effect.rs")));
+        assert_eq!(descriptor["core_schema_tree"]["files"]["crates/ironsmith-core/src/filter_model.rs"], sha256_hex(include_bytes!("../../ironsmith-core/src/filter_model.rs")));
+        assert_eq!(descriptor["core_schema_tree"]["files"]["crates/ironsmith-core/src/static_ability_model.rs"], sha256_hex(include_bytes!("../../ironsmith-core/src/static_ability_model.rs")));
+    }
+
+    #[test]
     fn current_descriptor_matches_the_declared_schema_fingerprint() {
-        let descriptor = include_bytes!("../../../architecture/relative-permission-boundaries-schema.descriptor");
+        let descriptor = include_bytes!("../../../architecture/custom-mechanics-coherent-schema-v20.descriptor");
         assert!(!descriptor.ends_with(b"\n"));
         assert_eq!(sha256_hex(descriptor), ENGINE_SCHEMA_HASH);
+    }
+
+    #[test]
+    fn terminal_recipe_boundary_rejects_the_previous_epoch_and_schema() {
+        let previous = include_bytes!("../../../architecture/relative-permission-boundaries-schema.descriptor");
+        assert_eq!(sha256_hex(previous), "33b646cf7f54b723344f032e2ad2f1ee48846b86ffc8e4f789a8ffa41984649b");
+        let mut old = fixture();
+        old.format_version = 19;
+        old.engine_schema_hash = sha256_hex(previous);
+        old.refresh_checksum();
+        assert!(matches!(old.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 19, .. })));
+        assert!(CompiledCardArtifact::from_json(&old.to_json().unwrap()).is_err());
+        old.format_version = FORMAT_VERSION;
+        old.refresh_checksum();
+        assert!(matches!(old.validate(), Err(ArtifactValidationError::EngineSchemaMismatch { .. })));
+        assert!(CompiledCardArtifact::from_json(&old.to_json().unwrap()).is_err());
     }
 
     #[test]
@@ -793,5 +872,26 @@ mod tests {
             artifact.validate(),
             Err(ArtifactValidationError::ChecksumMismatch { .. })
         ));
+    }
+}
+
+#[cfg(test)]
+mod supplied_source_metadata_admission_tests {
+    use super::*;
+    #[test]
+    fn executable_dependencies_cannot_be_silently_discarded() {
+        for metadata in [serde_json::json!({"token":true}),serde_json::json!({"customTokens":[{"name":"Helper"}]}),
+            serde_json::json!({"customKeywordCounterDefinitions":[{"name":"warded","reminder":"Flying"}]}),
+            serde_json::json!({"otherFaceId":2}),serde_json::json!({"sourceShape":"transform"}),
+            serde_json::json!({"faces":[{"name":"Front"}]})] {
+            assert!(validate_standalone_supplied_definition_metadata("Type: Creature",metadata.as_object().unwrap()).is_err());
+        }
+        assert!(validate_standalone_supplied_definition_metadata("Type: Token Creature",&Default::default()).is_err());
+    }
+    #[test]
+    fn normal_real_source_metadata_and_provenance_remain_admitted() {
+        let metadata=serde_json::json!({"token":false,"customTokens":[],"customKeywordCounterDefinitions":[],
+            "otherFaceId":null,"sourceShape":"normal","sourceCardKey":"Original source","scope":"private"});
+        validate_standalone_supplied_definition_metadata("Type: Sorcery\nDraw a card.",metadata.as_object().unwrap()).unwrap();
     }
 }

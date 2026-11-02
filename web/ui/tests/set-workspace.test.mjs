@@ -25,3 +25,17 @@ test('unused set mechanics survive set and format exports', () => {
   const format = decodeCommunityShare(encodeCommunityShare('format', { name: 'Night', customSets: [set] })).data;
   assert.deepEqual(format.customSets[0], set);
 });
+
+
+test('set subtypes travel through compilation and exports without using personal vocabulary', async () => {
+  const subtype = { singular: 'emberkin', plural: 'emberkin', family: 'Creature' };
+  const card = { layout: 'single', faces: [{ name: 'Kindred', cardTypes: ['Creature'], subtypes: ['Emberkin'], oracleText: '', power: '1', toughness: '1' }] };
+  const prepared = await prepareSetCard(card, [], async input => {
+    assert.deepEqual(input.customSubtypes, [subtype]);
+    return { canCreate: true };
+  }, [subtype]);
+  assert.deepEqual(prepared.draft.customSubtypes, [subtype]);
+  const set = { name: 'Embers', cards: [], customSubtypes: [subtype] };
+  assert.deepEqual(decodeCommunityShare(encodeCommunityShare('set', set)).data, set);
+  assert.deepEqual(decodeCommunityShare(encodeCommunityShare('format', { name: 'Night', customSets: [set] })).data.customSets[0], set);
+});

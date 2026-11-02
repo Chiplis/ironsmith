@@ -1,6 +1,7 @@
+import { prepareShaderProgram } from "@/lib/shader-program.js";
 import { effectPixelRatio } from '@/lib/graphics-quality.js';
 import useGraphicsQuality from '@/hooks/useGraphicsQuality';
-import {burst, shockwave} from "@/lib/motion/stack-fx";
+import {burst, shockwave, warmStackFx} from "@/lib/motion/stack-fx";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DEATH_COLLAPSE_EFFECT_MS,
@@ -745,41 +746,6 @@ function normalizeMarqueeStreamEffect(rawEffect, targetRect, clipRect = targetRe
   };
 }
 
-function compileShader(gl, type, source) {
-  const shader = gl.createShader(type);
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const info = gl.getShaderInfoLog(shader);
-    gl.deleteShader(shader);
-    throw new Error(info || "Shader compilation failed");
-  }
-  return shader;
-}
-
-function createShaderProgram(gl) {
-  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE);
-  let fragmentShader;
-  try {
-    fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
-  } catch (error) {
-    gl.deleteShader(vertexShader);
-    throw error;
-  }
-  const program = gl.createProgram();
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
-  gl.linkProgram(program);
-  gl.deleteShader(vertexShader);
-  gl.deleteShader(fragmentShader);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const info = gl.getProgramInfoLog(program);
-    gl.deleteProgram(program);
-    throw new Error(info || "Shader link failed");
-  }
-  return program;
-}
-
 function rectsToFloat32Array(rects) {
   const values = new Float32Array(MAX_SHADER_EFFECTS * 4);
   for (let index = 0; index < MAX_SHADER_EFFECTS; index += 1) {
@@ -881,6 +847,7 @@ function findInspectorImageElement(effects) {
 
 function ShaderCanvas({ effects, quality }) {
   const canvasRef = useRef(null);
+  const [contextVersion, setContextVersion] = useState(0);
   const wakeRef = useRef(null);
   const shaderEffects = useMemo(
     () => effects
@@ -913,206 +880,219 @@ function ShaderCanvas({ effects, quality }) {
       return undefined;
     }
 
-    let program = null;
-    let frameId = 0;
+    const job = prepareShaderProgram(gl, VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
+    const program = job.program;
+    let disposed = false;
+    let cleanup = () => {};
+    let frameId = null;
+    const onLost = event => { event.preventDefault(); cleanup(); job.dispose(); };
+    const onRestored = () => setContextVersion(version => version + 1);
+    canvas.addEventListener('webglcontextlost', onLost);
+    canvas.addEventListener('webglcontextrestored', onRestored);
+    job.ready.then(ready => {
+      if (!ready || disposed) return;
+      const positionLocation = gl.getAttribLocation(program, "a_position");
+      const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+      const dprLocation = gl.getUniformLocation(program, "u_dpr");
+      const timeLocation = gl.getUniformLocation(program, "u_time");
+      const countLocation = gl.getUniformLocation(program, "u_count");
+      const sourceRectsLocation = gl.getUniformLocation(program, "u_sourceRects[0]");
+      const targetRectsLocation = gl.getUniformLocation(program, "u_targetRects[0]");
+      const clipRectsLocation = gl.getUniformLocation(program, "u_clipRects[0]");
+      const progressLocation = gl.getUniformLocation(program, "u_progress[0]");
+      const seedLocation = gl.getUniformLocation(program, "u_seed[0]");
+      const effectKindsLocation = gl.getUniformLocation(program, "u_effectKinds[0]");
+      const accentColorsLocation = gl.getUniformLocation(program, "u_accentColors[0]");
+      const inspectorImageLocation = gl.getUniformLocation(program, "u_inspectorImage");
+      const inspectorRectLocation = gl.getUniformLocation(program, "u_inspectorRect");
+      const inspectorReadyLocation = gl.getUniformLocation(program, "u_inspectorReady");
+      const buffer = gl.createBuffer();
 
-    try {
-      program = createShaderProgram(gl);
-    } catch (error) {
-      console.warn("[zone-move-effects] failed to compile exile shader:", error);
-      return undefined;
-    }
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+        gl.STATIC_DRAW
+      );
+      gl.useProgram(program);
+      gl.enableVertexAttribArray(positionLocation);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+      gl.disable(gl.BLEND);
 
-    const positionLocation = gl.getAttribLocation(program, "a_position");
-    const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
-    const dprLocation = gl.getUniformLocation(program, "u_dpr");
-    const timeLocation = gl.getUniformLocation(program, "u_time");
-    const countLocation = gl.getUniformLocation(program, "u_count");
-    const sourceRectsLocation = gl.getUniformLocation(program, "u_sourceRects[0]");
-    const targetRectsLocation = gl.getUniformLocation(program, "u_targetRects[0]");
-    const clipRectsLocation = gl.getUniformLocation(program, "u_clipRects[0]");
-    const progressLocation = gl.getUniformLocation(program, "u_progress[0]");
-    const seedLocation = gl.getUniformLocation(program, "u_seed[0]");
-    const effectKindsLocation = gl.getUniformLocation(program, "u_effectKinds[0]");
-    const accentColorsLocation = gl.getUniformLocation(program, "u_accentColors[0]");
-    const inspectorImageLocation = gl.getUniformLocation(program, "u_inspectorImage");
-    const inspectorRectLocation = gl.getUniformLocation(program, "u_inspectorRect");
-    const inspectorReadyLocation = gl.getUniformLocation(program, "u_inspectorReady");
-    const buffer = gl.createBuffer();
+      // Inspector image texture: starts as a 1x1 transparent placeholder so
+      // sampling is always defined. We CORS-load a mirror of the inspector's
+      // <img.hover-art-foreground-image> (the in-DOM img isn't crossOrigin
+      // tagged, so it can't be uploaded directly without tainting the canvas)
+      // and copy the bitmap into the texture once it resolves.
+      const inspectorTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
+      gl.texImage2D(
+        gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        new Uint8Array([0, 0, 0, 0])
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-      gl.STATIC_DRAW
-    );
-    gl.useProgram(program);
-    gl.enableVertexAttribArray(positionLocation);
-    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-    gl.disable(gl.BLEND);
+      let inspectorImageSrc = null;
+      let pendingInspectorImage = null;
 
-    // Inspector image texture: starts as a 1x1 transparent placeholder so
-    // sampling is always defined. We CORS-load a mirror of the inspector's
-    // <img.hover-art-foreground-image> (the in-DOM img isn't crossOrigin
-    // tagged, so it can't be uploaded directly without tainting the canvas)
-    // and copy the bitmap into the texture once it resolves.
-    const inspectorTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
-    gl.texImage2D(
-      gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
-      new Uint8Array([0, 0, 0, 0])
-    );
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-    let inspectorImageSrc = null;
-    let pendingInspectorImage = null;
-
-    const uploadImageToTexture = (img) => {
-      try {
-        gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-        return true;
-      } catch (error) {
-        console.warn("[zone-move-effects] inspector image upload failed:", error);
-        return false;
-      }
-    };
-
-    const tryUploadInspectorImage = (imgElement) => {
-      if (!imgElement) return;
-      const src = imgElement.currentSrc || imgElement.src;
-      if (!src || src === inspectorImageSrc) return;
-      inspectorImageSrc = src;
-      if (pendingInspectorImage) {
-        pendingInspectorImage.onload = null;
-        pendingInspectorImage.onerror = null;
-        pendingInspectorImage = null;
-      }
-
-      // Visible Scryfall card images intentionally load without anonymous
-      // CORS because the final cards.scryfall.io JPEG response does not send
-      // ACAO headers. For WebGL sampling, try a CORS-tagged mirror only; if
-      // the host rejects it, the visible DOM image still renders normally.
-      if (
-        imgElement.crossOrigin
-        && imgElement.complete
-        && imgElement.naturalWidth > 0
-      ) {
-        if (uploadImageToTexture(imgElement)) return;
-      }
-
-      const corsImg = new Image();
-      corsImg.crossOrigin = "anonymous";
-      corsImg.referrerPolicy = "no-referrer";
-      corsImg.decoding = "async";
-      corsImg.onload = () => {
-        if (corsImg !== pendingInspectorImage) return;
-        uploadImageToTexture(corsImg);
-        pendingInspectorImage = null;
+      const uploadImageToTexture = (img) => {
+        try {
+          gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+          return true;
+        } catch (error) {
+          console.warn("[zone-move-effects] inspector image upload failed:", error);
+          return false;
+        }
       };
-      corsImg.onerror = () => {
-        if (corsImg !== pendingInspectorImage) return;
-        pendingInspectorImage = null;
+
+      const tryUploadInspectorImage = (imgElement) => {
+        if (!imgElement) return;
+        const src = imgElement.currentSrc || imgElement.src;
+        if (!src || src === inspectorImageSrc) return;
+        inspectorImageSrc = src;
+        if (pendingInspectorImage) {
+          pendingInspectorImage.onload = null;
+          pendingInspectorImage.onerror = null;
+          pendingInspectorImage = null;
+        }
+
+        // Visible Scryfall card images intentionally load without anonymous
+        // CORS because the final cards.scryfall.io JPEG response does not send
+        // ACAO headers. For WebGL sampling, try a CORS-tagged mirror only; if
+        // the host rejects it, the visible DOM image still renders normally.
+        if (
+          imgElement.crossOrigin
+          && imgElement.complete
+          && imgElement.naturalWidth > 0
+        ) {
+          if (uploadImageToTexture(imgElement)) return;
+        }
+
+        const corsImg = new Image();
+        corsImg.crossOrigin = "anonymous";
+        corsImg.referrerPolicy = "no-referrer";
+        corsImg.decoding = "async";
+        corsImg.onload = () => {
+          if (corsImg !== pendingInspectorImage) return;
+          uploadImageToTexture(corsImg);
+          pendingInspectorImage = null;
+        };
+        corsImg.onerror = () => {
+          if (corsImg !== pendingInspectorImage) return;
+          pendingInspectorImage = null;
+        };
+        pendingInspectorImage = corsImg;
+        corsImg.src = src;
       };
-      pendingInspectorImage = corsImg;
-      corsImg.src = src;
-    };
 
-    let renderDpr = 1;
-    const resizeCanvas = () => {
-      const dpr = renderDpr = effectPixelRatio(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, quality);
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      canvas.width = Math.max(1, Math.floor(width * dpr));
-      canvas.height = Math.max(1, Math.floor(height * dpr));
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      gl.viewport(0, 0, canvas.width, canvas.height);
-    };
+      let renderDpr = 1;
+      const resizeCanvas = () => {
+        const dpr = renderDpr = effectPixelRatio(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, quality);
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        canvas.width = Math.max(1, Math.floor(width * dpr));
+        canvas.height = Math.max(1, Math.floor(height * dpr));
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      };
 
-    const render = (now) => {
-      frameId = null;
-      const activeEffects = effectsRef.current.slice(0, MAX_SHADER_EFFECTS);
-      if (activeEffects.length === 0) {
+      const render = (now) => {
+        frameId = null;
+        const activeEffects = effectsRef.current.slice(0, MAX_SHADER_EFFECTS);
+        if (activeEffects.length === 0) {
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          return;
+        }
+
+        const sourceRects = activeEffects.map((effect) => effect.rect);
+        const targetRects = activeEffects.map(freshTargetRect);
+        const clipRects = activeEffects.map(freshClipRect);
+
+        const inspectorImgElement = findInspectorImageElement(activeEffects);
+        if (inspectorImgElement) tryUploadInspectorImage(inspectorImgElement);
+        const inspectorMaskElement = resolveLargestInspectorMaskElement(activeEffects);
+        const inspectorMaskRect = inspectorMaskElement
+          ? normalizeRect(inspectorMaskElement.getBoundingClientRect())
+          : null;
+        const inspectorActive = inspectorMaskRect != null;
+
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        return;
-      }
+        gl.useProgram(program);
+        gl.uniform2f(resolutionLocation, window.innerWidth, window.innerHeight);
+        gl.uniform1f(dprLocation, renderDpr);
+        gl.uniform1f(timeLocation, now / 1000);
+        gl.uniform1i(countLocation, activeEffects.length);
+        gl.uniform4fv(sourceRectsLocation, rectsToFloat32Array(sourceRects));
+        gl.uniform4fv(targetRectsLocation, rectsToFloat32Array(targetRects));
+        gl.uniform4fv(clipRectsLocation, rectsToFloat32Array(clipRects));
+        gl.uniform1fv(progressLocation, progressUniformArray(activeEffects, now));
+        gl.uniform1fv(seedLocation, seedUniformArray(activeEffects));
+        gl.uniform1fv(effectKindsLocation, effectKindUniformArray(activeEffects));
+        gl.uniform3fv(accentColorsLocation, accentColorUniformArray(activeEffects));
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
+        gl.uniform1i(inspectorImageLocation, 0);
+        gl.uniform1f(inspectorReadyLocation, inspectorActive ? 1.0 : 0.0);
+        if (inspectorActive) {
+          gl.uniform4f(
+            inspectorRectLocation,
+            inspectorMaskRect.left,
+            inspectorMaskRect.top,
+            inspectorMaskRect.width,
+            inspectorMaskRect.height,
+          );
+        } else {
+          gl.uniform4f(inspectorRectLocation, 0, 0, 0, 0);
+        }
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        frameId = window.requestAnimationFrame(render);
+      };
 
-      const sourceRects = activeEffects.map((effect) => effect.rect);
-      const targetRects = activeEffects.map(freshTargetRect);
-      const clipRects = activeEffects.map(freshClipRect);
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+      wakeRef.current = () => {
+        if (frameId == null) frameId = window.requestAnimationFrame(render);
+      };
+      frameId = null;
+      wakeRef.current();
 
-      const inspectorImgElement = findInspectorImageElement(activeEffects);
-      if (inspectorImgElement) tryUploadInspectorImage(inspectorImgElement);
-      const inspectorMaskElement = resolveLargestInspectorMaskElement(activeEffects);
-      const inspectorMaskRect = inspectorMaskElement
-        ? normalizeRect(inspectorMaskElement.getBoundingClientRect())
-        : null;
-      const inspectorActive = inspectorMaskRect != null;
+      cleanup = () => {
+        wakeRef.current = null;
+        window.cancelAnimationFrame(frameId);
+        window.removeEventListener("resize", resizeCanvas);
+        if (pendingInspectorImage) {
+          pendingInspectorImage.onload = null;
+          pendingInspectorImage.onerror = null;
+          pendingInspectorImage = null;
+        }
+        if (buffer) gl.deleteBuffer(buffer);
+        if (inspectorTexture) gl.deleteTexture(inspectorTexture);
 
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.useProgram(program);
-      gl.uniform2f(resolutionLocation, window.innerWidth, window.innerHeight);
-      gl.uniform1f(dprLocation, renderDpr);
-      gl.uniform1f(timeLocation, now / 1000);
-      gl.uniform1i(countLocation, activeEffects.length);
-      gl.uniform4fv(sourceRectsLocation, rectsToFloat32Array(sourceRects));
-      gl.uniform4fv(targetRectsLocation, rectsToFloat32Array(targetRects));
-      gl.uniform4fv(clipRectsLocation, rectsToFloat32Array(clipRects));
-      gl.uniform1fv(progressLocation, progressUniformArray(activeEffects, now));
-      gl.uniform1fv(seedLocation, seedUniformArray(activeEffects));
-      gl.uniform1fv(effectKindsLocation, effectKindUniformArray(activeEffects));
-      gl.uniform3fv(accentColorsLocation, accentColorUniformArray(activeEffects));
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, inspectorTexture);
-      gl.uniform1i(inspectorImageLocation, 0);
-      gl.uniform1f(inspectorReadyLocation, inspectorActive ? 1.0 : 0.0);
-      if (inspectorActive) {
-        gl.uniform4f(
-          inspectorRectLocation,
-          inspectorMaskRect.left,
-          inspectorMaskRect.top,
-          inspectorMaskRect.width,
-          inspectorMaskRect.height,
-        );
-      } else {
-        gl.uniform4f(inspectorRectLocation, 0, 0, 0, 0);
-      }
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
-      frameId = window.requestAnimationFrame(render);
-    };
-
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
-    wakeRef.current = () => {
-      if (frameId == null) frameId = window.requestAnimationFrame(render);
-    };
-    frameId = null;
-    wakeRef.current();
-
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      };
+    }).catch(error => {
+      cleanup();
+      job.dispose();
+      console.warn('[zone-move-effects] shader warmup failed:', error);
+    });
     return () => {
-      wakeRef.current = null;
-      window.cancelAnimationFrame(frameId);
-      window.removeEventListener("resize", resizeCanvas);
-      if (pendingInspectorImage) {
-        pendingInspectorImage.onload = null;
-        pendingInspectorImage.onerror = null;
-        pendingInspectorImage = null;
-      }
-      if (buffer) gl.deleteBuffer(buffer);
-      if (inspectorTexture) gl.deleteTexture(inspectorTexture);
-      if (program) gl.deleteProgram(program);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      disposed = true;
+      canvas.removeEventListener('webglcontextlost', onLost);
+      canvas.removeEventListener('webglcontextrestored', onRestored);
+      cleanup();
+      job.dispose();
     };
-  }, [quality]);
+  }, [quality, contextVersion]);
 
   return <canvas ref={canvasRef} className="zone-move-effects-canvas zone-move-effects-canvas--shader" aria-hidden="true" />;
 }
@@ -1514,14 +1494,10 @@ function ZoneMoveEffectsContent({ quality }) {
     pendingPollsRef.current.clear();
   }, []);
 
-  if (effects.length === 0) return null;
-
   return (
-    <div className="zone-move-effects-layer">
-      {quality === 'high' && effects.some(effect =>
-        (effect.travelsToInspector && (effect.kind === EXILE_EFFECT_KIND || effect.kind === MARQUEE_STREAM_EFFECT_KIND))
-        || effect.kind === WIPE_WAVE_EFFECT_KIND
-      ) && <ShaderCanvas effects={effects} quality={quality} />}
+    <>
+      {quality === 'high' && <div className="zone-move-shader-layer"><ShaderCanvas effects={effects} quality={quality} /></div>}
+      {effects.length > 0 && <div className="zone-move-effects-layer">
       {effects.map((effect) => {
         if (effect.kind === DEATH_COLLAPSE_EFFECT_KIND) {
           return <DeathCollapseCard key={effect.id} effect={effect} />;
@@ -1534,11 +1510,13 @@ function ZoneMoveEffectsContent({ quality }) {
         }
         return null;
       })}
-    </div>
+    </div>}
+    </>
   );
 }
 
 export default function ZoneMoveEffects(props) {
   const [quality] = useGraphicsQuality();
+  useEffect(() => { if (quality !== "off") warmStackFx(); }, [quality]);
   return quality === 'off' ? null : <ZoneMoveEffectsContent {...props} quality={quality} />;
 }

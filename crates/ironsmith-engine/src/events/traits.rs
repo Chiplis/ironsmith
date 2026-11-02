@@ -167,6 +167,10 @@ pub enum EventKind {
     /// A spell or ability was actually inserted, after announcement.
     StackObjectAdded,
     DungeonRoomEntered,
+    /// A continuing battlefield permanent acquired a type/subtype/supertype.
+    CharacteristicGained,
+    /// Successful spell completion after its instructions and zone cleanup.
+    SpellResolved,
 }
 
 /// A target within an event that can potentially be redirected.

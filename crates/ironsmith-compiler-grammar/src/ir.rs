@@ -22,6 +22,7 @@ pub struct RewriteSemanticDocument {
     pub items: Vec<RewriteSemanticItem>,
     pub overload_items: Option<Vec<RewriteSemanticItem>>,
     pub cleave_items: Option<Vec<RewriteSemanticItem>>,
+    pub optional_text_variants: Option<crate::model::OptionalTextVariants<RewriteSemanticItem>>,
     pub allow_unsupported: bool,
 }
 

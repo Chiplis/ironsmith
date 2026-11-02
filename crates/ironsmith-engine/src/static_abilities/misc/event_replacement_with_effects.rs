@@ -114,6 +114,14 @@ impl StaticAbilityKind for EventReplacementWithEffects {
                     )),
                 ]),
             ),
+            ReplacedEventSpec::ZoneChangeExcluding { object, from, excluded_to_zones } =>
+                ReplacementEffect::with_matcher(
+                    source,
+                    controller,
+                    WouldChangeZoneMatcher::new(object.clone(), Some(*from), None)
+                        .excluding_destinations(excluded_to_zones.clone()),
+                    action,
+                ),
             // Zone-change owners bind the moving object as "it".
             ReplacedEventSpec::ZoneChange { object, from, to } => ReplacementEffect::with_matcher(
                 source,
@@ -184,6 +192,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
             | ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::ZoneChangeExcluding { .. }
             | ReplacedEventSpec::SourceDestructionRegenerates => false,
         }
     }
@@ -300,6 +309,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
             | ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::ZoneChangeExcluding { .. }
             | ReplacedEventSpec::SourceDestructionRegenerates => false,
         }
     }
@@ -324,7 +334,8 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             ReplacedEventSpec::Destroy { .. } => {
                 "When a matching permanent would be destroyed".to_string()
             }
-            ReplacedEventSpec::ZoneChange { .. } => {
+            ReplacedEventSpec::ZoneChange { .. }
+            | ReplacedEventSpec::ZoneChangeExcluding { .. } => {
                 "When a matching object would change zones".to_string()
             }
             ReplacedEventSpec::SourceDestructionRegenerates => {

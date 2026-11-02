@@ -49,6 +49,7 @@ pub enum ParseScopeKind {
     ModalMode { mode_index: usize },
     TokenDefinition,
     CleaveBranch,
+    OptionalTextVariant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -348,7 +349,7 @@ impl<'a> ParseContextView<'a> {
             ParseScopeKind::NestedAbility => SymbolScopeKind::NestedAbility,
             ParseScopeKind::ModalMode { .. } => SymbolScopeKind::ModalMode,
             ParseScopeKind::TokenDefinition => SymbolScopeKind::TokenDefinition,
-            ParseScopeKind::CleaveBranch => SymbolScopeKind::Branch,
+            ParseScopeKind::CleaveBranch | ParseScopeKind::OptionalTextVariant => SymbolScopeKind::Branch,
         };
         let symbol_scope = self
             .symbols

@@ -193,7 +193,7 @@ pub(super) fn damage_replacement_bindings(
 /// CR 120.4a / 120.10: excess damage dealt to a permanent. A permanent that
 /// is more than one of creature, planeswalker and battle uses the greatest of
 /// the per-type excess amounts.
-fn excess_damage_to_object(
+pub(crate) fn excess_damage_to_object(
     game: &GameState,
     target: crate::ids::ObjectId,
     amount: u32,
@@ -1223,6 +1223,8 @@ impl DamageInstructionInputsExt for DealDamageEffect {
 }
 
 impl EffectExecutor for DealDamageEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
+
     fn supports_replacement_draw_continuation(&self) -> bool {
         true
     }

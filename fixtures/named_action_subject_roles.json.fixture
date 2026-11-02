@@ -1,0 +1,23 @@
+{
+  "notes": "Exact original evidence; executable programs materialized through ordinary Vision definitions.",
+  "cards": [
+    {
+      "source_card_key": "Vessel of Lost Souls_HI12",
+      "name": "Vessel of Lost Souls",
+      "original_text": "Mana cost: {G}{U}\nType: Creature — Plant Spirit\nPower/Toughness: 2/2\nVision *(Whenever this or another creature you control enters, reveal the top card of your library. Then you may put that card into your graveyard.)*\nWhenever Vessel of Lost Souls envisions a creature card, you may have it become a copy of that card until end of turn.",
+      "power": "2",
+      "toughness": "2",
+      "executable_text": "Mana cost: {G}{U}\nType: Creature — Plant Spirit\nPower/Toughness: 2/2\nWhenever this permanent or another creature you control enters, reveal the top card of your library. Perform the envision action with that card. Then you may put that card into your graveyard\nWhenever this permanent performs the envision action with a creature card, you may have it become a copy of that card until end of turn.",
+      "original_display_text": "Vision\nWhenever Vessel of Lost Souls envisions a creature card, you may have it become a copy of that card until end of turn."
+    },
+    {
+      "source_card_key": "Mechanomind Researcher_OTH",
+      "name": "Mechanomind Researcher",
+      "original_text": "Mana cost: {2}\nType: Artifact Creature — Scientist\nPower/Toughness: 1/1\nArtifact vision *(Whenever this or another artifact you control enters, reveal the top card of your library. Then you may put that card into your graveyard.)*\nWhenever Mechanomind Researcher envisions an artifact card, put a +1/+1 counter on it.",
+      "power": "1",
+      "toughness": "1",
+      "executable_text": "Mana cost: {2}\nType: Artifact Creature — Scientist\nPower/Toughness: 1/1\nWhenever this permanent or another artifact you control enters, reveal the top card of your library. Perform the envision action with that card. Then you may put that card into your graveyard\nWhenever this permanent performs the envision action with an artifact card, put a +1/+1 counter on it.",
+      "original_display_text": "Artifact vision\nWhenever Mechanomind Researcher envisions an artifact card, put a +1/+1 counter on it."
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact source identities preserved. Disgraced decomposes into entry replacement and damage trigger; Memory uses existing flashback with a complete discard cost."
+  },
+  "mechanics": [
+    {
+      "id": "msem-919",
+      "keyword": "Siphon",
+      "original_reminder": "Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.",
+      "executable_reminder": "For each generic mana in this spell's total cost, you may put a -1/-1 counter on a creature you control with toughness 1 or greater and less damage marked on it than its toughness rather than pay that mana.",
+      "source_cards": [
+        "Belmord's Thirst",
+        "Lady Kahra Belmord"
+      ],
+      "rule_reference": "702.294.",
+      "rule_text": [
+        {
+          "name": "702.294a",
+          "rule": "Siphon is a static ability that functions while the spell with siphon is on the stack. “Siphon” means “For each generic mana in this spell’s total cost, you may put a -1/-1 counter on a creature you control with toughness 1 or greater and less damage marked on it than its total toughness rather than pay that mana.”",
+          "custom": true
+        },
+        {
+          "name": "702.294b",
+          "rule": "Multiple instances of siphon on the same spell are redundant.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Belmord's Thirst_TPW",
+          "name": "Belmord's Thirst",
+          "original_text": "Mana cost: {3}{B}\nType: Sorcery\nSiphon *(Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)*\nDestroy target creature or planeswalker.",
+          "executable_text": "Mana cost: {3}{B}\nType: Sorcery\nFor each generic mana in this spell's total cost, you may put a -1/-1 counter on a creature you control with toughness 1 or greater and less damage marked on it than its toughness rather than pay that mana\nDestroy target creature or planeswalker.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Belmord's Thirst_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Belmord's Thirst",
+              "original_text": "Mana cost: {3}{B}\nType: Sorcery\nSiphon *(Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)*\nDestroy target creature or planeswalker."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Belmord's Thirst",
+              "executable_text": "Mana cost: {3}{B}\nType: Sorcery\nFor each generic mana in this spell's total cost, you may put a -1/-1 counter on a creature you control with toughness 1 or greater and less damage marked on it than its toughness rather than pay that mana\nDestroy target creature or planeswalker.",
+              "custom_keyword_identities": [
+                "siphon"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Siphon\nDestroy target creature or planeswalker.",
+              "original_printed_rules_text": "Siphon (Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)\nDestroy target creature or planeswalker."
+            }
+          ],
+          "custom_keyword_identities": [
+            "siphon"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Siphon\nDestroy target creature or planeswalker.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Siphon (Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)\nDestroy target creature or planeswalker."
+        },
+        {
+          "id": "Lady Kahra Belmord_TPW",
+          "name": "Lady Kahra Belmord",
+          "original_text": "Mana cost: {U}{B}\nType: Legendary Creature — Vampire Noble Warlock\nPower/Toughness: 2/2\nDeathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has siphon. *(Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)*",
+          "executable_text": "Mana cost: {U}{B}\nType: Legendary Creature — Vampire Noble Warlock\nPower/Toughness: 2/2\nDeathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has custom keyword \"siphon\", and \"For each generic mana in this spell's total cost, you may put a -1/-1 counter on a creature you control with toughness 1 or greater and less damage marked on it than its toughness rather than pay that mana.\".",
+          "source_card_key": "Lady Kahra Belmord_TPW",
+          "source_shape": "normal",
+          "source_face": "front",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lady Kahra Belmord",
+              "original_text": "Mana cost: {U}{B}\nType: Legendary Creature — Vampire Noble Warlock\nPower/Toughness: 2/2\nDeathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has siphon. *(Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lady Kahra Belmord",
+              "executable_text": "Mana cost: {U}{B}\nType: Legendary Creature — Vampire Noble Warlock\nPower/Toughness: 2/2\nDeathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has custom keyword \"siphon\", and \"For each generic mana in this spell's total cost, you may put a -1/-1 counter on a creature you control with toughness 1 or greater and less damage marked on it than its toughness rather than pay that mana.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has siphon.",
+              "original_printed_rules_text": "Deathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has siphon. (Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Deathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has siphon.",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Deathtouch\nThe first instant or sorcery spell with mana value 3 or less you cast each turn has siphon. (Each -1/-1 counter you put on your creatures up to their remaining toughness while casting this pays for {1}.)"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    }
+  ]
+}

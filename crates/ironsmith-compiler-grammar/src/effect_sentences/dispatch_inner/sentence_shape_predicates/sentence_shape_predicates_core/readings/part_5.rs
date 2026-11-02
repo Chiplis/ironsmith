@@ -366,7 +366,7 @@ pub(super) fn read_you_and_players_each_chain(
         .find(|(index, token)| {
             // "you and each opponent each ...": the quantifier of the
             // second subject is not the distributive "each".
-            token.is_word("each") && *index > 2
+            (token.is_word("each") && *index > 2) || token.is_word("may")
         })
         .map(|(index, _)| index)
     else {
@@ -385,7 +385,11 @@ pub(super) fn read_you_and_players_each_chain(
         }
         _ => return Ok(None),
     };
-    let body = &tokens[each_index + 1..];
+    // A joint optional subject gives every participant their own decision.
+    // Keep the authored `may` inside both player programs; the distributive
+    // `each` instead belongs only to the shared subject frame.
+    let optional = tokens[each_index].is_word("may");
+    let body = &tokens[each_index + usize::from(!optional)..];
     if body.iter().all(|token| token.as_word().is_none()) {
         return Ok(None);
     }
@@ -415,5 +419,6 @@ pub(super) fn read_you_and_players_each_chain(
         filter,
         effects: player_effects,
     }));
+    crate::word_claims::claim_tokens(&tokens[..each_index + 1]);
     Ok(Some(effects))
 }

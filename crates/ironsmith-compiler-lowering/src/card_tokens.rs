@@ -36,6 +36,7 @@ pub fn treasure_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Battlefield],
     };
 
@@ -114,6 +115,7 @@ fn nonartifact_spell_restricted_mana_ability() -> crate::ability::Ability {
             mana_usage_restrictions: vec![restriction],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -166,6 +168,7 @@ pub fn map_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -257,6 +260,7 @@ pub fn junk_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -291,6 +295,7 @@ pub fn mutagen_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -316,6 +321,7 @@ pub fn gold_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![crate::zone::Zone::Battlefield],
     };
 
@@ -396,6 +402,7 @@ pub fn young_hero_role_token_definition() -> CardDefinition {
             )),
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     CardDefinitionBuilder::new(CardId::new(), "Young Hero Role")

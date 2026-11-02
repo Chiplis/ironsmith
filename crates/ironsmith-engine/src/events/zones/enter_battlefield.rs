@@ -24,9 +24,13 @@ pub struct EnterBattlefieldEvent {
     /// proposals keep this absent and continue using prospective state.
     pub completed_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     /// The zone it's coming from
-    pub from: Zone,
+    pub from: Option<Zone>,
+    /// Finalized creation descriptor: no pre-existing card or movement origin.
+    pub creation: Option<crate::events::CreateCardsEvent>,
     /// Whether it enters tapped (may be modified by replacement effects)
     pub enters_tapped: bool,
+    /// Entry characteristic, set before replacement re-evaluation and ETB observation.
+    pub enters_face_down: bool,
     /// Counters it enters with (may be modified by replacement effects)
     pub enters_with_counters: Vec<(CounterType, u32)>,
     /// Objects exiled and linked to this permanent as part of an as-enters choice.
@@ -143,8 +147,11 @@ impl EnterBattlefieldEvent {
             object,
             completed_snapshot: None,
             emerge_sacrifice: None,
-            from,
+            from: Some(from),
+            creation: None,
             enters_tapped: false,
+            enters_face_down: false,
+
             enters_with_counters: Vec::new(),
             linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
@@ -173,8 +180,11 @@ impl EnterBattlefieldEvent {
             object,
             completed_snapshot: None,
             emerge_sacrifice: None,
-            from,
+            from: Some(from),
+            creation: None,
             enters_tapped: true,
+            enters_face_down: false,
+
             enters_with_counters: Vec::new(),
             linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
@@ -198,6 +208,15 @@ impl EnterBattlefieldEvent {
     }
 
     /// Return a new event with enters_tapped set to true.
+    pub(crate) fn originless_creation(object: ObjectId, mut creation: crate::events::CreateCardsEvent) -> Self {
+        creation.amount = 1;
+        creation.selection_finalized = true;
+        let mut event = Self::new(object, Zone::Battlefield);
+        event.from = None;
+        event.creation = Some(creation);
+        event
+    }
+
     pub fn with_tapped(&self) -> Self {
         Self {
             enters_tapped: true,
@@ -402,6 +421,7 @@ impl EnterBattlefieldEvent {
             if self.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics) {
                 object.apply_embalm_copy_exception();
             }
+            if self.copy_followups.contains(&ironsmith_core::EnterAsCopyFollowup::RemoveManaCost) {object.mana_cost=None;}
             if let Some(name) = &self.copy_name_override {
                 object.name = name.clone().into();
             }
@@ -414,9 +434,9 @@ impl EnterBattlefieldEvent {
                 }
             }
             if self.removes_other_card_types {
-                crate::continuous::replace_card_types_and_prune_subtypes(
+                crate::continuous::replace_card_types_and_prune_subtypes_in_game(
                     &mut object.card_types, &mut object.subtypes, &self.added_card_types,
-                );
+                 game);
             }
             object
                 .supertypes
@@ -465,7 +485,8 @@ impl EnterBattlefieldEvent {
                 .then_some(prospective.turn.turn_number).unwrap_or(u32::MAX);
             let effect = crate::continuous::ContinuousEffect::new(self.object, controller,
                 crate::continuous::EffectTarget::Specific(self.object),
-                crate::continuous::Modification::CopyOf { retain_original_name: false,
+                crate::continuous::Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
                     target_id: copy_source, copiable_values: Box::new(values),
                     preserve_source_abilities: false, name_override: None,
                     name_override_surface: None, add_supertypes: Vec::new(),
@@ -477,9 +498,11 @@ impl EnterBattlefieldEvent {
                 .add_reserved_entry_effect(registration, effect).ok()?;
         }
 
+        if self.enters_face_down { prospective.set_face_down(self.object); }
         if !prospective.battlefield.contains(&self.object) {
             prospective.battlefield.push(self.object);
         }
+        if self.creation.is_some() { prospective.activate_originless_entry_projection(self.object); }
         if let Some(controller) = self.controller_override {
             prospective.stage_initial_controller_for_assembly(self.object, controller);
         }
@@ -535,6 +558,27 @@ impl EnterBattlefieldEvent {
                         let ability = Ability::static_ability(granted.clone());
                         object.abilities_mut().push(ability);
                     }
+                }
+            }
+        }
+        // Staged noncopiable facts participate in prospective replacement
+        // queries without leaking onto the real source-zone incarnation.
+        for (label,_) in self.program_choices.as_enters_named_actions.iter().chain(self.prepared_choices.iter().flat_map(|choices|choices.as_enters_named_actions.iter())) {
+            prospective.record_named_action(self.object,label).ok()?;
+        }
+        for designation in self.program_choices.as_enters_designations.iter().chain(
+            self.prepared_choices.iter().flat_map(|choices| choices.as_enters_designations.iter())
+        ) {
+            match designation {
+                ironsmith_core::PermanentDesignation::CustomStatus { name, until_end_of_turn } => {
+                    prospective.apply_custom_status(self.object,name,*until_end_of_turn);
+                }
+                ironsmith_core::PermanentDesignation::CustomStatusUntilEvent { name, event } => {
+                    prospective.apply_custom_status_until_event(self.object,name,*event);
+                }
+                ironsmith_core::PermanentDesignation::Harnessed => { prospective.harness(self.object); }
+                ironsmith_core::PermanentDesignation::CustomStatusInZone { name, zone, present, carry_to_stack } => {
+                    prospective.set_custom_status_in_zone_with_cast_continuation(self.object, name, *zone, *present, *carry_to_stack);
                 }
             }
         }
@@ -645,7 +689,7 @@ mod tests {
     fn test_enter_battlefield_event_creation() {
         let event = EnterBattlefieldEvent::new(ObjectId::from_raw(1), Zone::Hand);
 
-        assert_eq!(event.from, Zone::Hand);
+        assert_eq!(event.from, Some(Zone::Hand));
         assert!(!event.enters_tapped);
         assert!(event.enters_with_counters.is_empty());
     }

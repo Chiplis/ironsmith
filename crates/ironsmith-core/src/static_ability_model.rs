@@ -74,6 +74,10 @@ pub enum StaticDamageRedirectDestination {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct StaticDamageRedirectionSpec {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub excess_only: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub noncombat_only: bool,
     pub source_filter: ObjectFilter,
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
@@ -82,6 +86,17 @@ pub struct StaticDamageRedirectionSpec {
     pub destination: StaticDamageRedirectDestination,
     pub display: String,
 }
+
+/// A projected event matches retained triggered abilities without publishing a
+/// real game action or changing combat/history state.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TriggerProjectionEvent { Attacks, Enters, Dies }
+
+/// The actual phase boundary of a source-authored automatic operation.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum PlayerActionBoundary { EndStep, BeginCombat }
 
 /// A prevention amount retains prevention semantics, including unpreventable damage.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -97,6 +112,10 @@ pub enum StaticDamagePreventionAmount {
     /// deal combat damage to you and/or one or more creatures you control,
     /// prevent X of that damage", Cover of Winter). Appended for stable ordinals.
     SharedPerSource(Value),
+    /// First damage points this recipient would receive during the current turn.
+    FirstEachTurn(u32),
+    /// Prevent damage above this recipient's total dealt-damage cap for this turn.
+    AllButFirstEachTurn(u32),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -185,6 +204,19 @@ impl SpliceQuality {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SpliceSpec<C> {
+    /// Attributed custom payment identity, independent of official splice.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub custom_keyword: Option<String>,
+    /// Source zone for adding this card's text; None preserves official hand splice.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_zone: Option<crate::zone::Zone>,
+    /// Move the selected source as an additional cost instead of only revealing it.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_destination: Option<crate::zone::Zone>,
+    /// Maximum selections sharing this source-zone/disposition program per spell.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub max_per_spell: Option<u32>,
+
     pub quality: SpliceQuality,
     pub cost: TotalCost<C>,
     /// The canonical oracle surface for the splice cost, when parsing retained one.
@@ -268,6 +300,10 @@ pub enum TokenCreationTemplateMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum PregameActionKind {
+    ChosenOutsideGame(PregameChosenCardSpec),
+    /// A per-source setup hook; its composed program is in the existing
+    /// PregameAction payload effects and has no designation cardinality limit.
+    SourceSetup { source_zone: Zone },
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
     MulliganExileHandDrawSameCount,
     ChooseColor,
@@ -306,6 +342,27 @@ pub struct PregameRevealFromOpeningHandSpec {
     /// Oracle places the consequence before its timing clause (for example,
     /// "scry 3 at the beginning of your first upkeep").
     pub effect_before_timing: bool,
+}
+
+/// Imported setup metadata is evaluated against immutable original printed text,
+/// never against rendered or expanded executable abilities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum PregameDeckCondition {
+    Unrestricted,
+    EveryCardPrintedTextContainsAny { exempt_types: Vec<CardType>, phrases: Vec<String> },
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct PregameChosenCardSpec {
+    pub designation: String,
+    pub deck_condition: PregameDeckCondition,
+    pub action: PregameChosenCardAction,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub enum PregameChosenCardAction {
+    ExchangeWithOpeningHand,
 }
 
 /// A typed predicate for the starting-deck condition of CR 702.139 companion.
@@ -711,6 +768,7 @@ pub fn partner_group_identifier(keyword: &str) -> Option<String> {
 /// number of cards named ~" → `Some(None)`, "up to seven" → `Some(Some(7))`).
 pub fn deck_construction_copy_limit(text: &str) -> Option<Option<u32>> {
     let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+
     if normalized.starts_with("a deck can have any number of cards named ") {
         return Some(None);
     }
@@ -757,8 +815,12 @@ pub fn deck_construction_color_choice_count(text: &str) -> Option<u32> {
 /// classified once, when the marker is built, so runtime checks read the
 /// kind instead of the marker's text.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum KeywordMarkerMechanic {
+    /// Increase the distinct occurrence budget only during the specified named action.
+    ClassTriggerChoiceAdjustment { action:String, class:String, additional:u32 },
+    /// Optional replacement of one class occurrence by multiple occurrences.
+    ClassTriggerMultiplication { class:String, multiplier:u32, once_each_turn:bool },
     /// CR 702.44 sunburst.
     Sunburst,
     /// CR 702.150 compleated.
@@ -794,6 +856,9 @@ pub enum KeywordMarkerMechanic {
     DamageIsLethalToCreatures,
     /// Damage also causes the source's controller to gain that much life.
     DamageGrantsControllerLife,
+    /// Damage to this creature also makes its controller lose that much life.
+    /// Multiple instances are redundant and this is not a triggered ability.
+    DamageCausesRecipientControllerLifeLoss,
     /// Damage to creatures places -1/-1 counters; optionally damage to
     /// players gives poison counters instead of life loss. No keyword identity.
     DamageAsCounters { poison_players: bool },
@@ -815,7 +880,7 @@ pub enum KeywordMarkerMechanic {
     /// Replace stack departures after a cast from the specified zone, irrespective of price.
     ExileOnStackExitIfCastFrom { zone: crate::Zone },
     /// A lasting player designation awarded by a continuous permanent-count condition.
-    PermanentCountGrantsDesignation { minimum: u32, historic_only: bool, enduring_story: bool },
+    PermanentCountGrantsDesignation { #[cfg_attr(feature = "serde", serde(default))] history_requirements: Vec<crate::DesignationHistoryRequirement>, minimum: u32, historic_only: bool, enduring_story: bool, #[cfg_attr(feature = "serde", serde(default))] tapped_only: bool, #[cfg_attr(feature = "serde", serde(default))] named_designation: Option<String> },
     EntryLoyaltyReductionPerLifePip,
     DayNightTransformDefinition { day_face: bool },
     AnotherPlayerPaysGeneric,
@@ -829,6 +894,10 @@ pub enum KeywordMarkerMechanic {
     CastBothSplitHalvesFromHand,
     RevealSharedTypesForEntryCounters { amount: u32 },
     EntryCountersAndFollowingAbilities { amount: u32 },
+    /// A live source instruction executed during its final chapter resolution.
+    FinalChapterResolutionRemovesCounters { counter_name: String },
+    /// Declared participation in the native precombat lore-counter action.
+    PrecombatLoreProgression { stop_at_final_chapter: bool },
 }
 
 /// The mechanic a keyword-marker line carries, if the engine implements one.
@@ -838,6 +907,33 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
         return Some(M::ExileOnStackExitIfCastFrom { zone: crate::Zone::Graveyard });
     }
     let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
+    let label = |s:&str| !s.is_empty() && s.split_whitespace().all(|word|word.chars().all(|c|c.is_ascii_alphanumeric() || c=='-'));
+    if let Some(body)=normalized.strip_prefix("as you ")
+        && let Some((action,class))=body.split_once(", you may choose another ")
+        && let Some(class)=class.strip_suffix(" ability to trigger")
+        && label(action) && label(class)
+    {return Some(M::ClassTriggerChoiceAdjustment{action:action.into(),class:class.into(),additional:1});}
+    let (once_each_turn,body)=normalized.strip_prefix("once each turn, ").map(|body|(true,body)).unwrap_or((false,normalized.as_str()));
+    if let Some(body)=body.strip_prefix("if you would trigger a ")
+        && let Some(class)=body.strip_suffix(" ability of a permanent you control, you may have that ability trigger twice instead")
+        && label(class)
+    {return Some(M::ClassTriggerMultiplication{class:class.into(),multiplier:2,once_each_turn});}
+
+    if let Some(tail) = normalized.strip_prefix("as your precombat main phase begins, put a lore counter on this permanent as a turn-based action") {
+        let stop = match tail {
+            "" => false,
+            ", unless it has at least as many lore counters as its final chapter number" => true,
+            _ => return None,
+        };
+        return Some(M::PrecombatLoreProgression { stop_at_final_chapter: stop });
+    }
+
+    if let Some(counter_name) = normalized.strip_prefix("as this saga's final chapter ability resolves, remove all ")
+        .and_then(|body| body.strip_suffix(" counters from it"))
+        .filter(|name| !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '+' | '-' | '/'))
+            && !name.split_whitespace().any(|word| matches!(word, "and" | "or" | "if" | "then" | "unless")))
+    { return Some(M::FinalChapterResolutionRemovesCounters { counter_name: counter_name.to_string() }); }
+
     if normalized == "if it's neither day nor night and no permanent establishes day, it becomes night. as it becomes day, if this permanent is back face up, transform it. this permanent can't transform except due to this ability. if a player casts at least two spells during their own turn, it becomes day next turn" { return Some(M::DayNightTransformDefinition { day_face: false }); }
     if normalized == "if it's neither day nor night, it becomes day. if it's night, this permanent enters transformed. as it becomes night, if this permanent is front face up, transform it. this permanent can't transform except due to this ability. if a player casts no spells during their own turn, it becomes night next turn" { return Some(M::DayNightTransformDefinition { day_face: true }); }
     if normalized == "as you cast this spell, before activating mana abilities, you may choose another player. that player may activate mana abilities before you do and may pay any amount of the generic mana in this spell's total cost before you pay the rest" { return Some(M::AnotherPlayerPaysGeneric); }
@@ -862,14 +958,26 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
         .and_then(|s| s.strip_suffix(" poison counters"))
         .and_then(|s| s.parse::<u32>().ok())
     { return Some(M::CombatDamageAddsPoison { amount }); }
+    // Read independent action clauses, then the named lasting result. No
+    // mechanic name participates in recognition or in the resulting program.
+    if let Some((condition, result)) = normalized.split_once(", you are in your ")
+        && let Some(name) = result.strip_suffix(" for the rest of the game")
+        && !name.is_empty() && !name.contains(' ')
+        && let Some(clauses) = condition.strip_prefix("if you ")
+        && let Some(requirements) = clauses.split(", ").map(crate::DesignationHistoryRequirement::read_clause).collect::<Option<Vec<_>>>()
+        && !requirements.is_empty()
+    {
+        return Some(M::PermanentCountGrantsDesignation { minimum: 0, historic_only: false, enduring_story: false, tapped_only: false, named_designation: Some(name.into()), history_requirements: requirements });
+    }
     if let Some(rest) = normalized.strip_prefix("if you control ") {
         if let Some((amount, rest)) = rest.split_once(" or more ") {
             let minimum = match amount { "one" => Some(1), "two" => Some(2), "three" => Some(3), "four" => Some(4), "five" => Some(5), "six" => Some(6), "seven" => Some(7), "eight" => Some(8), "nine" => Some(9), "ten" => Some(10), _ => amount.parse().ok() };
-            for (filter, historic_only) in [("permanents", false), ("artifacts, legendaries, and/or sagas", true)] {
-                if let Some(result) = rest.strip_prefix(filter).and_then(|s| s.strip_prefix(", ")) {
-                    let enduring_story = match result { "you get the city's blessing for the rest of the game" => Some(false), "you have an enduring story for the rest of the game" => Some(true), _ => None };
+            for (filter, historic_only, tapped_only) in [("permanents", false, false), ("tapped permanents", false, true), ("artifacts, legendaries, and/or sagas", true, false)] {
+                if let Some(result) = rest.strip_prefix(filter).and_then(|s| s.trim_start().strip_prefix(',')).map(str::trim_start) {
+                    let named_designation = result.strip_prefix("you are in your ").and_then(|s| s.strip_suffix(" for the rest of the game")).filter(|s| !s.is_empty()).map(str::to_string);
+                    let enduring_story = match result { "you get the city's blessing for the rest of the game" => Some(false), "you have an enduring story for the rest of the game" => Some(true), _ if named_designation.is_some() => Some(false), _ => None };
                     if let (Some(minimum), Some(enduring_story)) = (minimum, enduring_story) {
-                        return Some(M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story });
+                        return Some(M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story, tapped_only, named_designation, history_requirements: Vec::new() });
                     }
                 }
             }
@@ -892,6 +1000,7 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
         "this deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters" => return Some(M::DamageAsCounters { poison_players: true }),
         "any amount of damage this deals to a creature is enough to destroy it" => return Some(M::DamageIsLethalToCreatures),
         "damage dealt by this creature also causes you to gain that much life" => return Some(M::DamageGrantsControllerLife),
+        "damage dealt to this creature also causes its controller to lose that much life" => return Some(M::DamageCausesRecipientControllerLifeLoss),
         "sunburst" => return Some(M::Sunburst),
         "compleated" => return Some(M::Compleated),
         "epic" => return Some(M::Epic),
@@ -988,6 +1097,44 @@ pub fn draft_rule(text: &str) -> DraftRule {
     }
 }
 
+/// Whether a paid optional casting instruction is executed during completion
+/// of casting, or creates an ordinary triggered ability after the cast.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum GrantedOptionalCostTiming { DuringCasting, CastTrigger }
+
+/// A price recipe evaluated on the recipient spell before any payment.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum GrantedOptionalCostPrice<C> { Fixed(TotalCost<C>), GenericManaValue }
+
+/// Timing of an action permission, independent of spell and activation timing.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ImmediateActionTiming { Priority, Sorcery, Attacking }
+
+/// An atomic characteristic adjustment while a permanent becomes its new face.
+/// Changing a counter kind neither removes nor places a counter.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum TransformCharacteristicAdjustment {
+    CounterKind(crate::CounterType),
+    ColorsFromNamedActivationPayment(String),
+}
+
+/// Multiplicity of one declared terminal continuation, local to a source
+/// spell's successful disposition. The default preserves independent copies.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, TagKeyWalk)]
+pub enum SpellResolutionProgramMultiplicity {
+    #[default]
+    PerInstance,
+    OncePerDeclaredKey { key: String },
+}
+impl SpellResolutionProgramMultiplicity {
+    pub fn is_per_instance(&self) -> bool { matches!(self, Self::PerInstance) }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
@@ -1039,6 +1186,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     Anthem(Anthem<ICond>),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
     AttachedChosenLandwalkGrant(AttachedChosenLandwalkGrant),
+    /// Compiler-owned alternatives for independently removable printed text.
+    OptionalTextFragments(Box<OptionalTextFragmentsSpec<T, E, C, Cond, ICond>>),
     Conditional {
         ability: Box<StaticAbility<T, E, C, Cond, ICond>>,
         condition: ICond,
@@ -1249,6 +1398,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     MaxCreaturesCanAttackSourceEachCombat(usize),
     /// "can block as though it were untapped" (CR 509.1a).
     CanBlockAsThoughUntapped,
+    TriggerEventProjection { observed: TriggerProjectionEvent, sources: ObjectFilter, subjects: ObjectFilter, projected: TriggerProjectionEvent },
+    /// Matching blockers ignore tapping only while blocking this source.
+    CanBeBlockedAsThoughBlockersWereUntapped(ObjectFilter),
+    AdditionalSpellTargets { filter: ObjectFilter, amount: u32 },
     /// Blocker-side landwalk permission (CR 702.14).
     CanBlockAsThoughNoLandwalk,
     ChooseBasicLandTypeAsEnters(String),
@@ -1527,6 +1680,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// when the card enters without being cast. `subject` retains only the
     /// authored self-kind (for example, "this Vehicle") for canonical
     /// rendering.
+    /// An immediate program during casting, after the complete target proposal
+    /// is validated and before the total price is locked. Its outputs belong to
+    /// the proposed spell's transaction and are rolled back if casting fails.
+    CastAnnouncementProgram {
+        program: ResolutionProgram<E>,
+    },
     AsEntersEffectProgram {
         program: ResolutionProgram<E>,
         subject: String,
@@ -1539,6 +1698,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         /// program rather than an entry replacement program. The legacy
         /// payload name is retained for serialized-model compatibility.
         transforms_into: Option<String>,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        transform_characteristics: Option<TransformCharacteristicAdjustment>,
         presentation_label: Option<PresentationLabel>,
         /// Authored as a self entry replacement: "If this land would enter,
         /// instead <program>, then put this land onto the battlefield"
@@ -1548,6 +1709,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         entry_instead_surface: bool,
     },
     EntersWithCharacteristicsForFilter {
+        #[cfg_attr(feature="serde", serde(default, skip_serializing_if="face_down_entry_is_false"))]
+        face_down: bool,
         filter: ObjectFilter,
         card_types: Vec<CardType>,
         subtypes: Vec<Subtype>,
@@ -1710,6 +1873,16 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ConditionalSpellKeyword(ConditionalSpellKeywordSpec),
     Splice(SpliceSpec<C>),
     Escalate(EscalateSpec<C>),
+    NamedActionReplacement {
+        label: String,
+        source_filter: ObjectFilter,
+        performer_filter: Option<PlayerFilter>,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        object_requirement: Option<crate::filter_model::NamedActionObjectRequirement>,
+        replacement_effects: Vec<E>,
+        optional: bool,
+        display: String,
+    },
     KeywordActionReplacement {
         action: KeywordActionKind,
         source_filter: ObjectFilter,
@@ -1960,9 +2133,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     PreventMatchingDamage(PreventMatchingDamageSpec),
     PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp<E>),
+    /// Legacy payload spelling; `loss` selects the additive life-loss form.
     AddLifeGainReplacement {
         player: PlayerFilter,
         additional: i32,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "static_implied_words_are_false"))]
+        loss: bool,
         display: String,
     },
     TokenCreationTemplates {
@@ -2274,6 +2450,113 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         power: i32,
         toughness: i32,
     },
+    /// A static permission to pay and execute instructions immediately,
+    /// without an activated ability or a response window before instructions.
+    IntrinsicImmediateAction {
+        cost: TotalCost<C>,
+        timing: ImmediateActionTiming,
+        source_zone: Zone,
+        player: PlayerFilter,
+        condition: Option<ICond>,
+        shared_turn_group: Option<String>,
+        effects: Vec<E>,
+        once: bool,
+    },
+    /// An ongoing layer-1 copy of the attachment itself, with an explicit
+    /// exception retaining all three recipient type categories. Appended.
+    AttachedIsCopyOfSource { retain_original_types: bool },
+    /// Replace one occurrence of a matching optional cost, preserving its receipt identity.
+    OptionalCostPaymentAlternative { filter: ObjectFilter, reference: crate::OptionalCostRef, replacement: TotalCost<C> },
+    /// An independently offered alternative price of one resolving named operation.
+    /// Copiable abilities added to original tokens created by a named operation.
+
+    /// A source-wide payment substitution, applied to the final total cost.
+    GenericManaTapPayment {
+        spells: bool,
+        activated_abilities: bool,
+        exclude_source: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        name: Option<String>,
+        display: String,
+    },
+    /// A source cannot be tapped to pay a particular opaque named payment.
+    GenericManaTapPaymentProhibition { name: String },
+    NamedActionPaymentAlternative { label: String, player: PlayerFilter, effects: Vec<E>, display: String },
+    NamedActionTokenAbilityGrant { label: String, player: PlayerFilter, abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>, display: String },
+    /// Activation-local permission. Does not change the object's actual zone
+    /// or the instructions of the independently resolving ability.
+    ActivateAbilitiesAsThoughZone {
+        filter: ObjectFilter,
+        designation: String,
+        from: Zone,
+        as_though: Zone,
+        display: String,
+    },
+    /// A source-authored automatic player action. Multiple qualifying providers
+    /// produce one completion for this player/instruction at this actual boundary.
+    PhaseBoundaryPlayerAction { boundary: PlayerActionBoundary, label: String, condition: ICond },
+    /// A replacement for the successfully resolving source spell's normal
+    /// graveyard disposition. Equal destinations share one move. Independent
+    /// instances retain their continuations unless an authored key explicitly
+    /// declares that multiple instances of that one recipe are redundant.
+    SpellResolutionDestinationProgram {
+        origin_zone: Option<Zone>,
+        destination: Zone,
+        follow_up: ResolutionProgram<E>,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "SpellResolutionProgramMultiplicity::is_per_instance"))]
+        multiplicity: SpellResolutionProgramMultiplicity,
+    },
+
+    /// Source-authored shared selection rule. Matching only offers an
+    /// externally invocable program; unselected programs never trigger.
+    TriggerClassEventChoice {
+        class: String,
+        event: T,
+        sources: Option<ObjectFilter>,
+        include_event_source: bool,
+        destination_subject: bool,
+        maximum: u32,
+        optional: bool,
+        automatic: bool,
+        /// Whether the observed event itself causes the selected program to
+        /// trigger, rather than the selection invoking an eventless program.
+        caused_by_event: bool,
+        /// Explicit official-keyword classification; absent means an external class.
+        #[cfg_attr(feature = "serde", serde(default))]
+        official_keyword: bool,
+    },
+    /// A source-owned optional additional price with an independent paid receipt.
+    /// Its consequence retains explicit casting-process versus trigger timing.
+    GrantOptionalSpellCost {
+        filter: ObjectFilter,
+        price: GrantedOptionalCostPrice<C>,
+        reference: crate::OptionalCostRef,
+        effects: Vec<E>,
+        timing: GrantedOptionalCostTiming,
+        #[cfg_attr(feature = "serde", serde(default))]
+        generic_reduction: Option<Value>,
+        /// Compiler-declared lexical local references of this acquired recipe.
+        #[cfg_attr(feature="serde",serde(default,skip_serializing_if="Vec::is_empty"))]
+        local_object_references: Vec<crate::TagKey>,
+        display: String,
+    },
+    /// Source-owned optional ordinary program performed during an actual public
+    /// reveal, before its enclosing instruction continues. Appended for wire stability.
+    RevealActionOffer {
+        label: String,
+        source_zones: Vec<Zone>,
+        max_per_player_turn: Option<u32>,
+        arrival_zone: Zone,
+        effects: Vec<E>,
+        display: String,
+    },
+    /// Reduce only matching named additional prices, never the spell total.
+    NamedCastingPriceReduction { filter: ObjectFilter, keywords: Vec<String>, maximum: u32, optional: bool },
+    CopySourceSelectionReplacement { player:PlayerFilter, replacement:E, display:String },
+    CardCreationSelectionReplacement { operation_label:Option<String>, player:PlayerFilter, replacement:E, display:String },
+    /// Retain an operation's original resolving menu, perform one indexed mode,
+    /// then choose exactly one of its remaining original modes.
+    NamedActionFirstThenOtherMode { label: String, player: PlayerFilter, first_mode: u32, display: String },
 }
 
 /// The printed ticket cost of a sticker-sheet row: one {TK} per ticket
@@ -2313,6 +2596,12 @@ impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond>
 where
     C: Clone,
 {
+    pub fn trigger_class_event_choice(class: String, event: T, sources: Option<ObjectFilter>,
+        include_event_source: bool, destination_subject: bool, maximum: u32, optional: bool, automatic: bool, caused_by_event: bool) -> Self {
+        Self { id: None, label: format!("Select a {class} triggered program at the declared event"),
+            payload: StaticAbilityPayload::TriggerClassEventChoice {class,official_keyword:false,event,sources,include_event_source,destination_subject,maximum,optional,automatic,caused_by_event} }
+    }
+
     /// Translate a static ability from one phase's vocabulary into another's.
     ///
     /// `map_intervening` is where a linked trigger's recognized intervening-if
@@ -2446,6 +2735,7 @@ where
             };
             Ok(Ability {
                 kind,
+                designations: ability.designations.clone(),
                 functional_zones: ability.functional_zones,
             })
         }
@@ -2509,6 +2799,9 @@ where
                 }
                 DerivedAlternativeCast::PlotFromCardManaCost => {
                     DerivedAlternativeCast::PlotFromCardManaCost
+                }
+                DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label } => {
+                    DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label }
                 }
                 DerivedAlternativeCast::ZoneCastFromCardManaCost {
                     zone,
@@ -2691,6 +2984,21 @@ where
             FI: FnMut(IC) -> Result<IC2, Err>,
         {
             let payload = match ability.payload {
+            StaticAbilityPayload::TriggerClassEventChoice { class, official_keyword, event, sources, include_event_source, destination_subject, maximum, optional, automatic, caused_by_event } => {
+                StaticAbilityPayload::TriggerClassEventChoice {
+                    class, official_keyword, event: map_trigger(event)?, sources, include_event_source, destination_subject, maximum, optional, automatic, caused_by_event,
+                }
+            }
+            StaticAbilityPayload::IntrinsicImmediateAction { cost, timing, source_zone, player, condition, shared_turn_group, effects, once } => {
+                StaticAbilityPayload::IntrinsicImmediateAction {
+                    cost: map_total_cost(cost, map_cost)?, timing, source_zone, player, shared_turn_group, once,
+                    condition: condition.map(&mut *map_intervening).transpose()?,
+                    effects: effects.into_iter().map(&mut *map_effect).collect::<Result<Vec<_>, Err>>()?,
+                }
+            }
+            StaticAbilityPayload::GenericManaTapPaymentProhibition { name } => StaticAbilityPayload::GenericManaTapPaymentProhibition { name },
+            StaticAbilityPayload::GenericManaTapPayment { spells, activated_abilities, exclude_source, name, display } =>
+                StaticAbilityPayload::GenericManaTapPayment { spells, activated_abilities, exclude_source, name, display },
             StaticAbilityPayload::CustomKeywordIdentity { name } => {
                 StaticAbilityPayload::CustomKeywordIdentity { name }
             }
@@ -2752,6 +3060,10 @@ where
                 StaticAbilityPayload::ConditionalSpellKeyword(spec)
             }
             StaticAbilityPayload::Splice(spec) => StaticAbilityPayload::Splice(SpliceSpec {
+                custom_keyword: spec.custom_keyword,
+                source_zone: spec.source_zone,
+                source_destination: spec.source_destination,
+                max_per_spell: spec.max_per_spell,
                 descriptive: spec.descriptive,
                 quality: spec.quality,
                 cost: spec.cost.try_map(&mut *map_cost)?,
@@ -2801,6 +3113,29 @@ where
                 optional,
                 display,
             },
+            StaticAbilityPayload::NamedActionFirstThenOtherMode { label, player, first_mode, display } => StaticAbilityPayload::NamedActionFirstThenOtherMode {
+                label: label.clone(), player: player.clone(), first_mode, display: display.clone(),
+            },
+            StaticAbilityPayload::NamedActionPaymentAlternative { label, player, effects, display } => StaticAbilityPayload::NamedActionPaymentAlternative {
+                label, player, display, effects: effects.into_iter().map(&mut *map_effect).collect::<Result<Vec<_>, _>>()?,
+            },
+            StaticAbilityPayload::NamedActionTokenAbilityGrant { label, player, abilities, display } => StaticAbilityPayload::NamedActionTokenAbilityGrant {
+                label, player, display, abilities: abilities.into_iter().map(|ability| map_ability(ability, &mut *map_trigger, &mut *map_effect, &mut *map_cost, &mut *map_intervening)).collect::<Result<Vec<_>, _>>()?,
+            },
+            StaticAbilityPayload::ActivateAbilitiesAsThoughZone { filter, designation, from, as_though, display } =>
+                StaticAbilityPayload::ActivateAbilitiesAsThoughZone { filter, designation, from, as_though, display },
+            StaticAbilityPayload::GrantOptionalSpellCost { filter, price, reference, effects, timing, generic_reduction, local_object_references, display } => StaticAbilityPayload::GrantOptionalSpellCost {
+                filter, reference, timing, generic_reduction, local_object_references, display,
+                price: match price {
+                    GrantedOptionalCostPrice::Fixed(cost) => GrantedOptionalCostPrice::Fixed(cost.try_map(&mut *map_cost)?),
+                    GrantedOptionalCostPrice::GenericManaValue => GrantedOptionalCostPrice::GenericManaValue,
+                },
+                effects: effects.into_iter().map(&mut *map_effect).collect::<Result<Vec<_>, _>>()?,
+            },
+            StaticAbilityPayload::NamedCastingPriceReduction {filter,keywords,maximum,optional} => StaticAbilityPayload::NamedCastingPriceReduction {filter,keywords,maximum,optional},
+            StaticAbilityPayload::OptionalCostPaymentAlternative {filter,reference,replacement} => StaticAbilityPayload::OptionalCostPaymentAlternative {
+                filter, reference, replacement: replacement.try_map(&mut *map_cost)?,
+            },
             StaticAbilityPayload::GrantSpellKeyword {
                 filter,
                 keyword,
@@ -2848,6 +3183,23 @@ where
             }
             StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
                 StaticAbilityPayload::AttachedChosenLandwalkGrant(grant)
+            }
+            StaticAbilityPayload::OptionalTextFragments(spec) => {
+                let spec=*spec;
+                let mut variants=Vec::with_capacity(spec.variants.len());
+                for variant in spec.variants {
+                    let mut abilities=Vec::with_capacity(variant.abilities.len());
+                    for ability in variant.abilities {abilities.push(map_ability(ability,&mut *map_trigger,&mut *map_effect,&mut *map_cost,&mut *map_intervening)?);}
+                    variants.push(OptionalTextFragmentVariant {
+                        removed: variant.removed, abilities, ability_labels: variant.ability_labels,
+                        spell_effect: variant.spell_effect.map(|program|program.try_map_effects(&mut *map_effect)).transpose()?,
+                        aura_attach_filter: variant.aura_attach_filter, canonical_text: variant.canonical_text,
+                    });
+                }
+                StaticAbilityPayload::OptionalTextFragments(Box::new(OptionalTextFragmentsSpec {
+                    labels: spec.labels, variants, invariant_slots: spec.invariant_slots,
+                    current_removed: spec.current_removed, casting_payment: spec.casting_payment,
+                }))
             }
             StaticAbilityPayload::Conditional { ability, condition, implied_words } => {
                 StaticAbilityPayload::Conditional {
@@ -3235,6 +3587,12 @@ where
             StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum) => {
                 StaticAbilityPayload::MaxCreaturesCanAttackSourceEachCombat(maximum)
             }
+            StaticAbilityPayload::AdditionalSpellTargets { filter, amount } => StaticAbilityPayload::AdditionalSpellTargets { filter, amount },
+            StaticAbilityPayload::CanBeBlockedAsThoughBlockersWereUntapped(filter) => {
+                StaticAbilityPayload::CanBeBlockedAsThoughBlockersWereUntapped(filter)
+            }
+            StaticAbilityPayload::PhaseBoundaryPlayerAction { boundary, label, condition } => StaticAbilityPayload::PhaseBoundaryPlayerAction { boundary, label, condition: map_intervening(condition)? },
+            StaticAbilityPayload::TriggerEventProjection { observed, sources, subjects, projected } => StaticAbilityPayload::TriggerEventProjection { observed, sources, subjects, projected },
             StaticAbilityPayload::CanBlockAsThoughUntapped => {
                 StaticAbilityPayload::CanBlockAsThoughUntapped
             }
@@ -3264,6 +3622,9 @@ where
             }
             StaticAbilityPayload::AttachedIsCopyOfChosenObject(display) => {
                 StaticAbilityPayload::AttachedIsCopyOfChosenObject(display)
+            }
+            StaticAbilityPayload::AttachedIsCopyOfSource { retain_original_types } => {
+                StaticAbilityPayload::AttachedIsCopyOfSource { retain_original_types }
             }
             StaticAbilityPayload::AddChosenCreatureType {
                 filter,
@@ -3330,6 +3691,12 @@ where
                 ability_labels,
                 display,
             },
+            StaticAbilityPayload::RevealActionOffer { label, source_zones, max_per_player_turn, arrival_zone, effects, display } => StaticAbilityPayload::RevealActionOffer {
+                label, source_zones, max_per_player_turn, arrival_zone,
+                effects: effects.into_iter().map(&mut *map_effect).collect::<Result<Vec<_>, _>>()?, display,
+            },
+            StaticAbilityPayload::CopySourceSelectionReplacement {player,replacement,display} => StaticAbilityPayload::CopySourceSelectionReplacement {player,replacement:map_effect(replacement)?,display},
+            StaticAbilityPayload::CardCreationSelectionReplacement { operation_label,player,replacement,display } => StaticAbilityPayload::CardCreationSelectionReplacement {operation_label,player,replacement:map_effect(replacement)?,display},
             StaticAbilityPayload::MaySkipDrawStepWithFollowup { if_you_do, display } => {
                 StaticAbilityPayload::MaySkipDrawStepWithFollowup {
                     if_you_do: if_you_do
@@ -3752,6 +4119,14 @@ where
                     display,
                 }
             }
+            StaticAbilityPayload::CastAnnouncementProgram { program } =>
+                StaticAbilityPayload::CastAnnouncementProgram { program: program.try_map_effects(&mut *map_effect)? },
+            StaticAbilityPayload::SpellResolutionDestinationProgram { origin_zone, destination, follow_up, multiplicity } =>
+                StaticAbilityPayload::SpellResolutionDestinationProgram {
+                    origin_zone, destination,
+                    follow_up: follow_up.try_map_effects(&mut *map_effect)?,
+                    multiplicity,
+                },
             StaticAbilityPayload::AsEntersEffectProgram {
                 program,
                 subject,
@@ -3759,6 +4134,7 @@ where
                 turns_face_up_only,
                 uses_enters_with_counter_surface,
                 transforms_into,
+                transform_characteristics,
                 presentation_label,
                 entry_instead_surface,
             } => StaticAbilityPayload::AsEntersEffectProgram {
@@ -3768,16 +4144,19 @@ where
                 turns_face_up_only,
                 uses_enters_with_counter_surface,
                 transforms_into,
+                transform_characteristics,
                 presentation_label,
                 entry_instead_surface,
             },
             StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                face_down,
                 filter,
                 card_types,
                 subtypes,
                 power,
                 toughness,
             } => StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                face_down,
                 filter,
                 card_types,
                 subtypes,
@@ -4017,6 +4396,9 @@ where
                 per_created,
                 display,
             },
+            StaticAbilityPayload::NamedActionReplacement { label, source_filter, performer_filter, object_requirement, replacement_effects, optional, display } =>
+                StaticAbilityPayload::NamedActionReplacement { label, source_filter, performer_filter, object_requirement,
+                    replacement_effects: replacement_effects.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?, optional, display },
             StaticAbilityPayload::KeywordActionReplacement {
                 action,
                 source_filter,
@@ -4189,8 +4571,8 @@ where
                 },
             StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
                 StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display },
-            StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
-                StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
+            StaticAbilityPayload::AddLifeGainReplacement { player, additional, loss, display } =>
+                StaticAbilityPayload::AddLifeGainReplacement { player, additional, loss, display },
             StaticAbilityPayload::DoubleLifeChangeReplacement {
                 player,
                 loss,
@@ -4912,6 +5294,17 @@ impl<
         }
     }
 
+    pub fn generic_mana_tap_payment_prohibition(name: impl Into<String>) -> Self {
+        let name=name.into();
+        Self { id: Some(StaticAbilityId::KeywordMarker), label: format!("cannot tap for {name}"),
+            payload: StaticAbilityPayload::GenericManaTapPaymentProhibition { name } }
+    }
+    pub fn generic_mana_tap_payment(spells: bool, activated_abilities: bool, exclude_source: bool, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::SpellManaSpendingRestriction), label: display.clone(),
+            payload: StaticAbilityPayload::GenericManaTapPayment { spells, activated_abilities, exclude_source, name: None, display } }
+    }
+
     pub fn custom_keyword_identity(name: impl Into<String>) -> Self {
         let name = name.into();
         Self {
@@ -4962,7 +5355,34 @@ impl<
     where C: CostComponent,
     {
         Self { id: None, label: format!("As you cast an {} spell, you may reveal this card from your hand and pay {cost_surface}. If you do, add this card's effects to that spell.", quality.oracle_surface()),
-            payload: StaticAbilityPayload::Splice(SpliceSpec { quality, cost, cost_surface: Some(cost_surface), descriptive: true }) }
+            payload: StaticAbilityPayload::Splice(SpliceSpec { custom_keyword: None, source_zone: None, source_destination: None, max_per_spell: None, quality, cost, cost_surface: Some(cost_surface), descriptive: true }) }
+    }
+
+    /// Existing splice program with explicit source-zone and movement cost.
+    pub fn move_to_add_spell_text(quality: SpliceQuality, cost: TotalCost<C>, cost_surface: String,
+        source_zone: crate::zone::Zone, destination: crate::zone::Zone, max_per_spell: Option<u32>) -> Self
+    where C: CostComponent,
+    {
+        let mut ability = Self::reveal_to_add_spell_text(quality, cost, cost_surface.clone());
+        let movement = if destination == crate::zone::Zone::Exile {
+            format!("exile this card from your {source_zone}")
+        } else {
+            format!("put this card from your {source_zone} into {destination}")
+        };
+        ability.label = format!("As you cast an {} spell, you may {movement} and pay {cost_surface}. If you do, add this card's effects to that spell.", quality.oracle_surface());
+        if let Some(max) = max_per_spell {
+            if destination == crate::zone::Zone::Exile && max == 1 {
+                ability.label.push_str(" You may exile only one card this way per spell.");
+            } else {
+                ability.label.push_str(&format!(" You may move only {max} cards this way per spell."));
+            }
+        }
+        if let StaticAbilityPayload::Splice(spec) = &mut ability.payload {
+            spec.source_zone = Some(source_zone);
+            spec.source_destination = Some(destination);
+            spec.max_per_spell = max_per_spell;
+        }
+        ability
     }
 
     pub fn splice(quality: SpliceQuality, cost: TotalCost<C>) -> Self
@@ -4994,6 +5414,8 @@ impl<
                 rendered_cost
             ),
             payload: StaticAbilityPayload::Splice(SpliceSpec {
+                custom_keyword: None,
+                source_zone: None, source_destination: None, max_per_spell: None,
                 descriptive: false,
                 quality,
                 cost,
@@ -5649,6 +6071,22 @@ impl<
             label: "This creature can block creatures with landwalk abilities as though they didn't have those abilities".to_string(),
             payload: StaticAbilityPayload::CanBlockAsThoughNoLandwalk,
         }
+    }
+
+    pub fn additional_spell_targets(filter: ObjectFilter, amount: u32) -> Self {
+        Self { id: Some(StaticAbilityId::AdditionalSpellTargets), label: format!("You may choose up to {amount} additional targets for matching spells").into(), payload: StaticAbilityPayload::AdditionalSpellTargets { filter, amount } }
+    }
+
+    pub fn can_be_blocked_as_though_blockers_were_untapped(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CanBeBlockedAsThoughBlockersWereUntapped),
+            label: "Matching creatures can block this creature as though they were untapped".into(),
+            payload: StaticAbilityPayload::CanBeBlockedAsThoughBlockersWereUntapped(filter),
+        }
+    }
+
+    pub fn trigger_event_projection(observed: TriggerProjectionEvent, sources: ObjectFilter, subjects: ObjectFilter, projected: TriggerProjectionEvent) -> Self {
+        Self { id: Some(StaticAbilityId::TriggerEventProjection), label: "Project matching events onto the abilities of matching objects".into(), payload: StaticAbilityPayload::TriggerEventProjection { observed, sources, subjects, projected } }
     }
 
     pub fn can_block_as_though_untapped() -> Self {
@@ -6898,6 +7336,18 @@ impl<
     }
     /// "If you would begin your draw step, you may skip that step instead.
     /// If you do, <effects>." (Fasting; CR 614.10)
+    pub fn reveal_action_offer(label: impl Into<String>, source_zones: Vec<Zone>, max_per_player_turn: Option<u32>, arrival_zone: Zone, effects: Vec<E>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::RevealActionOffer), label: display.clone(),
+            payload: StaticAbilityPayload::RevealActionOffer { label: label.into().trim().to_ascii_lowercase(), source_zones, max_per_player_turn, arrival_zone, effects, display } }
+    }
+    pub fn copy_source_selection_replacement(player:PlayerFilter,replacement:E,display:impl Into<String>)->Self {
+        let display=display.into();Self{id:Some(StaticAbilityId::CopySourceSelectionReplacement),label:display.clone(),payload:StaticAbilityPayload::CopySourceSelectionReplacement{player,replacement,display}}
+    }
+    pub fn card_creation_selection_replacement(operation_label:Option<String>,player:PlayerFilter,replacement:E,display:impl Into<String>)->Self{
+        let display=display.into();Self{id:Some(StaticAbilityId::CardCreationSelectionReplacement),label:display.clone(),payload:StaticAbilityPayload::CardCreationSelectionReplacement{operation_label,player,replacement,display}}
+    }
+
     pub fn may_skip_draw_step_with_followup(if_you_do: Vec<E>, display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -7493,6 +7943,13 @@ impl<
         }
     }
 
+    pub fn attached_is_copy_of_source(retain_original_types: bool) -> Self {
+        Self {
+            id: Some(StaticAbilityId::AttachedIsCopyOfSource),
+            label: "attached copy of source".into(),
+            payload: StaticAbilityPayload::AttachedIsCopyOfSource { retain_original_types },
+        }
+    }
     pub fn attached_is_copy_of_chosen_object(display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -7736,6 +8193,29 @@ impl<
             payload: StaticAbilityPayload::EnterAsCopyAsEnters { spec, display },
         }
     }
+    pub fn cast_announcement_program(program: ResolutionProgram<E>) -> Self {
+        Self {id:None,label:"As you cast this spell".into(),payload:StaticAbilityPayload::CastAnnouncementProgram {program}}
+    }
+    pub fn spell_resolution_destination_program(
+        origin_zone: Option<Zone>,
+        destination: Zone,
+        follow_up: ResolutionProgram<E>,
+    ) -> Self {
+        Self {
+            id: None,
+            label: format!("As this spell resolves, put it into {destination:?} and perform its continuation"),
+            payload: StaticAbilityPayload::SpellResolutionDestinationProgram {
+                origin_zone, destination, follow_up,
+                multiplicity: SpellResolutionProgramMultiplicity::PerInstance,
+            },
+        }
+    }
+
+    pub fn with_spell_resolution_program_multiplicity(mut self, policy: SpellResolutionProgramMultiplicity) -> Self {
+        if let StaticAbilityPayload::SpellResolutionDestinationProgram { multiplicity, .. } = &mut self.payload { *multiplicity = policy; }
+        self
+    }
+
     pub fn as_enters_effect_program(
         program: ResolutionProgram<E>,
         subject: impl Into<String>,
@@ -7759,6 +8239,7 @@ impl<
                 turns_face_up_only: false,
                 uses_enters_with_counter_surface,
                 transforms_into: None,
+                transform_characteristics: None,
                 presentation_label,
                 entry_instead_surface: false,
             },
@@ -7795,6 +8276,7 @@ impl<
                 turns_face_up_only: true,
                 uses_enters_with_counter_surface: false,
                 transforms_into: None,
+                transform_characteristics: None,
                 presentation_label,
                 entry_instead_surface: false,
             },
@@ -7818,10 +8300,17 @@ impl<
                 turns_face_up_only: false,
                 uses_enters_with_counter_surface: false,
                 transforms_into: Some(destination),
+                transform_characteristics: None,
                 presentation_label,
                 entry_instead_surface: false,
             },
         }
+    }
+    pub fn with_transform_characteristics(mut self, adjustment: TransformCharacteristicAdjustment) -> Self {
+        if let StaticAbilityPayload::AsEntersEffectProgram { transform_characteristics, .. } = &mut self.payload {
+            *transform_characteristics = Some(adjustment);
+        }
+        self
     }
     pub fn choose_color_as_enters(excluded: Option<Color>, display: impl Into<String>) -> Self {
         let display = display.into();
@@ -8865,6 +9354,18 @@ impl<
         }
     }
 
+    pub fn named_action_replacement(label: String, source_filter: ObjectFilter, performer_filter: Option<PlayerFilter>, replacement_effects: Vec<E>, optional: bool, display: String) -> Self {
+        Self { id: Some(StaticAbilityId::KeywordActionReplacement), label: display.clone(),
+            payload: StaticAbilityPayload::NamedActionReplacement { label, source_filter, performer_filter, object_requirement: None, replacement_effects, optional, display } }
+    }
+
+    pub fn with_named_action_object_requirement(mut self, minimum:u32, filter:ObjectFilter)->Self {
+        if let StaticAbilityPayload::NamedActionReplacement {object_requirement,..}=&mut self.payload {
+            *object_requirement=Some(crate::filter_model::NamedActionObjectRequirement {minimum,filter:Box::new(filter)});
+        }
+        self
+    }
+
     pub fn keyword_action_replacement(
         action: KeywordActionKind,
         source_filter: ObjectFilter,
@@ -9091,7 +9592,38 @@ impl<
             },
         }
     }
+    pub fn grant_optional_spell_cost(
+        filter: ObjectFilter, price: GrantedOptionalCostPrice<C>, reference: crate::OptionalCostRef,
+        effects: Vec<E>, timing: GrantedOptionalCostTiming, display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::GrantOptionalSpellCost), label: display.clone(),
+            payload: StaticAbilityPayload::GrantOptionalSpellCost { filter, price, reference, effects, timing, generic_reduction: None, local_object_references:Vec::new(), display } }
+    }
+    pub fn with_optional_spell_cost_local_references(mut self, references:Vec<crate::TagKey>)->Self{
+        if let StaticAbilityPayload::GrantOptionalSpellCost{local_object_references,..}=&mut self.payload{*local_object_references=references;}
+        self
+    }
+    pub fn with_optional_spell_cost_reduction(mut self, amount: Value) -> Self {
+        if let StaticAbilityPayload::GrantOptionalSpellCost { generic_reduction, .. } = &mut self.payload {
+            *generic_reduction = Some(amount);
+        }
+        self
+    }
     /// A keyword granted to matching spells as they are cast (CR 601.2b).
+    pub fn named_action_first_then_other_mode(label: impl Into<String>, player: PlayerFilter, first_mode: u32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::KeywordActionReplacement), label: display.clone(), payload: StaticAbilityPayload::NamedActionFirstThenOtherMode { label: label.into(), player, first_mode, display } }
+    }
+
+    pub fn named_action_payment_alternative(label: impl Into<String>, player: PlayerFilter, effects: Vec<E>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::NamedActionPaymentAlternative), label: display.clone(), payload: StaticAbilityPayload::NamedActionPaymentAlternative { label: label.into(), player, effects, display } }
+    }
+    pub fn named_action_token_ability_grant(label: impl Into<String>, player: PlayerFilter, abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::NamedActionTokenAbilityGrant), label: display.clone(), payload: StaticAbilityPayload::NamedActionTokenAbilityGrant { label: label.into(), player, abilities, display } }
+    }
     pub fn grant_spell_keyword(
         filter: ObjectFilter,
         keyword: crate::GrantedSpellKeyword<C>,
@@ -9815,6 +10347,15 @@ impl<
         additional: i32,
         display: impl Into<String>,
     ) -> Self {
+        Self::add_life_change_replacement(player, additional, false, display)
+    }
+
+    pub fn add_life_change_replacement(
+        player: PlayerFilter,
+        additional: i32,
+        loss: bool,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::AddLifeGainReplacement),
@@ -9822,6 +10363,7 @@ impl<
             payload: StaticAbilityPayload::AddLifeGainReplacement {
                 player,
                 additional,
+                loss,
                 display,
             },
         }
@@ -10116,6 +10658,16 @@ impl<
         }
     }
 
+    pub fn enters_face_down_for_filter(filter:ObjectFilter)->Self {
+        Self {
+            id:Some(StaticAbilityId::EnterWithCharacteristicsForFilter),
+            label:"enters face-down for filter".into(),
+            payload:StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                face_down:true,filter,card_types:Vec::new(),subtypes:Vec::new(),power:2,toughness:2,
+            },
+        }
+    }
+
     pub fn enters_with_characteristics_for_filter(
         filter: ObjectFilter,
         card_types: Vec<CardType>,
@@ -10127,6 +10679,7 @@ impl<
             id: Some(StaticAbilityId::EnterWithCharacteristicsForFilter),
             label: "enters with characteristics for filter".to_string(),
             payload: StaticAbilityPayload::EntersWithCharacteristicsForFilter {
+                face_down: false,
                 filter,
                 card_types,
                 subtypes,
@@ -10197,4 +10750,34 @@ mod entry_counter_choice_serde_tests {
         let Payload::EntersWithCounterChoice { condition, .. } = restored else { panic!("counter choice"); };
         assert!(condition.is_none());
     }
+}
+
+#[cfg(feature="serde")]
+fn face_down_entry_is_false(value:&bool)->bool{!*value}
+#[cfg(all(test,feature="serde"))]
+mod resolution_recipe_policy_tests {
+    use super::*;
+    type Model=StaticAbility<(),(),(),()>;
+    #[test]
+    fn default_instance_policy_keeps_old_wire_shape_and_declared_keys_round_trip(){
+        let original=Model::spell_resolution_destination_program(Some(Zone::Hand),Zone::Exile,ResolutionProgram::from_effects(vec![()]));
+        let default=serde_json::to_value(&original).unwrap();
+        assert!(default["payload"]["SpellResolutionDestinationProgram"].get("multiplicity").is_none());
+        let restored:Model=serde_json::from_value(default).unwrap();
+        assert!(matches!(restored.payload,StaticAbilityPayload::SpellResolutionDestinationProgram{multiplicity:SpellResolutionProgramMultiplicity::PerInstance,..}));
+        let declared=original.with_spell_resolution_program_multiplicity(SpellResolutionProgramMultiplicity::OncePerDeclaredKey{key:"authored recipe".into()});
+        let wire=serde_json::to_value(&declared).unwrap();let restored:Model=serde_json::from_value(wire).unwrap();assert_eq!(declared,restored);
+    }
+}
+
+
+#[cfg(all(test,feature="serde"))]
+mod additive_life_change_wire_tests {
+ use super::*;
+ type Model=StaticAbility<(),(),(),()>;
+ #[test]
+ fn additive_gain_keeps_old_wire_shape_while_loss_survives_roundtrip(){
+  let gain=Model::add_life_gain_replacement(PlayerFilter::You,1,"gain");let wire=serde_json::to_value(&gain).unwrap();assert!(wire["payload"]["AddLifeGainReplacement"].get("loss").is_none());let restored:Model=serde_json::from_value(wire).unwrap();assert_eq!(gain,restored);
+  let loss=Model::add_life_change_replacement(PlayerFilter::Opponent,1,true,"loss");let wire=serde_json::to_value(&loss).unwrap();assert_eq!(wire["payload"]["AddLifeGainReplacement"]["loss"],true);let restored:Model=serde_json::from_value(wire).unwrap();assert_eq!(loss,restored);
+ }
 }

@@ -1,0 +1,240 @@
+{
+  "patch_sha256": "8758b8a24c5fac7140775ec4eecfae58d9ce1171fde9bbb625e3ea17b3d31d36",
+  "baseline": "Actual current root after FIFTH and direct unit/compile repairs at literal captured touched-path hashes; all before bytes independently compared at freeze",
+  "fourth_sha256": "ac50a4eac1dcd3bb5d5e209e6ad0ed7dcc4b04e58f9c1515bf45b1875164352d",
+  "selected_inputs": [
+    {
+      "path": "tmp/custom-mechanics/next-wave/abilities_late/counter-removal-ordinal-current/counter-removal-ordinal-current.patch",
+      "sha256": "4ff921f26f04a3e83588e74f191c0b62999700bb7022d85bf7bd14bc99e8071c"
+    },
+    {
+      "path": "tmp/custom-mechanics/next-wave/phase-out-end-of-turn/phase-out-end-of-turn.patch",
+      "sha256": "cb32eeb6268fa81950604696667901a78ee3bba4e891b39d332d3d201b1fcc73"
+    },
+    {
+      "path": "tmp/custom-mechanics/next-wave/casting_suite09_collection_legality/suite09-collection-and-block-legality.patch",
+      "sha256": "43c85db548b36e381a0e3e581aba6e7c984ae33677e70bed69003b9aa3bc6490"
+    },
+    {
+      "path": "tmp/custom-mechanics/next-wave/casting_early/variable-resource-route-diagnostics/variable-resource-route-diagnostics.patch",
+      "sha256": "18eb39fda23d0c855c83bfc4800e49941a78adff3665a10223a41062fd972bcd"
+    },
+    {
+      "path": "tmp/custom-mechanics/next-wave/inscribe-compound-duration-diagnostic/inscribe-compound-duration-diagnostic.patch",
+      "sha256": "f0d0698618c1d31bee02d93bce0a63cf765ca42548d0efc788b80a7a379bb835"
+    },
+    {
+      "path": "tmp/custom-mechanics/next-wave/abilities_middle/next-turn-spell-cost-window/next-turn-spell-cost-window.patch",
+      "sha256": "ef39132ea3d9c09cad958082b5817bd6dd42baed9788d581eee62cdd2bbe6634"
+    }
+  ],
+  "files": [
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/activation_and_restrictions/activated_sentence_parsers.rs",
+      "base_exists": true,
+      "base_sha256": "e33cab4dd3f0e47830569769b6bd9dcecb1a35d1c3422e7821381911ff491e36",
+      "result_sha256": "93eb3f64acd3a27fea0d5549431d6810ea9f8802c831d99019bf333fccec0e86"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/activation_and_restrictions/semantic/semantic_trigger.rs",
+      "base_exists": true,
+      "base_sha256": "b9f265cb674353f01501ca2bb1898c79b9064fb24e5268bb783aca309c195c9c",
+      "result_sha256": "9793f370541d2c0d37e8b3cdfd558a06bbc5c9a0242da77fc9429e4bf0759138"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/clause_pattern_helpers.rs",
+      "base_exists": true,
+      "base_sha256": "b5b9fcc7517deb9a1f2669fafad05361c00e2b558af222ba46df2cd38cfa9be9",
+      "result_sha256": "86c5c46c683733f065a56e52ad83316e90da13777e5810a5b40cb05b999725f1"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/control_copy_attach_verbs.rs",
+      "base_exists": true,
+      "base_sha256": "5c3558a7fa3b08cd8f06a30e4254494c9a0c6c2481f1d35893d9603a6ab395ce",
+      "result_sha256": "3d03e3ff82ae5464fa059ef884a3d8e220ef937d6785a8fe3df9fa61e5747332"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/grammar/activated_lines.rs",
+      "base_exists": true,
+      "base_sha256": "f5c78d5a1d21421a1e3489ee159b2d212c67ae17611b0368120514dc8522d770",
+      "result_sha256": "dc138a19fa0e6453b4dd4b200eb0bdf3ab18c3ab5f7eea106e5ec0ad81f81587"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords/tests.rs",
+      "base_exists": true,
+      "base_sha256": "464ebd24fdcaadbbf07aa3a7861397927690024fc2ea3ef775ba4fece0151eb8",
+      "result_sha256": "586ebce40c9beb0939dfa062ac1fe09a1b1f8d93fedcb796fb7efba4964cab44"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords.rs",
+      "base_exists": true,
+      "base_sha256": "f466b72ce2990412025ccfcca0c05f457249237ff771ad8fd146b028ced446e7",
+      "result_sha256": "4c4589d55c4a0ad7d729ea1346b8a776c830afdfe039180c079e09b493ea139d"
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/effect.rs",
+      "base_exists": true,
+      "base_sha256": "03bda89e8370c2b4a0df8cb7cf8df4678c7b31da5010ced92ec3578738ab8d7d",
+      "result_sha256": "ab2e1a2eb1ccf2680c0051d7d28590b0ffcade376a58a2d33e8113af030e0e32"
+    },
+    {
+      "path": "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/effect_dispatch/subject_verb_late.rs",
+      "base_exists": true,
+      "base_sha256": "11b1f980d7ae19c3f6587907a325b72b826ab29ca97b18e31344ddf066513e16",
+      "result_sha256": "22da03452799e5ddf383861cc1d7f56562a56b7773fb9b103e23ce0efa678f23"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/continuous_reference_quantities.rs",
+      "base_exists": true,
+      "base_sha256": "75518c14ae76c2c6a80eb4c1b7fce3a1405882b0872c2464a24ad42b3b64ca38",
+      "result_sha256": "40aadaa538dffb8f925929d2a6526a5d1c484be1d8c779da617c3e2329ada972"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/craft_material_costs.rs",
+      "base_exists": true,
+      "base_sha256": "486a5c24398a6f61ac586266ee02be19391e2304edb0757c3ce32c50bb6507be",
+      "result_sha256": "9e0fe320ace97fac4525eece5a244ba2852f19c3bdf869ae3819c796126a2d39"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/custom_colored_resource_costs.rs",
+      "base_exists": true,
+      "base_sha256": "b0764471311fcfd6c5cfc7210d7d5ca5fe245ef06714824cfb341e413e62203e",
+      "result_sha256": "35fa6e9a4db3c3e4490844eb5027d06e5393a21b1db9684945c33225b26c21f2"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/custom_final_all_sources_next_wave.rs",
+      "base_exists": true,
+      "base_sha256": "190438df0e7fc084ea7924e3ed762769159e2896d6e09e52a494b0409c9b9666",
+      "result_sha256": "a94ecb5c5c29d4dd80f9a3677adce2855b9dbaa30b7bd530d2fd35b77a8a4ace"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/custom_gestalt_merge.rs",
+      "base_exists": true,
+      "base_sha256": "ed033f15dc6078c0db4afb0abf2d087859aabbcabccd7da8c8140b9c1a9f23be",
+      "result_sha256": "8772941c295893768a8d6edc18d1b7d73191ae7872341ba76471fc573db8233b"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/custom_inscribe_whole_sources.rs",
+      "base_exists": true,
+      "base_sha256": "323b2856f1708d7d39a68571efe36879782a9cd9c87971bdfb218858a93d2444",
+      "result_sha256": "096c16cbab83ed89759698d22218c820aad10f72a555bd6be950483e439bb4e7"
+    },
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/custom_module.rs",
+      "base_exists": true,
+      "base_sha256": "41f140629c5011dd350a8cf8f50825852be010ffa02bf90f56625841758f7ae5",
+      "result_sha256": "850a3d5a7a00449c2a47d40f5c4855c61fbb6122f22f66151ab923b4778a768f"
+    },
+    {
+      "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions/stack.rs",
+      "base_exists": true,
+      "base_sha256": "c8e6a67311aac0f5bd16823a6df7b3628077e28eb824540767a24c508ec7fd39",
+      "result_sha256": "6a198b1d8d8609dfdbbd72616024f49e822aa8205d3bec8e156f7496fcfb66d0"
+    },
+    {
+      "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions.rs",
+      "base_exists": true,
+      "base_sha256": "cd4add40955ecd6f3af9a5b43c5a3322fda9cc734d9741a2b471b3cbb987d595",
+      "result_sha256": "235016409e9f4ad5c79d8bb6a1c32634c491c56d9ddfb79cf9e610801fab5eda"
+    },
+    {
+      "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/effects.rs",
+      "base_exists": true,
+      "base_sha256": "1d41e774ee1b283d702baf7f0d61bfa90052bb0098e0dfa59eb9a4b2b1f13d02",
+      "result_sha256": "2c2a6958fb94495752d8032a36768a600b895780a09dc95569803e7d5c8565ea"
+    },
+    {
+      "path": "crates/ironsmith-core/src/effect/mana_damage_and_control.rs",
+      "base_exists": true,
+      "base_sha256": "2b856e68360b76f61e8af033b1442805ff7bb19137b558b37d8b40b299c808cb",
+      "result_sha256": "d04aa8ddc0298dcfece0a9d851d9c76ffd4fd6a951428749367853d0319397b8"
+    },
+    {
+      "path": "crates/ironsmith-core/src/effect.rs",
+      "base_exists": true,
+      "base_sha256": "51825adccdcb7309db8ddd5fa1b11bd87d595eb20cf8e1790c1b71fe192775b6",
+      "result_sha256": "8a8dee11fcefd04301d283b666607a13c8e194eabff6738e6c7f795d5b8f9051"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/decision/mana.rs",
+      "base_exists": true,
+      "base_sha256": "14d47cc56fcf52e4021fe3c4c0a95362c7e1f6b943e0667f9c55cb755093dbf0",
+      "result_sha256": "5dfcb217120b2b58240c2a0fda78e4345b6b4a1ddc6e69796f48c31c080ac40f"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/decision/types.rs",
+      "base_exists": true,
+      "base_sha256": "ed86eac4ad9fc06da63da3e55401bb90ee5395f3bbe32943025aa08ce79646ad",
+      "result_sha256": "2bef7f903164697cdf95ecacba0bdb6d0125e1b06cc1f50f9447a6f109c42a7a"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/effects/permanents/phase_out.rs",
+      "base_exists": true,
+      "base_sha256": "e76a4eb7720201c98ae5c56d0bc6a8a6e42027acb02a680a1ca6e0d6d65eb95b",
+      "result_sha256": "5c734d6c88301248c814134d49b3c3dd35dda544abc8e00abf20c5ec3070cbe5"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/effects/player/grant_next_spell_cost_reduction.rs",
+      "base_exists": true,
+      "base_sha256": "effb170676792e063b91203f6c939826f590016f34c63cedb6a793c4b29d9ff7",
+      "result_sha256": "621e6c89d7ba431d7e38b38ec0ff7d6ba6f2c7f99aa00e2651f8787bbd3a1c0a"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/game_loop/priority_mana.rs",
+      "base_exists": true,
+      "base_sha256": "910de3650290d07eecf46c991208ffe1ab0c4c5872f262da926d50354c951f31",
+      "result_sha256": "bcb96a49bc6f1a25ce1e61937edf9a323ee0a4145bd7ec720b71717785bd89a1"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/game_state/object_state_and_events.rs",
+      "base_exists": true,
+      "base_sha256": "1b166fa3b2d1c825990ea9a8afe9b022cf5aa8d06d83e8147cf4639b4ef87d23",
+      "result_sha256": "10dd0ab1f46ca749488c2a47398c291d39255ac472c2bd0e2bd86fc77a5070ca"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/game_state/phasing_transitions.rs",
+      "base_exists": true,
+      "base_sha256": "de3b62f89fb29cc7483863eeb230211457b9641bc34b7888c246508562bcf191",
+      "result_sha256": "22faff19072769119d41933d4b4504b0918d039a55282d6438d1fe285386ff19"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/game_state.rs",
+      "base_exists": true,
+      "base_sha256": "29e4ba98a30f77b46606b763c0259207e2bb87b5de79ad3e9ee070c573c5f20e",
+      "result_sha256": "5ebc9b510181ec0d7c190480e75d48d0f3844ba6be45b2c6c096962e30432131"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/turn.rs",
+      "base_exists": true,
+      "base_sha256": "67b0d14d5ab753c73e7a1654c854ce803b9e74761cf44f98676b458f6b3a7b44",
+      "result_sha256": "54ae442ed5f6f83cab10e18220cdc70fc03773fe68b259db965d3a81bfe6296f"
+    },
+    {
+      "path": "crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/early.rs",
+      "base_exists": true,
+      "base_sha256": "647305a8caf9d0fc8b955528590d00ea28fcbc0fdd6f4ecc76822e53c6c038ae",
+      "result_sha256": "5c402de6137536fd27da2f9e8ed50e58d619bc7ec42bdd434213d45356ac0bfd"
+    },
+    {
+      "path": "crates/ironsmith-text/src/compiled_text/render_effects/effect_impl/late.rs",
+      "base_exists": true,
+      "base_sha256": "68f2d6f172334b5dbc3c3f3b09b8876c3b5ea23556a9fc5b66785468f35a3346",
+      "result_sha256": "eb9f1d0b9dcde2ecdc1f74340df6cb081a6c0ce21ce219680dcd4f1709d95526"
+    }
+  ],
+  "targets_before": 300,
+  "targets_after": 300,
+  "schema": {
+    "artifact_format": 20,
+    "status": "Final effective model/source binding refresh deferred until parent compile sources stable; this is code-only finite6 input candidate"
+  },
+  "execution": "No builds/tests/materialization/live edits; static byte replay and hashes only",
+  "input_roles": {
+    "4ff921": "counter removal ordinal typed reader fix",
+    "cb32ee": "ordinary end-of-turn phasing duration",
+    "43c85": "exact completed collection/current-zone legality plus blocking query scenario contract",
+    "18eb39": "variable-X route diagnostic only, not a production repair or source success",
+    "f0d069": "Only Memories compound-duration diagnostic only, not a production repair or source success",
+    "ef39132": "missing reviewed next-actual-turn next-spell cost window"
+  }
+}

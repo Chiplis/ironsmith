@@ -1,0 +1,2138 @@
+{
+  "schema_version": 1,
+  "purpose": "Immutable raw source supplement to existing executable fixtures; not a second executable overlay.",
+  "families": [
+    {
+      "family": "prophecy",
+      "canonical_fixture_repository_path": "fixtures/custom_mechanics/msem-prophecy-source-complete.json",
+      "sources": [
+        {
+          "source_key": "msem:Dylso Charmer_OPH",
+          "catalog_index": 1430,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "n Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exil"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "2/2 white Cat creature token.\nProphecy {1}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Dylso Charmer",
+            "cardName": "Dylso Charmer",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Reflection Wizard",
+            "rarityLine": "*OPH C*",
+            "rulesText": "When Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "158",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Alexander Nanitchkov",
+            "sdn": 1584,
+            "key": "Dylso Charmer_OPH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Dylso Charmer_OPH",
+            "printKeys": [
+              "Dylso Charmer_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 1.927710843373494,
+            "pm": 2.188354826103947,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Dylso Charmer",
+              "rules_text": "When Dylso Charmer enters, if you cast it from exile, create a 2/2 white Cat creature token.\nProphecy {1}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Foretold Strength_OPH",
+          "catalog_index": 1451,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "s spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "ample until end of turn instead.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Foretold Strength",
+            "cardName": "Foretold Strength",
+            "manaCost": "{1}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH C*",
+            "rulesText": "Target creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "162",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "nakanoart",
+            "sdn": 1605,
+            "key": "Foretold Strength_OPH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "MS1"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Foretold Strength_OPH",
+            "printKeys": [
+              "Foretold Strength_OPH",
+              "Foretold Strength_MS1"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.5470887065259867,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Foretold Strength",
+              "rules_text": "Target creature gets +2/+2 until end of turn. If you cast this spell from exile, that creature gets +4/+4 and gains trample until end of turn instead.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Glintwing Replica_OPH",
+          "catalog_index": 1457,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exil"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": " Replica was cast from exile.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Glintwing Replica",
+            "cardName": "Glintwing Replica",
+            "manaCost": "{1}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH U*",
+            "rulesText": "Create a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "164",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "nakanoart",
+            "sdn": 1611,
+            "key": "Glintwing Replica_OPH",
+            "colorIdentity": [
+              "G",
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Glintwing Replica_OPH",
+            "printKeys": [
+              "Glintwing Replica_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 2.4691358024691357,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Glintwing Replica",
+              "rules_text": "Create a token that's a copy of target creature you control. Exile the token at the beginning of the next end step unless Glintwing Replica was cast from exile.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Moonwing Watcher_OPH",
+          "catalog_index": 1494,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "d of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "equal to that card's mana value.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Moonwing Watcher",
+            "cardName": "Moonwing Watcher",
+            "manaCost": "{2}{U}",
+            "typeLine": "Creature — Bird",
+            "rarityLine": "*OPH U*",
+            "rulesText": "Flying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "55",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "MademoiselleOrtie",
+            "sdn": 1648,
+            "key": "Moonwing Watcher_OPH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "MS1"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Moonwing Watcher_OPH",
+            "printKeys": [
+              "Moonwing Watcher_OPH",
+              "Moonwing Watcher_MS1"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Moonwing Watcher",
+              "rules_text": "Flying\n{1}{U}: Reveal the top card of your library. Moonwing Watcher's base power becomes equal to that card's mana value.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Proclaimed Cure_OPH",
+          "catalog_index": 1503,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "il end of turn. You gain 4 life.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Proclaimed Cure",
+            "cardName": "Proclaimed Cure",
+            "manaCost": "{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH C*",
+            "rulesText": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "172",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "nakanoart",
+            "sdn": 1657,
+            "key": "Proclaimed Cure_OPH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Proclaimed Cure_OPH",
+            "printKeys": [
+              "Proclaimed Cure_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.15631105900742479,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Proclaimed Cure",
+              "rules_text": "Target creature gains indestructible until end of turn. You gain 4 life.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Promised Seeker_OPH",
+          "catalog_index": 1504,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "er gets +3/+3 until end of turn.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Promised Seeker",
+            "cardName": "Promised Seeker",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Elf Mystic",
+            "rarityLine": "*OPH U*",
+            "rulesText": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "173",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Michael Gauss",
+            "sdn": 1658,
+            "key": "Promised Seeker_OPH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "MS1"
+            ],
+            "rarities": [
+              "uncommon",
+              "common"
+            ],
+            "firstPrint": "Promised Seeker_OPH",
+            "printKeys": [
+              "Promised Seeker_OPH",
+              "Promised Seeker_MS1"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 1.927710843373494,
+            "pm": 1.4067995310668229,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Promised Seeker",
+              "rules_text": "Whenever you cast a spell from exile, Promised Seeker gets +3/+3 until end of turn.\nProphecy {G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Prophecized Plating_OPH",
+          "catalog_index": 1506,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "Flying\nProphecy {2} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "Flying\nProphecy {2} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "cardName",
+              "matched": "Prophecized",
+              "context": "Prophecized Plating"
+            },
+            {
+              "field": "fullName",
+              "matched": "Prophecized",
+              "context": "Prophecized Plating"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Prophecized Plating",
+            "cardName": "Prophecized Plating",
+            "manaCost": "{6}",
+            "typeLine": "Artifact Creature — Construct",
+            "rarityLine": "*OPH C*",
+            "rulesText": "Flying\nProphecy {2} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "",
+            "cmc": 6,
+            "cardType": "Artifact Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "208",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "wacalac",
+            "sdn": 1660,
+            "key": "Prophecized Plating_OPH",
+            "colorIdentity": [],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Prophecized Plating_OPH",
+            "printKeys": [
+              "Prophecized Plating_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0.4819277108433735,
+            "pm": 0.31262211801484957,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Prophecized Plating",
+              "rules_text": "Flying\nProphecy {2} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Reflected Moment_OPH",
+          "catalog_index": 1514,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "tra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's e"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": " its owner's main library.\nProphecy {6}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Reflected Moment",
+            "cardName": "Reflected Moment",
+            "manaCost": "{4}{U}{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*OPH M*",
+            "rulesText": "Take an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 6,
+            "cardType": "Sorcery",
+            "rarity": "mythic rare",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "60",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "yuumei",
+            "sdn": 1668,
+            "key": "Reflected Moment_OPH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "MS1",
+              "MC25",
+              "MPS_MSE",
+              "CHAMPIONS",
+              "LAIR"
+            ],
+            "rarities": [
+              "mythic rare",
+              "rare",
+              "masterpiece"
+            ],
+            "firstPrint": "Reflected Moment_OPH",
+            "printKeys": [
+              "Reflected Moment_OPH",
+              "Reflected Moment_MS1",
+              "Reflected Moment_MC25",
+              "Reflected Moment_MPS_MSE",
+              "Reflected Moment_CHAMPIONS",
+              "Reflected Moment (SL139)_LAIR",
+              "Reflected Moment (SL154)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 31.372549019607842,
+            "pm": 86.41975308641975,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Reflected Moment",
+              "rules_text": "Take an extra turn after this one. If this spell was cast from exile, take two extra turns after this one instead. Shuffle Reflected Moment into its owner's main library.\nProphecy {6}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Reins of Influence_OPH",
+          "catalog_index": 1516,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "ent until end of turn. Untap it.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Reins of Influence",
+            "cardName": "Reins of Influence",
+            "manaCost": "{1}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH C*",
+            "rulesText": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "61",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Momo-Deary",
+            "sdn": 1670,
+            "key": "Reins of Influence_OPH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Reins of Influence_OPH",
+            "printKeys": [
+              "Reins of Influence_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 3.292181069958848,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Reins of Influence",
+              "rules_text": "Gain control of target noncreature permanent until end of turn. Untap it.\nProphecy {U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Reweave Reality_OPH",
+          "catalog_index": 1518,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "ery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's e"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": " new targets for the copy.\nProphecy {2}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Reweave Reality",
+            "cardName": "Reweave Reality",
+            "manaCost": "{1}{U}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH R*",
+            "rulesText": "Choose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "63",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "MademoiselleOrtie",
+            "sdn": 1672,
+            "key": "Reweave Reality_OPH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "LAIR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Reweave Reality_OPH",
+            "printKeys": [
+              "Reweave Reality_OPH",
+              "Reweave Reality (SL106)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "reworked",
+              "nerfed"
+            ],
+            "pr": 11.566265060240964,
+            "pm": 12.661195779601407,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Reweave Reality",
+              "rules_text": "Choose target spell. If it's an instant, a sorcery, or you cast this spell from exile, copy it. You may choose new targets for the copy.\nProphecy {2}{U}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Sodden Sorrow_OPH",
+          "catalog_index": 1542,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": " Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exil"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "this way to its owner's hand.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Sodden Sorrow",
+            "cardName": "Sodden Sorrow",
+            "manaCost": "{3}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH U*",
+            "rulesText": "Target player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 4,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "67",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Sayuri1314",
+            "sdn": 1696,
+            "key": "Sodden Sorrow_OPH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Sodden Sorrow_OPH",
+            "printKeys": [
+              "Sodden Sorrow_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Sodden Sorrow",
+              "rules_text": "Target player mills six cards. Return each creature that shares a name with a card milled this way to its owner's hand.\nProphecy {1}{U} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Stormwing Raven_OPH",
+          "catalog_index": 1552,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "Flying\nProphecy {0} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "Flying\nProphecy {0} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Stormwing Raven",
+            "cardName": "Stormwing Raven",
+            "manaCost": "{1}{U}",
+            "typeLine": "Creature — Bird",
+            "rarityLine": "*OPH C*",
+            "rulesText": "Flying\nProphecy {0} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "*Some storms can't be weathered.*\n",
+            "power": "1",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "68",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Mika Koskensalmi",
+            "sdn": 1706,
+            "key": "Stormwing Raven_OPH",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "MS1"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Stormwing Raven_OPH",
+            "printKeys": [
+              "Stormwing Raven_OPH",
+              "Stormwing Raven_MS1"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 2.4691358024691357,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Stormwing Raven",
+              "rules_text": "Flying\nProphecy {0} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Summoner's Call_OPH",
+          "catalog_index": 1555,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "na value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exil"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "the rest into your graveyard.\nProphecy {2}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Summoner's Call",
+            "cardName": "Summoner's Call",
+            "manaCost": "{3}{G}",
+            "typeLine": "Instant",
+            "rarityLine": "*OPH R*",
+            "rulesText": "Reveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "178",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Fran-Hdez",
+            "sdn": 1709,
+            "key": "Summoner's Call_OPH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Summoner's Call_OPH",
+            "printKeys": [
+              "Summoner's Call_OPH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.855421686746988,
+            "pm": 3.7514654161781946,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Summoner's Call",
+              "rules_text": "Reveal the top four cards of your library. Put up to two creature cards with mana value 3 or less from among them onto the battlefield and the rest into your graveyard.\nProphecy {2}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Supreme Stampede_OPH",
+          "catalog_index": 1556,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "t this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's e"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "l +2/+2 until end of turn.\nProphecy {2}{G}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Supreme Stampede",
+            "cardName": "Supreme Stampede",
+            "manaCost": "{2}{G}{G}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*OPH R*",
+            "rulesText": "Creatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "OPH",
+            "cardID": "179",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Ben Wootten",
+            "sdn": 1710,
+            "key": "Supreme Stampede_OPH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OPH",
+              "MSL"
+            ],
+            "rarities": [
+              "rare",
+              "uncommon"
+            ],
+            "firstPrint": "Supreme Stampede_OPH",
+            "printKeys": [
+              "Supreme Stampede_OPH",
+              "Supreme Stampede_MSL"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.3734939759036147,
+            "pm": 3.59515435717077,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Supreme Stampede",
+              "rules_text": "Creatures you control get +2/+2 and gain trample until end of turn. If you cast this spell from exile, creatures you control get an additional +2/+2 until end of turn.\nProphecy {2}{G}{G} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Fortunous Flames_OTH",
+          "catalog_index": 10054,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Prophecy",
+              "context": "rwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled."
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "a card from your hand at random.\nProphecy {R} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "prophecy",
+              "context": "you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Fortunous Flames",
+            "cardName": "Fortunous Flames",
+            "manaCost": "{1}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*OTH U*",
+            "rulesText": "If you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "OTH",
+            "cardID": "163",
+            "designer": "Matt & DrChillbrain",
+            "script": "",
+            "notes": [],
+            "artist": "telaga",
+            "sdn": 12736,
+            "key": "Fortunous Flames_OTH",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OTH"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Fortunous Flames_OTH",
+            "printKeys": [
+              "Fortunous Flames_OTH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 1.4534883720930232,
+            "pm": 2.720605630470783,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Fortunous Flames",
+              "rules_text": "If you cast this spell from exile, it deals 7 damage to target creature. Otherwise, return Fortunous Flames to your hand, then reveal a card from your hand at random.\nProphecy {R} *(Once each turn, you may exile a card with prophecy as you reveal it. When you do, you may cast it for its prophecy cost as long as it's exiled.)*"
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        }
+      ]
+    },
+    {
+      "family": "reverberate",
+      "canonical_fixture_repository_path": "fixtures/custom_mechanics/msem-reverberate-emblem-source.json",
+      "sources": [
+        {
+          "source_key": "msem:Lafterii Ingenuity_AFM",
+          "catalog_index": 123,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Lafterii Ingenuity",
+            "cardName": "Lafterii Ingenuity",
+            "manaCost": "{2}{U}{R}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*AFM R*",
+            "rulesText": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue/Red} ",
+            "cmc": 4,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "AFM",
+            "cardID": "212",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "theTelekinesis",
+            "sdn": 224,
+            "key": "Lafterii Ingenuity_AFM",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "AFM"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Lafterii Ingenuity_AFM",
+            "printKeys": [
+              "Lafterii Ingenuity_AFM"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Lafterii Ingenuity",
+              "rules_text": "Instant and sorcery spells you cast cost {1} less to cast.\nReprise and reverberate costs you activate cost up to {1} less.\nExile an instant or sorcery card from your graveyard: Add {U} or {R}. Spend this mana only to cast an instant or sorcery spell. Activate only once each turn."
+            }
+          ],
+          "roles": [
+            "named-price modifier",
+            "independent total spell-price modifier",
+            "restricted mana activation"
+          ]
+        },
+        {
+          "source_key": "msem:Controlled Decisions_KZD",
+          "catalog_index": 903,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Controlled Decisions",
+            "cardName": "Controlled Decisions",
+            "manaCost": "{1}{U}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KZD C*",
+            "rulesText": "Reverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue/Red} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "173",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "caiomm",
+            "sdn": 1036,
+            "key": "Controlled Decisions_KZD",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Controlled Decisions_KZD",
+            "printKeys": [
+              "Controlled Decisions_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Controlled Decisions",
+              "rules_text": "Reverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Elementalize_KZD",
+          "catalog_index": 932,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {1}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nUntil end of turn, target cre"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {1}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power "
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Elementalize",
+            "cardName": "Elementalize",
+            "manaCost": "{1}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*KZD U*",
+            "rulesText": "Reverberate {1}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "44",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "88grzes",
+            "sdn": 1065,
+            "key": "Elementalize_KZD",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Elementalize_KZD",
+            "printKeys": [
+              "Elementalize_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Elementalize",
+              "rules_text": "Reverberate {1}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nUntil end of turn, target creature loses all abilities and becomes a blue Elemental with base power and toughness 3/3."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Lafterii Trickery_KZD",
+          "catalog_index": 992,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {2}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature gets +0/+3 an"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {2}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature gets +0/+3 and gains hexproof until end of turn."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Lafterii Trickery",
+            "cardName": "Lafterii Trickery",
+            "manaCost": "{1}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*KZD C*",
+            "rulesText": "Reverberate {2}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature gets +0/+3 and gains hexproof until end of turn.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "54",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "Brolken",
+            "sdn": 1133,
+            "key": "Lafterii Trickery_KZD",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Lafterii Trickery_KZD",
+            "printKeys": [
+              "Lafterii Trickery_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Lafterii Trickery",
+              "rules_text": "Reverberate {2}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature gets +0/+3 and gains hexproof until end of turn."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Memories Reignited_KZD",
+          "catalog_index": 1000,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {2}{U}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nExile target instant or so"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {2}{U}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without p"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Memories Reignited",
+            "cardName": "Memories Reignited",
+            "manaCost": "{3}{U}{R}",
+            "typeLine": "Instant",
+            "rarityLine": "*KZD U*",
+            "rulesText": "Reverberate {2}{U}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue/Red} ",
+            "cmc": 5,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "196",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "ertacaltinoz",
+            "sdn": 1141,
+            "key": "Memories Reignited_KZD",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD",
+              "LAIR"
+            ],
+            "rarities": [
+              "uncommon",
+              "rare"
+            ],
+            "firstPrint": "Memories Reignited_KZD",
+            "printKeys": [
+              "Memories Reignited_KZD",
+              "Memories Reignited (SL97)_LAIR",
+              "Memories Reignited (SL140)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 2.891566265060241,
+            "pm": 7.424775302852677,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Memories Reignited",
+              "rules_text": "Reverberate {2}{U}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nExile target instant or sorcery card from your graveyard. You may cast a copy of that card without paying its mana cost."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Merkurio Zellurys_KZD",
+          "catalog_index": 1004,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "red mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "rberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Merkurio Zellurys",
+            "cardName": "Merkurio Zellurys",
+            "manaCost": "{1}{U}{R}",
+            "typeLine": "Legendary Planeswalker — Merkurio",
+            "rarityLine": "*KZD M*",
+            "rulesText": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "3",
+            "color": "{Blue/Red} ",
+            "cmc": 3,
+            "cardType": " Planeswalker",
+            "rarity": "mythic rare",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "197",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "godofwar",
+            "sdn": 1143,
+            "key": "Merkurio Zellurys_KZD",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "mythic rare"
+            ],
+            "firstPrint": "Merkurio Zellurys_KZD",
+            "printKeys": [
+              "Merkurio Zellurys_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Merkurio Zellurys",
+              "rules_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*"
+            }
+          ],
+          "roles": [
+            "emblem grant",
+            "recipient mana-value price"
+          ]
+        },
+        {
+          "source_key": "msem:Mirror Image_KZD",
+          "catalog_index": 1006,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nCreate a token that's a copy "
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nCreate a token that's a copy of target creature you control."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Mirror Image",
+            "cardName": "Mirror Image",
+            "manaCost": "{1}{U}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*KZD R*",
+            "rulesText": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nCreate a token that's a copy of target creature you control.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "56",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "chichibio",
+            "sdn": 1147,
+            "key": "Mirror Image_KZD",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "ctags": [
+              "conflict"
+            ],
+            "prints": [
+              "KZD",
+              "MSL"
+            ],
+            "rarities": [
+              "rare",
+              "uncommon"
+            ],
+            "firstPrint": "Mirror Image_KZD",
+            "printKeys": [
+              "Mirror Image_KZD",
+              "Mirror Image_MSL"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 3.1262211801484954,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Mirror Image",
+              "rules_text": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nCreate a token that's a copy of target creature you control."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Quiet Meditation_KZD",
+          "catalog_index": 1030,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card."
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Quiet Meditation",
+            "cardName": "Quiet Meditation",
+            "manaCost": "{U}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KZD C*",
+            "rulesText": "Reverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card.",
+            "flavorText": "*“We may be pretty similar, but I have something you'll never master: patience.”\n—Logayr, to Merkurio*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "57",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "TSRodriguez",
+            "sdn": 1179,
+            "key": "Quiet Meditation_KZD",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Quiet Meditation_KZD",
+            "printKeys": [
+              "Quiet Meditation_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Quiet Meditation",
+              "rules_text": "Reverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Searing Pulse_KZD",
+          "catalog_index": 1051,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {3}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nSearing Pulse deals 2 damage "
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {3}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nSearing Pulse deals 2 damage to any target."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Searing Pulse",
+            "cardName": "Searing Pulse",
+            "manaCost": "{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KZD C*",
+            "rulesText": "Reverberate {3}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nSearing Pulse deals 2 damage to any target.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "123",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "dekades8",
+            "sdn": 1200,
+            "key": "Searing Pulse_KZD",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Searing Pulse_KZD",
+            "printKeys": [
+              "Searing Pulse_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0.4819277108433735,
+            "pm": 0.3907776475185619,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Searing Pulse",
+              "rules_text": "Reverberate {3}{R} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nSearing Pulse deals 2 damage to any target."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Unstable Experiment_KZD",
+          "catalog_index": 1097,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {2}{R} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nCreatures your opponents control get -2/-0 until end of turn. If Unsta"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {2}{R} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until e"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberated",
+              "context": "*\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Unstable Experiment",
+            "cardName": "Unstable Experiment",
+            "manaCost": "{2}{U}",
+            "typeLine": "Instant",
+            "rarityLine": "*KZD U*",
+            "rulesText": "Reverberate {2}{R} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 3,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "63",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "viktoriyarova",
+            "sdn": 1250,
+            "key": "Unstable Experiment_KZD",
+            "colorIdentity": [
+              "U",
+              "R"
+            ],
+            "spellbook": [],
+            "ctags": [
+              "conflict"
+            ],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Unstable Experiment_KZD",
+            "printKeys": [
+              "Unstable Experiment_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Unstable Experiment",
+              "rules_text": "Reverberate {2}{R} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nCreatures your opponents control get -2/-0 until end of turn. If Unstable Experiment is reverberated, creatures you control get +1/+0 until end of turn."
+            }
+          ],
+          "roles": [
+            "declaration",
+            "copy-status consumer"
+          ]
+        },
+        {
+          "source_key": "msem:Violent Spasm_KZD",
+          "catalog_index": 1102,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nIf Violent Spasm is reverberated, creatures you control gain flying un"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without "
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberated",
+              "context": "When you cast this spell, copy it if you paid its reverberate cost.)*\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Violent Spasm",
+            "cardName": "Violent Spasm",
+            "manaCost": "{1}{R}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*KZD U*",
+            "rulesText": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Sorcery",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "KZD",
+            "cardID": "128",
+            "designer": "Korakhos",
+            "script": "",
+            "notes": [],
+            "artist": "artofjosevega",
+            "sdn": 1255,
+            "key": "Violent Spasm_KZD",
+            "colorIdentity": [
+              "R",
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "KZD"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Violent Spasm_KZD",
+            "printKeys": [
+              "Violent Spasm_KZD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Violent Spasm",
+              "rules_text": "Reverberate {3}{U} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nIf Violent Spasm is reverberated, creatures you control gain flying until end of turn. Violent Spasm deals 1 damage to each creature without flying."
+            }
+          ],
+          "roles": [
+            "declaration",
+            "copy-status consumer"
+          ]
+        },
+        {
+          "source_key": "msem:Noxious Upwelling_HZN",
+          "catalog_index": 8889,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate—Sacrifice a Swamp. *(When you cast this spell, copy it if you paid its reverberate cost.)*\nAll creatures get -2/-2 until end of turn."
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate—Sacrifice a Swamp. *(When you cast this spell, copy it if you paid its reverberate cost.)*\nAll creatures get -2/-2 until end of turn."
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Noxious Upwelling",
+            "cardName": "Noxious Upwelling",
+            "manaCost": "{1}{B}{B}",
+            "typeLine": "Sorcery",
+            "rarityLine": "*HZN R*",
+            "rulesText": "Reverberate—Sacrifice a Swamp. *(When you cast this spell, copy it if you paid its reverberate cost.)*\nAll creatures get -2/-2 until end of turn.",
+            "flavorText": "*“No, I didn't see anything weird. It was probably just swamp gas.”\n—Telam, last words*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 3,
+            "cardType": "Sorcery",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "HZN",
+            "cardID": "24",
+            "designer": "NazSmith",
+            "script": "",
+            "notes": [],
+            "artist": "kvacm",
+            "sdn": 9315,
+            "key": "Noxious Upwelling_HZN",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "HZN",
+              "MC25",
+              "LAIR"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Noxious Upwelling_HZN",
+            "printKeys": [
+              "Noxious Upwelling_HZN",
+              "Noxious Upwelling_MC25",
+              "Noxious Upwelling (SL50)_LAIR"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 3.292181069958848,
+            "psr": 0,
+            "psm": 0
+          },
+          "faces": [
+            {
+              "name": "Noxious Upwelling",
+              "rules_text": "Reverberate—Sacrifice a Swamp. *(When you cast this spell, copy it if you paid its reverberate cost.)*\nAll creatures get -2/-2 until end of turn."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        },
+        {
+          "source_key": "msem:Mystical Echo_OTH",
+          "catalog_index": 10147,
+          "matches": [
+            {
+              "field": "rulesText",
+              "matched": "Reverberate",
+              "context": "Reverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+"
+            },
+            {
+              "field": "rulesText",
+              "matched": "reverberate",
+              "context": "Reverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, R"
+            }
+          ],
+          "source_original_fields": {
+            "fullName": "Mystical Echo",
+            "cardName": "Mystical Echo",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Cat Reflection",
+            "rarityLine": "*OTH R*",
+            "rulesText": "Reverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "OTH",
+            "cardID": "220",
+            "designer": "Matt & DrChillbrain",
+            "script": "",
+            "notes": [],
+            "artist": "Tyler West Studios",
+            "sdn": 12784,
+            "key": "Mystical Echo_OTH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OTH"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Mystical Echo_OTH",
+            "printKeys": [
+              "Mystical Echo_OTH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "faces": [
+            {
+              "name": "Mystical Echo",
+              "rules_text": "Reverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn."
+            }
+          ],
+          "roles": [
+            "declaration"
+          ]
+        }
+      ]
+    }
+  ]
+}

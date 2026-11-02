@@ -93,8 +93,21 @@ fn control(game: &mut GameState, source: ObjectId, player: PlayerId) {
 
 #[test]
 fn whole_body_retains_both_independent_restrictions_and_the_exact_private_pair() {
-    for definition in definitions() {
-        assert_eq!(definition.abilities.len(), 4);
+    for (route, definition) in definitions().into_iter().enumerate() {
+        let typed_abilities = definition.abilities.iter().enumerate().map(|(slot, ability)| {
+            let header=format!("slot={slot} designations={:?} zones={:?}",ability.designations,ability.functional_zones);
+            match &ability.kind {
+                AbilityKind::Static(static_ability) => format!(
+                    "{header} STATIC id={:?} model={:#?} grant={:#?} restrictions={:#?} native={static_ability:#?}",
+                    static_ability.id(),static_ability.compiled_model(),static_ability.grant_spec(),static_ability.rule_restriction_parts()),
+                AbilityKind::Triggered(triggered) => format!(
+                    "{header} TRIGGERED trigger={:#?} trigger_model={:#?} linked_pair={:?} program={:#?}",
+                    triggered.trigger,triggered.trigger.compiled_model(),triggered.effects.linked_exile_pair,triggered.effects),
+                AbilityKind::Activated(activated) => format!("{header} ACTIVATED {activated:#?}"),
+            }
+        }).collect::<Vec<_>>().join("\n");
+        assert_eq!(definition.abilities.len(), 4,
+            "Colfenor full-body typed shape, route={route} (0=independent native,1=artifact); do not relax the exact four-ability contract:\n{typed_abilities}");
         assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
         let trigger = definition.abilities.iter().find_map(|ability| match &ability.kind {
             AbilityKind::Triggered(trigger) => Some(trigger), _ => None,

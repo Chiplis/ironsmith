@@ -6,7 +6,7 @@ import {expandActionParameterDeclarations} from '../src/lib/reminder-action-para
 const definition = () => validateMechanic({keyword:'Pressure {Player}', reminder:'{Player} loses 3 life unless they discard a card or sacrifice a nonland permanent.'});
 test('player action repetition announces one target before the complete repeated body', () => {
   const text = expandActionParameterDeclarations('Pressure target player three times.', definition());
-  assert.equal(text, 'Choose target player. that player loses 3 life unless they discard a card or sacrifice a nonland permanent. that player loses 3 life unless they discard a card or sacrifice a nonland permanent. that player loses 3 life unless they discard a card or sacrifice a nonland permanent.');
+  assert.equal(text, 'For each target player, do the following: [that player loses 3 life unless they discard a card or sacrifice a nonland permanent; that player loses 3 life unless they discard a card or sacrifice a nonland permanent; that player loses 3 life unless they discard a card or sacrifice a nonland permanent].');
   assert.equal((text.match(/target player/g) || []).length, 1);
   assert.equal((text.match(/unless/g) || []).length, 3);
 });
@@ -21,8 +21,14 @@ test('player layouts preserve source display and custom identity without officia
   assert.deepEqual(face.customKeywordIdentities,['pressure']);
   assert.equal((face.oracleText.match(/target player/g)||[]).length,1);
 });
+test('explicit self player operands bind the same complete non-targeted action', () => {
+  for (const operand of ['yourself','you']) {
+    assert.equal(expandActionParameterDeclarations(`Pressure ${operand}.`,definition()),
+      'you lose 3 life unless you discard a card or sacrifice a nonland permanent.');
+  }
+});
 test('unsupported actor, repetition, quotation and cost contexts stay authored', () => {
-  for (const text of ['Pressure target creature twice.','Pressure target player 33 times.','Pressure target player 0 times.','Pressure target player X times.','Pressure yourself.','This creature has "Pressure target player twice."','As an additional cost to cast this spell, pressure target player twice.']) {
+  for (const text of ['Pressure target creature twice.','Pressure target player 33 times.','Pressure target player 0 times.','Pressure target player X times.','Pressure an opponent.','This creature has "Pressure target player twice."','As an additional cost to cast this spell, pressure target player twice.']) {
     assert.equal(expandActionParameterDeclarations(text,definition()),text);
   }
   const multi=validateMechanic({keyword:'Ritual {Player}',reminder:'{Player} draws a card. They gain 1 life.'});
@@ -37,6 +43,6 @@ test('player operand validation does not broaden permanent operands or mix indep
 test('a prior independent casting cost does not suppress a following effect action', () => {
   const text='As an additional cost to cast this spell, sacrifice a creature.\nPressure target player twice.';
   const expanded=expandActionParameterDeclarations(text,definition());
-  assert.match(expanded,/sacrifice a creature\.\nChoose target player\./);
+  assert.match(expanded,/sacrifice a creature\.\nFor each target player, do the following:/);
   assert.equal((expanded.match(/target player/g)||[]).length,1);
 });

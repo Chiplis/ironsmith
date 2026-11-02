@@ -1205,6 +1205,7 @@ fn planned_mana_source_views(
             ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (source, "improvise"),
             ironsmith::mana_payment::PlannedPipPayment::Delve(source) => (source, "delve"),
             ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => (source, "waterbend"),
+            ironsmith::mana_payment::PlannedPipPayment::PutMinusOneCounter(source) => (source, "put_minus_one_counter"),
             _ => continue,
         };
         if sources
@@ -1278,6 +1279,9 @@ fn planned_pip_allocation_views(
                 ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
                     ("waterbend".to_string(), Some(source.0.to_string()), None, None)
                 }
+                ironsmith::mana_payment::PlannedPipPayment::PutMinusOneCounter(source) => {
+                    ("put_minus_one_counter".to_string(), Some(source.0.to_string()), None, None)
+                }
                 ironsmith::mana_payment::PlannedPipPayment::Delve(source) => {
                     ("delve".to_string(), Some(source.0.to_string()), None, None)
                 }
@@ -1315,7 +1319,7 @@ fn available_mana_source_views(
             payment_kinds: source
                 .kinds
                 .into_iter()
-                .map(|kind| format!("{kind:?}").to_ascii_lowercase())
+                .map(|kind| if kind == ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter { "put_minus_one_counter".into() } else { format!("{kind:?}").to_ascii_lowercase() })
                 .collect(),
         })
         .collect()
@@ -2155,8 +2159,10 @@ impl WasmGame {
     fn update_crypto_requirements_from(&mut self, before: CryptoAuditState) {
         let audit_game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
         let after = self.capture_crypto_audit_state_for(audit_game);
-        let mut requirements = Vec::new();
-        let mut seen = HashSet::new();
+        let mut requirements = if self.previewing_crypto_requirements {
+            self.last_crypto_requirements.iter().filter(|requirement| requirement.reason.as_deref() == Some(PRIVATE_COST_SOURCE_OPENING_REASON)).cloned().collect::<Vec<_>>()
+        } else { Vec::new() };
+        let mut seen = requirements.iter().map(|requirement|requirement.id.clone()).collect::<HashSet<_>>();
         let operations = audit_game.crypto_audit_operations_since(before.operation_checkpoint);
         let mut journaled_shuffle_players = HashSet::new();
         let mut journaled_random_delta = 0u64;
@@ -2758,6 +2764,16 @@ enum PriorityActionRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct PrivateCostReservationRef {
+    actor: u8,
+    source_stable_id: u64,
+    hidden_incarnation: Option<u64>,
+    cost: serde_json::Value,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    grant_identity: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum SpecialActionRef {
     PlayLand {
@@ -2805,6 +2821,12 @@ enum SpecialActionRef {
         source_id: u64,
         ability_index: usize,
     },
+    PerformIntrinsicAction {
+        source_id: u64,
+        ability_index: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost_reservation: Option<PrivateCostReservationRef>,
+    },
     PayDelayedTrigger {
         delayed_trigger_index: usize,
     },
@@ -2813,6 +2835,14 @@ enum SpecialActionRef {
     },
     DiscardFromHand {
         card_id: u64,
+    },
+    PrepareExile { card_id: u64, method_index: usize, preparation: ironsmith::alternative_cast::ExilePreparation,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost_reservation: Option<PrivateCostReservationRef>,
+    },
+    PrepareGrantedExile { card_id: u64, grant: GrantSelectionRef, preparation: ironsmith::alternative_cast::ExilePreparation,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost_reservation: Option<PrivateCostReservationRef>,
     },
 }
 
@@ -2954,6 +2984,7 @@ struct TargetRequirementView {
     description: String,
     min_targets: usize,
     max_targets: Option<usize>,
+    additional_target_budget: usize,
     legal_targets: Vec<TargetChoiceView>,
 }
 
@@ -3883,6 +3914,7 @@ impl DecisionView {
                         description: req.description.clone(),
                         min_targets: req.min_targets,
                         max_targets: req.max_targets,
+                        additional_target_budget: req.additional_target_budget,
                         legal_targets: req
                             .legal_targets
                             .iter()
@@ -4189,6 +4221,7 @@ impl ManaPaymentAlternativeCommand {
             "improvise" => ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
             "delve" => ironsmith::mana_payment::ManaPaymentSourceKind::Delve,
             "waterbend" => ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
+            "put_minus_one_counter" => ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter,
             other => {
                 return Err(JsValue::from_str(&format!(
                     "invalid mana payment alternative kind: {other}"
@@ -4294,6 +4327,8 @@ enum ReplayRoot {
         zone: Zone,
         skip_triggers: bool,
     },
+    /// Isolated cost answers; only authenticated final source replay commits.
+    PrivateHandSpecialAction(ironsmith::special_actions::private_cost_admission::PrivateCostReservation),
 }
 
 #[derive(Debug, Clone)]
@@ -4341,6 +4376,7 @@ fn ui_command_kind(command: &UiCommand) -> &'static str {
 fn replay_root_kind(root: &ReplayRoot) -> &'static str {
     match root {
         ReplayRoot::Response(_) => "response",
+        ReplayRoot::PrivateHandSpecialAction(_) => "private_hand_special_action",
         ReplayRoot::Advance => "advance",
         ReplayRoot::AddCardToZone { .. } => "add_card_to_zone",
         ReplayRoot::ForceTurnFaceUp { .. } => "force_turn_face_up",
@@ -4969,6 +5005,8 @@ pub struct WasmGame {
     loaded_decks: Vec<Vec<String>>,
     /// Browser-loaded card source parse blocks, keyed by normalized lookup name.
     external_parse_sources: HashMap<String, (String, String)>,
+    original_printed_card_sources: HashMap<ironsmith::ids::CardId, String>,
+    pending_setup_shuffles: Vec<PlayerId>,
     /// Browser-loaded compile errors for card groups that were present but not usable.
     external_compile_errors: HashMap<String, String>,
     /// Browser-loaded semantic scores for card names and aliases.
@@ -5211,6 +5249,10 @@ impl CustomCardLayoutInput {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomKeywordCounterDefinitionInput { name: String, reminder: String }
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct CustomCardFaceInput {
@@ -5223,9 +5265,14 @@ struct CustomCardFaceInput {
     /// optional or alternative payment ("a spell using <keyword>").
     #[serde(default)]
     custom_keyword_payments: Vec<String>,
+    #[serde(default)]
+    custom_keyword_counter_definitions: Vec<CustomKeywordCounterDefinitionInput>,
     /// Authored custom-mechanic surface, separate from its strictly compiled expansion.
     #[serde(default)]
     display_oracle_text: Option<String>,
+    /// Immutable authored source, before custom mechanic expansion.
+    #[serde(default)]
+    original_printed_rules_text: Option<String>,
     #[serde(default)]
     mana_cost: Option<String>,
     #[serde(default)]
@@ -5252,9 +5299,21 @@ fn default_claim_enforcement() -> bool {
     true
 }
 
+#[derive(Debug,Clone,Serialize,Deserialize)]
+#[serde(rename_all="camelCase")]
+struct SuppliedCardDefinitionInput {
+ #[serde(flatten)]metadata:serde_json::Map<String,serde_json::Value>,
+ name:String,text:String,
+ #[serde(default,alias="custom_keyword_identities")]custom_keyword_identities:Vec<String>,
+ #[serde(default,alias="custom_keyword_payments")]custom_keyword_payments:Vec<String>,
+ #[serde(default,alias="custom_subtypes")]custom_subtypes:Vec<ironsmith_core::custom_subtypes::CustomSubtypeDefinition>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CustomCardInput {
+    #[serde(default)]
+    supplied_card_definitions:Vec<SuppliedCardDefinitionInput>,
     #[serde(default)]
     custom_subtypes: Vec<ironsmith_core::custom_subtypes::CustomSubtypeDefinition>,
     #[serde(default = "default_claim_enforcement")]
@@ -5864,6 +5923,12 @@ struct PregameState {
     format: MatchFormatInput,
     mulligans_taken: HashMap<PlayerId, u32>,
     used_opening_actions: HashSet<(ObjectId, usize)>,
+    chosen_setup: Option<ironsmith::pregame_setup::PregameSetupSession>,
+    pending_chosen_exchange: Option<(PlayerId, ObjectId, String)>,
+    chosen_deferred_shuffles: Vec<PlayerId>,
+    source_setup_answers: Vec<ReplayDecisionAnswer>,
+    source_setup_context: Option<DecisionContext>,
+    source_setup_counters: Option<ironsmith::ids::IdCountersSnapshot>,
     stage: PregameStage,
 }
 
@@ -5876,6 +5941,8 @@ struct PendingPregameHandExile {
 
 #[derive(Debug, Clone)]
 enum PregameStage {
+    SourceSetupPrograms { queue: Vec<(PlayerId,ObjectId,usize)>, sticker_sheets: Vec<(PlayerId,Vec<String>)> },
+    ChosenOutsideCards { queue: Vec<(PlayerId, String, Vec<(ObjectId, usize)>)>, sticker_sheets: Vec<(PlayerId, Vec<String>)> },
     MulliganDecision {
         undecided_players: Vec<PlayerId>,
         round_mulliganers: Vec<PlayerId>,
@@ -5927,6 +5994,12 @@ impl PregameState {
             format,
             mulligans_taken: HashMap::new(),
             used_opening_actions: HashSet::new(),
+            chosen_setup: None,
+            pending_chosen_exchange: None,
+            chosen_deferred_shuffles: Vec::new(),
+            source_setup_answers: Vec::new(),
+            source_setup_context: None,
+            source_setup_counters: None,
             stage: PregameStage::MulliganDecision {
                 undecided_players: turn_order.to_vec(),
                 round_mulliganers: Vec::new(),
@@ -7300,6 +7373,9 @@ mod native_tests {
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests;
+#[cfg(test)]
+#[path="tests/copy_source_replay.rs"]
+mod copy_source_replay_tests;
 
 #[cfg(test)]
 #[path = "tests/blazing_shoal.rs"]

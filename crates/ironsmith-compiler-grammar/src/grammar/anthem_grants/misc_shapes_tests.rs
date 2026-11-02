@@ -71,3 +71,16 @@ fn splits_equip_grant_immediately_after_a_closed_quote() {
     assert_eq!(render_token_slice(&segments[1]), "equip Pirate {1}");
     assert_eq!(render_token_slice(&segments[2]), "and equip {3}.");
 }
+
+#[test]
+fn trailing_grant_edges_preserve_quoted_identity_operands() {
+    for text in [r#"custom keyword "steady craft""#, r#", and custom keyword "steady craft"."#] {
+        let tokens = lex(text);
+        let segment = parse_trailing_grant_segment(&tokens).unwrap();
+        assert_eq!(segment.body_tokens.iter().filter(|token| token.kind == TokenKind::Quote).count(), 2);
+        assert_eq!(segment.body_tokens.last().unwrap().kind, TokenKind::Quote);
+    }
+    let tokens = lex(r#", and "Whenever this creature attacks, draw a card."."#);
+    let segment = parse_trailing_grant_segment(&tokens).unwrap();
+    assert!(segment.body_tokens.iter().all(|token| token.kind != TokenKind::Quote));
+}

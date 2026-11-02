@@ -1,0 +1,2024 @@
+{
+  "source_fixture": "fixtures/custom_mechanics/revolution.json",
+  "source_corpus": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+  "mechanics": [
+    {
+      "id": "rev-surface-231",
+      "keyword": "Surface",
+      "scope": "revolution",
+      "rule_reference": "702.219.",
+      "rule_text": {
+        "name": "702.219.",
+        "rule": "Surface",
+        "subrules": [
+          {
+            "name": "702.219a",
+            "rule": "“Surface [cost]” means “You may cast a copy of this card from your graveyard by paying [cost] and exiling this card from your graveyard rather than paying its mana cost as long as there are six or more other cards in your graveyard.” Casting a spell using its surface ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+            "custom": true
+          },
+          {
+            "name": "702.219b",
+            "rule": "Surface abilities may have additional text after their cost. This text only applies if that specific surface cost is being paid.\r\nExample: Entangled Fossil says \"Surface {4}{G}{G}. Entangled Fossil surfaces transformed.\" and \"{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains surface until end of turn. The surface cost is equal to its mana cost.\" Sacrificing an Entangled Fossil targeting a second copy will allow it to be cast for Surface {G}, but it will not surface transformed if cast this way.",
+            "custom": true
+          },
+          {
+            "name": "702.219c",
+            "rule": "An ability that reads \"[This permanent] surfaces transformed\" means the copy created by the surface ability will be cast transformed. The surfaced card and permanent remain a copy of a double-faced card, and so maintains its mana value, and is able to transform back if instructed to by another effect.",
+            "custom": true
+          },
+          {
+            "name": "702.219d",
+            "rule": "A spell or permanent \"surfaces\" or \"surfaced\" if that spell or the spell that became that permanent as it resolved was cast from a graveyard with a surface ability.",
+            "custom": true
+          },
+          {
+            "name": "702.219e",
+            "rule": "An ability that reads \"[This permanent] surfaces with [one or more of a kind of counter]\" means \"If this permanent surfaces, it enters with [those counters]\"",
+            "custom": true
+          },
+          {
+            "name": "702.219f",
+            "rule": "An ability that reads \"[This permanent] surfaces with [ability]\" means \"If this permanent surfaced, it has [ability].\"",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Aqua Jet",
+          "Beloved Poppet//Abandoned Poppet",
+          "Blind Pursuit",
+          "Buried Geode",
+          "Chum Chaser//Ship Shredder",
+          "Claw Fossil//Reborn Scuttler",
+          "Depths Ancient",
+          "Entangled Fossil//Reborn Reef",
+          "Explore Wreckage",
+          "Floating Familiar",
+          "Floe Master",
+          "Fortune Bearer//Devourer of Fortunes",
+          "Harbor Mail",
+          "Harvest Time",
+          "King of Currents",
+          "Meteor Lobber",
+          "Muddy Water",
+          "Padpole",
+          "Reaper of the Deep",
+          "Rejuvenating Kappa",
+          "Relentless Bats",
+          "Riverbed Snapper//Daunting Snapper",
+          "Root Fossil//Reborn Lily",
+          "Scuttling Cicada//Buzzing Metamorph",
+          "Seafloor Scavenger",
+          "Seafloor Treasures",
+          "Serrated Fossil//Reborn Fisher",
+          "Shining Angler",
+          "Soul's Sunset",
+          "Starved Piranha",
+          "Walk Among the Dead",
+          "Warden of Depths",
+          "Wrecking Whale"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.",
+      "executable_reminder": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {Cost} and exiling this card from your graveyard rather than paying its mana cost.",
+      "semantic_equivalence": {
+        "status": "pending_independent_fullsource_verification"
+      },
+      "representative_cards": [
+        {
+          "id": "Aqua Jet_CCR",
+          "name": "Aqua Jet",
+          "source_card_key": "Aqua Jet_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nChoose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nSurface {2}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Aqua Jet",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nChoose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nSurface {2}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nChoose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Aqua Jet",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nChoose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {2}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aqua Jet",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nChoose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Choose one —\n• Tap target creature.\n• Target creature can't be blocked this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Beloved Poppet//Abandoned Poppet_CCR",
+          "name": "Beloved Poppet",
+          "source_card_key": "Beloved Poppet//Abandoned Poppet_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Toy Spirit\nPower/Toughness: 2/2\nBeloved Poppet can't be blocked by creatures with power 4 or greater.\nSurface {4}{B}. This spell costs {3} less to cast if Beloved Poppet died this turn. Beloved Poppet surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Beloved Poppet",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Toy Spirit\nPower/Toughness: 2/2\nBeloved Poppet can't be blocked by creatures with power 4 or greater.\nSurface {4}{B}. This spell costs {3} less to cast if Beloved Poppet died this turn. Beloved Poppet surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Abandoned Poppet",
+              "original_text": "Mana cost: \nType: Creature — Toy Spirit\nPower/Toughness: 4/4\nAbandoned Poppet can't be blocked by creatures with power 2 or less.\nWhenever a creature an opponent controls dies, they lose 2 life."
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Black} ",
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Beloved Poppet",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Toy Spirit\nPower/Toughness: 2/2\nBeloved Poppet can't be blocked by creatures with power 4 or greater.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {3} if this card was put into your graveyard from the battlefield this turn. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{B}. This spell costs {3} less to cast if Beloved Poppet died this turn. Beloved Poppet surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {3} if this card was put into your graveyard from the battlefield this turn. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Abandoned Poppet",
+              "original_text": "Mana cost: \nType: Creature — Toy Spirit\nPower/Toughness: 4/4\nAbandoned Poppet can't be blocked by creatures with power 2 or less.\nWhenever a creature an opponent controls dies, they lose 2 life.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Beloved Poppet",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Toy Spirit\nPower/Toughness: 2/2\nColor indicator: Black\nBeloved Poppet can't be blocked by creatures with power 4 or greater.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {3} if this card was put into your graveyard from the battlefield this turn. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Beloved Poppet can't be blocked by creatures with power 4 or greater.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {3} if this card was put into your graveyard from the battlefield this turn. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Beloved Poppet can't be blocked by creatures with power 4 or greater.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {3} if this card was put into your graveyard from the battlefield this turn. This alternative cost is named Surface."
+            },
+            {
+              "name": "Abandoned Poppet",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Toy Spirit\nPower/Toughness: 4/4\nColor indicator: Black\nAbandoned Poppet can't be blocked by creatures with power 2 or less.\nWhenever a creature an opponent controls dies, they lose 2 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Abandoned Poppet can't be blocked by creatures with power 2 or less.\nWhenever a creature an opponent controls dies, they lose 2 life.",
+              "original_printed_rules_text": "Abandoned Poppet can't be blocked by creatures with power 2 or less.\nWhenever a creature an opponent controls dies, they lose 2 life."
+            }
+          ]
+        },
+        {
+          "id": "Blind Pursuit_CCR",
+          "name": "Blind Pursuit",
+          "source_card_key": "Blind Pursuit_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Sorcery\nTarget creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nSurface {4}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Blind Pursuit",
+              "original_text": "Mana cost: {2}{G}\nType: Sorcery\nTarget creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nSurface {4}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nColor indicator: Green\nTarget creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Blind Pursuit",
+              "original_text": "Mana cost: {2}{G}\nType: Sorcery\nTarget creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{G} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blind Pursuit",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nColor indicator: Green\nTarget creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Target creature gets +2/+2 until end of turn and must be blocked this turn if able. Untap up to one target creature. It blocks this turn if able.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Buried Geode_CCR",
+          "name": "Buried Geode",
+          "source_card_key": "Buried Geode_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Elemental\nPower/Toughness: 3/2\nSurface {3}{G}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*\nBuried Geode surfaces with a +1/+1 counter.",
+          "source_faces": [
+            {
+              "name": "Buried Geode",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Elemental\nPower/Toughness: 3/2\nSurface {3}{G}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*\nBuried Geode surfaces with a +1/+1 counter."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Elemental\nPower/Toughness: 3/2\nColor indicator: Green\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. If you do, it enters with a +1/+1 counter on it. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Buried Geode",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Elemental\nPower/Toughness: 3/2\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. If you do, it enters with a +1/+1 counter on it. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Buried Geode surfaces with a +1/+1 counter.",
+                  "native": "If you do, it enters with a +1/+1 counter on it.",
+                  "rule": "702.219e"
+                },
+                {
+                  "original": "Surface {3}{G}{G} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. If you do, it enters with a +1/+1 counter on it. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Buried Geode",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Elemental\nPower/Toughness: 3/2\nColor indicator: Green\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. If you do, it enters with a +1/+1 counter on it. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. If you do, it enters with a +1/+1 counter on it. This alternative cost is named Surface.",
+              "original_printed_rules_text": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. If you do, it enters with a +1/+1 counter on it. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Chum Chaser//Ship Shredder_CCR",
+          "name": "Chum Chaser",
+          "source_card_key": "Chum Chaser//Ship Shredder_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Shark\nPower/Toughness: 3/2\nWhenever you cast a spell from your graveyard, each opponent loses 1 life and you gain 1 life.\nSurface {3}{B}{B}. Chum Chaser surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Chum Chaser",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Shark\nPower/Toughness: 3/2\nWhenever you cast a spell from your graveyard, each opponent loses 1 life and you gain 1 life.\nSurface {3}{B}{B}. Chum Chaser surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Ship Shredder",
+              "original_text": "Mana cost: \nType: Creature — Shark\nPower/Toughness: 5/3\nMenace\nWhenever Ship Shredder enters or you cast a spell from your graveyard, each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Black} ",
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Chum Chaser",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Shark\nPower/Toughness: 3/2\nWhenever you cast a spell from your graveyard, each opponent loses 1 life and you gain 1 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {3}{B}{B}. Chum Chaser surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Ship Shredder",
+              "original_text": "Mana cost: \nType: Creature — Shark\nPower/Toughness: 5/3\nMenace\nWhenever Ship Shredder enters or you cast a spell from your graveyard, each opponent loses 2 life and you gain 2 life.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Chum Chaser",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Shark\nPower/Toughness: 3/2\nColor indicator: Black\nWhenever you cast a spell from your graveyard, each opponent loses 1 life and you gain 1 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast a spell from your graveyard, each opponent loses 1 life and you gain 1 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Whenever you cast a spell from your graveyard, each opponent loses 1 life and you gain 1 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Ship Shredder",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Shark\nPower/Toughness: 5/3\nColor indicator: Black\nMenace\nWhenever Ship Shredder enters or you cast a spell from your graveyard, each opponent loses 2 life and you gain 2 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhenever Ship Shredder enters or you cast a spell from your graveyard, each opponent loses 2 life and you gain 2 life.",
+              "original_printed_rules_text": "Menace\nWhenever Ship Shredder enters or you cast a spell from your graveyard, each opponent loses 2 life and you gain 2 life."
+            }
+          ]
+        },
+        {
+          "id": "Claw Fossil//Reborn Scuttler_CCR",
+          "name": "Claw Fossil",
+          "source_card_key": "Claw Fossil//Reborn Scuttler_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {1}\nType: Artifact\n{1}, Sacrifice Claw Fossil: Target creature has base toughness 1 until end of turn. Activate only as a sorcery.\nSurface {2}{B}. Claw Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Claw Fossil",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{1}, Sacrifice Claw Fossil: Target creature has base toughness 1 until end of turn. Activate only as a sorcery.\nSurface {2}{B}. Claw Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Reborn Scuttler",
+              "original_text": "Mana cost: \nType: Creature — Dinosaur Insect\nPower/Toughness: 3/2\nWhenever Reborn Scuttler attacks, up to one target creature has base toughness 1 until end of turn."
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "",
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Claw Fossil",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{1}, Sacrifice Claw Fossil: Target creature has base toughness 1 until end of turn. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {2}{B}. Claw Fossil surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Reborn Scuttler",
+              "original_text": "Mana cost: \nType: Creature — Dinosaur Insect\nPower/Toughness: 3/2\nWhenever Reborn Scuttler attacks, up to one target creature has base toughness 1 until end of turn.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Claw Fossil",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {1}\nType: Artifact\n{1}, Sacrifice Claw Fossil: Target creature has base toughness 1 until end of turn. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{1}, Sacrifice Claw Fossil: Target creature has base toughness 1 until end of turn. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "{1}, Sacrifice Claw Fossil: Target creature has base toughness 1 until end of turn. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Reborn Scuttler",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Dinosaur Insect\nPower/Toughness: 3/2\nColor indicator: Black\nWhenever Reborn Scuttler attacks, up to one target creature has base toughness 1 until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Reborn Scuttler attacks, up to one target creature has base toughness 1 until end of turn.",
+              "original_printed_rules_text": "Whenever Reborn Scuttler attacks, up to one target creature has base toughness 1 until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "Depths Ancient_CCR",
+          "name": "Depths Ancient",
+          "source_card_key": "Depths Ancient_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Fish\nPower/Toughness: ★/★\nDepths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with surface.\nSurface {5}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Depths Ancient",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Fish\nPower/Toughness: ★/★\nDepths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with surface.\nSurface {5}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Creature — Fish\nPower/Toughness: ★/★\nColor indicator: Black\nDepths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with custom keyword \"Surface\".\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Depths Ancient",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Fish\nPower/Toughness: ★/★\nDepths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with custom keyword \"Surface\".\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {5}{B}{B} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Depths Ancient",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Creature — Fish\nPower/Toughness: ★/★\nColor indicator: Black\nDepths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with custom keyword \"Surface\".\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Depths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with custom keyword \"Surface\".\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Depths Ancient's power and toughness are each equal to the number of cards in your graveyard plus the number of exiled cards you own with custom keyword \"Surface\".\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Entangled Fossil//Reborn Reef_CCR",
+          "name": "Entangled Fossil",
+          "source_card_key": "Entangled Fossil//Reborn Reef_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {G}\nType: Artifact\n{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains surface until end of turn. The surface cost is equal to its mana cost. *(It won't surface transformed if cast this way.)*\nSurface {4}{G}{G}. Entangled Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Entangled Fossil",
+              "original_text": "Mana cost: {G}\nType: Artifact\n{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains surface until end of turn. The surface cost is equal to its mana cost. *(It won't surface transformed if cast this way.)*\nSurface {4}{G}{G}. Entangled Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Reborn Reef",
+              "original_text": "Mana cost: \nType: Creature — Plant\nPower/Toughness: 4/6\nVigilance\nWhenever Reborn Reef attacks, target card in your graveyard gains surface until end of turn. The surface cost is equal to its mana cost."
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Green} ",
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Entangled Fossil",
+              "original_text": "Mana cost: {G}\nType: Artifact\n{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{G}{G}. Entangled Fossil surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Reborn Reef",
+              "original_text": "Mana cost: \nType: Creature — Plant\nPower/Toughness: 4/6\nVigilance\nWhenever Reborn Reef attacks, Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Entangled Fossil",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {G}\nType: Artifact\nColor indicator: Green\n{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "{G}, Sacrifice Entangled Fossil: Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Reborn Reef",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Plant\nPower/Toughness: 4/6\nColor indicator: Green\nVigilance\nWhenever Reborn Reef attacks, Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nWhenever Reborn Reef attacks, Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn.",
+              "original_printed_rules_text": "Vigilance\nWhenever Reborn Reef attacks, Target card in your graveyard gains custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\" until end of turn."
+            }
+          ]
+        },
+        {
+          "id": "Explore Wreckage_CCR",
+          "name": "Explore Wreckage",
+          "source_card_key": "Explore Wreckage_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw three cards.\nSurface {5}{U}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Explore Wreckage",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw three cards.\nSurface {5}{U}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nColor indicator: Blue\nDraw three cards.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Explore Wreckage",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw three cards.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {5}{U}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Explore Wreckage",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nColor indicator: Blue\nDraw three cards.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw three cards.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Draw three cards.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Floating Familiar_CCR",
+          "name": "Floating Familiar",
+          "source_card_key": "Floating Familiar_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Elemental Mouse\nPower/Toughness: 2/2\nVigilance\n{T}: Surveil 1. *(Look at the top card of your library. You may put it into your graveyard.)*\nSurface {3}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Floating Familiar",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Elemental Mouse\nPower/Toughness: 2/2\nVigilance\n{T}: Surveil 1. *(Look at the top card of your library. You may put it into your graveyard.)*\nSurface {3}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Elemental Mouse\nPower/Toughness: 2/2\nColor indicator: Blue\nVigilance\n{T}: Surveil 1. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Floating Familiar",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Elemental Mouse\nPower/Toughness: 2/2\nVigilance\n{T}: Surveil 1. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {3}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Floating Familiar",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Elemental Mouse\nPower/Toughness: 2/2\nColor indicator: Blue\nVigilance\n{T}: Surveil 1. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\n{T}: Surveil 1.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Vigilance\n{T}: Surveil 1. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Floe Master_CCR",
+          "name": "Floe Master",
+          "source_card_key": "Floe Master_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Walrus\nPower/Toughness: 4/4\nWhenever Floe Master enters or another creature you control surfaces, tap up to one target creature and put a stun counter on it.\nSurface {5}{U}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Floe Master",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Walrus\nPower/Toughness: 4/4\nWhenever Floe Master enters or another creature you control surfaces, tap up to one target creature and put a stun counter on it.\nSurface {5}{U}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Walrus\nPower/Toughness: 4/4\nColor indicator: Blue\nWhenever Floe Master enters, tap up to one target creature and put a stun counter on it.\nWhenever another creature you control that was cast using custom cost \"Surface\" enters, tap up to one target creature and put a stun counter on it.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Floe Master",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Walrus\nPower/Toughness: 4/4\nWhenever Floe Master enters, tap up to one target creature and put a stun counter on it.\nWhenever another creature you control that was cast using custom cost \"Surface\" enters, tap up to one target creature and put a stun counter on it.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {5}{U}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Floe Master",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Walrus\nPower/Toughness: 4/4\nColor indicator: Blue\nWhenever Floe Master enters, tap up to one target creature and put a stun counter on it.\nWhenever another creature you control that was cast using custom cost \"Surface\" enters, tap up to one target creature and put a stun counter on it.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Floe Master enters, tap up to one target creature and put a stun counter on it.\nWhenever another creature you control that was cast using custom cost \"Surface\" enters, tap up to one target creature and put a stun counter on it.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Whenever Floe Master enters, tap up to one target creature and put a stun counter on it.\nWhenever another creature you control that was cast using custom cost \"Surface\" enters, tap up to one target creature and put a stun counter on it.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Fortune Bearer//Devourer of Fortunes_CCR",
+          "name": "Fortune Bearer",
+          "source_card_key": "Fortune Bearer//Devourer of Fortunes_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Oyster\nPower/Toughness: 0/4\n{T}: Add {C}. You may sacrifice Fortune Bearer. If you don't, you can't spend this mana to cast a spell from your hand.\nSurface {5}{U}{U}. Fortune Bearer surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Fortune Bearer",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Oyster\nPower/Toughness: 0/4\n{T}: Add {C}. You may sacrifice Fortune Bearer. If you don't, you can't spend this mana to cast a spell from your hand.\nSurface {5}{U}{U}. Fortune Bearer surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Devourer of Fortunes",
+              "original_text": "Mana cost: \nType: Creature — Fish\nPower/Toughness: 6/5\nWhenever Devourer of Fortunes enters or attacks, return up to one target instant or sorcery card in a graveyard or creature on the battlefield to its owner's hand. You may cast a copy of it, and may spend mana of any type to cast it. *(You still pay its costs. If it's a permanent spell, it becomes a token.)*"
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Blue} ",
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Fortune Bearer",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Oyster\nPower/Toughness: 0/4\n{T}: Add {C}. You may sacrifice Fortune Bearer. If you don't, you can't spend this mana to cast a spell from your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {5}{U}{U}. Fortune Bearer surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Devourer of Fortunes",
+              "original_text": "Mana cost: \nType: Creature — Fish\nPower/Toughness: 6/5\nWhenever Devourer of Fortunes enters or attacks, return up to one target instant or sorcery card in a graveyard or creature on the battlefield to its owner's hand. You may cast a copy of it, and may spend mana of any type to cast it. ",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fortune Bearer",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Oyster\nPower/Toughness: 0/4\nColor indicator: Blue\n{T}: Add {C}. You may sacrifice Fortune Bearer. If you don't, you can't spend this mana to cast a spell from your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Add {C}. You may sacrifice Fortune Bearer. If you don't, you can't spend this mana to cast a spell from your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "{T}: Add {C}. You may sacrifice Fortune Bearer. If you don't, you can't spend this mana to cast a spell from your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {5}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Devourer of Fortunes",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Fish\nPower/Toughness: 6/5\nColor indicator: Blue\nWhenever Devourer of Fortunes enters or attacks, return up to one target instant or sorcery card in a graveyard or creature on the battlefield to its owner's hand. You may cast a copy of it, and may spend mana of any type to cast it. ",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Devourer of Fortunes enters or attacks, return up to one target instant or sorcery card in a graveyard or creature on the battlefield to its owner's hand. You may cast a copy of it, and may spend mana of any type to cast it.",
+              "original_printed_rules_text": "Whenever Devourer of Fortunes enters or attacks, return up to one target instant or sorcery card in a graveyard or creature on the battlefield to its owner's hand. You may cast a copy of it, and may spend mana of any type to cast it. "
+            }
+          ]
+        },
+        {
+          "id": "Harbor Mail_CCR",
+          "name": "Harbor Mail",
+          "source_card_key": "Harbor Mail_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nSurveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it. *(To surveil 1, look at the top card of your library. You may put it into your graveyard.)*\nWhen you cast a spell for its surface cost, if Harbor Mail is exiled with a stamp counter, you may pay {U} and put it into your graveyard. If you do, surveil 1, then draw a card.",
+          "source_faces": [
+            {
+              "name": "Harbor Mail",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nSurveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it. *(To surveil 1, look at the top card of your library. You may put it into your graveyard.)*\nWhen you cast a spell for its surface cost, if Harbor Mail is exiled with a stamp counter, you may pay {U} and put it into your graveyard. If you do, surveil 1, then draw a card."
+            }
+          ],
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nSurveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it. \nWhen you cast a spell using Surface, if this card is in exile with a stamp counter, you may pay {U} and put this card into your graveyard. If you do, surveil 1, then draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Harbor Mail",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nSurveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it. \nWhen you cast a spell using Surface, if this card is in exile with a stamp counter, you may pay {U} and put this card into your graveyard. If you do, surveil 1, then draw a card.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Harbor Mail",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nColor indicator: Blue\nSurveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it. \nWhen you cast a spell using Surface, if this card is in exile with a stamp counter, you may pay {U} and put this card into your graveyard. If you do, surveil 1, then draw a card.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Surveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it.\nWhen you cast a spell using Surface, if this card is in exile with a stamp counter, you may pay {U} and put this card into your graveyard. If you do, surveil 1, then draw a card.",
+              "original_printed_rules_text": "Surveil 1, then draw a card. Exile Harbor Mail with a stamp counter on it. \nWhen you cast a spell using Surface, if this card is in exile with a stamp counter, you may pay {U} and put this card into your graveyard. If you do, surveil 1, then draw a card."
+            }
+          ]
+        },
+        {
+          "id": "Harvest Time_CCR",
+          "name": "Harvest Time",
+          "source_card_key": "Harvest Time_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {G}\nType: Sorcery\nSearch your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nSurface {G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Harvest Time",
+              "original_text": "Mana cost: {G}\nType: Sorcery\nSearch your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nSurface {G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {G}\nType: Sorcery\nColor indicator: Green\nSearch your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Harvest Time",
+              "original_text": "Mana cost: {G}\nType: Sorcery\nSearch your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {G} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Harvest Time",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {G}\nType: Sorcery\nColor indicator: Green\nSearch your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Search your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Search your graveyard and/or library for a basic land card, reveal it, put it into your hand, then shuffle.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "King of Currents_CCR",
+          "name": "King of Currents",
+          "source_card_key": "King of Currents_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Seahorse Dragon\nPower/Toughness: 6/6\nKing of Currents can't attack unless there are six or more cards in your graveyard.\nSurface {4}{U}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "King of Currents",
+              "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Seahorse Dragon\nPower/Toughness: 6/6\nKing of Currents can't attack unless there are six or more cards in your graveyard.\nSurface {4}{U}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{U}{U}\nType: Creature — Seahorse Dragon\nPower/Toughness: 6/6\nColor indicator: Blue\nKing of Currents can't attack unless there are six or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "King of Currents",
+              "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Seahorse Dragon\nPower/Toughness: 6/6\nKing of Currents can't attack unless there are six or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{U}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "King of Currents",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {4}{U}{U}\nType: Creature — Seahorse Dragon\nPower/Toughness: 6/6\nColor indicator: Blue\nKing of Currents can't attack unless there are six or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "seahorse",
+                  "plural": "seahorses",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "King of Currents can't attack unless there are six or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "King of Currents can't attack unless there are six or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Meteor Lobber_CCR",
+          "name": "Meteor Lobber",
+          "source_card_key": "Meteor Lobber_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Rhino Beast\nPower/Toughness: 6/5\nReach\nSurface {4}{G}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Meteor Lobber",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Rhino Beast\nPower/Toughness: 6/5\nReach\nSurface {4}{G}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{G}{G}\nType: Creature — Rhino Beast\nPower/Toughness: 6/5\nColor indicator: Green\nReach\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Meteor Lobber",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Rhino Beast\nPower/Toughness: 6/5\nReach\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{G}{G} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Meteor Lobber",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {4}{G}{G}\nType: Creature — Rhino Beast\nPower/Toughness: 6/5\nColor indicator: Green\nReach\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reach\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Reach\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Muddy Water_CCR",
+          "name": "Muddy Water",
+          "source_card_key": "Muddy Water_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget creature gets -3/-3 until end of turn.\nSurface {5}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Muddy Water",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget creature gets -3/-3 until end of turn.\nSurface {5}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nColor indicator: Black\nTarget creature gets -3/-3 until end of turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Muddy Water",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nTarget creature gets -3/-3 until end of turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {5}{B} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Muddy Water",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nColor indicator: Black\nTarget creature gets -3/-3 until end of turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets -3/-3 until end of turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Target creature gets -3/-3 until end of turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Padpole_CCR",
+          "name": "Padpole",
+          "source_card_key": "Padpole_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Plant Frog\nPower/Toughness: 2/2\nWhen Padpole enters, create a Berry token. *(It's an Equipment with equip {1} and “Before damage, sacrifice this to give equipped creature +2/+2 until end of turn.”)*\nSurface {3}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Padpole",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Plant Frog\nPower/Toughness: 2/2\nWhen Padpole enters, create a Berry token. *(It's an Equipment with equip {1} and “Before damage, sacrifice this to give equipped creature +2/+2 until end of turn.”)*\nSurface {3}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "excluded_intrinsic_dependent_body",
+          "executable_faces": [],
+          "surface_price_candidate": {
+            "name": "Padpole",
+            "executable_text": "Mana cost: {1}{G}\nType: Creature — Plant Frog\nPower/Toughness: 2/2\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+            "custom_keyword_identities": [
+              "Surface"
+            ],
+            "custom_keyword_payments": [],
+            "scope": "Surface price only; excludes original Berry-trigger body; never full-card certification"
+          }
+        },
+        {
+          "id": "Reaper of the Deep_CCR",
+          "name": "Reaper of the Deep",
+          "source_card_key": "Reaper of the Deep_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Jellyfish\nPower/Toughness: 6/4\nMenace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nSurface {5}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Reaper of the Deep",
+              "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Jellyfish\nPower/Toughness: 6/4\nMenace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nSurface {5}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{B}{B}\nType: Creature — Jellyfish\nPower/Toughness: 6/4\nColor indicator: Black\nMenace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Reaper of the Deep",
+              "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Jellyfish\nPower/Toughness: 6/4\nMenace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {5}{B}{B} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Reaper of the Deep",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {4}{B}{B}\nType: Creature — Jellyfish\nPower/Toughness: 6/4\nColor indicator: Black\nMenace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Menace\nWhen Reaper of the Deep enters, mill two cards. You may repeat this process until there are seven or more cards in your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {5}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Rejuvenating Kappa_CCR",
+          "name": "Rejuvenating Kappa",
+          "source_card_key": "Rejuvenating Kappa_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{G}\nType: Creature — Plant Frog\nPower/Toughness: 3/3\nAt the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn. \nSurface {4}{G}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Rejuvenating Kappa",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Plant Frog\nPower/Toughness: 3/3\nAt the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn. \nSurface {4}{G}{G} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{G}\nType: Creature — Plant Frog\nPower/Toughness: 3/3\nColor indicator: Green\nAt the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Rejuvenating Kappa",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Plant Frog\nPower/Toughness: 3/3\nAt the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{G}{G} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rejuvenating Kappa",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: {3}{G}\nType: Creature — Plant Frog\nPower/Toughness: 3/3\nColor indicator: Green\nAt the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "At the beginning of your end step, you gain 2 life if you cast a spell from your graveyard this turn, then you gain 2 life if a card was put into your graveyard from your library this turn. \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{G}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Relentless Bats_CCR",
+          "name": "Relentless Bats",
+          "source_card_key": "Relentless Bats_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Bat\nPower/Toughness: 1/1\nFlying\nSurface {2}{B}{B}. This spell costs {1}{B}{B} less if you control a creature named Relentless Bats. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*\nA deck can have any number of cards named Relentless Bats.",
+          "source_faces": [
+            {
+              "name": "Relentless Bats",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Bat\nPower/Toughness: 1/1\nFlying\nSurface {2}{B}{B}. This spell costs {1}{B}{B} less if you control a creature named Relentless Bats. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*\nA deck can have any number of cards named Relentless Bats."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Bat\nPower/Toughness: 1/1\nColor indicator: Black\nFlying\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {1}{B}{B} if you control a creature named Relentless Bats. This alternative cost is named Surface.\nA deck can have any number of cards named Relentless Bats.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Relentless Bats",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Bat\nPower/Toughness: 1/1\nFlying\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {1}{B}{B} if you control a creature named Relentless Bats. This alternative cost is named Surface.\nA deck can have any number of cards named Relentless Bats.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {2}{B}{B}. This spell costs {1}{B}{B} less if you control a creature named Relentless Bats. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {1}{B}{B} if you control a creature named Relentless Bats. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Relentless Bats",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Bat\nPower/Toughness: 1/1\nColor indicator: Black\nFlying\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {1}{B}{B} if you control a creature named Relentless Bats. This alternative cost is named Surface.\nA deck can have any number of cards named Relentless Bats.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {1}{B}{B} if you control a creature named Relentless Bats. This alternative cost is named Surface.\nA deck can have any number of cards named Relentless Bats.",
+              "original_printed_rules_text": "Flying\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This cost is reduced by {1}{B}{B} if you control a creature named Relentless Bats. This alternative cost is named Surface.\nA deck can have any number of cards named Relentless Bats."
+            }
+          ]
+        },
+        {
+          "id": "Riverbed Snapper//Daunting Snapper_CCR",
+          "name": "Riverbed Snapper",
+          "source_card_key": "Riverbed Snapper//Daunting Snapper_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Crab\nPower/Toughness: 2/1\nSurface {2}{B}{G}{U}. Riverbed Snapper surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Riverbed Snapper",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Crab\nPower/Toughness: 2/1\nSurface {2}{B}{G}{U}. Riverbed Snapper surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Daunting Snapper",
+              "original_text": "Mana cost: \nType: Creature — Crab\nPower/Toughness: 6/4\nWard {3} *(Whenever this creature becomes the target of a spell or ability an opponent controls, counter it unless that player pays {3}.)*\nDaunting Snapper can't be blocked by creatures with power 2 or less."
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Blue} ",
+            "{Green/Blue/Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Riverbed Snapper",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Crab\nPower/Toughness: 2/1\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {2}{B}{G}{U}. Riverbed Snapper surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Daunting Snapper",
+              "original_text": "Mana cost: \nType: Creature — Crab\nPower/Toughness: 6/4\nWard {3} \nDaunting Snapper can't be blocked by creatures with power 2 or less.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Riverbed Snapper",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Crab\nPower/Toughness: 2/1\nColor indicator: Blue\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Daunting Snapper",
+              "color_indicator": [],
+              "executable_text": "Mana cost: \nType: Creature — Crab\nPower/Toughness: 6/4\nWard {3} \nDaunting Snapper can't be blocked by creatures with power 2 or less.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Ward {3}\nDaunting Snapper can't be blocked by creatures with power 2 or less.",
+              "original_printed_rules_text": "Ward {3} \nDaunting Snapper can't be blocked by creatures with power 2 or less."
+            }
+          ]
+        },
+        {
+          "id": "Root Fossil//Reborn Lily_CCR",
+          "name": "Root Fossil",
+          "source_card_key": "Root Fossil//Reborn Lily_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {1}\nType: Artifact\n{2}, Sacrifice Root Fossil: Surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.\nSurface {2}{G}. Root Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Root Fossil",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{2}, Sacrifice Root Fossil: Surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.\nSurface {2}{G}. Root Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Reborn Lily",
+              "original_text": "Mana cost: \nType: Creature — Plant\nPower/Toughness: 2/4\nWhenever Reborn Lily attacks, surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped. *(To surveil 3, look at the top three cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)*"
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "",
+            "{Green} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Root Fossil",
+              "original_text": "Mana cost: {1}\nType: Artifact\n{2}, Sacrifice Root Fossil: Surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {2}{G}. Root Fossil surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Reborn Lily",
+              "original_text": "Mana cost: \nType: Creature — Plant\nPower/Toughness: 2/4\nWhenever Reborn Lily attacks, surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped. ",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Root Fossil",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {1}\nType: Artifact\n{2}, Sacrifice Root Fossil: Surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}, Sacrifice Root Fossil: Surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "{2}, Sacrifice Root Fossil: Surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {2}{G} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Reborn Lily",
+              "color_indicator": [
+                "Green"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Plant\nPower/Toughness: 2/4\nColor indicator: Green\nWhenever Reborn Lily attacks, surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped. ",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Reborn Lily attacks, surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped.",
+              "original_printed_rules_text": "Whenever Reborn Lily attacks, surveil 3. You may put a land card you surveilled this way from your graveyard onto the battlefield tapped. "
+            }
+          ]
+        },
+        {
+          "id": "Scuttling Cicada//Buzzing Metamorph_CCR",
+          "name": "Scuttling Cicada",
+          "source_card_key": "Scuttling Cicada//Buzzing Metamorph_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {U}\nType: Creature — Insect\nPower/Toughness: 1/1\nSurface {U}. Scuttling Cicada surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Scuttling Cicada",
+              "original_text": "Mana cost: {U}\nType: Creature — Insect\nPower/Toughness: 1/1\nSurface {U}. Scuttling Cicada surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Buzzing Metamorph",
+              "original_text": "Mana cost: \nType: Creature — Insect\nPower/Toughness: 3/2\nFlying"
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Blue} ",
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Scuttling Cicada",
+              "original_text": "Mana cost: {U}\nType: Creature — Insect\nPower/Toughness: 1/1\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {U}. Scuttling Cicada surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Buzzing Metamorph",
+              "original_text": "Mana cost: \nType: Creature — Insect\nPower/Toughness: 3/2\nFlying",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scuttling Cicada",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {U}\nType: Creature — Insect\nPower/Toughness: 1/1\nColor indicator: Blue\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Buzzing Metamorph",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Insect\nPower/Toughness: 3/2\nColor indicator: Blue\nFlying",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying",
+              "original_printed_rules_text": "Flying"
+            }
+          ]
+        },
+        {
+          "id": "Seafloor Scavenger_CCR",
+          "name": "Seafloor Scavenger",
+          "source_card_key": "Seafloor Scavenger_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {B}{G}{U}\nType: Creature — Human Ranger\nPower/Toughness: 2/3\nWhen Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with surface you own to your hand.",
+          "source_faces": [
+            {
+              "name": "Seafloor Scavenger",
+              "original_text": "Mana cost: {B}{G}{U}\nType: Creature — Human Ranger\nPower/Toughness: 2/3\nWhen Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with surface you own to your hand."
+            }
+          ],
+          "executable_text": "Mana cost: {B}{G}{U}\nType: Creature — Human Ranger\nPower/Toughness: 2/3\nWhen Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with custom keyword \"Surface\" you own to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black/Green/Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Seafloor Scavenger",
+              "original_text": "Mana cost: {B}{G}{U}\nType: Creature — Human Ranger\nPower/Toughness: 2/3\nWhen Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with custom keyword \"Surface\" you own to your hand.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seafloor Scavenger",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {B}{G}{U}\nType: Creature — Human Ranger\nPower/Toughness: 2/3\nWhen Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with custom keyword \"Surface\" you own to your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with custom keyword \"Surface\" you own to your hand.",
+              "original_printed_rules_text": "When Seafloor Scavenger enters or deals combat damage to a player, you may return target exiled card with custom keyword \"Surface\" you own to your hand."
+            }
+          ]
+        },
+        {
+          "id": "Seafloor Treasures_CCR",
+          "name": "Seafloor Treasures",
+          "source_card_key": "Seafloor Treasures_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nLook at the top two cards of your library. Put one into your hand and the other into your graveyard.\nSurface {2}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Seafloor Treasures",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nLook at the top two cards of your library. Put one into your hand and the other into your graveyard.\nSurface {2}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nColor indicator: Blue\nLook at the top two cards of your library. Put one into your hand and the other into your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Seafloor Treasures",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nLook at the top two cards of your library. Put one into your hand and the other into your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {2}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seafloor Treasures",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nColor indicator: Blue\nLook at the top two cards of your library. Put one into your hand and the other into your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Look at the top two cards of your library. Put one into your hand and the other into your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Look at the top two cards of your library. Put one into your hand and the other into your graveyard.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {2}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Serrated Fossil//Reborn Fisher_CCR",
+          "name": "Serrated Fossil",
+          "source_card_key": "Serrated Fossil//Reborn Fisher_CCR",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {B}\nType: Artifact\n{B}, Sacrifice Serrated Fossil: Choose a nonland card name. Target player reveals their hand and discards a card with that name if able. Activate only as a sorcery.\nSurface {3}{B}{B}. Serrated Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Serrated Fossil",
+              "original_text": "Mana cost: {B}\nType: Artifact\n{B}, Sacrifice Serrated Fossil: Choose a nonland card name. Target player reveals their hand and discards a card with that name if able. Activate only as a sorcery.\nSurface {3}{B}{B}. Serrated Fossil surfaces transformed. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            },
+            {
+              "name": "Reborn Fisher",
+              "original_text": "Mana cost: \nType: Creature — Dinosaur Insect\nPower/Toughness: 4/4\nWard—Discard a card.\nWhenever Reborn Fisher attacks, choose a nonland card name, then defending player reveals their hand and discards a card with that name if able."
+            }
+          ],
+          "executable_text": null,
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "doubleface",
+          "source_face_color_evidence": [
+            "{Black} ",
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Serrated Fossil",
+              "original_text": "Mana cost: {B}\nType: Artifact\n{B}, Sacrifice Serrated Fossil: Choose a nonland card name. Target player reveals their hand and discards a card with that name if able. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {3}{B}{B}. Serrated Fossil surfaces transformed. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–c"
+                }
+              ]
+            },
+            {
+              "name": "Reborn Fisher",
+              "original_text": "Mana cost: \nType: Creature — Dinosaur Insect\nPower/Toughness: 4/4\nWard—Discard a card.\nWhenever Reborn Fisher attacks, choose a nonland card name, then defending player reveals their hand and discards a card with that name if able.",
+              "hasPrice": false,
+              "annotations": []
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Serrated Fossil",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {B}\nType: Artifact\nColor indicator: Black\n{B}, Sacrifice Serrated Fossil: Choose a nonland card name. Target player reveals their hand and discards a card with that name if able. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{B}, Sacrifice Serrated Fossil: Choose a nonland card name. Target player reveals their hand and discards a card with that name if able. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "{B}, Sacrifice Serrated Fossil: Choose a nonland card name. Target player reveals their hand and discards a card with that name if able. Activate only as a sorcery.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card transformed from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            },
+            {
+              "name": "Reborn Fisher",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: \nType: Creature — Dinosaur Insect\nPower/Toughness: 4/4\nColor indicator: Black\nWard—Discard a card.\nWhenever Reborn Fisher attacks, choose a nonland card name, then defending player reveals their hand and discards a card with that name if able.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Ward—Discard a card.\nWhenever Reborn Fisher attacks, choose a nonland card name, then defending player reveals their hand and discards a card with that name if able.",
+              "original_printed_rules_text": "Ward—Discard a card.\nWhenever Reborn Fisher attacks, choose a nonland card name, then defending player reveals their hand and discards a card with that name if able."
+            }
+          ]
+        },
+        {
+          "id": "Shining Angler_CCR",
+          "name": "Shining Angler",
+          "source_card_key": "Shining Angler_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}{G}{U}\nType: Creature — Fish\nPower/Toughness: 5/4\nWhenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nSurface {4}{B}{G}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Shining Angler",
+              "original_text": "Mana cost: {2}{B}{G}{U}\nType: Creature — Fish\nPower/Toughness: 5/4\nWhenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nSurface {4}{B}{G}{U} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{B}{G}{U}\nType: Creature — Fish\nPower/Toughness: 5/4\nWhenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black/Green/Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Shining Angler",
+              "original_text": "Mana cost: {2}{B}{G}{U}\nType: Creature — Fish\nPower/Toughness: 5/4\nWhenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{B}{G}{U} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Shining Angler",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {2}{B}{G}{U}\nType: Creature — Fish\nPower/Toughness: 5/4\nWhenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Whenever Shining Angler attacks, target creature an opponent controls blocks Shining Angler this turn if able and other creatures can't block Shining Angler this turn.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{G}{U} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Soul's Sunset_CCR",
+          "name": "Soul's Sunset",
+          "source_card_key": "Soul's Sunset_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Spirit\nPower/Toughness: 2/2\nFlying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nSurface {4}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Soul's Sunset",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Spirit\nPower/Toughness: 2/2\nFlying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nSurface {4}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Spirit\nPower/Toughness: 2/2\nColor indicator: Black\nFlying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Soul's Sunset",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Spirit\nPower/Toughness: 2/2\nFlying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {4}{B}{B} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Soul's Sunset",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Spirit\nPower/Toughness: 2/2\nColor indicator: Black\nFlying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Flying\nWhen Soul's Sunset enters, exile up to two target cards from graveyards. You gain 2 life.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {4}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Starved Piranha_CCR",
+          "name": "Starved Piranha",
+          "source_card_key": "Starved Piranha_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Fish\nPower/Toughness: 3/2\nMenace\nSurface {3}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Starved Piranha",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Fish\nPower/Toughness: 3/2\nMenace\nSurface {3}{B}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Fish\nPower/Toughness: 3/2\nColor indicator: Black\nMenace\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Starved Piranha",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Fish\nPower/Toughness: 3/2\nMenace\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {3}{B}{B} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Starved Piranha",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Fish\nPower/Toughness: 3/2\nColor indicator: Black\nMenace\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Menace\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Walk Among the Dead_CCR",
+          "name": "Walk Among the Dead",
+          "source_card_key": "Walk Among the Dead_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nMill two cards, then return a creature card from your graveyard to your hand.\nSurface {3}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Walk Among the Dead",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nMill two cards, then return a creature card from your graveyard to your hand.\nSurface {3}{B} *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nColor indicator: Black\nMill two cards, then return a creature card from your graveyard to your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Walk Among the Dead",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nMill two cards, then return a creature card from your graveyard to your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {3}{B} ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Walk Among the Dead",
+              "color_indicator": [
+                "Black"
+              ],
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nColor indicator: Black\nMill two cards, then return a creature card from your graveyard to your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mill two cards, then return a creature card from your graveyard to your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "Mill two cards, then return a creature card from your graveyard to your hand.\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Warden of Depths_CCR",
+          "name": "Warden of Depths",
+          "source_card_key": "Warden of Depths_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{U}{U}{B}\nType: Legendary Creature — Leviathan Avatar\nPower/Toughness: 6/6\nThe first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash and surface. The surface cost is equal to their mana cost. *(You may cast a copy of it from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*\nSurface {6}{U}{U}{B}",
+          "source_faces": [
+            {
+              "name": "Warden of Depths",
+              "original_text": "Mana cost: {3}{U}{U}{B}\nType: Legendary Creature — Leviathan Avatar\nPower/Toughness: 6/6\nThe first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash and surface. The surface cost is equal to their mana cost. *(You may cast a copy of it from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*\nSurface {6}{U}{U}{B}"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{U}{U}{B}\nType: Legendary Creature — Leviathan Avatar\nPower/Toughness: 6/6\nThe first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash.\nDuring each ending phase, nonland cards in your graveyard have custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\". \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {6}{U}{U}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue/Black} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Warden of Depths",
+              "original_text": "Mana cost: {3}{U}{U}{B}\nType: Legendary Creature — Leviathan Avatar\nPower/Toughness: 6/6\nThe first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash.\nDuring each ending phase, nonland cards in your graveyard have custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\". \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {6}{U}{U}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {6}{U}{U}{B}",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {6}{U}{U}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Warden of Depths",
+              "color_indicator": [],
+              "executable_text": "Mana cost: {3}{U}{U}{B}\nType: Legendary Creature — Leviathan Avatar\nPower/Toughness: 6/6\nThe first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash.\nDuring each ending phase, nonland cards in your graveyard have custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\". \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {6}{U}{U}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "The first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash.\nDuring each ending phase, nonland cards in your graveyard have custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\".\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {6}{U}{U}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.",
+              "original_printed_rules_text": "The first spell you cast during each of your opponent's turns cost {U}{B} less to cast.\nDuring each ending phase, nonland cards in your graveyard have flash.\nDuring each ending phase, nonland cards in your graveyard have custom keyword \"Surface\", and \"As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying this card's mana cost and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface.\". \nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {6}{U}{U}{B} and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Surface."
+            }
+          ]
+        },
+        {
+          "id": "Wrecking Whale_CCR",
+          "name": "Wrecking Whale",
+          "source_card_key": "Wrecking Whale_CCR",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {6}{U}{U}\nType: Creature — Whale\nPower/Toughness: 8/8\nThis spell can't be countered.\nTrample\nSurface {3}{U}{U}. Wrecking Whale surfaces tapped. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*",
+          "source_faces": [
+            {
+              "name": "Wrecking Whale",
+              "original_text": "Mana cost: {6}{U}{U}\nType: Creature — Whale\nPower/Toughness: 8/8\nThis spell can't be countered.\nTrample\nSurface {3}{U}{U}. Wrecking Whale surfaces tapped. *(You may cast a copy of this from your graveyard if there are six or more other cards there by exiling it and paying the surface cost.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {6}{U}{U}\nType: Creature — Whale\nPower/Toughness: 8/8\nColor indicator: Blue\nThis spell can't be countered.\nTrample\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. If you cast this spell this way, it enters tapped. This alternative cost is named Surface.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_face_color_evidence": [
+            "{Blue} "
+          ],
+          "source_equivalent_faces": [
+            {
+              "name": "Wrecking Whale",
+              "original_text": "Mana cost: {6}{U}{U}\nType: Creature — Whale\nPower/Toughness: 8/8\nThis spell can't be countered.\nTrample\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. If you cast this spell this way, it enters tapped. This alternative cost is named Surface.",
+              "hasPrice": true,
+              "annotations": [
+                {
+                  "original": "Surface {3}{U}{U}. Wrecking Whale surfaces tapped. ",
+                  "native": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. If you cast this spell this way, it enters tapped. This alternative cost is named Surface.",
+                  "rule": "702.219a–b"
+                }
+              ]
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wrecking Whale",
+              "color_indicator": [
+                "Blue"
+              ],
+              "executable_text": "Mana cost: {6}{U}{U}\nType: Creature — Whale\nPower/Toughness: 8/8\nColor indicator: Blue\nThis spell can't be countered.\nTrample\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. If you cast this spell this way, it enters tapped. This alternative cost is named Surface.",
+              "custom_keyword_identities": [
+                "Surface"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "This spell can't be countered.\nTrample\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. If you cast this spell this way, it enters tapped. This alternative cost is named Surface.",
+              "original_printed_rules_text": "This spell can't be countered.\nTrample\nAs long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {3}{U}{U} and exiling this card from your graveyard rather than paying its mana cost. If you cast this spell this way, it enters tapped. This alternative cost is named Surface."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Aqua Jet",
+        "Beloved Poppet//Abandoned Poppet",
+        "Blind Pursuit",
+        "Buried Geode",
+        "Chum Chaser//Ship Shredder",
+        "Claw Fossil//Reborn Scuttler",
+        "Depths Ancient",
+        "Entangled Fossil//Reborn Reef",
+        "Explore Wreckage",
+        "Floating Familiar",
+        "Fortune Bearer//Devourer of Fortunes",
+        "Harvest Time",
+        "King of Currents",
+        "Meteor Lobber",
+        "Muddy Water",
+        "Padpole",
+        "Relentless Bats",
+        "Riverbed Snapper//Daunting Snapper",
+        "Root Fossil//Reborn Lily",
+        "Scuttling Cicada//Buzzing Metamorph",
+        "Serrated Fossil//Reborn Fisher",
+        "Shining Angler",
+        "Soul's Sunset",
+        "Starved Piranha",
+        "Walk Among the Dead",
+        "Wrecking Whale"
+      ],
+      "behavioral_assertions": [],
+      "support_status": "pending_generic_readers",
+      "executable_definitions": [
+        {
+          "keyword": "Surface",
+          "reminder": "As long as you have seven or more cards in your graveyard, you may cast a copy of this card from your graveyard by paying {Cost} and exiling this card from your graveyard rather than paying its mana cost."
+        }
+      ]
+    }
+  ],
+  "exact_source_boundaries": [
+    {
+      "source_card_key": "Padpole_CCR",
+      "excluded_scope": "enters-trigger Berry-token dependent body",
+      "in_scope": "Surface price and independent 32 complete physical sources",
+      "reason": "Intrinsic automatic pre-assignment/pre-zero-event stage; ordinary damage replacement or triggered ability changes assignments/response windows",
+      "printed_source_variant": "+2/+2",
+      "formal_111_10ag_variant": "+1/+1",
+      "evidence": "berry-boundary-review.md",
+      "approval": "root explicitly accepted exact dependent-clause/body exclusion"
+    }
+  ]
+}

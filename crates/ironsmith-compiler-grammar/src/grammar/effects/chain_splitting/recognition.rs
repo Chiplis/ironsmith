@@ -279,6 +279,11 @@ pub fn has_basic_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
 
 pub fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
     has_basic_effect_head_tokens(tokens)
+        // A named operation is a complete independent action arm, not a
+        // conjunction extending the previous counter-placement recipient.
+        || (tokens.first().is_some_and(|token| token.is_word("perform"))
+            && tokens.get(1).is_some_and(|token| token.is_word("the"))
+            && tokens.iter().skip(3).any(|token| token.is_word("action")))
         || parse_prevent_next_damage(tokens)
         || parse_prevent_all_damage(tokens)
         || crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(tokens).is_some()
@@ -1186,3 +1191,14 @@ use combat_programs::damage_equal_followup;
 #[path = "recognition/resource.rs"]
 mod resource_programs;
 use resource_programs::life_equal_followup;
+
+#[cfg(test)]
+mod independent_named_operation_arm {
+    #[test]
+    fn a_named_operation_is_not_part_of_the_counter_recipient() {
+        let tokens=crate::lexer::lex_line("Put a +1/+1 counter on this creature and perform the cadence action with creatures tapped this way.",0).unwrap();
+        let arms=crate::grammar::effects::chain_splitting::split_effect_chain_on_and_tokens(&tokens,true);
+        assert_eq!(arms.len(),2);
+        assert!(arms[1].first().is_some_and(|token|token.is_word("perform")));
+    }
+}

@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effect_sentences::document_readings::quoted_optional_price_owner_tests::a_nested_paid_creation_program_keeps_its_trailing_entry_rider' panicked at crates/ironsmith-compiler-grammar/src/effect_sentences/document_readings.rs:1824:9:
+entry condition must be folded into the token creation before entry
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effect_sentences::document_readings::quoted_optional_price_owner_tests::a_nested_paid_creation_program_keeps_its_trailing_entry_rider ... FAILED
+
+failures:
+
+failures:
+    effect_sentences::document_readings::quoted_optional_price_owner_tests::a_nested_paid_creation_program_keeps_its_trailing_entry_rider
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.16s
+

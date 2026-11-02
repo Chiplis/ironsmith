@@ -1,0 +1,1148 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "msem-arise",
+  "notes": [
+    "Source identities and original texts are immutable. Frontend materialization and native behavior remain separate verification obligations.",
+    "Named action watchers, dynamic grants, mana source name restrictions, selected sacrifice reductions and linked exile must retain their exact structured semantics."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-843",
+      "keyword": "Arise",
+      "original_reminder": "Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Corpsecaster Mage"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Corpsecaster Mage_MSL",
+          "name": "Corpsecaster Mage",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost. *(Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains custom keyword \"arise\", and \"Pay this card's mana cost, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Have those tokens perform the arise action. Activate only as a sorcery.\" until end of turn.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Warlock",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Corpsecaster Mage_MSL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Corpsecaster Mage",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost. *(Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Corpsecaster Mage",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains custom keyword \"arise\", and \"Pay this card's mana cost, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Have those tokens perform the arise action. Activate only as a sorcery.\" until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Deathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost."
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-844",
+      "keyword": "Arise",
+      "original_reminder": "{8}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Bleakfell Mauler"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bleakfell Mauler_TPW",
+          "name": "Bleakfell Mauler",
+          "original_text": "Mana cost: {7}{B}\nType: Creature — Bear\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each card in your graveyard.\nArise {8}{B}{B}. This ability costs {1} less to activate for each other card in your graveyard. *({8}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {7}{B}\nType: Creature — Bear\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each card in your graveyard.\n{8}{B}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery. This ability costs {1} less to activate for each other card in your graveyard.",
+          "mana_cost": "{7}{B}",
+          "type_line": "Creature — Bear",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Bleakfell Mauler_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bleakfell Mauler",
+              "original_text": "Mana cost: {7}{B}\nType: Creature — Bear\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each card in your graveyard.\nArise {8}{B}{B}. This ability costs {1} less to activate for each other card in your graveyard. *({8}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bleakfell Mauler",
+              "executable_text": "Mana cost: {7}{B}\nType: Creature — Bear\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each card in your graveyard.\n{8}{B}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery. This ability costs {1} less to activate for each other card in your graveyard.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "This spell costs {1} less to cast for each card in your graveyard.\nArise {8}{B}{B}. This ability costs {1} less to activate for each other card in your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "This spell costs {1} less to cast for each card in your graveyard.\nArise {8}{B}{B}. This ability costs {1} less to activate for each other card in your graveyard.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-845",
+      "keyword": "Arise",
+      "original_reminder": "{2}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Bloodvenge Slayer",
+        "Impetuous Cavalryman"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bloodvenge Slayer_TPW",
+          "name": "Bloodvenge Slayer",
+          "original_text": "Mana cost: {R}\nType: Creature — Elf Rogue Berserker\nPower/Toughness: 1/2\nHaste\nWhen this creature enters, exile any number of noncreature, nonland cards from your graveyard. When you do, it gets +1/+0 for each card exiled this way until end of turn.\nArise 2R *({2}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {R}\nType: Creature — Elf Rogue Berserker\nPower/Toughness: 1/2\nHaste\nWhen this creature enters, exile any number of noncreature, nonland cards from your graveyard. When you do, it gets +1/+0 for each card exiled this way until end of turn.\n{2}{R}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Elf Rogue Berserker",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Bloodvenge Slayer_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloodvenge Slayer",
+              "original_text": "Mana cost: {R}\nType: Creature — Elf Rogue Berserker\nPower/Toughness: 1/2\nHaste\nWhen this creature enters, exile any number of noncreature, nonland cards from your graveyard. When you do, it gets +1/+0 for each card exiled this way until end of turn.\nArise 2R *({2}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bloodvenge Slayer",
+              "executable_text": "Mana cost: {R}\nType: Creature — Elf Rogue Berserker\nPower/Toughness: 1/2\nHaste\nWhen this creature enters, exile any number of noncreature, nonland cards from your graveyard. When you do, it gets +1/+0 for each card exiled this way until end of turn.\n{2}{R}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nWhen this creature enters, exile any number of noncreature, nonland cards from your graveyard. When you do, it gets +1/+0 for each card exiled this way until end of turn.\nArise 2R"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Haste\nWhen this creature enters, exile any number of noncreature, nonland cards from your graveyard. When you do, it gets +1/+0 for each card exiled this way until end of turn.\nArise 2R",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-846",
+      "keyword": "Arise",
+      "original_reminder": "{3}{R}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Bugrund, Firehearth's Last"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bugrund, Firehearth's Last_TPW",
+          "name": "Bugrund, Firehearth's Last",
+          "original_text": "Mana cost: {R}{W}\nType: Legendary Creature — Dwarf Noble\nPower/Toughness: 1/1\nDouble strike, trample\nArise {3}{R}{W} *({3}{R}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*\nWhen Bugrund arises, you may put an Equipment card from your hand or graveyard onto the battlefield attached to it.",
+          "executable_text": "Mana cost: {R}{W}\nType: Legendary Creature — Dwarf Noble\nPower/Toughness: 1/1\nDouble strike, trample\n{3}{R}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.\nWhen this permanent performs the arise action, you may put an Equipment card from your hand or graveyard onto the battlefield attached to it.",
+          "mana_cost": "{R}{W}",
+          "type_line": "Legendary Creature — Dwarf Noble",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Bugrund, Firehearth's Last_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bugrund, Firehearth's Last",
+              "original_text": "Mana cost: {R}{W}\nType: Legendary Creature — Dwarf Noble\nPower/Toughness: 1/1\nDouble strike, trample\nArise {3}{R}{W} *({3}{R}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*\nWhen Bugrund arises, you may put an Equipment card from your hand or graveyard onto the battlefield attached to it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bugrund, Firehearth's Last",
+              "executable_text": "Mana cost: {R}{W}\nType: Legendary Creature — Dwarf Noble\nPower/Toughness: 1/1\nDouble strike, trample\n{3}{R}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.\nWhen this permanent performs the arise action, you may put an Equipment card from your hand or graveyard onto the battlefield attached to it.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Double strike, trample\nArise {3}{R}{W}\nWhen Bugrund arises, you may put an Equipment card from your hand or graveyard onto the battlefield attached to it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Double strike, trample\nArise {3}{R}{W}\nWhen Bugrund arises, you may put an Equipment card from your hand or graveyard onto the battlefield attached to it.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-847",
+      "keyword": "Arise",
+      "original_reminder": "{R}, Exile four instant and/or sorcery cards and this card from your graveyard as a sorcery: Create a black token copy of it that’s also a Zombie and can’t block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Cinderfeather Phoenix"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Cinderfeather Phoenix_TPW",
+          "name": "Cinderfeather Phoenix",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Phoenix\nPower/Toughness: 3/2\nFlying, haste\nArise—{R}, Exile four instant and/or sorcery cards from your graveyard. *({R}, Exile four instant and/or sorcery cards and this card from your graveyard as a sorcery: Create a black token copy of it that’s also a Zombie and can’t block.)*",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Creature — Phoenix\nPower/Toughness: 3/2\nFlying, haste\n{R}, Exile four instant and/or sorcery cards from your graveyard, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{1}{R}{R}",
+          "type_line": "Creature — Phoenix",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Cinderfeather Phoenix_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cinderfeather Phoenix",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Creature — Phoenix\nPower/Toughness: 3/2\nFlying, haste\nArise—{R}, Exile four instant and/or sorcery cards from your graveyard. *({R}, Exile four instant and/or sorcery cards and this card from your graveyard as a sorcery: Create a black token copy of it that’s also a Zombie and can’t block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cinderfeather Phoenix",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Creature — Phoenix\nPower/Toughness: 3/2\nFlying, haste\n{R}, Exile four instant and/or sorcery cards from your graveyard, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, haste\nArise—{R}, Exile four instant and/or sorcery cards from your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying, haste\nArise—{R}, Exile four instant and/or sorcery cards from your graveyard.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-848",
+      "keyword": "Arise",
+      "original_reminder": "{1}{W}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Desperate Commander"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Desperate Commander_TPW",
+          "name": "Desperate Commander",
+          "original_text": "Mana cost: {W}{B}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nAs long as this creature isn't a Zombie, it and other Knights and Soldiers you control get +1/+1 and have vigilance. Otherwise, it and other Zombies you control get +1/+1 and have menace.\nArise {1}{W}{B} *({1}{W}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {W}{B}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nAs long as this creature isn't a Zombie, it and other Knights and Soldiers you control get +1/+1 and have vigilance. Otherwise, it and other Zombies you control get +1/+1 and have menace.\n{1}{W}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{W}{B}",
+          "type_line": "Creature — Human Soldier",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Desperate Commander_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Desperate Commander",
+              "original_text": "Mana cost: {W}{B}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nAs long as this creature isn't a Zombie, it and other Knights and Soldiers you control get +1/+1 and have vigilance. Otherwise, it and other Zombies you control get +1/+1 and have menace.\nArise {1}{W}{B} *({1}{W}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Desperate Commander",
+              "executable_text": "Mana cost: {W}{B}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nAs long as this creature isn't a Zombie, it and other Knights and Soldiers you control get +1/+1 and have vigilance. Otherwise, it and other Zombies you control get +1/+1 and have menace.\n{1}{W}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "As long as this creature isn't a Zombie, it and other Knights and Soldiers you control get +1/+1 and have vigilance. Otherwise, it and other Zombies you control get +1/+1 and have menace.\nArise {1}{W}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "As long as this creature isn't a Zombie, it and other Knights and Soldiers you control get +1/+1 and have vigilance. Otherwise, it and other Zombies you control get +1/+1 and have menace.\nArise {1}{W}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-849",
+      "keyword": "Arise",
+      "original_reminder": "{3}{B}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Dreadmoon Crusader"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dreadmoon Crusader_TPW",
+          "name": "Dreadmoon Crusader",
+          "original_text": "Mana cost: {B}{R}\nType: Creature — Human Warlock Knight\nPower/Toughness: 4/3\nAt the beginning of your end step, mill two cards and you lose 2 life.\nArise {3}{B}{R} *({3}{B}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {B}{R}\nType: Creature — Human Warlock Knight\nPower/Toughness: 4/3\nAt the beginning of your end step, mill two cards and you lose 2 life.\n{3}{B}{R}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{B}{R}",
+          "type_line": "Creature — Human Warlock Knight",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Dreadmoon Crusader_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dreadmoon Crusader",
+              "original_text": "Mana cost: {B}{R}\nType: Creature — Human Warlock Knight\nPower/Toughness: 4/3\nAt the beginning of your end step, mill two cards and you lose 2 life.\nArise {3}{B}{R} *({3}{B}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dreadmoon Crusader",
+              "executable_text": "Mana cost: {B}{R}\nType: Creature — Human Warlock Knight\nPower/Toughness: 4/3\nAt the beginning of your end step, mill two cards and you lose 2 life.\n{3}{B}{R}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your end step, mill two cards and you lose 2 life.\nArise {3}{B}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "At the beginning of your end step, mill two cards and you lose 2 life.\nArise {3}{B}{R}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-850",
+      "keyword": "Arise",
+      "original_reminder": "{2}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Dreadmoon Disciple"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dreadmoon Disciple_TPW",
+          "name": "Dreadmoon Disciple",
+          "original_text": "Mana cost: {B}\nType: Creature — Human Warlock\nPower/Toughness: 1/2\nWhen this creature enters, you may sacrifice a creature. If you do, you draw a card and you lose 1 life.\nArise {2}{B} *({2}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {B}\nType: Creature — Human Warlock\nPower/Toughness: 1/2\nWhen this creature enters, you may sacrifice a creature. If you do, you draw a card and you lose 1 life.\n{2}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{B}",
+          "type_line": "Creature — Human Warlock",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Dreadmoon Disciple_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dreadmoon Disciple",
+              "original_text": "Mana cost: {B}\nType: Creature — Human Warlock\nPower/Toughness: 1/2\nWhen this creature enters, you may sacrifice a creature. If you do, you draw a card and you lose 1 life.\nArise {2}{B} *({2}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dreadmoon Disciple",
+              "executable_text": "Mana cost: {B}\nType: Creature — Human Warlock\nPower/Toughness: 1/2\nWhen this creature enters, you may sacrifice a creature. If you do, you draw a card and you lose 1 life.\n{2}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, you may sacrifice a creature. If you do, you draw a card and you lose 1 life.\nArise {2}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, you may sacrifice a creature. If you do, you draw a card and you lose 1 life.\nArise {2}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-851",
+      "keyword": "Arise",
+      "original_reminder": "{5}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Dwarven Swashbuckler"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dwarven Swashbuckler_TPW",
+          "name": "Dwarven Swashbuckler",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Dwarf Pirate\nPower/Toughness: 4/3\nWhen this creature enters, create a Weapon token, then attach it to a creature you control. *(It's an Equipment artifact token with equip {2} and “Equipped creature gets +1/+1”.)*\nArise {5}{R} *({5}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Dwarf Pirate\nPower/Toughness: 4/3\nWhen this creature enters, create a colorless artifact token named Weapon, then attach it to a creature you control.\n{5}{R}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{4}{R}",
+          "type_line": "Creature — Dwarf Pirate",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Dwarven Swashbuckler_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dwarven Swashbuckler",
+              "original_text": "Mana cost: {4}{R}\nType: Creature — Dwarf Pirate\nPower/Toughness: 4/3\nWhen this creature enters, create a Weapon token, then attach it to a creature you control. *(It's an Equipment artifact token with equip {2} and “Equipped creature gets +1/+1”.)*\nArise {5}{R} *({5}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dwarven Swashbuckler",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Dwarf Pirate\nPower/Toughness: 4/3\nWhen this creature enters, create a colorless artifact token named Weapon, then attach it to a creature you control.\n{5}{R}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "weapon",
+                  "plural": "weapons",
+                  "family": "Artifact"
+                }
+              ],
+              "custom_token_definitions": [
+                {
+                  "name": "Weapon",
+                  "token": true,
+                  "executable_text": "Type: Artifact — Equipment\nEquipped creature gets +1/+1.\nEquip {2}",
+                  "custom_subtypes": [
+                    {
+                      "singular": "weapon",
+                      "plural": "weapons",
+                      "family": "Artifact"
+                    }
+                  ],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_tokens": [
+                {
+                  "face": {
+                    "name": "Weapon",
+                    "typeLine": "Artifact — Equipment",
+                    "oracleText": "Equipped creature gets +1/+1.\nEquip {2}"
+                  },
+                  "input": {
+                    "name": "Weapon",
+                    "manaCost": "",
+                    "cardTypes": [
+                      "Artifact"
+                    ],
+                    "subtypes": [
+                      "Equipment"
+                    ],
+                    "supertypes": [],
+                    "oracleText": "Equipped creature gets +1/+1.\nEquip {2}"
+                  }
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, create a Weapon token, then attach it to a creature you control.\nArise {5}{R}",
+              "original_printed_rules_text": "When this creature enters, create a Weapon token, then attach it to a creature you control. (It's an Equipment artifact token with equip {2} and “Equipped creature gets +1/+1”.)\nArise {5}{R} ({5}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, create a Weapon token, then attach it to a creature you control.\nArise {5}{R}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "weapon",
+              "plural": "weapons",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Weapon",
+                "typeLine": "Artifact — Equipment",
+                "oracleText": "Equipped creature gets +1/+1.\nEquip {2}"
+              },
+              "input": {
+                "name": "Weapon",
+                "manaCost": "",
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Equipment"
+                ],
+                "supertypes": [],
+                "oracleText": "Equipped creature gets +1/+1.\nEquip {2}"
+              }
+            }
+          ],
+          "custom_token_definitions": [
+            {
+              "name": "Weapon",
+              "token": true,
+              "executable_text": "Type: Artifact — Equipment\nEquipped creature gets +1/+1.\nEquip {2}",
+              "custom_subtypes": [
+                {
+                  "singular": "weapon",
+                  "plural": "weapons",
+                  "family": "Artifact"
+                }
+              ],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "original_printed_rules_text": "When this creature enters, create a Weapon token, then attach it to a creature you control. (It's an Equipment artifact token with equip {2} and “Equipped creature gets +1/+1”.)\nArise {5}{R} ({5}{R}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)"
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-852",
+      "keyword": "Arise",
+      "original_reminder": "{3}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Frantic Harvesters"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Frantic Harvesters_TPW",
+          "name": "Frantic Harvesters",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Human Peasant\nPower/Toughness: ★/★\nThis creature's power and toughness are each equal to the number of creatures you control.\nArise {3}{W} *({3}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Peasant\nPower/Toughness: ★/★\nThis creature's power and toughness are each equal to the number of creatures you control.\n{3}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Human Peasant",
+          "power": "★",
+          "toughness": "★",
+          "source_card_key": "Frantic Harvesters_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Frantic Harvesters",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Human Peasant\nPower/Toughness: ★/★\nThis creature's power and toughness are each equal to the number of creatures you control.\nArise {3}{W} *({3}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Frantic Harvesters",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Peasant\nPower/Toughness: ★/★\nThis creature's power and toughness are each equal to the number of creatures you control.\n{3}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "This creature's power and toughness are each equal to the number of creatures you control.\nArise {3}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "This creature's power and toughness are each equal to the number of creatures you control.\nArise {3}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-853",
+      "keyword": "Arise",
+      "original_reminder": "{3}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Heedless Questant"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Heedless Questant_TPW",
+          "name": "Heedless Questant",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Human Knight\nPower/Toughness: 5/2\nWhen this creature enters, it seeks secrets or valor. *(Give it that Oath Aura. Fulfill secrets by attacking with it and two or more other creatures to draw a card. Fulfill valor by dealing combat damage to a player to create a 2/1 white Soldier token.)*\nArise {3}{B}{B} *({3}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Human Knight\nPower/Toughness: 5/2\nWhen this creature enters, it seeks secrets or valor.\n{3}{B}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Creature — Human Knight",
+          "power": "5",
+          "toughness": "2",
+          "source_card_key": "Heedless Questant_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Heedless Questant",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Human Knight\nPower/Toughness: 5/2\nWhen this creature enters, it seeks secrets or valor. *(Give it that Oath Aura. Fulfill secrets by attacking with it and two or more other creatures to draw a card. Fulfill valor by dealing combat damage to a player to create a 2/1 white Soldier token.)*\nArise {3}{B}{B} *({3}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Heedless Questant",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Human Knight\nPower/Toughness: 5/2\nWhen this creature enters, it seeks secrets or valor.\n{3}{B}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, it seeks secrets or valor.\nArise {3}{B}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, it seeks secrets or valor.\nArise {3}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-854",
+      "keyword": "Arise",
+      "original_reminder": "{2}{W}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Heretical Prelate"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Heretical Prelate_TPW",
+          "name": "Heretical Prelate",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Human Cleric Soldier\nPower/Toughness: 3/2\nWhen this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.\nArise {2}{W}{W} *({2}{W}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Cleric Soldier\nPower/Toughness: 3/2\nWhen this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.\n{2}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Human Cleric Soldier",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Heretical Prelate_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Heretical Prelate",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Human Cleric Soldier\nPower/Toughness: 3/2\nWhen this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.\nArise {2}{W}{W} *({2}{W}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Heretical Prelate",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Cleric Soldier\nPower/Toughness: 3/2\nWhen this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.\n{2}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.\nArise {2}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it. A spell cast this way costs {2} more to cast.\nArise {2}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-855",
+      "keyword": "Arise",
+      "original_reminder": "{3}{W}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Skysworn Companion"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Skysworn Companion_TPW",
+          "name": "Skysworn Companion",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Griffin\nPower/Toughness: 3/2\nFlying\nWhen this creature enters, target creature gains flying until end of turn.\nArise {3}{W}{W} *({3}{W}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Griffin\nPower/Toughness: 3/2\nFlying\nWhen this creature enters, target creature gains flying until end of turn.\n{3}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Griffin",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Skysworn Companion_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skysworn Companion",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Griffin\nPower/Toughness: 3/2\nFlying\nWhen this creature enters, target creature gains flying until end of turn.\nArise {3}{W}{W} *({3}{W}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Skysworn Companion",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Griffin\nPower/Toughness: 3/2\nFlying\nWhen this creature enters, target creature gains flying until end of turn.\n{3}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen this creature enters, target creature gains flying until end of turn.\nArise {3}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhen this creature enters, target creature gains flying until end of turn.\nArise {3}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-856",
+      "keyword": "Arise",
+      "original_reminder": "{2}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Treacherous Bloodbriar"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Treacherous Bloodbriar_TPW",
+          "name": "Treacherous Bloodbriar",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/2\nWhen this creature enters, each opponent loses 2 life and you gain 2 life.\nArise {2}{B}{B} *({2}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/2\nWhen this creature enters, each opponent loses 2 life and you gain 2 life.\n{2}{B}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Elf Rogue",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Treacherous Bloodbriar_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Treacherous Bloodbriar",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/2\nWhen this creature enters, each opponent loses 2 life and you gain 2 life.\nArise {2}{B}{B} *({2}{B}{B}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Treacherous Bloodbriar",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Elf Rogue\nPower/Toughness: 2/2\nWhen this creature enters, each opponent loses 2 life and you gain 2 life.\n{2}{B}{B}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, each opponent loses 2 life and you gain 2 life.\nArise {2}{B}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, each opponent loses 2 life and you gain 2 life.\nArise {2}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    },
+    {
+      "id": "msem-857",
+      "keyword": "Arise",
+      "original_reminder": "{2}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Underpass Ranger"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Underpass Ranger_TPW",
+          "name": "Underpass Ranger",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Dwarf Ranger\nPower/Toughness: 3/2\nWhen this creature enters, search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\nArise {2}{W} *({2}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Dwarf Ranger\nPower/Toughness: 3/2\nWhen this creature enters, search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\n{2}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Dwarf Ranger",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Underpass Ranger_TPW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Underpass Ranger",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Dwarf Ranger\nPower/Toughness: 3/2\nWhen this creature enters, search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\nArise {2}{W} *({2}{W}, Exile this from your graveyard as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Underpass Ranger",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Dwarf Ranger\nPower/Toughness: 3/2\nWhen this creature enters, search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\n{2}{W}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "arise"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\nArise {2}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "arise"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When this creature enters, search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\nArise {2}{W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    }
+  ]
+}

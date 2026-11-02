@@ -112,7 +112,17 @@ pub fn parse_exiled_source_ability_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ExiledSourceAbilityTailSurface> {
     let words = TokenWordView::new(tokens).word_refs();
+    for preposition in ["with", "by"] {
+        if words.as_slice() == ["exiled", preposition, "this"] {
+            return Some(ExiledSourceAbilityTailSurface { source_noun: "permanent" });
+        }
+    }
     for source_noun in SOURCE_NOUNS {
+        for preposition in ["with", "by"] {
+            if words.as_slice() == ["exiled", preposition, "this", *source_noun] {
+                return Some(ExiledSourceAbilityTailSurface { source_noun });
+            }
+        }
         let possessive = format!("{source_noun}s");
         for preposition in ["with", "by"] {
             if permission_shapes::prefix_words(
@@ -230,7 +240,7 @@ pub fn parse_borrow_static_condition_surface_tokens(
     {
         let with_index = relative_with + 1;
         let verb_index = with_index + with_ability.len();
-        if matches!(word_refs.get(verb_index), Some(&"was" | &"were"))
+        if matches!(word_refs.get(verb_index), Some(&"is" | &"are" | &"was" | &"were"))
             && word_refs.get(verb_index + 1) == Some(&"exiled")
             && matches!(word_refs.get(verb_index + 2), Some(&"with" | &"by"))
         {
@@ -379,4 +389,20 @@ mod tests {
 /// rewrite, and reads nothing (the rewritten line's readers claim words).
 fn preprocess_locate_words(words: &[&str], expected: &[&str]) -> Option<usize> {
     crate::word_claims::probe_only(|| permission_shapes::find_words(words, expected))
+}
+
+#[cfg(test)]
+mod present_exiled_borrow_tests {
+    use super::*;
+    #[test]
+    fn present_and_past_exiled_ability_conditions_share_the_same_typed_population() {
+        for verb in ["is", "are", "was", "were"] {
+            let condition = format!("a creature card with flying {verb} exiled by this permanent");
+            let parsed = parse_borrow_static_condition_surface(&condition, "flying").unwrap();
+            assert_eq!(parsed, BorrowStaticConditionSurface::ExiledWithAbility {
+                subject: "a creature card".into(), tail: "exiled by this permanent".into(), source_noun: Some("permanent"),
+            });
+        }
+        assert!(parse_borrow_static_condition_surface("a creature card with flying may be exiled by this permanent", "flying").is_none());
+    }
 }

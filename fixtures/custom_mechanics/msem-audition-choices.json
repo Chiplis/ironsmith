@@ -1,0 +1,1504 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "token_definitions": "reports/cards/lackey-audit-2026-11-01/msem-token-source.json",
+    "policy": "Exact source and Role definitions preserved. Choice reader awaits integration; native certification pending."
+  },
+  "mechanics": [
+    {
+      "id": "msem-376",
+      "keyword": "Audition",
+      "original_reminder": "Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.",
+      "executable_reminder": "You choose actor, cleric or scout. If you chose actor, create a 1/1 colorless Construct Actor creature token. If you chose cleric, choose a creature you control, then create a colorless Aura Role enchantment token named \"Cleric Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has lifelink, and is a Cleric in addition to its other types.\" attached to that creature. If you chose scout, choose a creature you control, then create a colorless Aura Role enchantment token named \"Scout Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/3, has vigilance, and is a Scout in addition to its other types.\" attached to that creature.",
+      "source_cards": [
+        "A Delightful Afternoon. . .",
+        "Hope Spot",
+        "Leading Clergy",
+        "Prop Custodian",
+        "Runaway Princess",
+        "Second-Stage Actress",
+        "Seraph of the Stage"
+      ],
+      "rule_reference": "701.101.",
+      "rule_text": [
+        {
+          "name": "701.101a",
+          "rule": "Certain abilities instruct a player to audition for [quality]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the audition of that quality. See rules C701.101c-g.",
+          "custom": true
+        },
+        {
+          "name": "701.101b",
+          "rule": "Abilities may instruct a player to audition for [quality A] or for [quality B]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the quality A audition or quality B audition.",
+          "custom": true
+        },
+        {
+          "name": "701.101c",
+          "rule": "The Role tokens associated with audition for white are Cleric Role and Scout Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101d",
+          "rule": "The Role tokens associated with audition for blue are Warlock Role and Wizard Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101e",
+          "rule": "The Role tokens associated with audition for black are Cleric Role and Warlock Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101f",
+          "rule": "The Role tokens associated with audition for red are Wizard Role and Warrior Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101g",
+          "rule": "The Role tokens associated with audition for green are Scout Role and Warrior Role.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "A Delightful Afternoon. . ._ACT",
+          "name": "A Delightful Afternoon. . .",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*\nIII — Distribute two +1/+1 counters among creatures you control.",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nIII — Distribute two +1/+1 counters among creatures you control.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Enchantment — Saga",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "A Delightful Afternoon. . ._ACT",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "A Delightful Afternoon. . .",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*\nIII — Distribute two +1/+1 counters among creatures you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "A Delightful Afternoon. . .",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nIII — Distribute two +1/+1 counters among creatures you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "I, II — Audition for white.\nIII — Distribute two +1/+1 counters among creatures you control.",
+              "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nIII — Distribute two +1/+1 counters among creatures you control."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "I, II — Audition for white.\nIII — Distribute two +1/+1 counters among creatures you control.",
+          "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nIII — Distribute two +1/+1 counters among creatures you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Hope Spot_ACT",
+          "name": "Hope Spot",
+          "original_text": "Mana cost: {W}\nType: Instant\nAudition for white. If you create a Role this way, untap the creature it enchants. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nAudition for white. If you create a Role this way, untap the creature it enchants. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "source_card_key": "Hope Spot_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Hope Spot",
+              "executable_text": "Mana cost: {W}\nType: Instant\nAudition for white. If you create a Role this way, untap the creature it enchants. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Audition for white. If you create a Role this way, untap the creature it enchants.",
+              "original_printed_rules_text": "Audition for white. If you create a Role this way, untap the creature it enchants. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Audition for white. If you create a Role this way, untap the creature it enchants.",
+          "original_printed_rules_text": "Audition for white. If you create a Role this way, untap the creature it enchants. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Leading Clergy_ACT",
+          "name": "Leading Clergy",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Construct Cleric\nPower/Toughness: 1/3\nWhenever Leading Clergy attacks, you may pay {W}. If you do, audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Construct Cleric\nPower/Toughness: 1/3\nWhenever Leading Clergy attacks, you may pay {W}. If you do, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "source_card_key": "Leading Clergy_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Leading Clergy",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Construct Cleric\nPower/Toughness: 1/3\nWhenever Leading Clergy attacks, you may pay {W}. If you do, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Leading Clergy attacks, you may pay {W}. If you do, audition for white.",
+              "original_printed_rules_text": "Whenever Leading Clergy attacks, you may pay {W}. If you do, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever Leading Clergy attacks, you may pay {W}. If you do, audition for white.",
+          "original_printed_rules_text": "Whenever Leading Clergy attacks, you may pay {W}. If you do, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Prop Custodian_ACT",
+          "name": "Prop Custodian",
+          "original_text": "Mana cost: {W}\nType: Creature — Construct Actor\nPower/Toughness: 1/1\nOnce each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {W}\nType: Creature — Construct Actor\nPower/Toughness: 1/1\nOnce each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "source_card_key": "Prop Custodian_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Prop Custodian",
+              "executable_text": "Mana cost: {W}\nType: Creature — Construct Actor\nPower/Toughness: 1/1\nOnce each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Once each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white.",
+              "original_printed_rules_text": "Once each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Once each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white.",
+          "original_printed_rules_text": "Once each turn, when an Aura is attached to Prop Custodian or you cast a spell that targets it, you may audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Runaway Princess_ACT",
+          "name": "Runaway Princess",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Construct Noble\nPower/Toughness: 2/1\nWhen Runaway Princess dies, audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Construct Noble\nPower/Toughness: 2/1\nWhen Runaway Princess dies, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "source_card_key": "Runaway Princess_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Runaway Princess",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Construct Noble\nPower/Toughness: 2/1\nWhen Runaway Princess dies, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Runaway Princess dies, audition for white.",
+              "original_printed_rules_text": "When Runaway Princess dies, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Runaway Princess dies, audition for white.",
+          "original_printed_rules_text": "When Runaway Princess dies, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Second-Stage Actress_ACT",
+          "name": "Second-Stage Actress",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Construct Cleric\nPower/Toughness: 2/1\nWhen Second-Stage Actress enters, audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*\nAs long as it's your turn, Second-Stage Actress has first strike.",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Construct Cleric\nPower/Toughness: 2/1\nWhen Second-Stage Actress enters, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nAs long as it's your turn, Second-Stage Actress has first strike.",
+          "source_card_key": "Second-Stage Actress_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Second-Stage Actress",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Construct Cleric\nPower/Toughness: 2/1\nWhen Second-Stage Actress enters, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nAs long as it's your turn, Second-Stage Actress has first strike.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Second-Stage Actress enters, audition for white.\nAs long as it's your turn, Second-Stage Actress has first strike.",
+              "original_printed_rules_text": "When Second-Stage Actress enters, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nAs long as it's your turn, Second-Stage Actress has first strike."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Second-Stage Actress enters, audition for white.\nAs long as it's your turn, Second-Stage Actress has first strike.",
+          "original_printed_rules_text": "When Second-Stage Actress enters, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nAs long as it's your turn, Second-Stage Actress has first strike.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Seraph of the Stage_ACT",
+          "name": "Seraph of the Stage",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Construct Angel\nPower/Toughness: 4/4\nFlying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)*\nBasic landcycling {1}{W} *({1}{W}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)*",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Construct Angel\nPower/Toughness: 4/4\nFlying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nBasic landcycling {1}{W} ({1}{W}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)",
+          "source_card_key": "Seraph of the Stage_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Seraph of the Stage",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Construct Angel\nPower/Toughness: 4/4\nFlying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nBasic landcycling {1}{W} ({1}{W}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white.\nBasic landcycling {1}{W}",
+              "original_printed_rules_text": "Flying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nBasic landcycling {1}{W} ({1}{W}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white.\nBasic landcycling {1}{W}",
+          "original_printed_rules_text": "Flying\nWhenever you cycle Seraph of the Stage or it attacks, audition for white. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Cleric Role giving 2/2 and lifelink. Roles replace older ones.)\nBasic landcycling {1}{W} ({1}{W}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for white",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Cleric Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has lifelink, and is a Cleric in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Scout Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/3, has vigilance, and is a Scout in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        }
+      ],
+      "support_status": "scratch literal named-choice program with proposed/completed operation boundary; native verification and associated-option modifier source pending",
+      "behavioral_assertions": [
+        {
+          "id": "audition-branches",
+          "status": "pending",
+          "test_reference": "custom_audition_choices",
+          "observable": "Exactly one actor or sourced Role choice resolves, role attaches without targeting and grants exact stats/type/keyword, newest Role wins, absent creature produces no attached Role."
+        }
+      ]
+    },
+    {
+      "id": "msem-377",
+      "keyword": "Audition",
+      "original_reminder": "Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.",
+      "executable_reminder": "You choose actor, warlock or wizard. If you chose actor, create a 1/1 colorless Construct Actor creature token. If you chose warlock, choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature. If you chose wizard, choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature.",
+      "source_cards": [
+        "A Tale of the Boastful Sailor",
+        "Cerulean Curtain Treasurer",
+        "Crafty Escape",
+        "Newswright",
+        "Push to the Background",
+        "Tuesday's First Victim"
+      ],
+      "rule_reference": "701.101.",
+      "rule_text": [
+        {
+          "name": "701.101a",
+          "rule": "Certain abilities instruct a player to audition for [quality]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the audition of that quality. See rules C701.101c-g.",
+          "custom": true
+        },
+        {
+          "name": "701.101b",
+          "rule": "Abilities may instruct a player to audition for [quality A] or for [quality B]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the quality A audition or quality B audition.",
+          "custom": true
+        },
+        {
+          "name": "701.101c",
+          "rule": "The Role tokens associated with audition for white are Cleric Role and Scout Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101d",
+          "rule": "The Role tokens associated with audition for blue are Warlock Role and Wizard Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101e",
+          "rule": "The Role tokens associated with audition for black are Cleric Role and Warlock Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101f",
+          "rule": "The Role tokens associated with audition for red are Wizard Role and Warrior Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101g",
+          "rule": "The Role tokens associated with audition for green are Scout Role and Warrior Role.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "A Tale of the Boastful Sailor_ACT",
+          "name": "A Tale of the Boastful Sailor",
+          "original_text": "Mana cost: {1}{U}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for blue. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card.",
+          "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Enchantment — Saga",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "A Tale of the Boastful Sailor_ACT",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "A Tale of the Boastful Sailor",
+              "original_text": "Mana cost: {1}{U}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for blue. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "A Tale of the Boastful Sailor",
+              "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "I, II — Audition for blue.\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card.",
+              "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "I, II — Audition for blue.\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card.",
+          "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Whenever a creature you control deals combat damage to a player this turn, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Cerulean Curtain Treasurer_ACT",
+          "name": "Cerulean Curtain Treasurer",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Construct Wizard\nPower/Toughness: 2/3\nFlying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Construct Wizard\nPower/Toughness: 2/3\nFlying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "source_card_key": "Cerulean Curtain Treasurer_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Cerulean Curtain Treasurer",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Construct Wizard\nPower/Toughness: 2/3\nFlying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again.",
+              "original_printed_rules_text": "Flying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again.",
+          "original_printed_rules_text": "Flying\nWhen Cerulean Curtain Treasurer enters, audition for blue, then audition for blue again. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Crafty Escape_ACT",
+          "name": "Crafty Escape",
+          "original_text": "Mana cost: {3}{U}\nType: Instant\nExile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nAudition for blue. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {3}{U}\nType: Instant\nExile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nPerform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature]].",
+          "source_card_key": "Crafty Escape_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Crafty Escape",
+              "executable_text": "Mana cost: {3}{U}\nType: Instant\nExile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nPerform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature]].",
+              "custom_keyword_identities": [
+                "audition"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nAudition for blue.",
+              "original_printed_rules_text": "Exile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nAudition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "audition"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nAudition for blue.",
+          "original_printed_rules_text": "Exile up to two target permanents you control, then return those cards to the battlefield under their owner's control.\nAudition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Newswright_ACT",
+          "name": "Newswright",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nWhenever you cast your second spell each turn, audition for blue. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nWhenever you cast your second spell each turn, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "source_card_key": "Newswright_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Newswright",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nWhenever you cast your second spell each turn, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast your second spell each turn, audition for blue.",
+              "original_printed_rules_text": "Whenever you cast your second spell each turn, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever you cast your second spell each turn, audition for blue.",
+          "original_printed_rules_text": "Whenever you cast your second spell each turn, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Push to the Background_ACT",
+          "name": "Push to the Background",
+          "original_text": "Mana cost: {2}{U}\nType: Instant\nCounter target creature spell. Audition for blue. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Instant\nCounter target creature spell. Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "source_card_key": "Push to the Background_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Push to the Background",
+              "executable_text": "Mana cost: {2}{U}\nType: Instant\nCounter target creature spell. Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Counter target creature spell. Audition for blue.",
+              "original_printed_rules_text": "Counter target creature spell. Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Counter target creature spell. Audition for blue.",
+          "original_printed_rules_text": "Counter target creature spell. Audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Tuesday's First Victim_ACT",
+          "name": "Tuesday's First Victim",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Construct Actor\nPower/Toughness: 1/1\nProwess\nWhen Tuesday's First Victim dies, audition for blue. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Construct Actor\nPower/Toughness: 1/1\nProwess\nWhen Tuesday's First Victim dies, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "source_card_key": "Tuesday's First Victim_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Tuesday's First Victim",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Construct Actor\nPower/Toughness: 1/1\nProwess\nWhen Tuesday's First Victim dies, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prowess\nWhen Tuesday's First Victim dies, audition for blue.",
+              "original_printed_rules_text": "Prowess\nWhen Tuesday's First Victim dies, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prowess\nWhen Tuesday's First Victim dies, audition for blue.",
+          "original_printed_rules_text": "Prowess\nWhen Tuesday's First Victim dies, audition for blue. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for blue",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        }
+      ],
+      "support_status": "scratch literal named-choice program with proposed/completed operation boundary; native verification and associated-option modifier source pending",
+      "behavioral_assertions": [
+        {
+          "id": "audition-branches",
+          "status": "pending",
+          "test_reference": "custom_audition_choices",
+          "observable": "Exactly one actor or sourced Role choice resolves, role attaches without targeting and grants exact stats/type/keyword, newest Role wins, absent creature produces no attached Role."
+        }
+      ]
+    },
+    {
+      "id": "msem-378",
+      "keyword": "Audition",
+      "original_reminder": "Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.",
+      "executable_reminder": "You choose actor, wizard or warrior. If you chose actor, create a 1/1 colorless Construct Actor creature token. If you chose wizard, choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature. If you chose warrior, choose a creature you control, then create a colorless Aura Role enchantment token named \"Warrior Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 3/2, has trample, and is a Warrior in addition to its other types.\" attached to that creature.",
+      "source_cards": [
+        "An Invitation to High Rollers",
+        "Backdrop Artisan",
+        "Festival Sabotage",
+        "Shining Showstopper",
+        "Swiftwheel Slayers"
+      ],
+      "rule_reference": "701.101.",
+      "rule_text": [
+        {
+          "name": "701.101a",
+          "rule": "Certain abilities instruct a player to audition for [quality]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the audition of that quality. See rules C701.101c-g.",
+          "custom": true
+        },
+        {
+          "name": "701.101b",
+          "rule": "Abilities may instruct a player to audition for [quality A] or for [quality B]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the quality A audition or quality B audition.",
+          "custom": true
+        },
+        {
+          "name": "701.101c",
+          "rule": "The Role tokens associated with audition for white are Cleric Role and Scout Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101d",
+          "rule": "The Role tokens associated with audition for blue are Warlock Role and Wizard Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101e",
+          "rule": "The Role tokens associated with audition for black are Cleric Role and Warlock Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101f",
+          "rule": "The Role tokens associated with audition for red are Wizard Role and Warrior Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101g",
+          "rule": "The Role tokens associated with audition for green are Scout Role and Warrior Role.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "An Invitation to High Rollers_ACT",
+          "name": "An Invitation to High Rollers",
+          "original_text": "Mana cost: {1}{R}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for red. *(Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)*\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn.",
+          "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Enchantment — Saga",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "An Invitation to High Rollers_ACT",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "An Invitation to High Rollers",
+              "original_text": "Mana cost: {1}{R}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for red. *(Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)*\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "An Invitation to High Rollers",
+              "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "I, II — Audition for red.\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn.",
+              "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "I, II — Audition for red.\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn.",
+          "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nIII — Whenever a creature you control deals damage to an opponent this turn, exile the top card of your library. You may play it this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Backdrop Artisan_ACT",
+          "name": "Backdrop Artisan",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Construct Actor\nPower/Toughness: 3/1\nHaste\nWhen Backdrop Artisan dies, audition for red. *(Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Construct Actor\nPower/Toughness: 3/1\nHaste\nWhen Backdrop Artisan dies, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+          "source_card_key": "Backdrop Artisan_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Backdrop Artisan",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Construct Actor\nPower/Toughness: 3/1\nHaste\nWhen Backdrop Artisan dies, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nWhen Backdrop Artisan dies, audition for red.",
+              "original_printed_rules_text": "Haste\nWhen Backdrop Artisan dies, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Haste\nWhen Backdrop Artisan dies, audition for red.",
+          "original_printed_rules_text": "Haste\nWhen Backdrop Artisan dies, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Festival Sabotage_ACT",
+          "name": "Festival Sabotage",
+          "original_text": "Mana cost: {R}\nType: Sorcery\nChoose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red. *(Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {R}\nType: Sorcery\nChoose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+          "source_card_key": "Festival Sabotage_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Festival Sabotage",
+              "executable_text": "Mana cost: {R}\nType: Sorcery\nChoose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red.",
+              "original_printed_rules_text": "Choose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red.",
+          "original_printed_rules_text": "Choose one —\n• Festival Sabotage deals 2 damage to any target.\n• Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Shining Showstopper_ACT",
+          "name": "Shining Showstopper",
+          "original_text": "Mana cost: {4}{R}\nType: Sorcery\nShining Showstopper deals 5 damage to any target. Audition for red. *(Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {4}{R}\nType: Sorcery\nShining Showstopper deals 5 damage to any target. Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+          "source_card_key": "Shining Showstopper_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Shining Showstopper",
+              "executable_text": "Mana cost: {4}{R}\nType: Sorcery\nShining Showstopper deals 5 damage to any target. Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Shining Showstopper deals 5 damage to any target. Audition for red.",
+              "original_printed_rules_text": "Shining Showstopper deals 5 damage to any target. Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Shining Showstopper deals 5 damage to any target. Audition for red.",
+          "original_printed_rules_text": "Shining Showstopper deals 5 damage to any target. Audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Swiftwheel Slayers_ACT",
+          "name": "Swiftwheel Slayers",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Construct Rogue\nPower/Toughness: 4/4\nWhen Swiftwheel Slayers enters, audition for red. *(Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)*\nToken creatures you control have haste.",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Construct Rogue\nPower/Toughness: 4/4\nWhen Swiftwheel Slayers enters, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nToken creatures you control have haste.",
+          "source_card_key": "Swiftwheel Slayers_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Swiftwheel Slayers",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Construct Rogue\nPower/Toughness: 4/4\nWhen Swiftwheel Slayers enters, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nToken creatures you control have haste.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Swiftwheel Slayers enters, audition for red.\nToken creatures you control have haste.",
+              "original_printed_rules_text": "When Swiftwheel Slayers enters, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nToken creatures you control have haste."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Swiftwheel Slayers enters, audition for red.\nToken creatures you control have haste.",
+          "original_printed_rules_text": "When Swiftwheel Slayers enters, audition for red. (Create a 1/1 Construct Actor creature token, a Warrior Role giving 3/2 and trample, or a Wizard Role giving 2/2 and prowess. Roles replace older ones.)\nToken creatures you control have haste.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for red",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warrior Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 3/2, has trample, and is a Warrior in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        }
+      ],
+      "support_status": "scratch literal named-choice program with proposed/completed operation boundary; native verification and associated-option modifier source pending",
+      "behavioral_assertions": [
+        {
+          "id": "audition-branches",
+          "status": "pending",
+          "test_reference": "custom_audition_choices",
+          "observable": "Exactly one actor or sourced Role choice resolves, role attaches without targeting and grants exact stats/type/keyword, newest Role wins, absent creature produces no attached Role."
+        }
+      ]
+    },
+    {
+      "id": "msem-379",
+      "keyword": "Audition",
+      "original_reminder": "Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.",
+      "executable_reminder": "You choose actor, scout or warrior. If you chose actor, create a 1/1 colorless Construct Actor creature token. If you chose scout, choose a creature you control, then create a colorless Aura Role enchantment token named \"Scout Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/3, has vigilance, and is a Scout in addition to its other types.\" attached to that creature. If you chose warrior, choose a creature you control, then create a colorless Aura Role enchantment token named \"Warrior Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 3/2, has trample, and is a Warrior in addition to its other types.\" attached to that creature.",
+      "source_cards": [
+        "Arrive, Surrounded by Petals",
+        "Jerrold's Descent",
+        "Method Actor Retiree",
+        "Prop Work",
+        "Strength of Character",
+        "The Investigation of Dr. Vaughn"
+      ],
+      "rule_reference": "701.101.",
+      "rule_text": [
+        {
+          "name": "701.101a",
+          "rule": "Certain abilities instruct a player to audition for [quality]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the audition of that quality. See rules C701.101c-g.",
+          "custom": true
+        },
+        {
+          "name": "701.101b",
+          "rule": "Abilities may instruct a player to audition for [quality A] or for [quality B]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the quality A audition or quality B audition.",
+          "custom": true
+        },
+        {
+          "name": "701.101c",
+          "rule": "The Role tokens associated with audition for white are Cleric Role and Scout Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101d",
+          "rule": "The Role tokens associated with audition for blue are Warlock Role and Wizard Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101e",
+          "rule": "The Role tokens associated with audition for black are Cleric Role and Warlock Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101f",
+          "rule": "The Role tokens associated with audition for red are Wizard Role and Warrior Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101g",
+          "rule": "The Role tokens associated with audition for green are Scout Role and Warrior Role.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Arrive, Surrounded by Petals_ACT",
+          "name": "Arrive, Surrounded by Petals",
+          "original_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant land\nWhen Arrive, Surrounded by Petals enters, audition for green. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*\nEnchanted land has “{T}: Add one mana of any color.”",
+          "executable_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant land\nWhen Arrive, Surrounded by Petals enters, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nEnchanted land has “{T}: Add one mana of any color.”",
+          "mana_cost": "{G}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Arrive, Surrounded by Petals_ACT",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Arrive, Surrounded by Petals",
+              "original_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant land\nWhen Arrive, Surrounded by Petals enters, audition for green. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*\nEnchanted land has “{T}: Add one mana of any color.”"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Arrive, Surrounded by Petals",
+              "executable_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant land\nWhen Arrive, Surrounded by Petals enters, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nEnchanted land has “{T}: Add one mana of any color.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant land\nWhen Arrive, Surrounded by Petals enters, audition for green.\nEnchanted land has “{T}: Add one mana of any color.”",
+              "original_printed_rules_text": "Enchant land\nWhen Arrive, Surrounded by Petals enters, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nEnchanted land has “{T}: Add one mana of any color.”"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant land\nWhen Arrive, Surrounded by Petals enters, audition for green.\nEnchanted land has “{T}: Add one mana of any color.”",
+          "original_printed_rules_text": "Enchant land\nWhen Arrive, Surrounded by Petals enters, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nEnchanted land has “{T}: Add one mana of any color.”",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Jerrold's Descent_ACT",
+          "name": "Jerrold's Descent",
+          "original_text": "Mana cost: {2}{G}\nType: Sorcery\nAudition for green, then audition for green. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nAudition for green, then audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "source_card_key": "Jerrold's Descent_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Jerrold's Descent",
+              "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nAudition for green, then audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Audition for green, then audition for green.",
+              "original_printed_rules_text": "Audition for green, then audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Audition for green, then audition for green.",
+          "original_printed_rules_text": "Audition for green, then audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Method Actor Retiree_ACT",
+          "name": "Method Actor Retiree",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Construct Druid\nPower/Toughness: 0/3\n{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Construct Druid\nPower/Toughness: 0/3\n{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "source_card_key": "Method Actor Retiree_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Method Actor Retiree",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Construct Druid\nPower/Toughness: 0/3\n{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery.",
+              "original_printed_rules_text": "{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery.",
+          "original_printed_rules_text": "{T}: Add one mana of any color.\n{3}{G}, {T}: Audition for green. Activate only as a sorcery. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Prop Work_ACT",
+          "name": "Prop Work",
+          "original_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant creature\nWhenever enchanted creature attacks, audition for green. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant creature\nWhenever enchanted creature attacks, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "source_card_key": "Prop Work_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Prop Work",
+              "executable_text": "Mana cost: {2}{G}\nType: Enchantment — Aura\nEnchant creature\nWhenever enchanted creature attacks, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nWhenever enchanted creature attacks, audition for green.",
+              "original_printed_rules_text": "Enchant creature\nWhenever enchanted creature attacks, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nWhenever enchanted creature attacks, audition for green.",
+          "original_printed_rules_text": "Enchant creature\nWhenever enchanted creature attacks, audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Strength of Character_ACT",
+          "name": "Strength of Character",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nChoose one or both —\n• Audition for green. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*\n• Target creature you control fights target creature you don't control.",
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nChoose one or both —\n• Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\n• Target creature you control fights target creature you don't control.",
+          "source_card_key": "Strength of Character_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Strength of Character",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nChoose one or both —\n• Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\n• Target creature you control fights target creature you don't control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one or both —\n• Audition for green.\n• Target creature you control fights target creature you don't control.",
+              "original_printed_rules_text": "Choose one or both —\n• Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\n• Target creature you control fights target creature you don't control."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one or both —\n• Audition for green.\n• Target creature you control fights target creature you don't control.",
+          "original_printed_rules_text": "Choose one or both —\n• Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\n• Target creature you control fights target creature you don't control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "The Investigation of Dr. Vaughn_ACT",
+          "name": "The Investigation of Dr. Vaughn",
+          "original_text": "Mana cost: {1}{G}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for green. *(Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*\nIII — Creatures you control get +1/+0 and gain trample until end of turn.",
+          "executable_text": "Mana cost: {1}{G}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nIII — Creatures you control get +1/+0 and gain trample until end of turn.",
+          "source_card_key": "The Investigation of Dr. Vaughn_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "The Investigation of Dr. Vaughn",
+              "executable_text": "Mana cost: {1}{G}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nIII — Creatures you control get +1/+0 and gain trample until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "I, II — Audition for green.\nIII — Creatures you control get +1/+0 and gain trample until end of turn.",
+              "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nIII — Creatures you control get +1/+0 and gain trample until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "I, II — Audition for green.\nIII — Creatures you control get +1/+0 and gain trample until end of turn.",
+          "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for green. (Create a 1/1 Construct Actor creature token, a Scout Role giving 2/3 and vigilance, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)\nIII — Creatures you control get +1/+0 and gain trample until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for green",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Scout Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/3, has vigilance, and is a Scout in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warrior Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 3/2, has trample, and is a Warrior in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        }
+      ],
+      "support_status": "scratch literal named-choice program with proposed/completed operation boundary; native verification and associated-option modifier source pending",
+      "behavioral_assertions": [
+        {
+          "id": "audition-branches",
+          "status": "pending",
+          "test_reference": "custom_audition_choices",
+          "observable": "Exactly one actor or sourced Role choice resolves, role attaches without targeting and grants exact stats/type/keyword, newest Role wins, absent creature produces no attached Role."
+        }
+      ]
+    },
+    {
+      "id": "msem-380",
+      "keyword": "Audition",
+      "original_reminder": "Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.",
+      "executable_reminder": "You choose actor, cleric or warlock. If you chose actor, create a 1/1 colorless Construct Actor creature token. If you chose cleric, choose a creature you control, then create a colorless Aura Role enchantment token named \"Cleric Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has lifelink, and is a Cleric in addition to its other types.\" attached to that creature. If you chose warlock, choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature.",
+      "source_cards": [
+        "Conclude",
+        "Dastardly Duo",
+        "Sculpt the Scene",
+        "That Fateful Tuesday"
+      ],
+      "rule_reference": "701.101.",
+      "rule_text": [
+        {
+          "name": "701.101a",
+          "rule": "Certain abilities instruct a player to audition for [quality]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the audition of that quality. See rules C701.101c-g.",
+          "custom": true
+        },
+        {
+          "name": "701.101b",
+          "rule": "Abilities may instruct a player to audition for [quality A] or for [quality B]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the quality A audition or quality B audition.",
+          "custom": true
+        },
+        {
+          "name": "701.101c",
+          "rule": "The Role tokens associated with audition for white are Cleric Role and Scout Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101d",
+          "rule": "The Role tokens associated with audition for blue are Warlock Role and Wizard Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101e",
+          "rule": "The Role tokens associated with audition for black are Cleric Role and Warlock Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101f",
+          "rule": "The Role tokens associated with audition for red are Wizard Role and Warrior Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101g",
+          "rule": "The Role tokens associated with audition for green are Scout Role and Warrior Role.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Conclude_ACT",
+          "name": "Conclude",
+          "original_text": "Mana cost: {B}\nType: Instant\nTarget creature gets -1/-1 until end of turn. Audition for black. *(Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {B}\nType: Instant\nTarget creature gets -1/-1 until end of turn. Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "mana_cost": "{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Conclude_ACT",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Conclude",
+              "original_text": "Mana cost: {B}\nType: Instant\nTarget creature gets -1/-1 until end of turn. Audition for black. *(Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Conclude",
+              "executable_text": "Mana cost: {B}\nType: Instant\nTarget creature gets -1/-1 until end of turn. Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets -1/-1 until end of turn. Audition for black.",
+              "original_printed_rules_text": "Target creature gets -1/-1 until end of turn. Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets -1/-1 until end of turn. Audition for black.",
+          "original_printed_rules_text": "Target creature gets -1/-1 until end of turn. Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Dastardly Duo_ACT",
+          "name": "Dastardly Duo",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Construct Rogue\nPower/Toughness: 3/4\nThis spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black. *(Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Construct Rogue\nPower/Toughness: 3/4\nThis spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "source_card_key": "Dastardly Duo_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Dastardly Duo",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Construct Rogue\nPower/Toughness: 3/4\nThis spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "This spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black.",
+              "original_printed_rules_text": "This spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "This spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black.",
+          "original_printed_rules_text": "This spell costs {2} less to cast if an opponent was dealt combat damage this turn.\nWhen Dastardly Duo enters, audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Sculpt the Scene_ACT",
+          "name": "Sculpt the Scene",
+          "original_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, you lose 1 life, then audition for black. *(Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, you lose 1 life, then audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "source_card_key": "Sculpt the Scene_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Sculpt the Scene",
+              "executable_text": "Mana cost: {1}{B}\nType: Enchantment\nAt the beginning of your upkeep, you lose 1 life, then audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your upkeep, you lose 1 life, then audition for black.",
+              "original_printed_rules_text": "At the beginning of your upkeep, you lose 1 life, then audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "At the beginning of your upkeep, you lose 1 life, then audition for black.",
+          "original_printed_rules_text": "At the beginning of your upkeep, you lose 1 life, then audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "That Fateful Tuesday_ACT",
+          "name": "That Fateful Tuesday",
+          "original_text": "Mana cost: {1}{B}\nType: Enchantment — Saga\n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Audition for black. *(Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)*\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life.",
+          "executable_text": "Mana cost: {1}{B}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life.",
+          "source_card_key": "That Fateful Tuesday_ACT",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "That Fateful Tuesday",
+              "executable_text": "Mana cost: {1}{B}\nType: Enchantment — Saga\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "I, II — Audition for black.\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life.",
+              "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "I, II — Audition for black.\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life.",
+          "original_printed_rules_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Audition for black. (Create a 1/1 Construct Actor creature token, a Cleric Role giving 2/2 and lifelink, or a Warlock Role giving 2/1 and flying. Roles replace older ones.)\nIII — Until end of turn, if a creature you don't control would die, instead exile it and that creature's controller loses 2 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for black",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Cleric Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has lifelink, and is a Cleric in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        }
+      ],
+      "support_status": "scratch literal named-choice program with proposed/completed operation boundary; native verification and associated-option modifier source pending",
+      "behavioral_assertions": [
+        {
+          "id": "audition-branches",
+          "status": "pending",
+          "test_reference": "custom_audition_choices",
+          "observable": "Exactly one actor or sourced Role choice resolves, role attaches without targeting and grants exact stats/type/keyword, newest Role wins, absent creature produces no attached Role."
+        }
+      ]
+    },
+    {
+      "id": "msem-381",
+      "keyword": "Audition",
+      "original_reminder": "Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.",
+      "executable_reminder": "You choose actor, warlock, wizard or warrior. If you chose actor, create a 1/1 colorless Construct Actor creature token. If you chose warlock, choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature. If you chose wizard, choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature. If you chose warrior, choose a creature you control, then create a colorless Aura Role enchantment token named \"Warrior Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 3/2, has trample, and is a Warrior in addition to its other types.\" attached to that creature.",
+      "source_cards": [
+        "Theatric Tandem"
+      ],
+      "rule_reference": "701.101.",
+      "rule_text": [
+        {
+          "name": "701.101a",
+          "rule": "Certain abilities instruct a player to audition for [quality]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the audition of that quality. See rules C701.101c-g.",
+          "custom": true
+        },
+        {
+          "name": "701.101b",
+          "rule": "Abilities may instruct a player to audition for [quality A] or for [quality B]. To do so, that player creates either a 1/1 colorless Construct Actor creature token or one of the Role tokens associated with the quality A audition or quality B audition.",
+          "custom": true
+        },
+        {
+          "name": "701.101c",
+          "rule": "The Role tokens associated with audition for white are Cleric Role and Scout Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101d",
+          "rule": "The Role tokens associated with audition for blue are Warlock Role and Wizard Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101e",
+          "rule": "The Role tokens associated with audition for black are Cleric Role and Warlock Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101f",
+          "rule": "The Role tokens associated with audition for red are Wizard Role and Warrior Role.",
+          "custom": true
+        },
+        {
+          "name": "701.101g",
+          "rule": "The Role tokens associated with audition for green are Scout Role and Warrior Role.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Theatric Tandem_ACT",
+          "name": "Theatric Tandem",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nProwess\nWhenever you cast a noncreature spell, audition for blue or for red. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nProwess\nWhenever you cast a noncreature spell, audition for blue or for red. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Creature — Construct Wizard",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Theatric Tandem_ACT",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Theatric Tandem",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nProwess\nWhenever you cast a noncreature spell, audition for blue or for red. *(Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Theatric Tandem",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Creature — Construct Wizard\nPower/Toughness: 1/3\nProwess\nWhenever you cast a noncreature spell, audition for blue or for red. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prowess\nWhenever you cast a noncreature spell, audition for blue or for red.",
+              "original_printed_rules_text": "Prowess\nWhenever you cast a noncreature spell, audition for blue or for red. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prowess\nWhenever you cast a noncreature spell, audition for blue or for red.",
+          "original_printed_rules_text": "Prowess\nWhenever you cast a noncreature spell, audition for blue or for red. (Create a 1/1 Construct Actor creature token, a Wizard Role giving 2/2 and prowess, a Warlock Role giving 2/1 and flying, or a Warrior Role giving 3/2 and trample. Roles replace older ones.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Audition",
+          "template": "for blue or for red",
+          "reminder": "Perform the audition action as follows: [Choose one of the following: [Create a 1/1 colorless Construct Actor creature token] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warlock Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/1, has flying, and is a Warlock in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Wizard Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 2/2, has prowess, and is a Wizard in addition to its other types.\" attached to that creature] or [Choose a creature you control, then create a colorless Aura Role enchantment token named \"Warrior Role\" with \"Enchant creature you control\" and \"Enchanted creature has base power and toughness 3/2, has trample, and is a Warrior in addition to its other types.\" attached to that creature]].",
+          "actionProgram": true,
+          "forms": {
+            "eventVerb": "audition",
+            "eventLabel": "audition"
+          }
+        }
+      ],
+      "support_status": "scratch literal named-choice program with proposed/completed operation boundary; native verification and associated-option modifier source pending",
+      "behavioral_assertions": [
+        {
+          "id": "audition-branches",
+          "status": "pending",
+          "test_reference": "custom_audition_choices",
+          "observable": "Exactly one actor or sourced Role choice resolves, role attaches without targeting and grants exact stats/type/keyword, newest Role wins, absent creature produces no attached Role."
+        }
+      ]
+    }
+  ],
+  "source_watchers": [
+    {
+      "id": "Verdant Curtain Prodigy_ACT",
+      "name": "Verdant Curtain Prodigy",
+      "original_text": "Mana cost: {1}{G}\nType: Creature — Construct Actor\nPower/Toughness: 3/2\nAuditioning for a color causes you to create a 1/1 colorless Construct Actor creature token, then create one of the audition's Role tokens.",
+      "executable_text": null,
+      "support_status": "pending_generic_named_action_replacement",
+      "obligation": "Audition modification creates Actor AND one associated Role rather than choosing Actor OR a Role. Inline expansion alone cannot implement an independently controlled modifier; requires generic action execution/replacement boundary."
+    }
+  ]
+}

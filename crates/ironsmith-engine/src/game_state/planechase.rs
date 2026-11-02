@@ -697,7 +697,14 @@ impl GameState {
         self.queue_trigger_event(
             provenance,
             TriggerEvent::new(
-                KeywordActionEvent::new(KeywordActionKind::Planeswalk, player, source, 1),
+                KeywordActionEvent::new(KeywordActionKind::Planeswalk, player, source, 1)
+                    .with_snapshot(old_face_snapshots.iter().find(|snapshot| snapshot.object_id == source).cloned())
+                    .with_object_tags(HashMap::from([
+                        (crate::tag::TagKey::from(crate::tag::PLANESWALK_ORIGINS_TAG), old_face_snapshots.clone()),
+                        (crate::tag::TagKey::from(crate::tag::PLANESWALK_DESTINATION_TAG),
+                            vec![crate::snapshot::ObjectSnapshot::from_object_id(self, destination)
+                                .ok_or_else(|| "completed planeswalk destination is missing".to_string())?]),
+                    ])),
                 provenance,
             )
             .with_lookback_source_snapshots(old_face_snapshots),

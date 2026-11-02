@@ -1,0 +1,171 @@
+[
+  {
+    "path": "tmp/custom-mechanics/next-wave/actions_status-zone-admission-unit-repairs/zone-admission-current-tracker-and-fixture.patch",
+    "sha256": "7d374396ffe6eec7484d7454be086622984eef047386637464c8e1e426682ea9",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-engine/src/game_state.rs",
+        "status": "three-way-clean"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/game_state/zone_movement_admission_tests.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/action_choices/reveal-offer-unit-reference-contract/reveal-offer-unit-reference-contract.patch",
+    "sha256": "f8f2db26d2a34acf78673dd91640bd4ea8d2ceb66aec265cacfa2fba5a6598bb",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-engine/src/effects/cards/reveal_action_offer.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/effects/consult_helpers.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/casting_any_color_mana_token/typed-any-color-mana-group.patch",
+    "sha256": "5a9bdc34a508f87bc834b43bb06a18360216f79419c0e54319a5ecd867c33e64",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/inscribe/creation-selected-unit-fixtures/creation-selected-unit-fixtures.patch",
+    "sha256": "89c6f4244bd65025c8ff3dc048586a41728626ad0609e4b088f293ce275d3285",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-engine/src/effects/cards/create_cards.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-engine/src/effects/cards/create_cards_entry.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_growth/live-lowering-reference-animation-tests/live-lowering-reference-animation-tests.patch",
+    "sha256": "7f19ea1f78eda4184e0e3c00d321638c7e755f9ab73a0d4e7a67c0146a4847fd",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/parse_compile_tests.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/reference_animation_tests.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/tokens-entry-projection-diagnostic/entry-projection-diagnostic.patch",
+    "sha256": "cf2f9dc2a1e70f77013697c0a46a9f57ab5bd701b15414cf001413244517d73a",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-engine/src/effects/zones/battlefield_entry.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_middle/selected-three-grammar-unit-repairs/selected-three-grammar-unit-repairs.patch",
+    "sha256": "126a72b0c738b99d2b50ceb9f8475d3d7792697bb288d81de96e0eb76941ef03",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/document_readings.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/grammar/modal_results/modal_results_object_action.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/chain_carry.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/boundary_remaining/grammar-identity-unit-repairs/grammar-identity-unit-repairs.patch",
+    "sha256": "643313ae5f6ba4c671f8e8bb779423a21230be02c79b85f4130b2525d4080315",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/custom_status.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability_inline_tests.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/abilities_late/grammar-static-boundary-units/grammar-static-boundary-units.patch",
+    "sha256": "e38eb33651ae4c5cf7571a09b8dd74d68e3084a4d224ba91732c953202208adf",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler-grammar/src/keyword_static/conditional_copy_characteristics.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/compiler-wasm-counter-identity-model/compiler-wasm-counter-identity-model.patch",
+    "sha256": "9a38c5c63994000046c8022667bc339134b8b7e43f1b126686985dd4b3a9edb4",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-compiler-wasm/src/lib.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  },
+  {
+    "path": "tmp/custom-mechanics/next-wave/inscribe/creation-graph-test-contracts/creation-graph-test-contracts.patch",
+    "sha256": "f85316d2dd6453db93d53cac8cac2c60a3445fee57c2790d09622568d344194a",
+    "status": "assembled",
+    "merges": [
+      {
+        "path": "crates/ironsmith-artifact-effect-decoder/src/creation_graph.rs",
+        "status": "exact-owner-base"
+      },
+      {
+        "path": "crates/ironsmith-compiler/src/supplied_definitions.rs",
+        "status": "exact-owner-base"
+      }
+    ]
+  }
+]

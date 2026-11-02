@@ -41,6 +41,7 @@ pub fn mutagen_token_definition() -> CardDefinition {
             mana_usage_restrictions: vec![],
             is_loyalty_ability: false,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 

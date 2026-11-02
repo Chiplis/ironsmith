@@ -732,6 +732,7 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("phase-step-gate-predicate")
+                && !input.read_by("named-action-recipient-this-turn")
         },
         read: |input| input.outcome(read_tagged_state_predicate(input)),
     },

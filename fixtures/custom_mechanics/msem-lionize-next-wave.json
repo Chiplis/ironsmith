@@ -1,0 +1,1116 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact source identities preserved. Disgraced decomposes into entry replacement and damage trigger; Memory uses existing flashback with a complete discard cost."
+  },
+  "mechanics": [
+    {
+      "id": "msem-892",
+      "keyword": "Lionize",
+      "original_reminder": "{3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Ambitious Truthseeker"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ambitious Truthseeker_ROS",
+          "name": "Ambitious Truthseeker",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Nephilim Warrior\nPower/Toughness: 2/3\nLionize {3}{R} *({3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens.",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Nephilim Warrior\nPower/Toughness: 2/3\n{3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Menace” and “Whenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens” until end of turn. After the current turn has ended, you may cast this card from exile.\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Nephilim Warrior",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Ambitious Truthseeker_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ambitious Truthseeker",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Nephilim Warrior\nPower/Toughness: 2/3\nLionize {3}{R} *({3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Ambitious Truthseeker",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Nephilim Warrior\nPower/Toughness: 2/3\n{3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Menace” and “Whenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens” until end of turn. After the current turn has ended, you may cast this card from exile.\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {3}{R}\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens.",
+              "original_printed_rules_text": "Lionize {3}{R} ({3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {3}{R}\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {3}{R} ({3}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nMenace\nWhenever this creature deals damage to a player or noncreature permanent, create that many Treasure tokens."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-893",
+      "keyword": "Lionize",
+      "original_reminder": "{2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Bloodcloaked Wrecker"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bloodcloaked Wrecker_ROS",
+          "name": "Bloodcloaked Wrecker",
+          "original_text": "Mana cost: {5}{R}\nType: Creature — Demon Soldier\nPower/Toughness: 3/6\nLionize {2}{R} *({2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nTrample\nThis creature gets +3/+0 as long as it's attacking.",
+          "executable_text": "Mana cost: {5}{R}\nType: Creature — Demon Soldier\nPower/Toughness: 3/6\n{2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Trample” and “This creature gets +3/+0 as long as it's attacking” until end of turn. After the current turn has ended, you may cast this card from exile.\nTrample\nThis creature gets +3/+0 as long as it's attacking.",
+          "mana_cost": "{5}{R}",
+          "type_line": "Creature — Demon Soldier",
+          "power": "3",
+          "toughness": "6",
+          "source_card_key": "Bloodcloaked Wrecker_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloodcloaked Wrecker",
+              "original_text": "Mana cost: {5}{R}\nType: Creature — Demon Soldier\nPower/Toughness: 3/6\nLionize {2}{R} *({2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nTrample\nThis creature gets +3/+0 as long as it's attacking."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Bloodcloaked Wrecker",
+              "executable_text": "Mana cost: {5}{R}\nType: Creature — Demon Soldier\nPower/Toughness: 3/6\n{2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Trample” and “This creature gets +3/+0 as long as it's attacking” until end of turn. After the current turn has ended, you may cast this card from exile.\nTrample\nThis creature gets +3/+0 as long as it's attacking.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {2}{R}\nTrample\nThis creature gets +3/+0 as long as it's attacking.",
+              "original_printed_rules_text": "Lionize {2}{R} ({2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nTrample\nThis creature gets +3/+0 as long as it's attacking."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {2}{R}\nTrample\nThis creature gets +3/+0 as long as it's attacking.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {2}{R} ({2}{R}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nTrample\nThis creature gets +3/+0 as long as it's attacking."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-894",
+      "keyword": "Lionize",
+      "original_reminder": "{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Div of Lethargic Ideals"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Div of Lethargic Ideals_ROS",
+          "name": "Div of Lethargic Ideals",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Horror\nPower/Toughness: 4/4\nLionize {G} *({G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nVigilance, reach",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Horror\nPower/Toughness: 4/4\n{G}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Vigilance, reach” until end of turn. After the current turn has ended, you may cast this card from exile.\nVigilance, reach",
+          "mana_cost": "{4}{G}",
+          "type_line": "Creature — Horror",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Div of Lethargic Ideals_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Div of Lethargic Ideals",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Horror\nPower/Toughness: 4/4\nLionize {G} *({G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nVigilance, reach"
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Div of Lethargic Ideals",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Horror\nPower/Toughness: 4/4\n{G}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Vigilance, reach” until end of turn. After the current turn has ended, you may cast this card from exile.\nVigilance, reach",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {G}\nVigilance, reach",
+              "original_printed_rules_text": "Lionize {G} ({G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nVigilance, reach"
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {G}\nVigilance, reach",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {G} ({G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nVigilance, reach"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-895",
+      "keyword": "Lionize",
+      "original_reminder": "{U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Djinn of Unfolding Truths"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Djinn of Unfolding Truths_ROS",
+          "name": "Djinn of Unfolding Truths",
+          "original_text": "Mana cost: {3}{U}{R}{W}\nType: Creature — Djinn Wizard\nPower/Toughness: 6/6\nLionize {U}{R}{W} *({U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {3}{U}{R}{W}\nType: Creature — Djinn Wizard\nPower/Toughness: 6/6\n{U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Whenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand” until end of turn. After the current turn has ended, you may cast this card from exile.\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand.",
+          "mana_cost": "{3}{U}{R}{W}",
+          "type_line": "Creature — Djinn Wizard",
+          "power": "6",
+          "toughness": "6",
+          "source_card_key": "Djinn of Unfolding Truths_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Djinn of Unfolding Truths",
+              "original_text": "Mana cost: {3}{U}{R}{W}\nType: Creature — Djinn Wizard\nPower/Toughness: 6/6\nLionize {U}{R}{W} *({U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Djinn of Unfolding Truths",
+              "executable_text": "Mana cost: {3}{U}{R}{W}\nType: Creature — Djinn Wizard\nPower/Toughness: 6/6\n{U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Whenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand” until end of turn. After the current turn has ended, you may cast this card from exile.\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {U}{R}{W}\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand.",
+              "original_printed_rules_text": "Lionize {U}{R}{W} ({U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {U}{R}{W}\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {U}{R}{W} ({U}{R}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nWhenever this creature deals combat damage to a player or noncreature permanent, return target noncreature card from your graveyard to your hand."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-896",
+      "keyword": "Lionize",
+      "original_reminder": "{2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Esoteric Visionary"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Esoteric Visionary_ROS",
+          "name": "Esoteric Visionary",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Azra Cleric\nPower/Toughness: 3/1\nLionize {2}{B} *({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nLifelink",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Azra Cleric\nPower/Toughness: 3/1\n{2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Lifelink” until end of turn. After the current turn has ended, you may cast this card from exile.\nLifelink",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Azra Cleric",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Esoteric Visionary_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Esoteric Visionary",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Azra Cleric\nPower/Toughness: 3/1\nLionize {2}{B} *({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nLifelink"
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Esoteric Visionary",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Azra Cleric\nPower/Toughness: 3/1\n{2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Lifelink” until end of turn. After the current turn has ended, you may cast this card from exile.\nLifelink",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {2}{B}\nLifelink",
+              "original_printed_rules_text": "Lionize {2}{B} ({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nLifelink"
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {2}{B}\nLifelink",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {2}{B} ({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nLifelink"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-897",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Implacable Djinn",
+        "Tidebender"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Implacable Djinn_ROS",
+          "name": "Implacable Djinn",
+          "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Djinn Warrior\nPower/Toughness: 5/6\nLionize {1}{U} *({1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)* \nHexproof",
+          "executable_text": "Mana cost: {4}{U}{U}\nType: Creature — Djinn Warrior\nPower/Toughness: 5/6\n{1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Hexproof” until end of turn. After the current turn has ended, you may cast this card from exile.\nHexproof",
+          "mana_cost": "{4}{U}{U}",
+          "type_line": "Creature — Djinn Warrior",
+          "power": "5",
+          "toughness": "6",
+          "source_card_key": "Implacable Djinn_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Implacable Djinn",
+              "original_text": "Mana cost: {4}{U}{U}\nType: Creature — Djinn Warrior\nPower/Toughness: 5/6\nLionize {1}{U} *({1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)* \nHexproof"
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Implacable Djinn",
+              "executable_text": "Mana cost: {4}{U}{U}\nType: Creature — Djinn Warrior\nPower/Toughness: 5/6\n{1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Hexproof” until end of turn. After the current turn has ended, you may cast this card from exile.\nHexproof",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{U}\nHexproof",
+              "original_printed_rules_text": "Lionize {1}{U} ({1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.) \nHexproof"
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{U}\nHexproof",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{U} ({1}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.) \nHexproof"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-898",
+      "keyword": "Lionize",
+      "original_reminder": "{2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Jahi of Endless Hunger"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Jahi of Endless Hunger_ROS",
+          "name": "Jahi of Endless Hunger",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Demon Wizard\nPower/Toughness: 6/6\nLionize {2}{B} *({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability.",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Demon Wizard\nPower/Toughness: 6/6\n{2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying” and “Sacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability.",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Creature — Demon Wizard",
+          "power": "6",
+          "toughness": "6",
+          "source_card_key": "Jahi of Endless Hunger_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Jahi of Endless Hunger",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Demon Wizard\nPower/Toughness: 6/6\nLionize {2}{B} *({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Jahi of Endless Hunger",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Demon Wizard\nPower/Toughness: 6/6\n{2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying” and “Sacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {2}{B}\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability.",
+              "original_printed_rules_text": "Lionize {2}{B} ({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {2}{B}\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {2}{B} ({2}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nFlying\nSacrifice a creature: Put a +1/+1 counter on this creature and tap it. Any player may activate this ability."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-899",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Martoob Hawker"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Martoob Hawker_ROS",
+          "name": "Martoob Hawker",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Nephilim Scout\nPower/Toughness: 0/3\nLionize {1}{G} *({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nThis creature assigns combat damage equal to its toughness rather than its power.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Nephilim Scout\nPower/Toughness: 0/3\n{1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “This creature assigns combat damage equal to its toughness rather than its power” until end of turn. After the current turn has ended, you may cast this card from exile.\nThis creature assigns combat damage equal to its toughness rather than its power.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Nephilim Scout",
+          "power": "0",
+          "toughness": "3",
+          "source_card_key": "Martoob Hawker_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Martoob Hawker",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Nephilim Scout\nPower/Toughness: 0/3\nLionize {1}{G} *({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nThis creature assigns combat damage equal to its toughness rather than its power."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Martoob Hawker",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Nephilim Scout\nPower/Toughness: 0/3\n{1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “This creature assigns combat damage equal to its toughness rather than its power” until end of turn. After the current turn has ended, you may cast this card from exile.\nThis creature assigns combat damage equal to its toughness rather than its power.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{G}\nThis creature assigns combat damage equal to its toughness rather than its power.",
+              "original_printed_rules_text": "Lionize {1}{G} ({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nThis creature assigns combat damage equal to its toughness rather than its power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{G}\nThis creature assigns combat damage equal to its toughness rather than its power.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{G} ({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nThis creature assigns combat damage equal to its toughness rather than its power."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-900",
+      "keyword": "Lionize",
+      "original_reminder": "{2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Martoob Lifeshaper"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Martoob Lifeshaper_ROS",
+          "name": "Martoob Lifeshaper",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Nephilim Wizard\nPower/Toughness: 1/1\nLionize {2}{U} *({2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nWhenever this creature deals combat damage to a player, draw that many cards.",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Nephilim Wizard\nPower/Toughness: 1/1\n{2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Whenever this creature deals combat damage to a player, draw that many cards” until end of turn. After the current turn has ended, you may cast this card from exile.\nWhenever this creature deals combat damage to a player, draw that many cards.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Nephilim Wizard",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Martoob Lifeshaper_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Martoob Lifeshaper",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Nephilim Wizard\nPower/Toughness: 1/1\nLionize {2}{U} *({2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nWhenever this creature deals combat damage to a player, draw that many cards."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Martoob Lifeshaper",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Nephilim Wizard\nPower/Toughness: 1/1\n{2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Whenever this creature deals combat damage to a player, draw that many cards” until end of turn. After the current turn has ended, you may cast this card from exile.\nWhenever this creature deals combat damage to a player, draw that many cards.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {2}{U}\nWhenever this creature deals combat damage to a player, draw that many cards.",
+              "original_printed_rules_text": "Lionize {2}{U} ({2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nWhenever this creature deals combat damage to a player, draw that many cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {2}{U}\nWhenever this creature deals combat damage to a player, draw that many cards.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {2}{U} ({2}{U}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nWhenever this creature deals combat damage to a player, draw that many cards."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-901",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Poison-Sky Acolyte"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Poison-Sky Acolyte_ROS",
+          "name": "Poison-Sky Acolyte",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 1/2\nLionize {1}{B} *({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nDeathtouch",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 1/2\n{1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Deathtouch” until end of turn. After the current turn has ended, you may cast this card from exile.\nDeathtouch",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Shaman",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Poison-Sky Acolyte_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Poison-Sky Acolyte",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 1/2\nLionize {1}{B} *({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nDeathtouch"
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Poison-Sky Acolyte",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Shaman\nPower/Toughness: 1/2\n{1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Deathtouch” until end of turn. After the current turn has ended, you may cast this card from exile.\nDeathtouch",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{B}\nDeathtouch",
+              "original_printed_rules_text": "Lionize {1}{B} ({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nDeathtouch"
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{B}\nDeathtouch",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{B} ({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nDeathtouch"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-902",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Quake Devourer"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Quake Devourer_ROS",
+          "name": "Quake Devourer",
+          "original_text": "Mana cost: {6}{G}\nType: Creature — Horror\nPower/Toughness: 7/6\nLionize {1}{G} *({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card.",
+          "executable_text": "Mana cost: {6}{G}\nType: Creature — Horror\nPower/Toughness: 7/6\n{1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Trample” and “Whenever this creature deals damage to a player or noncreature permanent, draw a card” until end of turn. After the current turn has ended, you may cast this card from exile.\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card.",
+          "mana_cost": "{6}{G}",
+          "type_line": "Creature — Horror",
+          "power": "7",
+          "toughness": "6",
+          "source_card_key": "Quake Devourer_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Quake Devourer",
+              "original_text": "Mana cost: {6}{G}\nType: Creature — Horror\nPower/Toughness: 7/6\nLionize {1}{G} *({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Quake Devourer",
+              "executable_text": "Mana cost: {6}{G}\nType: Creature — Horror\nPower/Toughness: 7/6\n{1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Trample” and “Whenever this creature deals damage to a player or noncreature permanent, draw a card” until end of turn. After the current turn has ended, you may cast this card from exile.\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{G}\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card.",
+              "original_printed_rules_text": "Lionize {1}{G} ({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{G}\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{G} ({1}{G}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nTrample\nWhenever this creature deals damage to a player or noncreature permanent, draw a card."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-903",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Reckoner of Kaneh"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Reckoner of Kaneh_ROS",
+          "name": "Reckoner of Kaneh",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\nLionize {1}{B} *({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\n{1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying, lifelink” and “Whenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Angel Soldier",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Reckoner of Kaneh_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reckoner of Kaneh",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\nLionize {1}{B} *({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Reckoner of Kaneh",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Angel Soldier\nPower/Toughness: 3/1\n{1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying, lifelink” and “Whenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{B}\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect.",
+              "original_printed_rules_text": "Lionize {1}{B} ({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{B}\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{B} ({1}{B}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nFlying, lifelink\nWhenever this creature deals combat damage to a player, remove all counters from target permanent they control or protect."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-904",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Savior-Tactician"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Savior-Tactician_ROS",
+          "name": "Savior-Tactician",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 4/4\nLionize {1}{W} *({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nFlying\nOther creatures you control get +1/+1.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 4/4\n{1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying” and “Other creatures you control get +1/+1” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying\nOther creatures you control get +1/+1.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Angel Soldier",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Savior-Tactician_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Savior-Tactician",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 4/4\nLionize {1}{W} *({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)*\nFlying\nOther creatures you control get +1/+1."
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Savior-Tactician",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 4/4\n{1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying” and “Other creatures you control get +1/+1” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying\nOther creatures you control get +1/+1.",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{W}\nFlying\nOther creatures you control get +1/+1.",
+              "original_printed_rules_text": "Lionize {1}{W} ({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nFlying\nOther creatures you control get +1/+1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{W}\nFlying\nOther creatures you control get +1/+1.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{W} ({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following abilities until end of turn. You may cast this card on a later turn from exile.)\nFlying\nOther creatures you control get +1/+1."
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    },
+    {
+      "id": "msem-905",
+      "keyword": "Lionize",
+      "original_reminder": "{1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.",
+      "executable_reminder": "{Cost}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains the non-lionize abilities printed below this ability until end of turn. After the current turn has ended, you may cast this card from exile.",
+      "source_cards": [
+        "Sentinel of Avaz"
+      ],
+      "rule_reference": "702.288.",
+      "rule_text": [
+        {
+          "name": "702.288a",
+          "rule": "Lionize is an activated ability. \"Lionize (cost)\" means \"(cost), Exile this card from your hand: Put a +1/+1 counter on target creature. It also gains the non-lionize abilities of this creature printed below this one until end of turn. After the current turn has ended, you may cast this card from exile.” Cards with lionize may have one or more abilities printed after the lionize ability. (Some cards with backup also have abilities printed before the backup ability.)",
+          "custom": true
+        },
+        {
+          "name": "702.288b",
+          "rule": "Only abilities printed on the object with lionize are granted by its lionize ability. Any abilities gained by a card are not granted by a lionize ability.",
+          "custom": true
+        },
+        {
+          "name": "702.288c",
+          "rule": "The abilities that a lionize ability grants are determined as the ability is put on the stack. They won’t change if the card with lionize loses any abilities after the ability is put on the stack but before it resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sentinel of Avaz_ROS",
+          "name": "Sentinel of Avaz",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/3\nLionize {1}{W} *({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nFlying",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/3\n{1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Angel Soldier",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Sentinel of Avaz_ROS",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sentinel of Avaz",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/3\nLionize {1}{W} *({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)*\nFlying"
+            }
+          ],
+          "rewrite_note": "Faithful rule expansion only. Native compilation, selection constraints and gameplay remain unverified.",
+          "executable_faces": [
+            {
+              "name": "Sentinel of Avaz",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Angel Soldier\nPower/Toughness: 3/3\n{1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature. It gains “Flying” until end of turn. After the current turn has ended, you may cast this card from exile.\nFlying",
+              "custom_keyword_identities": [
+                "lionize"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Lionize {1}{W}\nFlying",
+              "original_printed_rules_text": "Lionize {1}{W} ({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nFlying"
+            }
+          ],
+          "custom_keyword_identities": [
+            "lionize"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lionize {1}{W}\nFlying",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Lionize {1}{W} ({1}{W}, Exile this card from your hand: Put a +1/+1 counter on target creature and it gains the following ability until end of turn. You may cast this card on a later turn from exile.)\nFlying"
+        }
+      ],
+      "support_status": "candidate_reader_and_native_verification_pending"
+    }
+  ]
+}

@@ -838,3 +838,34 @@ fn declining_all_three_miracle_instances_creates_no_reveal_event_or_cast_offer()
         assert_eq!(answers.reveal_questions, 1);
     }
 }
+
+#[test]
+fn actual_aminatou_miracle_binds_normalized_hybrid_and_phyrexian_choices_without_discounting_mandatory_extra_mana() {
+    struct Answers { generic: bool, pips: usize }
+    impl DecisionMaker for Answers {
+        fn decide_boolean(&mut self,_:&GameState,_:&ironsmith::decisions::context::BooleanContext)->bool{true}
+        fn decide_options(&mut self,game:&GameState,ctx:&ironsmith::decisions::context::SelectOptionsContext)->Vec<usize>{
+            if ctx.description=="Choose a Miracle reveal" {return vec![ctx.options.iter().find(|option|option.index>0).unwrap().index]}
+            if ctx.description.starts_with("Choose how to pay pip "){
+                let wanted=if self.pips==0 {if self.generic{"{2}"}else{"{W}"}}else{"2 life"};self.pips+=1;
+                return vec![ctx.options.iter().find(|option|option.description.starts_with(wanted)).unwrap().index];
+            }
+            SelectFirstDecisionMaker.decide_options(game,ctx)
+        }
+    }
+    for definition in definitions(){for generic in [false,true]{
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);game.turn.active_player=B;
+        let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+        let drawn=compile_to_runtime_definition("Independent first-draw symbol choices","Mana cost: {2/W}{U/P}\nType: Enchantment\nAs an additional cost to cast this spell, pay {1}.",false).unwrap();
+        let original=game.create_object_from_definition(&drawn,A,Zone::Library);let stable=game.object(original).unwrap().stable_id;
+        game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless,1);
+        game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue,1);
+        if !generic{game.player_mut(A).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::White,1);}
+        let mut answers=Answers{generic,pips:0};let outcome=perform_draw(&mut game,source,A,1,&mut answers);stack_draw(&mut game,outcome,&mut answers);
+        assert_eq!(game.stack.len(),1);resolve_stack_entry_with(&mut game,&mut answers).unwrap();assert_eq!(answers.pips,2);
+        let spell=game.object(game.stack.last().unwrap().object_id).unwrap();assert_eq!(spell.stable_id,stable);
+        assert_eq!(spell.mana_spent_to_cast.white,u32::from(!generic),"the announced white half cannot be replaced by the generic half after indices move");
+        assert_eq!(game.player(A).unwrap().life,18,"the announced Phyrexian life half is paid exactly once");
+        assert_eq!(game.player(A).unwrap().mana_pool.total(),1,"the alternative-only discount must not consume mandatory extra mana");
+    }}
+}

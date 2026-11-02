@@ -37,9 +37,49 @@ fn split_copy_name_exception<'a>(words: &[&'a str]) -> (Option<Vec<String>>, Vec
     (Some(name), kept)
 }
 
+/// Quoted custom identities are bounded operands; names may contain spaces,
+/// hyphens and possessives independently of following copy clauses.
+pub fn parse_copy_modifier_tokens(tokens: &[crate::lexer::OwnedLexToken]) -> Result<CopyModifierSpec,CardTextError> {
+    use crate::lexer::TokenKind;
+    let mut kept=tokens.to_vec();let mut removed=Vec::new();let mut index=0;
+    while index+4<kept.len() {
+        if !kept[index].is_any_word(&["doesn't","doesnt"]) || !kept[index+1].is_word("have")
+            || !kept[index+2].is_word("custom") || !kept[index+3].is_word("keyword")
+            || kept[index+4].kind!=TokenKind::Quote {index+=1;continue;}
+        let start_name=index+5;
+        let close=(start_name..kept.len()).find(|at|kept[*at].kind==TokenKind::Quote)
+            .ok_or_else(||CardTextError::ParseError("custom keyword copy exception requires a complete quoted identity".into()))?;
+        let words=&kept[start_name..close];
+        if words.is_empty() || words.iter().any(|token|token.kind!=TokenKind::Word) {
+            return Err(CardTextError::ParseError("custom keyword copy exception requires one opaque name".into()));
+        }
+        let name=crate::lexer::render_token_slice(words).trim().to_ascii_lowercase();
+        if name.len()>64 || !name.chars().all(|character|character.is_ascii_alphabetic()||matches!(character,' '|'-'|'\'')) {
+            return Err(CardTextError::ParseError("invalid custom keyword designation in copy exception".into()));
+        }
+        let start=if index>1 && kept[index-2].is_word("each") && kept[index-1].is_any_word(&["token","copy"]) {index-2}
+            else if index>0 && kept[index-1].is_any_word(&["it","they"]) {index-1} else {index};
+        crate::word_claims::claim_tokens(&kept[start..=close]);
+        if !removed.contains(&name){removed.push(name);}
+        kept.drain(start..=close);index=start;
+    }
+    let mut parsed=parse_copy_modifier_words(&crate::lexer::token_word_refs(&kept))?;
+    for name in removed {if !parsed.removed_ability_designations.contains(&name){parsed.removed_ability_designations.push(name);}}
+    Ok(parsed)
+}
+
 pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec, CardTextError> {
-    let raw_modifier_words = last_class_location(tail_words, CreationWordClass::Except)
-        .and_then(|idx| tail_words.get(idx + 1..))
+    let exception = last_class_location(tail_words, CreationWordClass::Except);
+    if exception.is_some_and(|index| index + 1 == tail_words.len()) {
+        return Err(CardTextError::ParseError("copy exception requires a modifier".into()));
+    }
+    let raw_modifier_words = exception
+        .and_then(|idx| {
+            // The characteristic/grant reader owns the exception delimiter
+            // even when a later quoted ability consumes the remaining words.
+            crate::word_claims::claim_word(tail_words[idx]);
+            tail_words.get(idx + 1..)
+        })
         .unwrap_or_default();
     let mut spec = CopyModifierSpec::default();
     if raw_modifier_words.is_empty() {
@@ -50,9 +90,41 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     let (name_words, kept_words) = split_copy_name_exception(raw_modifier_words);
     spec.name_words = name_words;
     let mut kept_words = kept_words;
+    if let Some(start) = kept_words.windows(8).position(|words| matches!(words,
+        ["it" | "they", "loses" | "lose", "all", "abilities", "until", "end", "of", "turn"])) {
+        crate::word_claims::claim_words(&kept_words[start..start+8]);
+        spec.ability_loss_until=Some(crate::effect::Until::EndOfTurn);
+        kept_words.drain(start..start+8);
+    }
+    // This leaf names an explicitly designated keyword group. It never
+    // guesses whether an unrecognized ordinary keyword has that identity.
+    while let Some(index) = kept_words.word_windows(5).position(|words| matches!(words,
+        ["doesn't" | "doesnt", "have", "custom", "keyword", _])) {
+        let name = kept_words[index + 4];
+        if !name.chars().all(|character| character.is_ascii_alphabetic() || character == '-') {
+            return Err(CardTextError::ParseError("custom keyword identity must be a plain name".into()));
+        }
+        if !spec.removed_ability_designations.iter().any(|prior| prior == name) {
+            spec.removed_ability_designations.push(name.to_string());
+        }
+        let start = if index > 0 && matches!(kept_words[index - 1], "it" | "they") { index - 1 } else { index };
+        crate::word_claims::claim_words(&kept_words[start..index + 5]);
+        kept_words.drain(start..index + 5);
+    }
     if let Some(index) = kept_words.word_windows(5).position(|words| matches!(words, ["it" | "they", "has" | "have", "no", "mana", "cost"])) {
         spec.without_mana_cost = true;
         kept_words.drain(index..index + 5);
+    }
+    // This bounded suffix specifies the replacement subtype family; it is
+    // independent of the identity descriptor before it.
+    if let Some(index) = kept_words.word_windows(6).position(|words| words == ["instead", "of", "its", "other", "creature", "types"]) {
+        let end=index+6;
+        crate::word_claims::claim_words(&kept_words[index..end]);
+        kept_words.drain(index..end);
+        spec.preserve_noncreature_subtypes = true;
+    } else if let Some(index)=kept_words.word_windows(5).position(|words|words==["instead","of","its","other","types"]) {
+        crate::word_claims::claim_words(&kept_words[index..index+5]);
+        kept_words.drain(index..index+5);
     }
     let modifier_words: &[&str] = &kept_words;
     let surface = CreationWords::new(modifier_words);
@@ -271,6 +343,12 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             {
                 crate::word_claims::claim_word(word);
             }
+            if *word == "colorless" {
+                // Colorless is an explicit empty color set, not a sixth color.
+                // It is read by this descriptor even though parse_color only
+                // recognizes the five individual colors.
+                crate::word_claims::claim_word(word);
+            }
             if let Some(color) = crate::util::parse_color(word) {
                 colors = colors.union(color);
             }
@@ -332,6 +410,12 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             if parse_pt_word(word).is_some() {
                 continue;
             }
+            if *word == "colorless" {
+                // Colorless is an explicit empty color set, not a sixth color.
+                // It is read by this descriptor even though parse_color only
+                // recognizes the five individual colors.
+                crate::word_claims::claim_word(word);
+            }
             if let Some(color) = crate::util::parse_color(word) {
                 colors = colors.union(color);
             }
@@ -349,4 +433,59 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
         spec.set_subtypes = (!subtypes.is_empty()).then_some(subtypes);
     }
     Ok(spec)
+}
+
+#[cfg(test)]
+mod quoted_identity_copy_tests {
+    use super::*;
+    #[test]
+    fn dangling_copy_exception_is_not_an_empty_modifier() {
+        assert!(parse_copy_modifier_words(&["except"]).is_err());
+        assert!(parse_copy_modifier_words(&["it", "except"]).is_err());
+        assert!(parse_copy_modifier_words(&[]).is_ok());
+        assert!(parse_copy_modifier_words(&["except", "it", "has", "haste"]).is_ok());
+    }
+    #[test]
+    fn quoted_copy_exclusions_keep_full_names_and_independent_following_clauses() {
+        for name in ["steady craft","traveler's gift","craft-and-care"] {
+            let text=format!("except it doesn't have custom keyword \"{name}\" and it has haste");
+            let tokens=crate::lexer::lex_line(&text,0).unwrap();
+            let spec=parse_copy_modifier_tokens(&tokens).unwrap();
+            assert_eq!(spec.removed_ability_designations,vec![name]);
+            assert!(spec.granted_abilities.iter().any(|ability|ability.id==Some(crate::static_abilities::StaticAbilityId::Haste)));
+        }
+        for text in ["except it doesn't have custom keyword \"steady craft", "except it doesn't have custom keyword \"craft 2\""] {
+            assert!(parse_copy_modifier_tokens(&crate::lexer::lex_line(text,0).unwrap()).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod colorless_descriptor_claim_tests {
+    use super::*;
+
+    #[test]
+    fn colorless_copy_descriptors_claim_the_empty_color_set() {
+        for text in [
+            "except it is colorless",
+            "except it is colorless, it has base power and toughness 1/1, it has no mana cost, and it is a Spirit artifact in addition to its other types",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (parsed, claims) = crate::word_claims::scoped(|| {
+                crate::word_claims::register_tokens(&tokens);
+                parse_copy_modifier_tokens(&tokens)
+            });
+            let spec = parsed.unwrap();
+            assert_eq!(spec.set_colors, Some(ColorSet::new()));
+            assert!(!crate::word_claims::unclaimed_words(&tokens, &claims).contains(&"colorless"));
+            if text.contains("in addition") {
+                assert_eq!(spec.added_card_types, vec![CardType::Artifact]);
+                assert_eq!(spec.added_subtypes, vec![Subtype::Spirit]);
+                assert_eq!(spec.set_base_power_toughness, Some((1, 1)));
+                assert!(spec.without_mana_cost);
+                assert!(spec.set_card_types.is_none());
+                assert!(spec.set_subtypes.is_none());
+            }
+        }
+    }
 }

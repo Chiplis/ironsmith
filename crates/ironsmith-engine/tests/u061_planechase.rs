@@ -527,3 +527,5 @@ fn u061_controller_rotation_departure_and_communal_ownership_are_preserved() {
     assert_eq!(communal.planar_controller(), Some(alice));
     assert_eq!(communal.planechase.as_ref().unwrap().card_kinds.len(), 20);
 }
+
+

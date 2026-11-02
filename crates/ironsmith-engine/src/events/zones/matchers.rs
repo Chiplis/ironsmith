@@ -525,6 +525,8 @@ pub struct WouldChangeZoneMatcher {
     pub excluded_to_zones: Vec<Zone>,
     pub cause_filter: Option<CauseFilter>,
     pub require_cause_source_match: bool,
+    /// Match the finishing move of this successfully resolving spell only.
+    pub require_resolving_object_match: bool,
     /// Tagged-object snapshots captured when a delayed matcher is registered.
     /// These keep tag-aware filters meaningful after the resolving effect's
     /// execution context is gone and preserve stable identity across zones.
@@ -541,6 +543,7 @@ impl WouldChangeZoneMatcher {
             excluded_to_zones: Vec::new(),
             cause_filter: None,
             require_cause_source_match: false,
+            require_resolving_object_match: false,
             frozen_tagged_objects: std::collections::HashMap::new(),
         }
     }
@@ -601,6 +604,8 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
         {
             return false;
         }
+        if self.require_resolving_object_match && !zone_change.cause.resolving_spell
+            .is_some_and(|spell|zone_change.objects.contains(&spell)) { return false; }
         if self.require_cause_source_match
             && !zone_change
                 .cause

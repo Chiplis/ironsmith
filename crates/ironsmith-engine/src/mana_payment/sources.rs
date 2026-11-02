@@ -105,7 +105,7 @@ impl<'a> ManaSourceAnalysis<'a> {
 
     fn expand_branches(&self, choice: &ActivationChoice) -> Option<Vec<ProjectedManaBranch>> {
         use crate::effects::mana::production_resolution::ResolvedManaOutput;
-        if !self.projection_safe {
+        if !self.projection_safe || has_live_activation_alternatives(self.game,Some(choice.source)) {
             return None;
         }
         let ability = self
@@ -259,7 +259,7 @@ impl<'a> ManaSourceAnalysis<'a> {
     }
 
     fn project_inner(&self, choice: &ActivationChoice) -> Option<ProjectedMana> {
-        if !self.projection_safe {
+        if !self.projection_safe || has_live_activation_alternatives(self.game,Some(choice.source)) {
             return None;
         }
         let ability = self
@@ -510,6 +510,7 @@ mod tests {
         activated.effects = effects.into();
         let ability = Ability {
             kind: AbilityKind::Activated(activated),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         game.object_mut(source)
@@ -813,15 +814,19 @@ mod tests {
         filter.tapped = true;
         for modification in [
             Modification::CopyActivatedAbilities {
+                excluded_ability_designations: Vec::new(),
                 filter: filter.clone(), counter: None, include_mana: true,
                 only_loyalty: false, exclude_source_name: false,
                 exclude_source_id: false, force_once_each_turn: false,
                 exclude_loyalty: false,
             },
             Modification::CopyTriggeredAbilities {
+                excluded_ability_designations: Vec::new(),
                 filter: filter.clone(), exclude_source_name: false, exclude_source_id: false,
             },
             Modification::CopyStaticAbilityVariants {
+                excluded_ability_designations: Vec::new(),
+                copy_all: false,
                 filter: filter.clone(), selectors: vec![], exclude_source_id: false,
             },
         ] {
@@ -1563,4 +1568,14 @@ mod tests {
         assert_eq!(unrestricted.expected_mana.blue, 1);
         assert!(!game.is_tapped(request.source));
     }
+}
+
+/// A live alternative payment can make one printed tap ability usable by
+/// multiple independent methods. Fixed tap projections do not model its quota.
+pub(super) fn has_live_activation_alternatives(game:&GameState,source:Option<crate::ids::ObjectId>)->bool {
+ game.effect_store.activation_cost_alternatives.iter().any(|grant|
+  source.is_none_or(|id|id==grant.source)
+   && game.object(grant.source).is_some_and(|object|object.zone==crate::Zone::Battlefield)
+   && !game.is_phased_out(grant.source)
+   && game.has_custom_status(grant.source,&grant.status))
 }

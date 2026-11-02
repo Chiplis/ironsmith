@@ -1,0 +1,2427 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Additional13 complete Inscribe sources; union with frozen26 is exactly39 physical sources",
+  "provenance": {
+    "frozen26_path": "tmp/custom-mechanics/next-wave/inscribe/coherent-collections-final/work/fixtures/custom_mechanics/msem-inscribe-all-sources-candidate.json",
+    "frozen26_sha256": "72e966a97a85b5231e389abbdf654fc77661c55361a839c499f31d14388525c3",
+    "additional_inventory": "tmp/custom-mechanics/next-wave/inscribe/whole-inscribe-source-delta.json",
+    "policy": "Separate additive source overlay, no frozen row/definition changes, no materialization/native verification performed."
+  },
+  "mechanics": [
+    {
+      "id": "msem-inscribe-additional-01",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Hone the Blade"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Hone the Blade_IMP",
+          "source_card_key": "Hone the Blade_IMP",
+          "name": "Hone the Blade",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nTarget creature you control fights another target creature.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hone the Blade",
+              "original_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nTarget creature you control fights another target creature.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Hone the Blade",
+            "cardName": "Hone the Blade",
+            "manaCost": "{1}{G}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*IMP C*",
+            "rulesText": "Target creature you control fights another target creature.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "IMP",
+            "cardID": "102",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Michael Philippi",
+            "sdn": 653,
+            "key": "Hone the Blade_IMP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IMP"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Hone the Blade_IMP",
+            "printKeys": [
+              "Hone the Blade_IMP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nTarget creature you control fights another target creature.\nKeyword ability \"inscribe\" — {3}{G}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control fights another target creature.\nInscribe {3}{G}",
+          "original_printed_rules_text": "Target creature you control fights another target creature.\nInscribe {3}{G} ({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Hone the Blade",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nTarget creature you control fights another target creature.\nKeyword ability \"inscribe\" — {3}{G}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control fights another target creature.\nInscribe {3}{G}",
+              "original_printed_rules_text": "Target creature you control fights another target creature.\nInscribe {3}{G} ({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Hone the Blade_IMP",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-02",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Through the Mists"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Through the Mists_IMP",
+          "source_card_key": "Through the Mists_IMP",
+          "name": "Through the Mists",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nYou may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Through the Mists",
+              "original_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nYou may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Through the Mists",
+            "cardName": "Through the Mists",
+            "manaCost": "{1}{G}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*IMP U*",
+            "rulesText": "You may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IMP",
+            "cardID": "117",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Carlos Nuñez de Castro Torres",
+            "sdn": 735,
+            "key": "Through the Mists_IMP",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IMP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Through the Mists_IMP",
+            "printKeys": [
+              "Through the Mists_IMP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 2.8135990621336457,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nYou may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nKeyword ability \"inscribe\" — {3}{G}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "You may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G}",
+          "original_printed_rules_text": "You may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G} ({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Through the Mists",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant — Inscription\nYou may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nKeyword ability \"inscribe\" — {3}{G}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G}",
+              "original_printed_rules_text": "You may sacrifice a land. If you do, search your library for a land card, put that card onto the battlefield, then shuffle.\nInscribe {3}{G} ({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Through the Mists_IMP",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-03",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Voice of Sheraku"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Voice of Sheraku_IMP",
+          "source_card_key": "Voice of Sheraku_IMP",
+          "name": "Voice of Sheraku",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {W}\nType: Instant — Inscription\nPrevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W} *({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Voice of Sheraku",
+              "original_text": "Mana cost: {W}\nType: Instant — Inscription\nPrevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W} *({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Voice of Sheraku",
+            "cardName": "Voice of Sheraku",
+            "manaCost": "{W}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*IMP U*",
+            "rulesText": "Prevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W} *({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "IMP",
+            "cardID": "24",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Conceptopolis",
+            "sdn": 742,
+            "key": "Voice of Sheraku_IMP",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IMP"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Voice of Sheraku_IMP",
+            "printKeys": [
+              "Voice of Sheraku_IMP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 1.1723329425556859,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {W}\nType: Instant — Inscription\nPrevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nKeyword ability \"inscribe\" — {2}{W}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W}",
+          "original_printed_rules_text": "Prevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W} ({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Voice of Sheraku",
+              "executable_text": "Mana cost: {W}\nType: Instant — Inscription\nPrevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nKeyword ability \"inscribe\" — {2}{W}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W}",
+              "original_printed_rules_text": "Prevent all damage that would be dealt to target attacking or blocking creature this turn.\nInscribed creature gets +1/+1 and has vigilance.\nInscribe {2}{W} ({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Voice of Sheraku_IMP",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-04",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Wild Lightning"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Wild Lightning_IMP",
+          "source_card_key": "Wild Lightning_IMP",
+          "name": "Wild Lightning",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {R}{R}\nType: Instant — Inscription\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R} *({2}{R}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wild Lightning",
+              "original_text": "Mana cost: {R}{R}\nType: Instant — Inscription\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R} *({2}{R}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Wild Lightning",
+            "cardName": "Wild Lightning",
+            "manaCost": "{R}{R}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*IMP R*",
+            "rulesText": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R} *({2}{R}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "IMP",
+            "cardID": "93",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Diego Gisbert Llorens",
+            "sdn": 746,
+            "key": "Wild Lightning_IMP",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "IMP"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Wild Lightning_IMP",
+            "printKeys": [
+              "Wild Lightning_IMP"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 1.927710843373494,
+            "pm": 5.23642047674873,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {R}{R}\nType: Instant — Inscription\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nKeyword ability \"inscribe\" — {2}{R}{R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R}",
+          "original_printed_rules_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R} ({2}{R}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Wild Lightning",
+              "executable_text": "Mana cost: {R}{R}\nType: Instant — Inscription\nWhen you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nKeyword ability \"inscribe\" — {2}{R}{R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R}",
+              "original_printed_rules_text": "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nInscribe {2}{R}{R} ({2}{R}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Wild Lightning_IMP",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-05",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Fleeting Thoughts"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Fleeting Thoughts_PSA",
+          "source_card_key": "Fleeting Thoughts_PSA",
+          "name": "Fleeting Thoughts",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}\nType: Sorcery — Inscription\nTarget player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fleeting Thoughts",
+              "original_text": "Mana cost: {U}\nType: Sorcery — Inscription\nTarget player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Fleeting Thoughts",
+            "cardName": "Fleeting Thoughts",
+            "manaCost": "{U}",
+            "typeLine": "Sorcery — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Target player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "39",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "William O'Connor",
+            "sdn": 3183,
+            "key": "Fleeting Thoughts_PSA",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Fleeting Thoughts_PSA",
+            "printKeys": [
+              "Fleeting Thoughts_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 2.4096385542168677,
+            "pm": 6.330597889800703,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {U}\nType: Sorcery — Inscription\nTarget player mills four cards.\nInscribed creature has flying.\nKeyword ability \"inscribe\" — {2}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U}",
+          "original_printed_rules_text": "Target player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U} ({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Fleeting Thoughts",
+              "executable_text": "Mana cost: {U}\nType: Sorcery — Inscription\nTarget player mills four cards.\nInscribed creature has flying.\nKeyword ability \"inscribe\" — {2}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U}",
+              "original_printed_rules_text": "Target player mills four cards.\nInscribed creature has flying.\nInscribe {2}{U} ({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Fleeting Thoughts_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-06",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Inner Peace"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Inner Peace_PSA",
+          "source_card_key": "Inner Peace_PSA",
+          "name": "Inner Peace",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {W}\nType: Sorcery — Inscription\nPut a +1/+1 counter on target creature.\nInscribe {2}{W} *({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Inner Peace",
+              "original_text": "Mana cost: {W}\nType: Sorcery — Inscription\nPut a +1/+1 counter on target creature.\nInscribe {2}{W} *({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Inner Peace",
+            "cardName": "Inner Peace",
+            "manaCost": "{W}",
+            "typeLine": "Sorcery — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Put a +1/+1 counter on target creature.\nInscribe {2}{W} *({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Sorcery",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "16",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Albert Tavira",
+            "sdn": 3215,
+            "key": "Inner Peace_PSA",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA",
+              "MS3"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Inner Peace_PSA",
+            "printKeys": [
+              "Inner Peace_PSA",
+              "Inner Peace_MS3"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {W}\nType: Sorcery — Inscription\nPut a +1/+1 counter on target creature.\nKeyword ability \"inscribe\" — {2}{W}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Put a +1/+1 counter on target creature.\nInscribe {2}{W}",
+          "original_printed_rules_text": "Put a +1/+1 counter on target creature.\nInscribe {2}{W} ({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Inner Peace",
+              "executable_text": "Mana cost: {W}\nType: Sorcery — Inscription\nPut a +1/+1 counter on target creature.\nKeyword ability \"inscribe\" — {2}{W}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Put a +1/+1 counter on target creature.\nInscribe {2}{W}",
+              "original_printed_rules_text": "Put a +1/+1 counter on target creature.\nInscribe {2}{W} ({2}{W}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Inner Peace_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-07",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Kami's Greed"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Kami's Greed_PSA",
+          "source_card_key": "Kami's Greed_PSA",
+          "name": "Kami's Greed",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nDestroy target artifact.\nInscribe {2}{R} *({2}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kami's Greed",
+              "original_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nDestroy target artifact.\nInscribe {2}{R} *({2}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Kami's Greed",
+            "cardName": "Kami's Greed",
+            "manaCost": "{1}{R}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Destroy target artifact.\nInscribe {2}{R} *({2}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "100",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Adam Schumpert",
+            "sdn": 3228,
+            "key": "Kami's Greed_PSA",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Kami's Greed_PSA",
+            "printKeys": [
+              "Kami's Greed_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nDestroy target artifact.\nKeyword ability \"inscribe\" — {2}{R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target artifact.\nInscribe {2}{R}",
+          "original_printed_rules_text": "Destroy target artifact.\nInscribe {2}{R} ({2}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Kami's Greed",
+              "executable_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nDestroy target artifact.\nKeyword ability \"inscribe\" — {2}{R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target artifact.\nInscribe {2}{R}",
+              "original_printed_rules_text": "Destroy target artifact.\nInscribe {2}{R} ({2}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Kami's Greed_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-08",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Kamito Eternalist"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Kamito Eternalist_PSA",
+          "source_card_key": "Kamito Eternalist_PSA",
+          "name": "Kamito Eternalist",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nProwess\nYou may activate inscribe abilities from your graveyard as though they were in your hand.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kamito Eternalist",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nProwess\nYou may activate inscribe abilities from your graveyard as though they were in your hand."
+            }
+          ],
+          "source_record": {
+            "fullName": "Kamito Eternalist",
+            "cardName": "Kamito Eternalist",
+            "manaCost": "{R}",
+            "typeLine": "Creature — Human Wizard",
+            "rarityLine": "*PSA R*",
+            "rulesText": "Prowess\nYou may activate inscribe abilities from your graveyard as though they were in your hand.",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 1,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "102",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Sergio Camarena",
+            "sdn": 3171,
+            "key": "Kamito Eternalist_PSA",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Kamito Eternalist_PSA",
+            "printKeys": [
+              "Kamito Eternalist_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "reworked",
+              "nerfed"
+            ],
+            "pr": 0,
+            "pm": 0.9378663540445487,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nProwess\nYou may activate abilities designated inscribe of cards in your graveyard as though they were in your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prowess\nYou may activate inscribe abilities from your graveyard as though they were in your hand.",
+          "original_printed_rules_text": "Prowess\nYou may activate inscribe abilities from your graveyard as though they were in your hand.",
+          "executable_faces": [
+            {
+              "name": "Kamito Eternalist",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nProwess\nYou may activate abilities designated inscribe of cards in your graveyard as though they were in your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prowess\nYou may activate inscribe abilities from your graveyard as though they were in your hand.",
+              "original_printed_rules_text": "Prowess\nYou may activate inscribe abilities from your graveyard as though they were in your hand."
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Kamito Eternalist_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "source_zone_interpretation_and_generic_permission_pending",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      },
+      "pending_dependencies": [
+        "generic designated-activation as-though zone permission; per-ability source-keyword identity; distinguish activation-only virtual zone from later literal hand-zone resolution requirement"
+      ],
+      "source_scope_evidence": {
+        "609.4": "As-though applies only to the stated effect; for all other purposes treat the game normally.",
+        "702.201a": "Reveal this card from your hand is an activation cost; exile this card from your hand is the later resolving instruction.",
+        "source": "You may activate inscribe abilities from your graveyard as though they were in your hand.",
+        "policy": "Preserve literal source; no automatic rewrite of resolving hand-zone instruction into graveyard exile."
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-09",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Path of the Waters"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Path of the Waters_PSA",
+          "source_card_key": "Path of the Waters_PSA",
+          "name": "Path of the Waters",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}\nType: Instant — Inscription\nLook at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Path of the Waters",
+              "original_text": "Mana cost: {U}\nType: Instant — Inscription\nLook at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Path of the Waters",
+            "cardName": "Path of the Waters",
+            "manaCost": "{U}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Look at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "52",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Stephanie Pui-Mun Law",
+            "sdn": 3280,
+            "key": "Path of the Waters_PSA",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Path of the Waters_PSA",
+            "printKeys": [
+              "Path of the Waters_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Instant — Inscription\nLook at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nKeyword ability \"inscribe\" — {2}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Look at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U}",
+          "original_printed_rules_text": "Look at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U} ({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Path of the Waters",
+              "executable_text": "Mana cost: {U}\nType: Instant — Inscription\nLook at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nKeyword ability \"inscribe\" — {2}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Look at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U}",
+              "original_printed_rules_text": "Look at the top three cards of your library, then put them back in any order. If you've cast a spell named Whisper of the Winds this turn, draw a card.\nInscribe {2}{U} ({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Path of the Waters_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-10",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Prayer of Drifting Lights"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Prayer of Drifting Lights_PSA",
+          "source_card_key": "Prayer of Drifting Lights_PSA",
+          "name": "Prayer of Drifting Lights",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {G}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Prayer of Drifting Lights",
+              "original_text": "Mana cost: {G}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Prayer of Drifting Lights",
+            "cardName": "Prayer of Drifting Lights",
+            "manaCost": "{G}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Target creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G} *({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "136",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "John Donahue",
+            "sdn": 3284,
+            "key": "Prayer of Drifting Lights_PSA",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Prayer of Drifting Lights_PSA",
+            "printKeys": [
+              "Prayer of Drifting Lights_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {G}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nKeyword ability \"inscribe\" — {3}{G}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G}",
+          "original_printed_rules_text": "Target creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G} ({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Prayer of Drifting Lights",
+              "executable_text": "Mana cost: {G}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nKeyword ability \"inscribe\" — {3}{G}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G}",
+              "original_printed_rules_text": "Target creature gets +1/+1 until end of turn. When that creature dies this turn, create a 2/2 colorless Spirit creature token.\nInscribe {3}{G} ({3}{G}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Prayer of Drifting Lights_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-11",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Spirit Reflections"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Spirit Reflections_PSA",
+          "source_card_key": "Spirit Reflections_PSA",
+          "name": "Spirit Reflections",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}\nType: Instant — Inscription\nPrevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spirit Reflections",
+              "original_text": "Mana cost: {U}\nType: Instant — Inscription\nPrevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Spirit Reflections",
+            "cardName": "Spirit Reflections",
+            "manaCost": "{U}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Prevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U} *({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "58",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Matt Zeilinger",
+            "sdn": 3328,
+            "key": "Spirit Reflections_PSA",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Spirit Reflections_PSA",
+            "printKeys": [
+              "Spirit Reflections_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Instant — Inscription\nPrevent all combat damage that would be dealt to and dealt by target creature this turn.\nKeyword ability \"inscribe\" — {2}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U}",
+          "original_printed_rules_text": "Prevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U} ({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Spirit Reflections",
+              "executable_text": "Mana cost: {U}\nType: Instant — Inscription\nPrevent all combat damage that would be dealt to and dealt by target creature this turn.\nKeyword ability \"inscribe\" — {2}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U}",
+              "original_printed_rules_text": "Prevent all combat damage that would be dealt to and dealt by target creature this turn.\nInscribe {2}{U} ({2}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Spirit Reflections_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-12",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Thousand Cuts"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Thousand Cuts_PSA",
+          "source_card_key": "Thousand Cuts_PSA",
+          "name": "Thousand Cuts",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R} *({3}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Thousand Cuts",
+              "original_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R} *({3}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Thousand Cuts",
+            "cardName": "Thousand Cuts",
+            "manaCost": "{1}{R}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Target creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R} *({3}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Red} ",
+            "cmc": 2,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "115",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Florian Stitz",
+            "sdn": 3344,
+            "key": "Thousand Cuts_PSA",
+            "colorIdentity": [
+              "R"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Thousand Cuts_PSA",
+            "printKeys": [
+              "Thousand Cuts_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn for each creature you control.\nKeyword ability \"inscribe\" — {3}{R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R}",
+          "original_printed_rules_text": "Target creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R} ({3}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Thousand Cuts",
+              "executable_text": "Mana cost: {1}{R}\nType: Instant — Inscription\nTarget creature gets +1/+1 until end of turn for each creature you control.\nKeyword ability \"inscribe\" — {3}{R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R}",
+              "original_printed_rules_text": "Target creature gets +1/+1 until end of turn for each creature you control.\nInscribe {3}{R} ({3}{R}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Thousand Cuts_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    },
+    {
+      "id": "msem-inscribe-additional-13",
+      "scope": "msem",
+      "keyword": "Inscribe",
+      "rule_reference": "702.201.",
+      "rule_text": [
+        {
+          "name": "702.201a",
+          "rule": "Inscribe represents an activated ability that functions while the card with inscribe is in its owner's hand and a static ability that functions while the card with inscribe is in the exile zone. “Inscribe (cost)” means “(cost), Reveal this card from your hand: Exile this card from your hand inscribed on a creature you control. Activate this ability only at any time you could cast a sorcery.” and “For as long as this card is inscribed on that creature, that creature has 'Whenever this creature attacks, you may copy the inscribed card and you may cast the copy without paying its mana cost.'”",
+          "custom": true
+        },
+        {
+          "name": "702.201b",
+          "rule": "Cards with this ability have the subtype Inscription.",
+          "custom": true
+        },
+        {
+          "name": "702.201c",
+          "rule": "If an inscribed card somehow leaves exile, it will no longer be inscribed on that creature.",
+          "custom": true
+        },
+        {
+          "name": "702.201d",
+          "rule": "If you copy an inscribe ability you control, only one of them will be able to exile the card from your hand and will the rest will do nothing.",
+          "custom": true
+        },
+        {
+          "name": "702.201e",
+          "rule": "If you gain control of or copy an inscribe ability of a card you don't own, you will be unable to exile the card and the ability will do nothing.",
+          "custom": true
+        }
+      ],
+      "original_reminder": "",
+      "executable_reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+      "executable_definitions": [
+        {
+          "keyword": "Inscribe {Cost}",
+          "objectRelation": {
+            "name": "inscribed host",
+            "sourceZone": "exile",
+            "memberZone": "battlefield"
+          },
+          "reminder": "{Cost}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery. This card is an Inscription in addition to its other types.",
+          "abilityDesignation": "inscribe"
+        }
+      ],
+      "source_cards": [
+        "Whisper of the Winds"
+      ],
+      "representative_cards": [
+        {
+          "id": "msem:Whisper of the Winds_PSA",
+          "source_card_key": "Whisper of the Winds_PSA",
+          "name": "Whisper of the Winds",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {U}\nType: Instant — Inscription\nPut target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U} *({3}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Whisper of the Winds",
+              "original_text": "Mana cost: {U}\nType: Instant — Inscription\nPut target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U} *({3}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*"
+            }
+          ],
+          "source_record": {
+            "fullName": "Whisper of the Winds",
+            "cardName": "Whisper of the Winds",
+            "manaCost": "{U}",
+            "typeLine": "Instant — Inscription",
+            "rarityLine": "*PSA C*",
+            "rulesText": "Put target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U} *({3}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)*",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 1,
+            "cardType": "Instant",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "PSA",
+            "cardID": "62",
+            "designer": "Timespiraled",
+            "script": "",
+            "notes": [],
+            "artist": "Stephanie Pui-Mun Law",
+            "sdn": 3356,
+            "key": "Whisper of the Winds_PSA",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "PSA"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Whisper of the Winds_PSA",
+            "printKeys": [
+              "Whisper of the Winds_PSA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "executable_text": "Mana cost: {U}\nType: Instant — Inscription\nPut target instant or sorcery card from your graveyard on top of your library.\nKeyword ability \"inscribe\" — {3}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_identities": [
+            "inscribe"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Artifact"
+            },
+            {
+              "singular": "inscription",
+              "plural": "inscriptions",
+              "family": "Spell"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Put target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U}",
+          "original_printed_rules_text": "Put target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U} ({3}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)",
+          "executable_faces": [
+            {
+              "name": "Whisper of the Winds",
+              "executable_text": "Mana cost: {U}\nType: Instant — Inscription\nPut target instant or sorcery card from your graveyard on top of your library.\nKeyword ability \"inscribe\" — {3}{U}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains \"Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.\" for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword \"Inscribe\". Activate only if this card is in your hand. Activate only as a sorcery.\ninscribe — This card is an Inscription in addition to its other types.",
+              "custom_keyword_identities": [
+                "inscribe"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Artifact"
+                },
+                {
+                  "singular": "inscription",
+                  "plural": "inscriptions",
+                  "family": "Spell"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Put target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U}",
+              "original_printed_rules_text": "Put target instant or sorcery card from your graveyard on top of your library.\nInscribe {3}{U} ({3}{U}: Exile this card from your hand inscribed on a creature you control. Whenever that creature attacks, its controller may cast a copy of the inscribed card without paying its mana cost. Inscribe only as a sorcery.)"
+            }
+          ]
+        }
+      ],
+      "support_status": "candidate_unverified",
+      "source_provenance": {
+        "kind": "additional_complete_source_for_formal_rule",
+        "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "source_card_key": "Whisper of the Winds_PSA",
+        "formal_rule_reference": "702.201.",
+        "seed_reminder_claim": false
+      },
+      "semantic_equivalence": {
+        "status": "reuses_frozen_generic_reminder_unverified",
+        "evidence": [
+          "Standard activated/static Inscript program and objectRelation definition copied byte-for-byte from frozen26.",
+          "Main spell body, passive relation text, costs and complete source record preserved."
+        ]
+      }
+    }
+  ]
+}

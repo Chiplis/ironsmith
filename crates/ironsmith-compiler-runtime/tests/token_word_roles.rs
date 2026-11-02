@@ -67,7 +67,7 @@ fn exact_frozen_name_holds_have_derived_blueprints_and_created_object_names() {
             "Brood Birthing" => ("Eldrazi Spawn Token", vec![Subtype::Eldrazi, Subtype::Spawn], (0, 1), ColorSet::default(), false, 1),
             _ => unreachable!(),
         };
-        for definition in frozen_name_routes(&row) {
+        for (route, definition) in frozen_name_routes(&row).into_iter().enumerate() {
             assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
             let mut tokens = Vec::new();
             fn collect(effect: &Effect, tokens: &mut Vec<CreateTokenEffect>) {
@@ -98,7 +98,7 @@ fn exact_frozen_name_holds_have_derived_blueprints_and_created_object_names() {
                 assert!(token.token.card.mana_cost.is_none());
                 assert!(token.token.spell_effect.is_none());
                 assert!(token.token.aura_attach_filter.is_none());
-                assert_eq!(token.token.abilities.len(), ability_count);
+                assert_eq!(token.token.abilities.len(), ability_count, "source={} route={route} token={} abilities={:?}", row["name"], token.token.card.name, token.token.abilities);
                 if row["name"] == "Belisarius Cawl" {
                     assert!(matches!(&token.token.abilities[0].kind, AbilityKind::Static(ability)
                         if ability.id() == ironsmith::static_abilities::StaticAbilityId::Vigilance));

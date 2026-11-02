@@ -63,6 +63,8 @@ pub(super) struct MilledGroup {
     /// The mill was "each player mills": only the exiled-creatures statement
     /// reads that group; the selections into one player's hand do not.
     per_player: bool,
+    chosen_milled: Option<TagKey>,
+    cast_from_chosen: Option<TagKey>,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -101,6 +103,65 @@ fn mill_effect(
             (tag_single_mill_effect(&mut effect, tag)?, false)
         };
     Some((effect, plain, player, bare_mill, per_player))
+}
+
+/// A counted optional choice from this mill's actual result set. This
+/// selection persists independently from a later cast pick and its remainder.
+fn choose_milled_shape(tokens: &[OwnedTokens]) -> Option<(ChoiceCount, ObjectFilter)> {
+    let clean=crate::util::trim_edge_punctuation_tokens(tokens);
+    let view=crate::lexer::TokenWordView::new(clean);
+    let words=view.word_refs();
+    let tail=words.strip_prefix(&["you","may","choose","up","to"])?;
+    let tail=tail.strip_suffix(&["milled","this","way"])?;
+    let (number, filter_words)=tail.split_first()?;
+    let count=usize::try_from(crate::util::parse_number_word_u32(number)?).ok()?;
+    if filter_words.is_empty() { return None; }
+    let range=view.token_span_for_words(6,6+filter_words.len())?;
+    let filter=crate::object_filters::parse_object_filter(&clean[range],false).ok()?;
+    crate::word_claims::claim_tokens(clean);
+    Some((ChoiceCount::up_to(count),filter))
+}
+
+fn continue_chosen_milled(group:&mut MilledGroup,sentence:&SentenceInput)->Result<bool,CardTextError> {
+    let words=crate::lexer::token_word_refs(sentence.lowered());
+    if group.chosen_milled.is_none() && group.followups.is_empty()
+        && let Some((count,mut filter))=choose_milled_shape(sentence.lowered()) {
+        let chosen=helper_tag_for_tokens(sentence.lowered(),"chosen_milled_subset");
+        filter.tagged_constraints.push(TaggedObjectConstraint {tag:group.tag.clone(),relation:TaggedOpbjectRelation::IsTaggedObject});
+        group.followups.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter,count,player:PlayerAst::You,tag:crate::tag::TagRef::of(chosen.clone()),zone:Zone::Graveyard,
+        }));
+        group.chosen_milled=Some(chosen.key.clone());
+        group.consumed+=1;
+        return Ok(true);
+    }
+    let Some(chosen)=group.chosen_milled.clone() else {return Ok(false);};
+    if group.cast_from_chosen.is_none() && words.as_slice()==["you","may","cast","one","without","paying","its","mana","cost"] {
+        crate::word_claims::claim_tokens(sentence.lowered());
+        let cast=helper_tag_for_tokens(sentence.lowered(),"cast_from_chosen_milled");
+        group.followups.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter:ObjectFilter::tagged(chosen).in_zone(Zone::Graveyard),count:ChoiceCount::up_to(1),
+            player:PlayerAst::You,tag:crate::tag::TagRef::of(cast.clone()),zone:Zone::Graveyard,
+        }));
+        group.followups.push(EffectAst::subject_verb_cast_tagged(crate::tag::TagRef::of(cast.clone()),PlayerAst::You,false,false,true,None));
+        group.cast_from_chosen=Some(cast.key.clone());
+        group.consumed+=1;
+        return Ok(true);
+    }
+    if let Some(cast)=&group.cast_from_chosen
+        && words.as_slice()==["put","the","rest","into","your","hand"] {
+        crate::word_claims::claim_tokens(sentence.lowered());
+        let remainder=helper_tag_for_tokens(sentence.lowered(),"chosen_milled_remainder");
+        let mut filter=ObjectFilter::tagged(chosen).in_zone(Zone::Graveyard);
+        filter.tagged_constraints.push(TaggedObjectConstraint {tag:cast.clone(),relation:TaggedOpbjectRelation::IsNotTaggedObject});
+        group.followups.push(EffectAst::subject_verb_tag_matching_objects(filter,vec![Zone::Graveyard],crate::tag::TagRef::of(remainder.clone())));
+        group.followups.push(EffectAst::subject_verb_move_to_zone(
+            crate::cards::builders::TargetAst::Tagged(crate::tag::TagRef::of(remainder),None),Zone::Hand,false,
+            crate::cards::builders::ReturnControllerAst::Preserve,false,None));
+        group.consumed+=1;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 /// "You may cast an instant or sorcery spell [with mana value X or less] from
@@ -233,6 +294,7 @@ pub(super) fn open(
     let continues =
         parse_put_from_milled_cards_followup(next.lowered(), player, tag.clone().into())?.is_some()
             || may_cast_from_among(next).is_some()
+            || choose_milled_shape(next.lowered()).is_some()
             || exiles_milled_creatures
             || (parse_optional_payment_sentence(next.lowered(), player)?.is_some()
                 && sentences.get(sentence_idx + 2).is_some_and(|third| {
@@ -265,6 +327,8 @@ pub(super) fn open(
         payment_made: false,
         exiled_creatures: None,
         per_player,
+        chosen_milled: None,
+        cast_from_chosen: None,
         first_sentence: sentence_idx,
         consumed: 1,
     }))
@@ -276,6 +340,7 @@ pub(super) fn continue_with(
     sentence: &SentenceInput,
     following: Option<&SentenceInput>,
 ) -> Result<bool, CardTextError> {
+    if continue_chosen_milled(group,sentence)? { return Ok(true); }
     // "If you don't, ..." / "If you can't, ..." closes a pending hand selection.
     if let Some((chooser, filter, tokens)) = group.pending_hand.take() {
         let (if_not_chosen, count) =
@@ -513,5 +578,21 @@ fn rewrite_total_power_effect(effect: &mut EffectAst, tag: &TagKey) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod chosen_milled_regressions {
+    use super::*;
+    #[test]
+    fn optional_counted_selection_uses_complete_filter_and_exact_mill_relation() {
+        let tokens=crate::lexer::lex_line("You may choose up to two nonland cards with mana value 2 or less milled this way.",0).unwrap();
+        let (count,filter)=choose_milled_shape(&tokens).unwrap();
+        assert_eq!(count,ChoiceCount::up_to(2));
+        assert!(filter.mana_value.is_some());
+        for text in [
+            "You may choose up to two nonland cards with mana value 2 or less milled this way tomorrow.",
+            "You may choose up to two nonland cards from your graveyard.",
+        ] { assert!(choose_milled_shape(&crate::lexer::lex_line(text,0).unwrap()).is_none()); }
     }
 }

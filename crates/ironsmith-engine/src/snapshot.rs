@@ -29,16 +29,35 @@ use crate::static_abilities::StaticAbilityId;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-/// The values a copy effect is allowed to copy after layers 1a and 1b.
-///
-/// These are stored separately from the effective characteristics in an LKI
-/// snapshot because effects from later layers are not copiable (CR 707.2).
+/// Immutable definition dependencies carried with an exact copied program.
+/// This packet is transport evidence; it does not itself grant any ability.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct CopyDefinitionDependencies<A> {
+    pub ability_counter_definitions: std::collections::BTreeMap<String, Vec<A>>,
+    pub custom_subtypes: Vec<Subtype>,
+}
+
+fn absent_copy_definition_dependencies<A>() -> Option<CopyDefinitionDependencies<A>> { None }
+
+impl<A:Clone> CopyDefinitionDependencies<A> {
+    pub(crate) fn include(&mut self,other:&Self) {
+        for (name,program) in &other.ability_counter_definitions {
+            self.ability_counter_definitions.entry(name.clone()).or_insert_with(||program.clone());
+        }
+        for subtype in &other.custom_subtypes {if !self.custom_subtypes.contains(subtype){self.custom_subtypes.push(*subtype);}}
+    }
+}
+
+/// The frozen layer-1 characteristics and their exact executable dependencies.
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(
     feature = "serialization",
     derive(serde::Serialize, serde::Deserialize)
 )]
 pub struct CopiableValues {
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub definition_dependencies: Option<CopyDefinitionDependencies<Ability>>,
     /// Copiable alternate half of a flip card or Room (not transform status).
     pub copy_face_layout: LinkedFaceLayout,
     pub other_copy_face: Option<Box<CopiableValues>>,
@@ -121,6 +140,8 @@ impl<E> SpellProgramState<E> {
     serde(bound(deserialize = "A: serde::Deserialize<'de>, E: serde::Deserialize<'de>, C: serde::Deserialize<'de>"))
 )]
 pub struct RetainedCopiableValues<A, E = (), C = ()> {
+    #[cfg_attr(feature = "serialization", serde(default = "absent_copy_definition_dependencies", skip_serializing_if = "Option::is_none"))]
+    pub definition_dependencies: Option<CopyDefinitionDependencies<A>>,
     #[cfg_attr(feature = "serialization", serde(default))]
     pub copy_face_layout: LinkedFaceLayout,
     #[cfg_attr(feature = "serialization", serde(default))]
@@ -192,8 +213,12 @@ impl<A, E, C> RetainedCopiableValues<A, E, C> {
     fn map_abilities_inner<B, Error>(self, map: &mut dyn FnMut(A) -> Result<B, Error>)
         -> Result<RetainedCopiableValues<B, E, C>, Error>
     {
-        let Self { name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities, spell_effect, alternative_casts, optional_costs, other_copy_face } = self;
-        Ok(RetainedCopiableValues { name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities: abilities.into_iter().map(&mut *map).collect::<Result<Vec<_>, _>>()?, spell_effect: spell_effect,
+        let Self { definition_dependencies, name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities, spell_effect, alternative_casts, optional_costs, other_copy_face } = self;
+        let definition_dependencies=definition_dependencies.map(|dependencies|Ok::<_,Error>(CopyDefinitionDependencies {
+            ability_counter_definitions: dependencies.ability_counter_definitions.into_iter().map(|(name,program)|Ok((name,program.into_iter().map(&mut *map).collect::<Result<Vec<_>,_>>()?))).collect::<Result<_,Error>>()?,
+            custom_subtypes:dependencies.custom_subtypes,
+        })).transpose()?;
+        Ok(RetainedCopiableValues { definition_dependencies, name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities: abilities.into_iter().map(&mut *map).collect::<Result<Vec<_>, _>>()?, spell_effect: spell_effect,
             alternative_casts: alternative_casts, optional_costs: optional_costs,
             other_copy_face: other_copy_face.map(|face| face.map_abilities_inner(map).map(Box::new)).transpose()?,
         })
@@ -206,8 +231,8 @@ impl<A, E, C> RetainedCopiableValues<A, E, C> {
     fn map_effects_inner<F: Clone, Error>(self, map: &mut dyn FnMut(E) -> Result<F, Error>)
         -> Result<RetainedCopiableValues<A, F, C>, Error> where C: Clone + ironsmith_core::CostComponent
     {
-        let Self { name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities, spell_effect, alternative_casts, optional_costs, other_copy_face } = self;
-        Ok(RetainedCopiableValues { name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities: abilities, spell_effect: spell_effect.try_map_effects(&mut *map)?,
+        let Self { definition_dependencies, name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities, spell_effect, alternative_casts, optional_costs, other_copy_face } = self;
+        Ok(RetainedCopiableValues { definition_dependencies, name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities: abilities, spell_effect: spell_effect.try_map_effects(&mut *map)?,
             alternative_casts: alternative_casts.into_iter().map(|value| value.try_map(&mut *map, Ok)).collect::<Result<Vec<_>, _>>()?, optional_costs: optional_costs,
             other_copy_face: other_copy_face.map(|face| face.map_effects_inner(map).map(Box::new)).transpose()?,
         })
@@ -220,8 +245,8 @@ impl<A, E, C> RetainedCopiableValues<A, E, C> {
     fn map_costs_inner<D, Error>(self, map: &mut dyn FnMut(C) -> Result<D, Error>)
         -> Result<RetainedCopiableValues<A, E, D>, Error> where C: Clone + ironsmith_core::CostComponent, D: ironsmith_core::CostComponent
     {
-        let Self { name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities, spell_effect, alternative_casts, optional_costs, other_copy_face } = self;
-        Ok(RetainedCopiableValues { name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities: abilities, spell_effect: spell_effect,
+        let Self { definition_dependencies, name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities, spell_effect, alternative_casts, optional_costs, other_copy_face } = self;
+        Ok(RetainedCopiableValues { definition_dependencies, name, mana_cost, compiled_card_text, ability_labels, power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense, aura_attach_filter, copy_face_layout, abilities: abilities, spell_effect: spell_effect,
             alternative_casts: alternative_casts.into_iter().map(|value| value.try_map(Ok, &mut *map)).collect::<Result<Vec<_>, _>>()?, optional_costs: optional_costs.into_iter().map(|value| value.try_map(&mut *map)).collect::<Result<Vec<_>, _>>()?,
             other_copy_face: other_copy_face.map(|face| face.map_costs_inner(map).map(Box::new)).transpose()?,
         })
@@ -230,7 +255,7 @@ impl<A, E, C> RetainedCopiableValues<A, E, C> {
 impl From<CopiableValues> for RetainedCopiableValues<Ability, crate::effect::Effect, crate::costs::Cost> {
     fn from(values: CopiableValues) -> Self {
         let CopiableValues {
-            copy_face_layout, alternative_casts, optional_costs,
+            definition_dependencies, copy_face_layout, alternative_casts, optional_costs,
             other_copy_face,
             name,
             mana_cost,
@@ -249,7 +274,7 @@ impl From<CopiableValues> for RetainedCopiableValues<Ability, crate::effect::Eff
             aura_attach_filter,
         } = values;
         Self {
-            copy_face_layout, alternative_casts, optional_costs,
+            definition_dependencies, copy_face_layout, alternative_casts, optional_costs,
             other_copy_face: other_copy_face.map(|face| Box::new((*face).into())),
             name,
             mana_cost,
@@ -273,7 +298,7 @@ impl From<CopiableValues> for RetainedCopiableValues<Ability, crate::effect::Eff
 impl From<RetainedCopiableValues<Ability, crate::effect::Effect, crate::costs::Cost>> for CopiableValues {
     fn from(values: RetainedCopiableValues<Ability, crate::effect::Effect, crate::costs::Cost>) -> Self {
         let RetainedCopiableValues {
-            copy_face_layout, alternative_casts, optional_costs,
+            definition_dependencies, copy_face_layout, alternative_casts, optional_costs,
             other_copy_face,
             name,
             mana_cost,
@@ -292,7 +317,7 @@ impl From<RetainedCopiableValues<Ability, crate::effect::Effect, crate::costs::C
             aura_attach_filter,
         } = values;
         Self {
-            copy_face_layout, alternative_casts, optional_costs,
+            definition_dependencies, copy_face_layout, alternative_casts, optional_costs,
             other_copy_face: other_copy_face.map(|face| Box::new((*face).into())),
             name,
             mana_cost,
@@ -327,10 +352,14 @@ impl CopiableValues {
     pub fn from_object(obj: &Object) -> Self {
         let bestow_restore = obj.bestow_cast_state.as_ref();
         Self {
+            definition_dependencies: if obj.face_down_cast_state.is_some() { Some(CopyDefinitionDependencies{ability_counter_definitions:Default::default(),custom_subtypes:Vec::new()}) } else {
+                obj.copied_face_values.as_ref().and_then(|values|values.definition_dependencies.clone())
+                    .or_else(||Some(obj.source_definition_dependencies()))
+            },
             copy_face_layout: if obj.face_down_cast_state.is_some() { LinkedFaceLayout::None } else { obj.copied_face_values.as_ref().map_or(LinkedFaceLayout::None, |values| values.copy_face_layout) },
             other_copy_face: if obj.face_down_cast_state.is_some() { None } else { obj.copied_face_values.as_ref().and_then(|values| values.other_copy_face.clone()) },
             alternative_casts: if obj.face_down_cast_state.is_some() { Vec::new() } else { obj.alternative_casts.to_vec() },
-            optional_costs: if obj.face_down_cast_state.is_some() { Vec::new() } else { obj.optional_costs.to_vec() },
+            optional_costs: if obj.face_down_cast_state.is_some() { Vec::new() } else { obj.authored_optional_costs().to_vec() },
             name: retained_copiable_name(&obj.name, obj.split_other_half_name()),
             mana_cost: obj.mana_cost_owned(),
             compiled_card_text: obj.compiled_card_text.to_string(),
@@ -399,6 +428,9 @@ impl CopiableValues {
         }
         if let Some(merged) = game.merged_permanent(object.stable_id) {
             for component in merged.components.iter().skip(1).filter(|component| !component.face_down) {
+                if let Some(dependencies)=Self::from_object(&component.object).definition_dependencies {
+                    if let Some(packet)=&mut other_values.definition_dependencies{packet.include(&dependencies);}else{other_values.definition_dependencies=Some(dependencies);}
+                }
                 Arc::make_mut(&mut other_values.abilities).extend(component.object.abilities.iter().cloned());
                 other_values.ability_labels.extend(component.object.ability_labels.iter().cloned());
                 other_values.alternative_casts.extend(component.object.alternative_casts.iter().cloned());
@@ -425,6 +457,7 @@ impl CopiableValues {
 
     pub fn from_calculated(chars: &CalculatedCharacteristics) -> Self {
         Self {
+            definition_dependencies: chars.copy_values.as_ref().and_then(|values|values.definition_dependencies.clone()),
             copy_face_layout: chars.copy_values.as_ref().map_or(LinkedFaceLayout::None, |values| values.copy_face_layout),
             other_copy_face: chars.copy_values.as_ref().and_then(|values| values.other_copy_face.clone()),
             alternative_casts: chars.copy_values.as_ref().map_or_else(Vec::new, |values| values.alternative_casts.clone()),
@@ -539,6 +572,9 @@ pub struct ObjectSnapshot {
     /// intentionally omit this; a linked reader then requires native replay.
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub ability_origins: Option<Arc<Vec<crate::continuous::AbilityOrigin>>>,
+    /// Native source-owned vocabulary; excluded from public claims and copiable characteristics.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub(crate) source_definition_metadata: Option<Arc<crate::object::SourceDefinitionMetadata>>,
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// Frozen layer-1 copiable values at the instant this snapshot was made.
@@ -562,11 +598,16 @@ pub struct ObjectSnapshot {
     pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     /// Optional costs paid for this cast, retained for historical spell filters.
     pub optional_costs_paid: crate::cost::OptionalCostsPaid,
+    #[cfg_attr(feature="serialization",serde(default))]
+    pub named_payment_outcomes:Vec<crate::object::NamedPaymentOutcomeReceipt>,
     pub snow_mana_spent_to_cast: ManaPool,
     /// Last-known snapshots of the sources that produced mana spent to cast
     /// this object. This remains available after the spell leaves the stack
     /// so first-matching-spell predicates can inspect earlier casts.
     pub mana_sources_spent_to_cast: Vec<ObjectSnapshot>,
+    /// Noncopiable completed optional-payment objects, frozen with the source.
+    #[cfg_attr(feature="serialization",serde(default,skip_serializing_if="std::collections::HashMap::is_empty"))]
+    pub paid_optional_cost_objects: std::collections::HashMap<crate::tag::TagKey,Vec<ObjectSnapshot>>,
 
     // === Non-copiable state ===
     /// Counters on the object.
@@ -609,6 +650,10 @@ pub struct ObjectSnapshot {
     /// One level of attachment characteristics captured for last-known counts.
     /// Nested snapshots do not recursively capture their own attachments.
     pub attachment_snapshots: Vec<ObjectSnapshot>,
+    /// A host's actual related cards at capture. Exiled children cannot be
+    /// battlefield hosts, so this does not recursively traverse a relation graph.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub related_exiled_cards: std::collections::BTreeMap<String, Vec<ObjectSnapshot>>,
     /// Whether the object had any Auras attached.
     pub was_enchanted: bool,
     /// Whether the permanent was monstrous.
@@ -632,6 +677,13 @@ pub struct ObjectSnapshot {
     pub suspected: Option<bool>,
     #[cfg_attr(feature = "serialization", serde(default))]
     pub custom_statuses: Vec<String>,
+    #[cfg_attr(feature="serialization",serde(default,skip_serializing_if="Option::is_none"))]
+    pub named_action_history: Option<std::collections::BTreeMap<String,(u32,u32,u32)>>,
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub text_addition_sources: Vec<StableId>,
+    /// Frozen original action recipients from this incarnation's entry program.
+    #[cfg_attr(feature="serialization",serde(default,skip_serializing_if="std::collections::HashMap::is_empty"))]
+    pub entry_action_objects: std::collections::HashMap<crate::tag::TagKey,Vec<ObjectSnapshot>>,
     /// Exact incarnation's saddle designation. Missing historical/public
     /// evidence is unknown, never an unsaddled receipt.
     #[cfg_attr(feature = "serialization", serde(default))]
@@ -820,6 +872,7 @@ impl ObjectSnapshot {
             defense: None,
             abilities: Arc::new(Vec::new()),
             ability_origins: None,
+            source_definition_metadata: None,
             aura_attach_filter: None,
             copiable_values: CopiableValues::default(),
             revealed_cast_definition: None,
@@ -829,8 +882,10 @@ impl ObjectSnapshot {
             caster_mana_spent_to_cast: None,
             mana_spent_on_x: None,
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
+            named_payment_outcomes:Vec::new(),
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
+            paid_optional_cost_objects: Default::default(),
             counters: std::collections::BTreeMap::new(),
             is_token: false,
             tapped: false,
@@ -841,6 +896,9 @@ impl ObjectSnapshot {
             goaded: None,
             suspected: None,
             custom_statuses: Vec::new(),
+            named_action_history: None,
+            text_addition_sources: Vec::new(),
+        entry_action_objects: Default::default(),
             ring_bearer: None,
             flipped: false,
             face_down: false,
@@ -848,6 +906,7 @@ impl ObjectSnapshot {
             attached_to: None,
             attachments: Vec::new(),
             attachment_snapshots: Vec::new(),
+            related_exiled_cards: Default::default(),
             was_enchanted: false,
             is_monstrous: false,
             case_solved: false,
@@ -866,11 +925,14 @@ impl ObjectSnapshot {
     /// between peers; names carry the identity instead). Only such snapshots
     /// have a lossless, engine-independent serde encoding.
     pub fn is_public_claim_form(&self) -> bool {
-        self.card.is_none()
+        self.paid_optional_cost_objects.values().flatten().all(ObjectSnapshot::is_public_claim_form)
+            && self.card.is_none()
             && self.other_face.is_none()
             && self.abilities.is_empty()
             && self.ability_origins.is_none()
+            && self.source_definition_metadata.is_none()
             && self.numeric_choice_memory.is_none()
+            && self.copiable_values.definition_dependencies.is_none()
             && self.copiable_values.abilities.is_empty()
             && !self.copiable_values.spell_effect.has_program()
             && self.revealed_cast_definition.is_none()
@@ -887,6 +949,7 @@ impl ObjectSnapshot {
                 .attachment_snapshots
                 .iter()
                 .all(ObjectSnapshot::is_public_claim_form)
+            && self.related_exiled_cards.values().flatten().all(ObjectSnapshot::is_public_claim_form)
     }
 
     /// Drop what the public claim form cannot carry (see
@@ -897,7 +960,9 @@ impl ObjectSnapshot {
         self.other_face = None;
         self.abilities = Arc::new(Vec::new());
         self.ability_origins = None;
+        self.source_definition_metadata = None;
         self.numeric_choice_memory = None;
+        self.copiable_values.definition_dependencies = None;
         self.copiable_values.abilities = Arc::new(Vec::new());
         self.copiable_values.spell_effect = SpellProgramState::Unavailable;
         self.revealed_cast_definition = None;
@@ -980,6 +1045,7 @@ impl ObjectSnapshot {
             abilities: abilities.shared(),
             ability_origins: Some(Arc::new((0..obj.abilities.len())
                 .map(crate::continuous::AbilityOrigin::Printed).collect())),
+            source_definition_metadata: Some(obj.source_definition_metadata.clone()),
             aura_attach_filter: obj.aura_attach_filter_owned(),
             chosen_subtype: game.chosen_subtype(obj.id),
             chosen_card_type: game.chosen_card_type(obj.id),
@@ -994,7 +1060,11 @@ impl ObjectSnapshot {
             caster_mana_spent_to_cast: obj.caster_mana_spent_to_cast,
             mana_spent_on_x: obj.mana_spent_on_x,
             optional_costs_paid: obj.optional_costs_paid.clone(),
+            named_payment_outcomes:obj.named_payment_outcomes.clone(),
             snow_mana_spent_to_cast: obj.snow_mana_spent_to_cast.clone(),
+            paid_optional_cost_objects: obj.cast_tagged_objects.iter()
+                .filter(|(tag,_)|(tag.as_str().starts_with("__additional_cost_tap:")||tag.as_str().starts_with("__additional_cost_tap_instance:")))
+                .map(|(tag,objects)|(tag.clone(),objects.clone())).collect(),
             mana_sources_spent_to_cast: obj
                 .cast_tagged_objects
                 .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
@@ -1035,6 +1105,9 @@ impl ObjectSnapshot {
             goaded: None,
             suspected: Some(obj.zone == Zone::Battlefield && game.is_suspected(obj.id)),
             custom_statuses: game.custom_status_names(obj.id),
+            named_action_history: Some(game.named_action_history(obj.id)),
+            text_addition_sources: obj.splice_cast_state.as_ref().map(|state|state.text_sources.clone()).unwrap_or_default(),
+            entry_action_objects: obj.cast_tagged_objects.iter().filter(|(tag,_)|tag.as_str().starts_with("__entry_action_")).map(|(tag,objects)|(tag.clone(),objects.clone())).collect(),
             ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
@@ -1042,6 +1115,13 @@ impl ObjectSnapshot {
             attached_to: obj.attached_to,
             attachments: obj.attachments.clone(),
             attachment_snapshots: Vec::new(),
+            related_exiled_cards: if obj.zone == Zone::Battlefield {
+                game.related_exile_relationship_names(obj.id).into_iter().map(|name| {
+                    let cards=game.related_exiled_cards(&name,obj.id).into_iter().filter_map(|id|game.object(id))
+                        .map(|card|Self::from_object(card,game)).collect();
+                    (name,cards)
+                }).collect()
+            } else { Default::default() },
             was_enchanted,
             is_monstrous: game.is_monstrous(obj.id),
             case_solved: game.is_case_solved(obj.id),
@@ -1204,6 +1284,15 @@ impl ObjectSnapshot {
             snapshot.was_enchanted = snapshot.attachment_snapshots.iter().any(|attachment|
                 attachment.card_types.contains(&CardType::Enchantment)
                     && attachment.subtypes.contains(&Subtype::Aura));
+        }
+        for cards in snapshot.related_exiled_cards.values_mut() {
+            for card in cards {
+                if let Some(object)=game.object(card.object_id) {
+                    let calculated=game.calculated_characteristics_with_effects(object.id,effects);
+                    checked(object.id,calculated.as_ref())?;
+                    card.apply_calculated_characteristics(object,calculated.as_ref());
+                }
+            }
         }
         Ok(snapshot)
     }
@@ -1459,6 +1548,7 @@ impl ObjectSnapshot {
             defense: None,
             abilities: Arc::new(vec![]),
             ability_origins: None,
+            source_definition_metadata: None,
             aura_attach_filter: None,
             revealed_cast_definition: None,
             copiable_values: CopiableValues {
@@ -1472,7 +1562,9 @@ impl ObjectSnapshot {
             mana_spent_on_x: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
+            paid_optional_cost_objects: Default::default(),
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
+            named_payment_outcomes:Vec::new(),
             counters: std::collections::BTreeMap::new(),
             is_token: false,
             tapped: false,
@@ -1483,6 +1575,9 @@ impl ObjectSnapshot {
             goaded: Some(false),
             suspected: Some(false),
             custom_statuses: Vec::new(),
+            named_action_history: None,
+            text_addition_sources: Vec::new(),
+        entry_action_objects: Default::default(),
             ring_bearer: Some(false),
             flipped: false,
             face_down: false,
@@ -1490,6 +1585,7 @@ impl ObjectSnapshot {
             attached_to: None,
             attachments: vec![],
             attachment_snapshots: Vec::new(),
+            related_exiled_cards: Default::default(),
             was_enchanted: false,
             is_monstrous: false,
             case_solved: false,

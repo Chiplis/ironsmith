@@ -18,6 +18,8 @@ use crate::zone::Zone;
 pub type ReturnToHandEffect = ironsmith_core::ReturnToHandEffect;
 
 impl EffectExecutor for ReturnToHandEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.spec==*spec}
+
     fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
         crate::effects::CostChoiceBindings::from_spec(&self.spec)
     }
@@ -148,7 +150,7 @@ impl ZoneMovementInstruction for ReturnToHandEffect {
                 self.spec.unhinted(),
                 ChooseSpec::WithCount(..) | ChooseSpec::WithCountValue(..)
             );
-        let single_target = self.spec.is_target() && self.spec.is_single() && !counted_targets;
+        let single_target = self.spec.is_target() && self.spec.is_single() && !counted_targets && !crate::effects::target_packets::multiple(ctx,&self.spec);
         if single_target {
             objects.truncate(1);
         }
@@ -248,7 +250,7 @@ impl CostExecutableEffect for ReturnToHandEffect {
             ChooseSpec::Source => {
                 if game
                     .object(source)
-                    .is_some_and(|obj| obj.zone == Zone::Battlefield)
+                    .is_some_and(|obj| obj.zone == Zone::Battlefield && !game.zone_move_is_prohibited(source, Zone::Hand))
                 {
                     Ok(())
                 } else {
@@ -263,6 +265,7 @@ impl CostExecutableEffect for ReturnToHandEffect {
                     .battlefield
                     .iter()
                     .copied()
+                    .filter(|id| !game.zone_move_is_prohibited(*id, Zone::Hand))
                     .filter(|id| {
                         game.object(*id)
                             .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))

@@ -410,6 +410,13 @@ impl SequenceEffect {
 }
 
 impl EffectExecutor for SequenceEffect {
+    fn references_cost_x(&self) -> bool {
+        self.effects.iter().any(|effect| effect.0.references_cost_x())
+    }
+    fn max_cost_x(&self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId) -> Option<u32> {
+        self.effects.iter().filter(|effect| effect.0.references_cost_x())
+            .filter_map(|effect| effect.0.max_cost_x(game, source, controller)).min()
+    }
     fn cost_description(&self) -> Option<String> {
         let descriptions = self.effects.iter()
             .map(|effect| effect.0.cost_description())
@@ -731,6 +738,16 @@ impl crate::effects::ActionProgramCursor for SequenceCursor {
                     &effect,
                     self.effects.get(index + 1),
                 )),
+                entry_attachment_receipts: Some(if index > 0
+                    && crate::effects::permanents::entry_attachment_for_move(
+                        &self.effects[index - 1], Some(&effect),
+                    ).is_some()
+                {
+                    Some(self.outcomes.last().and_then(EffectOutcome::entry_attachments)
+                        .ok_or_else(|| ExecutionError::InternalError(
+                            "entry instruction lost its attachment receipt".into(),
+                        ))?)
+                } else { None }),
                 pending_entry_attachment: Some(
                     crate::effects::permanents::entry_attachment_for_move(
                         &effect,
@@ -776,6 +793,92 @@ impl crate::effects::ActionProgramCursor for SequenceCursor {
     }
 }
 
+
+/// Zone-qualified consumers refer to disjoint parts of the initial selection.
+/// Capture every part before either physical payment can move a chosen object.
+fn freeze_selection_zone_partitions(effects: Vec<Effect>) -> Option<Vec<Effect>> {
+    use crate::target::ChooseSpec;
+    fn partition(spec: &ChooseSpec, tag: &crate::tag::TagKey) -> Option<(crate::target::ObjectFilter, crate::zone::Zone)> {
+        let filter = match spec {
+            ChooseSpec::SurfaceHinted {spec, ..} => return partition(spec, tag),
+            ChooseSpec::All(filter) => filter,
+            ChooseSpec::Object(filter) if filter.has_plural_object_noun_surface() => filter,
+            // Counted and actual targeted selections keep their declaration.
+            _ => return None,
+        };
+        let zone = filter.zone?;
+        if filter.tagged_constraints.len() != 1
+            || !matches!(filter.owner, None | Some(crate::target::PlayerFilter::You))
+            || !matches!(filter.controller, None | Some(crate::target::PlayerFilter::You)) { return None; }
+        let mut remainder = filter.clone();
+        remainder.zone = None; remainder.tagged_constraints.clear(); remainder.card_types.clear(); remainder.owner = None; remainder.controller = None;
+        remainder.union_surface = Default::default();
+        if remainder != crate::target::ObjectFilter::default() { return None; }
+        filter.tagged_constraints.iter().any(|entry| entry.tag == *tag && entry.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject).then(|| (filter.clone(), zone))
+    }
+    fn rebind(spec: &mut ChooseSpec, from: &crate::tag::TagKey, to: &crate::tag::TagKey) {
+        match spec {
+            ChooseSpec::SurfaceHinted {spec, ..} | ChooseSpec::Target(spec) => rebind(spec, from, to),
+            ChooseSpec::All(filter) => for entry in &mut filter.tagged_constraints { if entry.tag == *from { entry.tag = to.clone(); } },
+            ChooseSpec::Object(filter) if filter.has_plural_object_noun_surface() => {
+                let mut filter = filter.clone();
+                for entry in &mut filter.tagged_constraints { if entry.tag == *from { entry.tag = to.clone(); } }
+                *spec = ChooseSpec::All(filter);
+            },
+            _ => {},
+        }
+    }
+    fn base_effect(mut effect: &Effect) -> &Effect {
+        loop {
+            if let Some(wrapper) = effect.downcast_ref::<crate::effects::WithIdEffect>() { effect = &wrapper.effect; }
+            else if let Some(wrapper) = effect.downcast_ref::<crate::effects::TaggedEffect>() { effect = &wrapper.effect; }
+            else { return effect; }
+        }
+    }
+    fn rebind_effect(effect: &Effect, from: &crate::tag::TagKey, to: &crate::tag::TagKey) -> Effect {
+        if let Some(wrapper) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return Effect::new(crate::effects::WithIdEffect::new(wrapper.id, rebind_effect(&wrapper.effect, from, to)));
+        }
+        if let Some(wrapper) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let mut wrapper = wrapper.clone(); wrapper.effect = Box::new(rebind_effect(&wrapper.effect, from, to)); return Effect::new(wrapper);
+        }
+        if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() { let mut tap = tap.clone(); rebind(&mut tap.target, from, to); return Effect::new(tap); }
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() { let mut exile = exile.clone(); rebind(&mut exile.spec, from, to); return Effect::new(exile); }
+        effect.clone()
+    }
+    let mut result = effects.clone();
+    let mut insertions: Vec<(usize, Effect)> = Vec::new();
+    for (index, effect) in effects.iter().enumerate() {
+        let Some(choose) = base_effect(effect).downcast_ref::<crate::effects::ChooseObjectsEffect>() else { continue; };
+        if !choose.aggregate_constraint.as_ref().is_some_and(|constraint| constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives)
+            || choose.filter.any_of.len() < 2 { continue; }
+        let checkpoint = result.clone();
+        let insertion_checkpoint = insertions.len();
+        let mut groups: Vec<(crate::target::ObjectFilter, crate::zone::Zone, crate::tag::TagKey)> = Vec::new();
+        for consumer in result.iter_mut().skip(index + 1) {
+            if consumer.0.cost_choice_bindings().published.contains(&choose.tag) { break; }
+            let leaf = base_effect(consumer);
+            let parsed = if let Some(tap) = leaf.downcast_ref::<crate::effects::TapEffect>() { partition(&tap.target, &choose.tag) }
+                else if let Some(exile) = leaf.downcast_ref::<crate::effects::ExileEffect>() { partition(&exile.spec, &choose.tag) }
+                else { None };
+            let Some((filter, zone)) = parsed else { break; };
+            let tag = if let Some((_, _, tag)) = groups.iter().find(|(existing_filter, existing_zone, _)| *existing_zone == zone && *existing_filter == filter) { tag.clone() }
+                else {
+                    let tag: crate::tag::TagKey = format!("__cost_partition/{}/{zone:?}/{}", choose.tag, groups.len()).into();
+                    let capture = crate::effects::TagMatchingObjectsEffect::new(filter.clone(), tag.clone()).from_filtered_tagged_sources([choose.tag.clone()]);
+                    insertions.push((index + 1, Effect::new(capture)));
+                    groups.push((filter, zone, tag.clone())); tag
+                };
+            *consumer = rebind_effect(consumer, &choose.tag, &tag);
+        }
+        let zones = groups.iter().map(|(_, zone, _)| *zone).collect::<std::collections::HashSet<_>>();
+        if zones.len() < 2 { result = checkpoint; insertions.truncate(insertion_checkpoint); }
+    }
+    if insertions.is_empty() { return None; }
+    for (index, effect) in insertions.into_iter().rev() { result.insert(index, effect); }
+    Some(result)
+}
+
 impl CostExecutableEffect for SequenceEffect {
     fn execute_payment_with_outputs(
         &self,
@@ -804,7 +907,8 @@ impl CostExecutableEffect for SequenceEffect {
     }
 
     fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
-        let effects = crate::effects::canonical_cost_children(&self.effects)?;
+        let children = crate::effects::canonical_cost_children(&self.effects);
+        let effects = freeze_selection_zone_partitions(children.clone().unwrap_or_else(|| self.effects.clone())).or(children)?;
         let mut replacement = self.clone();
         replacement.effects = effects;
         Some(crate::effect::Effect::new(replacement))

@@ -118,8 +118,14 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             })
+            | EffectAst::SubjectVerb(crate::model_impl::ast::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { program: Some($effects), .. } | KeywordActionAst::FirstResolutionEachTurn { program: $effects, .. }), ..
+            })
             | EffectAst::Permissions(PermissionEffectAst::May { effects: $effects })
             | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                effects: $effects,
+                ..
+            } | PermissionEffectAst::MayPay {
                 effects: $effects,
                 ..
             })
@@ -197,6 +203,10 @@ macro_rules! nested_effects_variants {
             })
             | EffectAst::Votes(VoteEffectAst::BidLife {
                 winner_effects: $effects,
+                ..
+            })
+            | EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule {
+                effects: $effects,
                 ..
             })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep {
@@ -280,7 +290,10 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::TagSplicedCards { .. } => {}
         EffectAst::ExchangeBlocks { .. } => {}
         EffectAst::CoinFlipLifeStakes { .. } => {}
+        EffectAst::CreateLinkedFaceToken { .. } | EffectAst::LinkExiledCards { .. } => {}
+        EffectAst::CreateCards { .. } => {}
         EffectAst::UnblockSoleBlockedAttackers(_) => {}
+        EffectAst::MergePermanents(_) => {}
         EffectAst::GrantPayLifeManaAbilityUntilEndOfTurn(_) => {}
         EffectAst::RollAndStoreDieResults(_) => {}
         EffectAst::RerollStoredDieResults(_) => {}
@@ -289,7 +302,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::BlockAttackerOfChoice { .. } => {}
         EffectAst::PlayWithHandRevealed(_) => {}
         EffectAst::RevealSourceInHandUntilOwnersNextTurn(_) => {}
-        EffectAst::TagLastDamageSource(_) => {}
+        EffectAst::TagLastDamageSource(_) | EffectAst::LinkObjectsToGroup(_) | EffectAst::NoteObjectNames(_) => {}
         EffectAst::ControlVotesThisTurn => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
         EffectAst::NoteActivationManaType | EffectAst::NoteActivationManaPayment => {}
@@ -319,6 +332,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ResultBranchLabel { .. } => {}
         EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { .. }) => {}
         EffectAst::Conditionals(ConditionalEffectAst::UnlessAction { .. }) => {}
+        EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule { .. }) => {}
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextEndStep { .. }) => {}
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextCleanupStep { .. }) => {}
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { .. }) => {}
@@ -367,7 +381,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::May { .. }) => {}
-        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }) => {}
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. } | PermissionEffectAst::MayPay { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. }) => {}
         EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { .. }) => {}
         EffectAst::Conditionals(ConditionalEffectAst::ResolvedWhenResult { .. }) => {}
@@ -1676,4 +1690,23 @@ pub fn fold_predicate_tree<F: SemanticFolder + ?Sized>(
         predicate => predicate,
     };
     folder.fold_predicate(predicate)
+}
+
+
+#[cfg(test)]
+mod persistent_player_rule_child_visitors {
+    use super::*;
+    #[test]
+    fn persistent_rule_body_is_seen_by_shared_immutable_and_mutable_visitors() {
+        let mut effect=EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule {
+            name:"independent rule".into(),controller:crate::PlayerAst::You,
+            trigger:crate::model::ast::TriggerSpec::ThisDies,
+            effects:vec![EffectAst::SolveCase],condition:None,event_only_condition:false,
+        });
+        let mut seen=0;
+        for_each_nested_effects(&effect,true,|children| {seen+=children.len();assert!(matches!(children,[EffectAst::SolveCase]));});
+        assert_eq!(seen,1);
+        for_each_nested_effects_mut(&mut effect,true,|children| {children[0]=EffectAst::ResolvesDespiteIllegalTargets;});
+        for_each_nested_effects(&effect,true,|children|assert!(matches!(children,[EffectAst::ResolvesDespiteIllegalTargets])));
+    }
 }

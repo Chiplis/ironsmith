@@ -1398,7 +1398,7 @@ mod tests {
             "two physical cards become one entering permanent"
         );
         assert_eq!(entries[0].object, permanent);
-        assert_eq!(entries[0].from, Zone::Exile);
+        assert_eq!(entries[0].from, Some(Zone::Exile));
     }
 
     fn check_meld_entry_mana_value(copy_mode: u8) {

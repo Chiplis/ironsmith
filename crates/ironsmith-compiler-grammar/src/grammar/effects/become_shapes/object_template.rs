@@ -17,6 +17,9 @@ pub struct ObjectTemplateShape<'a> {
     pub preserve_other_types: bool,
     pub preserve_other_colors: bool,
     pub remove_other_abilities: bool,
+    pub remove_other_supertypes: bool,
+    pub remove_other_card_types: bool,
+    pub remove_other_subtypes: bool,
 }
 
 fn outside_quotes(tokens: &[OwnedLexToken], index: usize) -> bool {
@@ -35,6 +38,9 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     let (prefix, mut preserve_other_types) = super::strip_become_addition_tail_words(&words);
     let mut preserve_other_colors = false;
     let mut remove_other_abilities = false;
+    let mut remove_other_supertypes = false;
+    let mut remove_other_card_types = false;
+    let mut remove_other_subtypes = false;
     if prefix.len() < words.len() {
         let start = positions[prefix.len()].0;
         if outside_quotes(tokens, start) {
@@ -42,19 +48,37 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
             tokens = trim_separators(&tokens[..start]);
         } else { preserve_other_types = false; }
     } else {
-        for suffix in [
-            &["and", "loses", "all", "other", "card", "types", "and", "abilities"][..],
-            &["and", "lose", "all", "other", "card", "types", "and", "abilities"][..],
-            &["and", "loses", "all", "other", "abilities"][..],
-            &["and", "lose", "all", "other", "abilities"][..],
-        ] {
-            if words.ends_with(suffix) {
-                let start = positions[words.len()-suffix.len()].0;
-                if !outside_quotes(tokens, start) { return None; }
-                tokens = trim_separators(&tokens[..start]);
-                remove_other_abilities = true;
-                break;
+        // Read the list of characteristic families independently. Quoted
+        // abilities cannot supply the outer descriptor's clearing clause.
+        if let Some(index) = words.windows(4).enumerate().rev().find_map(|(i, w)| {
+            (w[0] == "and" && matches!(w[1], "lose" | "loses")
+                && w[2..] == ["all", "other"] && outside_quotes(tokens, positions[i].0)).then_some(i)
+        }) {
+            let mut rest = &words[index + 4..];
+            let mut seen = std::collections::BTreeSet::new();
+            while !rest.is_empty() {
+                if rest[0] == "and" { rest = &rest[1..]; if rest.is_empty() { return None; } }
+                let (category, count) = if rest.starts_with(&["card", "types"]) {
+                    ("card types", 2)
+                } else {
+                    match rest[0] {
+                        "supertypes" => ("supertypes", 1),
+                        "subtypes" => ("subtypes", 1),
+                        "abilities" => ("abilities", 1),
+                        _ => return None,
+                    }
+                };
+                if !seen.insert(category) { return None; }
+                rest = &rest[count..];
             }
+            if seen.is_empty() { return None; }
+            remove_other_supertypes = seen.contains("supertypes");
+            remove_other_card_types = seen.contains("card types");
+            remove_other_subtypes = seen.contains("subtypes");
+            remove_other_abilities = seen.contains("abilities");
+            let start = positions[index].0;
+            crate::word_claims::claim_tokens(&tokens[start..]);
+            tokens = trim_separators(&tokens[..start]);
         }
     }
     let with = tokens.iter().enumerate().find_map(|(i,t)| (t.is_word("with") && outside_quotes(tokens,i)).then_some(i));
@@ -127,7 +151,7 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     // invented. Explicit artifact/land/etc descriptors retain their own type.
     if card_types.is_empty() && !subtypes.iter().all(|s| s.belongs_to_family(crate::types::SubtypeFamily::Creature)) { return None; }
     if card_types.is_empty() && subtypes.is_empty() && supertypes.is_empty() && !color_stated { return None; }
-    Some(ObjectTemplateShape { base_power_toughness, name_override, card_types, subtypes, supertypes, colors: color_stated.then_some(colors), ability_tokens, preserve_other_types, preserve_other_colors, remove_other_abilities })
+    Some(ObjectTemplateShape { base_power_toughness, name_override, card_types, subtypes, supertypes, colors: color_stated.then_some(colors), ability_tokens, preserve_other_types, preserve_other_colors, remove_other_abilities, remove_other_supertypes, remove_other_card_types, remove_other_subtypes })
 }
 
 #[cfg(test)]
@@ -186,4 +210,28 @@ mod tests {
             assert!(parse_object_template_tokens(&crate::lexer::lex_line(text, 0).unwrap()).is_none(), "{text}");
         }
     }
+    #[test]
+    fn characteristic_family_clearing_is_independent_and_quotation_aware() {
+        let wasted = shape("a basic land named Wastes with \"{T}: Add {C}\" and loses all other supertypes, card types, subtypes, and abilities");
+        assert_eq!(wasted.name_override.as_deref(), Some("Wastes"));
+        assert_eq!(wasted.card_types, vec![CardType::Land]);
+        assert_eq!(wasted.supertypes, vec![Supertype::Basic]);
+        assert!(wasted.subtypes.is_empty());
+        assert!(wasted.remove_other_supertypes && wasted.remove_other_card_types
+            && wasted.remove_other_subtypes && wasted.remove_other_abilities);
+        assert_eq!(crate::lexer::render_literal_token_slice(wasted.ability_tokens), "\"{T}: Add {C}\"");
+        let isolated = shape("a legendary artifact named Relic with indestructible and loses all other subtypes");
+        assert!(isolated.remove_other_subtypes);
+        assert!(!isolated.remove_other_supertypes && !isolated.remove_other_card_types && !isolated.remove_other_abilities);
+        let quoted = shape("an artifact with \"{T}: Target permanent becomes a land and loses all other supertypes and subtypes.\"");
+        assert!(!quoted.remove_other_supertypes && !quoted.remove_other_subtypes);
+        for bad in [
+            "a land and loses all other subtypes and subtypes",
+            "a land and loses all other supertypes and colors",
+            "a land and loses all other abilities and",
+        ] {
+            assert!(parse_object_template_tokens(&crate::lexer::lex_line(bad, 0).unwrap()).is_none(), "{bad}");
+        }
+    }
+
 }

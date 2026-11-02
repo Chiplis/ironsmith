@@ -303,6 +303,7 @@ fn tagged_move_to_zone_cost_precheck(
         || chosen.iter().any(|snapshot| {
             game.object(snapshot.object_id)
                 .is_none_or(|object| object.zone != snapshot.zone)
+                || game.zone_move_is_prohibited(snapshot.object_id, move_to_zone.zone)
         })
     {
         Some(Err(CostPaymentError::Other(
@@ -338,6 +339,7 @@ fn tagged_exile_cost_precheck(
     if chosen.iter().all(|snapshot| {
         game.object(snapshot.object_id)
             .is_some_and(|object| object.zone == snapshot.zone)
+            && !game.zone_move_is_prohibited(snapshot.object_id, crate::zone::Zone::Exile)
     }) {
         Some(Ok(()))
     } else {
@@ -847,7 +849,7 @@ impl CostPayer for CostEffect {
             // while freezing triggers before the next payment instruction.
             crate::effects::capture_triggers_before_added_program(
                 game,
-                &exec_ctx,
+                &mut exec_ctx,
                 None,
                 outputs.outcome.events.iter_mut(),
             )?;
@@ -1686,7 +1688,7 @@ mod energy_cost_error_contract_tests {
     fn ordinary_energy_inability_is_distinct_from_execution_failure() {
         let (game, source, alice) = setup();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let ctx = CostContext::new(source, alice, &mut dm);
+        let mut ctx = CostContext::new(source, alice, &mut dm);
         assert!(
             cost(
                 crate::effect::Value::Fixed(1),
@@ -1722,7 +1724,7 @@ mod energy_cost_error_contract_tests {
     fn unresolvable_energy_value_retains_its_typed_execution_error() {
         let (game, source, alice) = setup();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let ctx = CostContext::new(source, alice, &mut dm);
+        let mut ctx = CostContext::new(source, alice, &mut dm);
         let invalid =
             crate::effect::Value::DividedRoundedDown(Box::new(crate::effect::Value::Fixed(1)), 0);
         assert!(
@@ -1736,7 +1738,7 @@ mod energy_cost_error_contract_tests {
     fn missing_energy_payer_is_a_structural_error() {
         let (game, source, alice) = setup();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let ctx = CostContext::new(source, alice, &mut dm);
+        let mut ctx = CostContext::new(source, alice, &mut dm);
         assert_eq!(
             cost(
                 crate::effect::Value::Fixed(1),

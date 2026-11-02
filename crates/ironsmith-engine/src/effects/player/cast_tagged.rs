@@ -115,6 +115,9 @@ impl EffectExecutor for CastTaggedEffect {
                 use crate::alternative_cast::CastingMethod;
                 use crate::effects::helpers::resolve_player_filter;
 
+                if ctx.exact_object_reference_tags.contains(&self.tag)
+                    && ctx.get_tagged(self.tag.as_str()).is_none()
+                {return Ok(EffectOutcome::target_invalid());}
                 let Some(snapshot) = ctx.get_tagged(self.tag.as_str()).cloned().or_else(|| {
                     game.object(ctx.source).and_then(|source| source.cast_tagged_objects.get(&self.tag))
                         .and_then(|objects| objects.first()).cloned()
@@ -124,6 +127,9 @@ impl EffectExecutor for CastTaggedEffect {
                 }) else {
                     return Ok(EffectOutcome::target_invalid());
                 };
+                if ctx.exact_object_reference_tags.contains(&self.tag)
+                    && game.object(snapshot.object_id).is_none_or(|object|object.stable_id!=snapshot.stable_id||game.find_object_by_stable_id(snapshot.stable_id)!=Some(snapshot.object_id))
+                {return Ok(EffectOutcome::target_invalid());}
                 let named_copy = if self.copy_named_definition {
                     let definition = game.linked_face_definition_by_name_or_id(Some(&snapshot.name), None)
                         .ok_or_else(|| ExecutionError::IncompleteEvidence(format!("missing printed definition for noted name {}", snapshot.name)))?;
@@ -170,6 +176,10 @@ impl EffectExecutor for CastTaggedEffect {
                 };
                 let mut object_id = snapshot.object_id;
                 if game.object(object_id).is_none() && retained_copy.is_none() {
+                    if ctx.exact_object_reference_tags.contains(&self.tag) {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+
                     // A priced instruction refers to this exact result incarnation;
                     // a blink/re-exile cannot revive its authorization.
                     if self.alternative_cost.is_some() || self.alternative_payment.is_some() {
@@ -305,6 +315,10 @@ impl EffectExecutor for CastTaggedEffect {
                         });
                     }
 
+                    // A copy of a card proposed as a spell is a spell copy,
+                    // rather than a token permanent. This identity lets the
+                    // normal cast owner apply copy-source replacements too.
+                    copy_obj.kind = crate::object::ObjectKind::SpellCopy;
                     copy_obj.zone = from_zone;
                     game.add_object(copy_obj);
                     let casting_method = if from_zone == Zone::Hand {
@@ -320,7 +334,7 @@ impl EffectExecutor for CastTaggedEffect {
                     let requirement_ctx =
                         self.required_spell.as_ref().map(|_| ctx.filter_context(game));
                     let result =
-                        crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
+                        crate::game_loop::cast_spell_from_resolving_effect_with_named_price_lock_and_outputs(
                             game,
                             copy_id,
                             from_zone,
@@ -328,6 +342,7 @@ impl EffectExecutor for CastTaggedEffect {
                             &casting_method,
                             without_paying_mana_cost,
                             alternative_cost,
+                            self.alternative_cost_label.as_deref(),
                             self.cost_reduction.as_ref(),
                             self.additional_mana_cost.as_ref(),
                             self.mana_spend_mode,
@@ -336,8 +351,9 @@ impl EffectExecutor for CastTaggedEffect {
                             ctx.provenance,
                             &mut ctx.decision_maker,
                             self.required_spell.as_ref().zip(requirement_ctx.as_ref()),
-                        )
-                        .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                        );
+
+                    let result=result.map_err(super::runtime_helpers::effect_driven_cast_error)?;
                     let Some(cast) = result else {
                         game.remove_object(copy_id);
                         return if ctx.decision_maker.awaiting_choice() {
@@ -391,7 +407,7 @@ impl EffectExecutor for CastTaggedEffect {
                 let requirement_ctx =
                     self.required_spell.as_ref().map(|_| ctx.filter_context(game));
                 let result =
-                    crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
+                    crate::game_loop::cast_spell_from_resolving_effect_with_named_price_lock_and_outputs(
                         game,
                         object_id,
                         from_zone,
@@ -399,6 +415,7 @@ impl EffectExecutor for CastTaggedEffect {
                         &casting_method,
                         without_paying_mana_cost,
                         alternative_cost,
+                        self.alternative_cost_label.as_deref(),
                         self.cost_reduction.as_ref(),
                         self.additional_mana_cost.as_ref(),
                         self.mana_spend_mode,
@@ -407,8 +424,9 @@ impl EffectExecutor for CastTaggedEffect {
                         ctx.provenance,
                         &mut ctx.decision_maker,
                         self.required_spell.as_ref().zip(requirement_ctx.as_ref()),
-                    )
-                    .map_err(super::runtime_helpers::effect_driven_cast_error)?;
+                    );
+
+                let result=result.map_err(super::runtime_helpers::effect_driven_cast_error)?;
                 let Some(cast) = result else {
                     return if ctx.decision_maker.awaiting_choice() {
                         Ok(EffectOutcome::count(0))
@@ -1216,4 +1234,124 @@ mod replacement_cast_tagged_land_owner_contract_tests {
     fn copy_addition_binds_arrival_and_returns_facts() {
         check(true, 3);
     }
+}
+
+#[cfg(test)]
+mod captured_cast_current_incarnation_tests {
+    use super::*;
+    #[test]
+    fn retained_old_object_record_does_not_restore_a_captured_cast_reference(){
+        let player=crate::PlayerId(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Retained exile witness").card_types(vec![crate::CardType::Sorcery]).build();
+        let old=game.create_object_from_card(&card,player,Zone::Exile);let snapshot=crate::snapshot::ObjectSnapshot::from_object(game.object(old).unwrap(),&game);
+        let mut newer=game.object(old).unwrap().clone();newer.id=game.new_object_id();let newer_id=newer.id;game.add_object(newer);
+        assert!(game.object(old).is_some());assert_eq!(game.find_object_by_stable_id(snapshot.stable_id),Some(newer_id));
+        let mut ctx=ExecutionContext::new_default(old,player);ctx.set_tagged_objects("saved",vec![snapshot]);ctx.exact_object_reference_tags.insert(crate::tag::TagKey::from("saved"));
+        let outcome=CastTaggedEffect::new("saved",crate::target::PlayerFilter::You).as_copy().execute(&mut game,&mut ctx).unwrap();
+        assert_eq!(outcome.status,crate::effect::OutcomeStatus::TargetInvalid);assert!(game.stack.is_empty());
+    }
+}
+
+
+#[cfg(test)]
+mod captured_price_receipt_tests {
+    use super::*;
+    use crate::{ObjectId,PlayerId};
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost,ManaSymbol};
+    use crate::target::PlayerFilter;
+    const A:PlayerId=PlayerId(0);
+    const LABEL:&str="captured announcement price";
+    fn price()->crate::cost::TotalCost{crate::cost::TotalCost::from_costs(vec![
+        crate::costs::Cost::mana(ManaCost::new().add_generic(1)),crate::costs::Cost::life(2),
+    ])}
+    struct Payment { cancel:bool,asked:usize }
+    impl crate::decision::DecisionMaker for Payment {
+        fn decide_mana_payment(&mut self,game:&GameState,ctx:&crate::decisions::context::ManaPaymentContext)->crate::mana_payment::ManaPaymentResponse{
+            self.asked+=1;
+            let spell=game.object(ctx.source).unwrap();
+            assert!(!spell.optional_costs_paid.paid_custom_keyword(LABEL),"price intent is not a completed payment");
+            assert!(spell.cast_alternative_method.is_none(),"proposal must not install a receipt on the object");
+            if self.cancel{crate::mana_payment::ManaPaymentResponse::Cancel}else{
+                crate::decision::DecisionMaker::decide_mana_payment(&mut crate::decision::SelectFirstDecisionMaker,game,ctx)
+            }
+        }
+    }
+    fn setup(zone:Zone)->(GameState,ObjectId,CastTaggedEffect,crate::snapshot::ObjectSnapshot){
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let card=CardBuilder::new(CardId::new(),"Captured-price spell")
+            .card_types(vec![crate::CardType::Sorcery]).mana_cost(ManaCost::new().add_generic(9)).build();
+        let id=game.create_object_from_card(&card,A,zone);
+        let snapshot=crate::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(),&game);
+        let mut effect=CastTaggedEffect::new("captured",PlayerFilter::You).with_alternative_cost(price());
+        effect.alternative_cost_label=Some(LABEL.into());
+        (game,id,effect,snapshot)
+    }
+    #[test]
+    fn named_price_is_recorded_before_cast_observers_only_after_full_success_and_survives_copy(){
+        for zone in [Zone::Hand,Zone::Exile]{for as_copy in [false,true]{
+            let (mut game,original,mut effect,snapshot)=setup(zone);
+            if as_copy{effect=effect.as_copy();}
+            game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless,1);
+            let source=game.new_object_id();let mut dm=Payment{cancel:false,asked:0};
+            let mut ctx=ExecutionContext::new(source,A,&mut dm);ctx.set_tagged_objects("captured",vec![snapshot]);
+            let outcome=effect.execute(&mut game,&mut ctx).unwrap();drop(ctx);assert!(dm.asked>0);
+            let crate::effect::OutcomeValue::Objects(ids)=&outcome.value else{panic!("one completed cast")};assert_eq!(ids.len(),1);let spell=ids[0];
+            assert_eq!(game.player(A).unwrap().mana_pool.total(),0);assert_eq!(game.player(A).unwrap().life,18);
+            let object=game.object(spell).unwrap();assert!(object.optional_costs_paid.paid_custom_keyword(LABEL));
+            let method=object.cast_alternative_method.as_deref().unwrap();assert_eq!(method.name(),LABEL);assert_eq!(method.total_cost().unwrap().costs().len(),2,"full mana plus life recipe retained");
+            if as_copy{assert_eq!(game.object(original).unwrap().zone,zone);assert!(!game.object(original).unwrap().optional_costs_paid.paid_custom_keyword(LABEL));}
+            let copy_id=game.new_object_id();
+            let copy=crate::object::Object::spell_copy_of(game.object(spell).unwrap(),copy_id,A);
+            assert!(copy.optional_costs_paid.paid_custom_keyword(LABEL));assert_eq!(copy.cast_alternative_method.as_deref().unwrap().total_cost().unwrap().costs().len(),2);
+            let mut events=outcome.events;events.extend(game.take_pending_trigger_events());
+            let mut seen=std::collections::HashSet::new();let casts=events.iter().filter(|event|event.downcast::<crate::events::spells::SpellCastEvent>().is_some_and(|cast|cast.spell==spell)&&seen.insert(event.occurrence_key())).collect::<Vec<_>>();
+            assert_eq!(casts.len(),1,"one completed announcement publishes one cast occurrence");
+            let cast=casts[0].downcast::<crate::events::spells::SpellCastEvent>().unwrap();
+            assert!(cast.snapshot.as_ref().unwrap().optional_costs_paid.paid_custom_keyword(LABEL),"cast observer captures receipt, never a later mutation");
+        }}
+    }
+    #[test]
+    fn canceled_or_unpayable_named_price_leaves_no_marker_recipe_or_cast(){
+        for cancel in [false,true]{
+            let (mut game,original,effect,snapshot)=setup(Zone::Hand);
+            if cancel{game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless,1);}
+            let source=game.new_object_id();let mut dm=Payment{cancel,asked:0};
+            let mut ctx=ExecutionContext::new(source,A,&mut dm);ctx.set_tagged_objects("captured",vec![snapshot]);
+            let _=effect.execute(&mut game,&mut ctx);drop(ctx);
+            assert!(game.stack.is_empty());assert_eq!(game.object(original).unwrap().zone,Zone::Hand);
+            assert!(!game.object(original).unwrap().optional_costs_paid.paid_custom_keyword(LABEL));assert!(game.object(original).unwrap().cast_alternative_method.is_none());
+            assert_eq!(game.player(A).unwrap().mana_pool.total(),u32::from(cancel));assert_eq!(game.player(A).unwrap().life,20);
+            assert_eq!(game.turn_store.turn_history.spells_cast_by_player(A),0);
+        }
+    }
+    #[test]
+    fn unnamed_price_never_infers_a_paid_name_from_stale_object_metadata(){
+        let (mut game,original,mut effect,snapshot)=setup(Zone::Hand);effect.alternative_cost_label=None;
+        game.object_mut(original).unwrap().cast_alternative_method=Some(Box::new(
+            crate::alternative_cast::AlternativeCastingMethod::Composed{name:"stale price".into(),total_cost:price(),condition:None,prototype_power_toughness:None,uses_land_play:false,instructions:ironsmith_core::ZoneCastInstructions::default()}));
+        game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless,1);
+        let source=game.new_object_id();let mut dm=crate::decision::SelectFirstDecisionMaker;
+        let mut ctx=ExecutionContext::new(source,A,&mut dm);ctx.set_tagged_objects("captured",vec![snapshot]);
+        let outcome=effect.execute(&mut game,&mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids)=outcome.value else{panic!("cast result")};
+        assert!(!game.object(ids[0]).unwrap().optional_costs_paid.paid_custom_keyword("stale price"));
+        assert!(!game.object(ids[0]).unwrap().optional_costs_paid.paid_custom_keyword(LABEL));
+    }
+    #[test]
+    fn malformed_named_price_is_rejected_before_proposal_or_payment(){
+        for missing_cost in [false,true]{
+            let (mut game,original,mut effect,snapshot)=setup(Zone::Hand);
+            if missing_cost{effect.alternative_cost=None;}else{effect.alternative_cost_label=Some(String::new());}
+            game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless,1);
+            let source=game.new_object_id();let mut dm=Payment{cancel:false,asked:0};
+            let mut ctx=ExecutionContext::new(source,A,&mut dm);ctx.set_tagged_objects("captured",vec![snapshot]);
+            assert!(effect.execute(&mut game,&mut ctx).is_err());drop(ctx);assert_eq!(dm.asked,0);
+            assert_eq!(game.object(original).unwrap().zone,Zone::Hand);assert!(game.stack.is_empty());
+            assert_eq!(game.player(A).unwrap().mana_pool.total(),1);assert_eq!(game.player(A).unwrap().life,20);
+            assert!(game.object(original).unwrap().cast_alternative_method.is_none());
+        }
+    }
+
 }

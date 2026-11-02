@@ -681,6 +681,19 @@ pub(crate) fn resolve_wide(
                 .and_then(|entry| entry.chosen_modes.as_ref())
                 .map_or(0, |modes| modes.len() as i64))
         }
+        Value::TimesPaidLabelOf {object: spec,reference} => {
+            let ctx = context.require_execution(value, "referenced optional payments require a resolving context");
+            // The event snapshot is authoritative even after the referenced
+            // spell leaves the stack or the physical card changes zones.
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                return Ok(i64::from(snapshot.optional_costs_paid.times_paid_label(reference.clone())));
+            }
+            let id = resolve_primary_object_from_value_spec(game, spec, ctx)?;
+            let object = game.object(id).ok_or(ExecutionError::ObjectNotFound(id))?;
+            Ok(i64::from(object.optional_costs_paid.times_paid_label(reference.clone())))
+        }
         Value::KicksPaidOf(target_spec) => context
             .object_number(target_spec, NumericProperty::KickerCount)
             .map(i64::from),
@@ -1858,6 +1871,9 @@ pub(crate) fn resolve_wide(
         Value::CountersOnFilterCandidate(_) => Ok(i64::from(0)),
         Value::CountersOnSource(counter_type) => {
             if let Some(ctx) = context.execution() {
+                if let Some(snapshot)=crate::condition_eval::projected_condition_source_numeric_facts(ctx) {
+                    return Ok(i64::from(snapshot.counters.get(counter_type).copied().unwrap_or(0)));
+                }
                 let amount = if let Some(snapshot) =
                     source_characteristic_lki_for_execution(game, ctx)
                 {
@@ -1876,7 +1892,31 @@ pub(crate) fn resolve_wide(
                 ))
             }
         }
+        Value::NamedActionCount {object,label,this_turn} => {
+            if let Some(ctx)=context.execution() {
+                if matches!(object.base(),ChooseSpec::Source) && ctx.replacement.entry_counter_source==Some(ctx.source) {
+                    let pending=ctx.replacement.entry_named_actions.iter().filter(|(name,_)|name.trim().eq_ignore_ascii_case(label.trim())).count();
+                    return i64::try_from(pending).map_err(|_|ExecutionError::Impossible("staged named action count exceeds value vocabulary".into()));
+                }
+                if matches!(object.base(),ChooseSpec::Source) && game.object(ctx.source).is_none()
+                    && let Some(snapshot)=source_characteristic_lki_for_execution(game,ctx) {
+                    let history=snapshot.named_action_history.as_ref().ok_or_else(||ExecutionError::IncompleteEvidence("named action source history is unavailable".into()))?;
+                    let count=history.get(label).map(|(total,turn,count)|if *this_turn {if *turn==game.turn.turn_number {*count}else{0}}else{*total}).unwrap_or(0);
+                    return Ok(i64::from(count));
+                }
+                let objects=resolve_objects_from_spec(game,object,ctx)?;
+                Ok(objects.into_iter().map(|id|i64::from(game.named_action_count(id,label,*this_turn))).sum())
+            }else{context.layer().named_action_count(object,label,*this_turn)}
+        }
         Value::CountersOn(spec, counter_type) => {
+            if matches!(spec.base(),ChooseSpec::Source)
+                && let Some(ctx)=context.execution()
+                && let Some(snapshot)=crate::condition_eval::projected_condition_source_numeric_facts(ctx) {
+                return Ok(match counter_type {
+                    Some(kind)=>i64::from(snapshot.counters.get(kind).copied().unwrap_or(0)),
+                    None=>snapshot.counters.values().map(|count|i64::from(*count)).sum(),
+                });
+            }
             if matches!(spec.base(), ChooseSpec::Source)
                 && let Some(kind) = counter_type
             {
@@ -2001,7 +2041,13 @@ pub(crate) fn resolve_wide(
                 return Err(ExecutionError::UnresolvableValue("snapshot count requires a resolution context".into()));
             };
             let filter_ctx = ctx.filter_context(game);
-            let count = ctx.get_tagged_all(tag).into_iter().flatten()
+            // Persistent entry receipts are owned by the source incarnation;
+            // a queued trigger's explicit frozen tags take precedence.
+            let snapshots=if tag.as_str().starts_with("__entry_action_exiled_by__:") {
+                crate::filter::source_entry_exiled_receipt(game,ctx.source,ctx.source_snapshot.as_ref(),tag.as_str())
+            } else {ctx.get_tagged_all(tag).or_else(||
+                tag.as_str().starts_with("__entry_action_").then(||filter_ctx.tagged_objects.get(tag)).flatten())};
+            let count = snapshots.into_iter().flatten()
                 .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game)).count();
             i64::try_from(count).map_err(|_| ExecutionError::UnresolvableValue("snapshot count exceeds the wide value range".into()))
         }

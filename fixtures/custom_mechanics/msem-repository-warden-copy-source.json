@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "scope": "msem",
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "source_key": "Repository Warden_BTB"
+  },
+  "mechanics": [
+    {
+      "id": "msem-repository-warden-copy-source",
+      "keyword": "Conjure",
+      "scope": "msem",
+      "executable_definitions": [
+        {
+          "keyword": "Conjure",
+          "declarationKind": "card-creation",
+          "reminder": "Create real cards from supplied definitions in the declared zone.",
+          "forms": {
+            "variants": [
+              "Conjuring"
+            ]
+          }
+        }
+      ],
+      "original_reminder": "It's a sorcery that costs {2} with “Draw a card.”.",
+      "original_source_key": "Repository Warden_BTB",
+      "semantic_equivalence": {
+        "status": "pending_fullsource_native_verification",
+        "evidence": "Both original replacement clauses and Flash retained. Exact supplied Data-Point primary definition is source-owned; no catalog fallback."
+      },
+      "representative_cards": [
+        {
+          "id": "Repository Warden_BTB",
+          "name": "Repository Warden",
+          "source_card_key": "Repository Warden_BTB",
+          "source_scope": "msem",
+          "scope": "msem",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Soldier\nPower/Toughness: 2/1\nFlash\nIf a player would conjure a card, they instead conjure a card named Data-Point. *(It's a sorcery that costs {2} with “Draw a card.”.)*\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else.",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Soldier\nPower/Toughness: 2/1\nFlash\nIf a player would create real cards as part of the named conjure action, use the supplied card definition named \"Data-Point\" instead.\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Enchantment Creature — Soldier",
+          "power": "2",
+          "toughness": "1",
+          "loyalty": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Repository Warden",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Soldier\nPower/Toughness: 2/1\nFlash\nIf a player would conjure a card, they instead conjure a card named Data-Point. *(It's a sorcery that costs {2} with “Draw a card.”.)*\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else."
+            }
+          ],
+          "supplied_card_definitions": [
+            {
+              "name": "Data-Point",
+              "text": "Mana cost: {2}\nType: Sorcery\nDraw a card.",
+              "sourceCardKey": "Data-Point_BTB",
+              "customKeywordIdentities": [],
+              "customKeywordPayments": [],
+              "customSubtypes": []
+            }
+          ],
+          "source_row_ids": [
+            "msem-289"
+          ],
+          "source_roles": {
+            "producer_lines": [],
+            "consumer_lines": [],
+            "replacement_lines": [
+              "If a player would conjure a card, they instead conjure a card named Data-Point. *(It's a sorcery that costs {2} with “Draw a card.”.)*"
+            ]
+          },
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\nIf a player would conjure a card, they instead conjure a card named Data-Point.\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else.",
+          "original_printed_rules_text": "Flash\nIf a player would conjure a card, they instead conjure a card named Data-Point. (It's a sorcery that costs {2} with “Draw a card.”.)\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Repository Warden",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment Creature — Soldier\nPower/Toughness: 2/1\nFlash\nIf a player would create real cards as part of the named conjure action, use the supplied card definition named \"Data-Point\" instead.\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [
+                {
+                  "name": "Data-Point",
+                  "text": "Mana cost: {2}\nType: Sorcery\nDraw a card.",
+                  "sourceCardKey": "Data-Point_BTB",
+                  "customKeywordIdentities": [],
+                  "customKeywordPayments": [],
+                  "customSubtypes": []
+                }
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\nIf a player would conjure a card, they instead conjure a card named Data-Point.\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else.",
+              "original_printed_rules_text": "Flash\nIf a player would conjure a card, they instead conjure a card named Data-Point. (It's a sorcery that costs {2} with “Draw a card.”.)\nIf a player would copy a spell or cast a copy, they copy the card named Data-Point instead of anything else."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

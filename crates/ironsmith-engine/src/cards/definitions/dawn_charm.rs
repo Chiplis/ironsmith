@@ -391,6 +391,7 @@ mod tests {
         if let Some(obj) = game.object_mut(spell_id) {
             obj.abilities_mut().push(Ability {
                 kind: AbilityKind::Static(crate::static_abilities::StaticAbility::uncounterable()),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Stack],
             });
         }

@@ -111,6 +111,9 @@ pub(super) fn apply_gain_clause_duration_to_leading_effect(
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
                     duration: effect_duration,
                     ..
+                } | CharacteristicActionAst::RemoveOptionalTextFragment {
+                    duration: effect_duration,
+                    ..
                 }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration: effect_duration,
                     ..

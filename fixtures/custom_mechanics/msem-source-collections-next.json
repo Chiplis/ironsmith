@@ -1,0 +1,1756 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "policy": "Exact complete source retained; source-owned pooled collection plumbing is scratch pending parent verification. Counted/random, recipient-owned, and protection-among-collection variants remain pending."
+  },
+  "mechanics": [
+    {
+      "id": "msem-361",
+      "keyword": "Salvage",
+      "original_reminder": "Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.",
+      "source_cards": [
+        "Depthlight Captain",
+        "Depthlight Salvager",
+        "Frontline Descender",
+        "Mettalia, Light from Above",
+        "Mettalia's Forward",
+        "Oceanographer",
+        "Roving Dreadnought",
+        "Seabed Delver",
+        "Silt Miner",
+        "Specimen Collector",
+        "Treasure Haulers"
+      ],
+      "rule_reference": "701.92.",
+      "rule_text": [
+        {
+          "name": "701.92a",
+          "rule": "Salvage is a keyword action. To salvage a [quality] card, exile a card with that quality from your graveyard until the permanent that was the source of the salvage ability leaves the battlefield. That card is “salvaged” by that permanent.",
+          "custom": true
+        },
+        {
+          "name": "701.92b",
+          "rule": "Whenever a creature that has one or more salvaged cards in exile deals combat damage to a player, that creature's controller puts one of those salvaged cards into its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Depthlight Captain_EIA",
+          "name": "Depthlight Captain",
+          "original_text": "Mana cost: {1}{B}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nMenace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {1}{B}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nMenace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Exile an artifact or creature card from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "mana_cost": "{1}{B}{R}",
+          "type_line": "Artifact Creature — Construct Scout",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Depthlight Captain_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Depthlight Captain",
+              "cardName": "Depthlight Captain",
+              "manaCost": "{1}{B}{R}",
+              "typeLine": "Artifact Creature — Construct Scout",
+              "rarityLine": "*EIA U*",
+              "rulesText": "Menace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "3",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "{Black/Red} ",
+              "cmc": 3,
+              "cardType": "Artifact Creature",
+              "rarity": "uncommon",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "211",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Patrick Reilly",
+              "sdn": 9069,
+              "key": "Depthlight Captain_EIA",
+              "colorIdentity": [
+                "B",
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "uncommon"
+              ],
+              "firstPrint": "Depthlight Captain_EIA",
+              "printKeys": [
+                "Depthlight Captain_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 1.2206572769953052,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Depthlight Captain",
+              "original_text": "Mana cost: {1}{B}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nMenace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Depthlight Captain",
+              "executable_text": "Mana cost: {1}{B}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nMenace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Exile an artifact or creature card from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card.",
+              "original_printed_rules_text": "Menace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card.",
+          "original_printed_rules_text": "Menace\nOther artifact creatures you control have menace.\n{2}{B}{R}: Salvage an artifact or creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Depthlight Salvager_EIA",
+          "name": "Depthlight Salvager",
+          "original_text": "Mana cost: {1}{B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nDeathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nDeathtouch\nWhen Depthlight Salvager enters, you may do the following: [Exile a creature card with mana value 3 or less from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{1}{B}",
+          "type_line": "Artifact Creature — Construct Scout",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Depthlight Salvager_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Depthlight Salvager",
+              "cardName": "Depthlight Salvager",
+              "manaCost": "{1}{B}",
+              "typeLine": "Artifact Creature — Construct Scout",
+              "rarityLine": "*EIA C*",
+              "rulesText": "Deathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "1",
+              "toughness": "1",
+              "loyalty": "",
+              "color": "{Black} ",
+              "cmc": 2,
+              "cardType": "Artifact Creature",
+              "rarity": "common",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "98",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Rancore33",
+              "sdn": 9071,
+              "key": "Depthlight Salvager_EIA",
+              "colorIdentity": [
+                "B"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "common"
+              ],
+              "firstPrint": "Depthlight Salvager_EIA",
+              "printKeys": [
+                "Depthlight Salvager_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 0.9389671361502347,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Depthlight Salvager",
+              "original_text": "Mana cost: {1}{B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nDeathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Depthlight Salvager",
+              "executable_text": "Mana cost: {1}{B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nDeathtouch\nWhen Depthlight Salvager enters, you may do the following: [Exile a creature card with mana value 3 or less from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Deathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less.",
+              "original_printed_rules_text": "Deathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Deathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less.",
+          "original_printed_rules_text": "Deathtouch\nWhen Depthlight Salvager enters, you may salvage a creature card with mana value 3 or less. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Frontline Descender_EIA",
+          "name": "Frontline Descender",
+          "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 2/2\nFirst strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 2/2\nFirst strike\nWhen Frontline Descender enters, you may do the following: [Exile an instant or sorcery card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{2}{R}",
+          "type_line": "Artifact Creature — Construct Warrior",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Frontline Descender_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Frontline Descender",
+              "cardName": "Frontline Descender",
+              "manaCost": "{2}{R}",
+              "typeLine": "Artifact Creature — Construct Warrior",
+              "rarityLine": "*EIA C*",
+              "rulesText": "First strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "2",
+              "toughness": "2",
+              "loyalty": "",
+              "color": "{Red} ",
+              "cmc": 3,
+              "cardType": "Artifact Creature",
+              "rarity": "common",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "143",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Cpt-Crandall",
+              "sdn": 9101,
+              "key": "Frontline Descender_EIA",
+              "colorIdentity": [
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "common"
+              ],
+              "firstPrint": "Frontline Descender_EIA",
+              "printKeys": [
+                "Frontline Descender_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Frontline Descender",
+              "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 2/2\nFirst strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Frontline Descender",
+              "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 2/2\nFirst strike\nWhen Frontline Descender enters, you may do the following: [Exile an instant or sorcery card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card.",
+              "original_printed_rules_text": "First strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "First strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card.",
+          "original_printed_rules_text": "First strike\nWhen Frontline Descender enters, you may salvage an instant or sorcery card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mettalia, Light from Above_EIA",
+          "name": "Mettalia, Light from Above",
+          "original_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards in exile from the salvaged collection.\nWhen Mettalia enters, for each color, you may do the following: [Exile a nonlegendary card of that color from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{4}",
+          "type_line": "Legendary Artifact Creature — Construct",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Mettalia, Light from Above_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Mettalia, Light from Above",
+              "cardName": "Mettalia, Light from Above",
+              "manaCost": "{4}",
+              "typeLine": "Legendary Artifact Creature — Construct",
+              "rarityLine": "*EIA M*",
+              "rulesText": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "",
+              "cmc": 4,
+              "cardType": " Artifact Creature",
+              "rarity": "mythic rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "245",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Herve Groussin",
+              "sdn": 9155,
+              "key": "Mettalia, Light from Above_EIA",
+              "colorIdentity": [],
+              "spellbook": [],
+              "prints": [
+                "EIA",
+                "MSC",
+                "LAIR"
+              ],
+              "rarities": [
+                "mythic rare",
+                "rare"
+              ],
+              "firstPrint": "Mettalia, Light from Above_EIA",
+              "printKeys": [
+                "Mettalia, Light from Above_EIA",
+                "Mettalia, Light from Above_MSC",
+                "Mettalia, Light from Above (SL58)_LAIR"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 6.584362139917696,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Mettalia, Light from Above",
+              "original_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mettalia, Light from Above",
+              "executable_text": "Mana cost: {4}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/3\nMettalia is all colors.\nMettalia has protection from each color among cards in exile from the salvaged collection.\nWhen Mettalia enters, for each color, you may do the following: [Exile a nonlegendary card of that color from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color.",
+              "original_printed_rules_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color.",
+          "original_printed_rules_text": "Mettalia is all colors.\nMettalia has protection from each color among cards she's salvaged in exile.\nWhen Mettalia enters, for each color, you may salvage a nonlegendary card of that color. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mettalia's Forward_EIA",
+          "name": "Mettalia's Forward",
+          "original_text": "Mana cost: {4}\nType: Artifact Creature — Construct\nPower/Toughness: 4/3\nWhen Mettalia's Forward enters, you may salvage a card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {4}\nType: Artifact Creature — Construct\nPower/Toughness: 4/3\nWhen Mettalia's Forward enters, you may do the following: [Exile a card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{4}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Mettalia's Forward_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Mettalia's Forward",
+              "cardName": "Mettalia's Forward",
+              "manaCost": "{4}",
+              "typeLine": "Artifact Creature — Construct",
+              "rarityLine": "*EIA U*",
+              "rulesText": "When Mettalia's Forward enters, you may salvage a card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "",
+              "cmc": 4,
+              "cardType": "Artifact Creature",
+              "rarity": "uncommon",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "246",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Herve Groussin",
+              "sdn": 9156,
+              "key": "Mettalia's Forward_EIA",
+              "colorIdentity": [],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "uncommon"
+              ],
+              "firstPrint": "Mettalia's Forward_EIA",
+              "printKeys": [
+                "Mettalia's Forward_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Mettalia's Forward",
+              "original_text": "Mana cost: {4}\nType: Artifact Creature — Construct\nPower/Toughness: 4/3\nWhen Mettalia's Forward enters, you may salvage a card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mettalia's Forward",
+              "executable_text": "Mana cost: {4}\nType: Artifact Creature — Construct\nPower/Toughness: 4/3\nWhen Mettalia's Forward enters, you may do the following: [Exile a card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Mettalia's Forward enters, you may salvage a card.",
+              "original_printed_rules_text": "When Mettalia's Forward enters, you may salvage a card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Mettalia's Forward enters, you may salvage a card.",
+          "original_printed_rules_text": "When Mettalia's Forward enters, you may salvage a card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Oceanographer_EIA",
+          "name": "Oceanographer",
+          "original_text": "Mana cost: {B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nSlipstream *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*\n{T}: Salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nSlipstream\n{T}: Exile a creature card from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "mana_cost": "{B}",
+          "type_line": "Artifact Creature — Construct Scout",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Oceanographer_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Oceanographer",
+              "cardName": "Oceanographer",
+              "manaCost": "{B}",
+              "typeLine": "Artifact Creature — Construct Scout",
+              "rarityLine": "*EIA U*",
+              "rulesText": "Slipstream *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*\n{T}: Salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "1",
+              "toughness": "1",
+              "loyalty": "",
+              "color": "{Black} ",
+              "cmc": 1,
+              "cardType": "Artifact Creature",
+              "rarity": "uncommon",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "110",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Meinert Hansen",
+              "sdn": 9170,
+              "key": "Oceanographer_EIA",
+              "colorIdentity": [
+                "B"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "uncommon"
+              ],
+              "firstPrint": "Oceanographer_EIA",
+              "printKeys": [
+                "Oceanographer_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 1.1267605633802817,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Oceanographer",
+              "original_text": "Mana cost: {B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nSlipstream *(This creature can't be blocked as long as only creatures with slipstream are attacking.)*\n{T}: Salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Oceanographer",
+              "executable_text": "Mana cost: {B}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 1/1\nSlipstream\n{T}: Exile a creature card from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Slipstream\n{T}: Salvage a creature card.",
+              "original_printed_rules_text": "Slipstream (This creature can't be blocked as long as only creatures with slipstream are attacking.)\n{T}: Salvage a creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Slipstream\n{T}: Salvage a creature card.",
+          "original_printed_rules_text": "Slipstream (This creature can't be blocked as long as only creatures with slipstream are attacking.)\n{T}: Salvage a creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Roving Dreadnought_EIA",
+          "name": "Roving Dreadnought",
+          "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 2/3\nWhenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 2/3\nWhenever Roving Dreadnought attacks, you may do the following: [Exile a card that was put into your graveyard this turn from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{2}{R}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Roving Dreadnought_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Roving Dreadnought",
+              "cardName": "Roving Dreadnought",
+              "manaCost": "{2}{R}",
+              "typeLine": "Artifact Creature — Construct",
+              "rarityLine": "*EIA U*",
+              "rulesText": "Whenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "2",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "{Red} ",
+              "cmc": 3,
+              "cardType": "Artifact Creature",
+              "rarity": "uncommon",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "155",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Jiangxhi",
+              "sdn": 9198,
+              "key": "Roving Dreadnought_EIA",
+              "colorIdentity": [
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "uncommon"
+              ],
+              "firstPrint": "Roving Dreadnought_EIA",
+              "printKeys": [
+                "Roving Dreadnought_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Roving Dreadnought",
+              "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 2/3\nWhenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Roving Dreadnought",
+              "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 2/3\nWhenever Roving Dreadnought attacks, you may do the following: [Exile a card that was put into your graveyard this turn from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn.",
+              "original_printed_rules_text": "Whenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn.",
+          "original_printed_rules_text": "Whenever Roving Dreadnought attacks, you may salvage a card that was put into your graveyard this turn. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Seabed Delver_EIA",
+          "name": "Seabed Delver",
+          "original_text": "Mana cost: {3}{B}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nMenace *(This creature can't be blocked except by two or more creatures.)*\nWhenever another creature dies, you may salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {3}{B}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nMenace\nWhenever another creature dies, you may do the following: [Exile a creature card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{3}{B}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Seabed Delver_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Seabed Delver",
+              "cardName": "Seabed Delver",
+              "manaCost": "{3}{B}",
+              "typeLine": "Artifact Creature — Construct",
+              "rarityLine": "*EIA R*",
+              "rulesText": "Menace *(This creature can't be blocked except by two or more creatures.)*\nWhenever another creature dies, you may salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "4",
+              "loyalty": "",
+              "color": "{Black} ",
+              "cmc": 4,
+              "cardType": "Artifact Creature",
+              "rarity": "rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "115",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "2K Games",
+              "sdn": 9204,
+              "key": "Seabed Delver_EIA",
+              "colorIdentity": [
+                "B"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "rare"
+              ],
+              "firstPrint": "Seabed Delver_EIA",
+              "printKeys": [
+                "Seabed Delver_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Seabed Delver",
+              "original_text": "Mana cost: {3}{B}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nMenace *(This creature can't be blocked except by two or more creatures.)*\nWhenever another creature dies, you may salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seabed Delver",
+              "executable_text": "Mana cost: {3}{B}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nMenace\nWhenever another creature dies, you may do the following: [Exile a creature card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nWhenever another creature dies, you may salvage a creature card.",
+              "original_printed_rules_text": "Menace (This creature can't be blocked except by two or more creatures.)\nWhenever another creature dies, you may salvage a creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nWhenever another creature dies, you may salvage a creature card.",
+          "original_printed_rules_text": "Menace (This creature can't be blocked except by two or more creatures.)\nWhenever another creature dies, you may salvage a creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Silt Miner_EIA",
+          "name": "Silt Miner",
+          "original_text": "Mana cost: {2}\nType: Artifact Creature — Fish\nPower/Toughness: 2/1\nWhen Silt Miner enters, you may salvage an artifact or creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact Creature — Fish\nPower/Toughness: 2/1\nWhen Silt Miner enters, you may do the following: [Exile an artifact or creature card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{2}",
+          "type_line": "Artifact Creature — Fish",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Silt Miner_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Silt Miner",
+              "cardName": "Silt Miner",
+              "manaCost": "{2}",
+              "typeLine": "Artifact Creature — Fish",
+              "rarityLine": "*EIA C*",
+              "rulesText": "When Silt Miner enters, you may salvage an artifact or creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "2",
+              "toughness": "1",
+              "loyalty": "",
+              "color": "",
+              "cmc": 2,
+              "cardType": "Artifact Creature",
+              "rarity": "common",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "254",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "John DeLaughter",
+              "sdn": 9221,
+              "key": "Silt Miner_EIA",
+              "colorIdentity": [],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "common"
+              ],
+              "firstPrint": "Silt Miner_EIA",
+              "printKeys": [
+                "Silt Miner_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Silt Miner",
+              "original_text": "Mana cost: {2}\nType: Artifact Creature — Fish\nPower/Toughness: 2/1\nWhen Silt Miner enters, you may salvage an artifact or creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Silt Miner",
+              "executable_text": "Mana cost: {2}\nType: Artifact Creature — Fish\nPower/Toughness: 2/1\nWhen Silt Miner enters, you may do the following: [Exile an artifact or creature card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Silt Miner enters, you may salvage an artifact or creature card.",
+              "original_printed_rules_text": "When Silt Miner enters, you may salvage an artifact or creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Silt Miner enters, you may salvage an artifact or creature card.",
+          "original_printed_rules_text": "When Silt Miner enters, you may salvage an artifact or creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Specimen Collector_EIA",
+          "name": "Specimen Collector",
+          "original_text": "Mana cost: {2}{B}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 3/2\nWhen Specimen Collector enters, you may salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 3/2\nWhen Specimen Collector enters, you may do the following: [Exile a creature card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{2}{B}",
+          "type_line": "Artifact Creature — Construct Warrior",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Specimen Collector_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Specimen Collector",
+              "cardName": "Specimen Collector",
+              "manaCost": "{2}{B}",
+              "typeLine": "Artifact Creature — Construct Warrior",
+              "rarityLine": "*EIA C*",
+              "rulesText": "When Specimen Collector enters, you may salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "*The Others quickly set to work harvesting keepsakes to bring back home.*\n",
+              "power": "3",
+              "toughness": "2",
+              "loyalty": "",
+              "color": "{Black} ",
+              "cmc": 3,
+              "cardType": "Artifact Creature",
+              "rarity": "common",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "120",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Stephen Hickman",
+              "sdn": 9227,
+              "key": "Specimen Collector_EIA",
+              "colorIdentity": [
+                "B"
+              ],
+              "spellbook": [],
+              "ctags": [
+                "conflict"
+              ],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "common"
+              ],
+              "firstPrint": "Specimen Collector_EIA",
+              "printKeys": [
+                "Specimen Collector_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Specimen Collector",
+              "original_text": "Mana cost: {2}{B}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 3/2\nWhen Specimen Collector enters, you may salvage a creature card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Specimen Collector",
+              "executable_text": "Mana cost: {2}{B}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 3/2\nWhen Specimen Collector enters, you may do the following: [Exile a creature card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Specimen Collector enters, you may salvage a creature card.",
+              "original_printed_rules_text": "When Specimen Collector enters, you may salvage a creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Specimen Collector enters, you may salvage a creature card.",
+          "original_printed_rules_text": "When Specimen Collector enters, you may salvage a creature card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Treasure Haulers_EIA",
+          "name": "Treasure Haulers",
+          "original_text": "Mana cost: {3}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nHaste\nWhen Treasure Haulers enters, you may salvage an artifact card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {3}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nHaste\nWhen Treasure Haulers enters, you may do the following: [Exile an artifact card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{3}{R}",
+          "type_line": "Artifact Creature — Construct Scout",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Treasure Haulers_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Treasure Haulers",
+              "cardName": "Treasure Haulers",
+              "manaCost": "{3}{R}",
+              "typeLine": "Artifact Creature — Construct Scout",
+              "rarityLine": "*EIA C*",
+              "rulesText": "Haste\nWhen Treasure Haulers enters, you may salvage an artifact card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "3",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "{Red} ",
+              "cmc": 4,
+              "cardType": "Artifact Creature",
+              "rarity": "common",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "161",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Peter Pohle",
+              "sdn": 9241,
+              "key": "Treasure Haulers_EIA",
+              "colorIdentity": [
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "common"
+              ],
+              "firstPrint": "Treasure Haulers_EIA",
+              "printKeys": [
+                "Treasure Haulers_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Treasure Haulers",
+              "original_text": "Mana cost: {3}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nHaste\nWhen Treasure Haulers enters, you may salvage an artifact card. *(Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Treasure Haulers",
+              "executable_text": "Mana cost: {3}{R}\nType: Artifact Creature — Construct Scout\nPower/Toughness: 3/3\nHaste\nWhen Treasure Haulers enters, you may do the following: [Exile an artifact card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nWhen Treasure Haulers enters, you may salvage an artifact card.",
+              "original_printed_rules_text": "Haste\nWhen Treasure Haulers enters, you may salvage an artifact card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Haste\nWhen Treasure Haulers enters, you may salvage an artifact card.",
+          "original_printed_rules_text": "Haste\nWhen Treasure Haulers enters, you may salvage an artifact card. (Exile one from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "candidate_executable_reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+      "executable_reminder": null,
+      "executable_definitions": [
+        {
+          "keyword": "Salvage {Object}",
+          "reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "collectionReferences": [
+            {
+              "participle": "salvaged",
+              "label": "salvaged"
+            }
+          ]
+        }
+      ],
+      "support_status": "scratch source-owned collection reader; native verification and remaining selector variants pending"
+    },
+    {
+      "id": "msem-362",
+      "keyword": "Salvage",
+      "original_reminder": "Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.",
+      "source_cards": [
+        "Depthlight Frontliner",
+        "Oil Driller"
+      ],
+      "rule_reference": "701.92.",
+      "rule_text": [
+        {
+          "name": "701.92a",
+          "rule": "Salvage is a keyword action. To salvage a [quality] card, exile a card with that quality from your graveyard until the permanent that was the source of the salvage ability leaves the battlefield. That card is “salvaged” by that permanent.",
+          "custom": true
+        },
+        {
+          "name": "701.92b",
+          "rule": "Whenever a creature that has one or more salvaged cards in exile deals combat damage to a player, that creature's controller puts one of those salvaged cards into its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Depthlight Frontliner_EIA",
+          "name": "Depthlight Frontliner",
+          "original_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 5/5\nTrample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card. *(Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 5/5\nTrample\nWhen Depthlight Frontliner enters, you may do the following: [Exile up to one instant card and up to one sorcery card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+          "mana_cost": "{4}{R}{R}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Depthlight Frontliner_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Depthlight Frontliner",
+              "cardName": "Depthlight Frontliner",
+              "manaCost": "{4}{R}{R}",
+              "typeLine": "Artifact Creature — Construct",
+              "rarityLine": "*EIA U*",
+              "rulesText": "Trample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card. *(Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "5",
+              "toughness": "5",
+              "loyalty": "",
+              "color": "{Red} ",
+              "cmc": 6,
+              "cardType": "Artifact Creature",
+              "rarity": "uncommon",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "136",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "SixMoreVodka",
+              "sdn": 9070,
+              "key": "Depthlight Frontliner_EIA",
+              "colorIdentity": [
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "uncommon"
+              ],
+              "firstPrint": "Depthlight Frontliner_EIA",
+              "printKeys": [
+                "Depthlight Frontliner_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Depthlight Frontliner",
+              "original_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 5/5\nTrample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card. *(Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Depthlight Frontliner",
+              "executable_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 5/5\nTrample\nWhen Depthlight Frontliner enters, you may do the following: [Exile up to one instant card and up to one sorcery card from your graveyard until this creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand].",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card.",
+              "original_printed_rules_text": "Trample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card. (Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card.",
+          "original_printed_rules_text": "Trample\nWhen Depthlight Frontliner enters, you may salvage up to one instant card and up to one sorcery card. (Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Oil Driller_EIA",
+          "name": "Oil Driller",
+          "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 4/3\nTrample, haste\nWhen Oil Driller enters, salvage two cards at random. *(Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*\nAt the beginning of your end step, sacrifice Oil Driller.",
+          "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 4/3\nTrample, haste\nWhen Oil Driller enters, Exile two cards at random from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.\nAt the beginning of your end step, sacrifice Oil Driller.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Artifact Creature — Construct Warrior",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Oil Driller_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Oil Driller",
+              "cardName": "Oil Driller",
+              "manaCost": "{2}{R}",
+              "typeLine": "Artifact Creature — Construct Warrior",
+              "rarityLine": "*EIA R*",
+              "rulesText": "Trample, haste\nWhen Oil Driller enters, salvage two cards at random. *(Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*\nAt the beginning of your end step, sacrifice Oil Driller.",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "3",
+              "loyalty": "",
+              "color": "{Red} ",
+              "cmc": 3,
+              "cardType": "Artifact Creature",
+              "rarity": "rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "150",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "2K Games",
+              "sdn": 9172,
+              "key": "Oil Driller_EIA",
+              "colorIdentity": [
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA",
+                "MSC",
+                "MPS_MSE",
+                "CHAMPIONS",
+                "LAIR"
+              ],
+              "rarities": [
+                "rare",
+                "masterpiece",
+                "mythic rare"
+              ],
+              "firstPrint": "Oil Driller_EIA",
+              "printKeys": [
+                "Oil Driller_EIA",
+                "Oil Driller_MSC",
+                "Oil Driller_MPS_MSE",
+                "Oil Driller_CHAMPIONS",
+                "Oil Driller (SL45)_LAIR"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 6.584362139917696,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Oil Driller",
+              "original_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 4/3\nTrample, haste\nWhen Oil Driller enters, salvage two cards at random. *(Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*\nAt the beginning of your end step, sacrifice Oil Driller."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Oil Driller",
+              "executable_text": "Mana cost: {2}{R}\nType: Artifact Creature — Construct Warrior\nPower/Toughness: 4/3\nTrample, haste\nWhen Oil Driller enters, Exile two cards at random from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.\nAt the beginning of your end step, sacrifice Oil Driller.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample, haste\nWhen Oil Driller enters, salvage two cards at random.\nAt the beginning of your end step, sacrifice Oil Driller.",
+              "original_printed_rules_text": "Trample, haste\nWhen Oil Driller enters, salvage two cards at random. (Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)\nAt the beginning of your end step, sacrifice Oil Driller."
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample, haste\nWhen Oil Driller enters, salvage two cards at random.\nAt the beginning of your end step, sacrifice Oil Driller.",
+          "original_printed_rules_text": "Trample, haste\nWhen Oil Driller enters, salvage two cards at random. (Exile those cards from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)\nAt the beginning of your end step, sacrifice Oil Driller.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "candidate_executable_reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+      "executable_reminder": null,
+      "executable_definitions": [
+        {
+          "keyword": "Salvage {Object}",
+          "reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "collectionReferences": [
+            {
+              "participle": "salvaged",
+              "label": "salvaged"
+            }
+          ]
+        }
+      ],
+      "support_status": "scratch source-owned collection reader; native verification and remaining selector variants pending"
+    },
+    {
+      "id": "msem-363",
+      "keyword": "Salvage",
+      "original_reminder": "You may exile them from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.",
+      "source_cards": [
+        "Dredgeline Colossus"
+      ],
+      "rule_reference": "701.92.",
+      "rule_text": [
+        {
+          "name": "701.92a",
+          "rule": "Salvage is a keyword action. To salvage a [quality] card, exile a card with that quality from your graveyard until the permanent that was the source of the salvage ability leaves the battlefield. That card is “salvaged” by that permanent.",
+          "custom": true
+        },
+        {
+          "name": "701.92b",
+          "rule": "Whenever a creature that has one or more salvaged cards in exile deals combat damage to a player, that creature's controller puts one of those salvaged cards into its owner's hand.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dredgeline Colossus_EIA",
+          "name": "Dredgeline Colossus",
+          "original_text": "Mana cost: {6}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nDouble strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards. *(You may exile them from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {6}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nDouble strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, Exile up to eight noncreature, nonland cards from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "mana_cost": "{6}{R}{R}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Dredgeline Colossus_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Dredgeline Colossus",
+              "cardName": "Dredgeline Colossus",
+              "manaCost": "{6}{R}{R}",
+              "typeLine": "Artifact Creature — Construct",
+              "rarityLine": "*EIA M*",
+              "rulesText": "Double strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards. *(You may exile them from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "4",
+              "loyalty": "",
+              "color": "{Red} ",
+              "cmc": 8,
+              "cardType": "Artifact Creature",
+              "rarity": "mythic rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "137",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "SixMoreVodka",
+              "sdn": 9076,
+              "key": "Dredgeline Colossus_EIA",
+              "colorIdentity": [
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "mythic rare"
+              ],
+              "firstPrint": "Dredgeline Colossus_EIA",
+              "printKeys": [
+                "Dredgeline Colossus_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 7.8431372549019605,
+              "pm": 14.814814814814815,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Dredgeline Colossus",
+              "original_text": "Mana cost: {6}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nDouble strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards. *(You may exile them from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dredgeline Colossus",
+              "executable_text": "Mana cost: {6}{R}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 4/4\nDouble strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, Exile up to eight noncreature, nonland cards from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Double strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards.",
+              "original_printed_rules_text": "Double strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards. (You may exile them from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Double strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards.",
+          "original_printed_rules_text": "Double strike, trample, indestructible, haste\nWhen Dredgeline Colossus enters, salvage up to eight noncreature, nonland cards. (You may exile them from your graveyard until this creature leaves the battlefield. Whenever this creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "candidate_executable_reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+      "executable_reminder": null,
+      "executable_definitions": [
+        {
+          "keyword": "Salvage {Object}",
+          "reminder": "Exile {Object} from your graveyard until this creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever this creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "collectionReferences": [
+            {
+              "participle": "salvaged",
+              "label": "salvaged"
+            }
+          ]
+        }
+      ],
+      "support_status": "scratch source-owned collection reader; native verification and remaining selector variants pending"
+    },
+    {
+      "id": "msem-salvage-recipient",
+      "original_reminder": "",
+      "rule_reference": "701.92.",
+      "source_variant_provenance": {
+        "kind": "additional_formal_rule_source_cards_without_extracted_seed_reminder",
+        "formal_source_file": "reports/cards/lackey-audit-2026-11-01/msem-custom-rules.json",
+        "formal_rule_reference": "701.92.",
+        "source_card_keys": [
+          "Rappel Liner_EIA",
+          "Storm the Seafloor_EIA",
+          "Vyzer, the Fallen Despot_EIA"
+        ],
+        "source_card_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+        "seed_inventory_note": "All three exact physical sources are listed by formal701.92 but absent from the source_cards of frozen msem361–363. This rule-backed candidate invents no extracted reminder and does not replace or increment the971 seed inventory. It is not a derived claim that its printed recipient reminder equals a different self-recipient seed reminder."
+      },
+      "keyword": "Salvage",
+      "scope": "msem",
+      "source_cards": [
+        "Rappel Liner",
+        "Storm the Seafloor",
+        "Vyzer, the Fallen Despot"
+      ],
+      "representative_cards": [
+        {
+          "id": "Rappel Liner_EIA",
+          "name": "Rappel Liner",
+          "original_text": "Mana cost: {B}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/1\nMenace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery. *(Exile this card until that creature leaves the battlefield. When that creature deals combat damage to a player, return a card it salvaged to your hand.)*",
+          "executable_text": "Mana cost: {B}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/1\nMenace\nDiscard a card: Choose Target artifact creature you control. Exile Rappel Liner from your graveyard until that artifact leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever that artifact deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand. Activate only if Rappel Liner is in your graveyard and only as a sorcery.",
+          "mana_cost": "{B}{R}",
+          "type_line": "Artifact Creature — Construct",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Rappel Liner_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Rappel Liner",
+              "cardName": "Rappel Liner",
+              "manaCost": "{B}{R}",
+              "typeLine": "Artifact Creature — Construct",
+              "rarityLine": "*EIA R*",
+              "rulesText": "Menace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery. *(Exile this card until that creature leaves the battlefield. When that creature deals combat damage to a player, return a card it salvaged to your hand.)*",
+              "flavorText": "",
+              "power": "3",
+              "toughness": "1",
+              "loyalty": "",
+              "color": "{Black/Red} ",
+              "cmc": 2,
+              "cardType": "Artifact Creature",
+              "rarity": "rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "225",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Norbface",
+              "sdn": 9190,
+              "key": "Rappel Liner_EIA",
+              "colorIdentity": [
+                "B",
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "rare"
+              ],
+              "firstPrint": "Rappel Liner_EIA",
+              "printKeys": [
+                "Rappel Liner_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 0,
+              "pm": 1.0328638497652582,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Rappel Liner",
+              "original_text": "Mana cost: {B}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/1\nMenace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery. *(Exile this card until that creature leaves the battlefield. When that creature deals combat damage to a player, return a card it salvaged to your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rappel Liner",
+              "executable_text": "Mana cost: {B}{R}\nType: Artifact Creature — Construct\nPower/Toughness: 3/1\nMenace\nDiscard a card: Choose Target artifact creature you control. Exile Rappel Liner from your graveyard until that artifact leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever that artifact deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand. Activate only if Rappel Liner is in your graveyard and only as a sorcery.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery.",
+              "original_printed_rules_text": "Menace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery. (Exile this card until that creature leaves the battlefield. When that creature deals combat damage to a player, return a card it salvaged to your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery.",
+          "original_printed_rules_text": "Menace\nDiscard a card: Target artifact creature you control salvages Rappel Liner. Activate only if Rappel Liner is in your graveyard and only as a sorcery. (Exile this card until that creature leaves the battlefield. When that creature deals combat damage to a player, return a card it salvaged to your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Storm the Seafloor_EIA",
+          "name": "Storm the Seafloor",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nMill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life. *(Exile it from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nMill five cards, then for each of those cards, Unless an opponent pays 3 life, do the following: Choose a creature you control; Exile that card from your graveyard until that creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever that creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Storm the Seafloor_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Storm the Seafloor",
+              "cardName": "Storm the Seafloor",
+              "manaCost": "{2}{B}",
+              "typeLine": "Sorcery",
+              "rarityLine": "*EIA R*",
+              "rulesText": "Mill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life. *(Exile it from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "*Their journey was over. Their destiny was fulfilled. It was time to claim what was promised.*\n",
+              "power": "",
+              "toughness": "",
+              "loyalty": "",
+              "color": "{Black} ",
+              "cmc": 3,
+              "cardType": "Sorcery",
+              "rarity": "rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "121",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Gregory Manchess",
+              "sdn": 9229,
+              "key": "Storm the Seafloor_EIA",
+              "colorIdentity": [
+                "B"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "rare"
+              ],
+              "firstPrint": "Storm the Seafloor_EIA",
+              "printKeys": [
+                "Storm the Seafloor_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "pr": 1.1235955056179776,
+              "pm": 0.9389671361502347,
+              "psr": 0,
+              "psm": 0,
+              "face": "front",
+              "name": "Storm the Seafloor",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nMill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life. *(Exile it from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Storm the Seafloor",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nMill five cards, then for each of those cards, Unless an opponent pays 3 life, do the following: Choose a creature you control; Exile that card from your graveyard until that creature leaves the battlefield; Maintain the salvaged collection with cards exiled this way: Whenever that creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Mill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life.",
+              "original_printed_rules_text": "Mill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life. (Exile it from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life.",
+          "original_printed_rules_text": "Mill five cards, then for each of those cards, a creature you control salvages that card unless an opponent pays 3 life. (Exile it from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Vyzer, the Fallen Despot_EIA",
+          "name": "Vyzer, the Fallen Despot",
+          "original_text": "Mana cost: {3}{B}{R}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/4\n{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card. *(Exile one from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+          "executable_text": "Mana cost: {3}{B}{R}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/4\n{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. Exile a card from your graveyard until That creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever That creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "mana_cost": "{3}{B}{R}",
+          "type_line": "Legendary Artifact Creature — Construct",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Vyzer, the Fallen Despot_EIA",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "fullName": "Vyzer, the Fallen Despot",
+              "cardName": "Vyzer, the Fallen Despot",
+              "manaCost": "{3}{B}{R}",
+              "typeLine": "Legendary Artifact Creature — Construct",
+              "rarityLine": "*EIA M*",
+              "rulesText": "{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card. *(Exile one from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)*",
+              "flavorText": "",
+              "power": "4",
+              "toughness": "4",
+              "loyalty": "",
+              "color": "{Black/Red} ",
+              "cmc": 5,
+              "cardType": " Artifact Creature",
+              "rarity": "mythic rare",
+              "shape": "normal",
+              "setID": "EIA",
+              "cardID": "233",
+              "designer": "Dodger",
+              "script": "",
+              "notes": [],
+              "artist": "Lucas Parolin",
+              "sdn": 9260,
+              "key": "Vyzer, the Fallen Despot_EIA",
+              "colorIdentity": [
+                "B",
+                "R"
+              ],
+              "spellbook": [],
+              "prints": [
+                "EIA"
+              ],
+              "rarities": [
+                "mythic rare"
+              ],
+              "firstPrint": "Vyzer, the Fallen Despot_EIA",
+              "printKeys": [
+                "Vyzer, the Fallen Despot_EIA"
+              ],
+              "formats": [
+                "msem",
+                "msedh"
+              ],
+              "face": "front",
+              "name": "Vyzer, the Fallen Despot",
+              "original_text": "Mana cost: {3}{B}{R}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/4\n{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card. *(Exile one from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Vyzer, the Fallen Despot",
+              "executable_text": "Mana cost: {3}{B}{R}\nType: Legendary Artifact Creature — Construct\nPower/Toughness: 4/4\n{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. Exile a card from your graveyard until That creature leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever That creature deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+              "custom_keyword_identities": [
+                "salvage"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card.",
+              "original_printed_rules_text": "{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card. (Exile one from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "salvage"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card.",
+          "original_printed_rules_text": "{T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step or if it would leave the battlefield. That creature salvages a card. (Exile one from your graveyard until that creature leaves the battlefield. Whenever that creature deals combat damage to a player, put a card it salvaged into your hand.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_reminder": null,
+      "executable_definitions": [
+        {
+          "keyword": "Salvage",
+          "template": "{Subject} salvages {Object}",
+          "reminder": "Exile {Object} from your graveyard until {Subject} leaves the battlefield. Maintain the salvaged collection with cards exiled this way: Whenever {Subject} deals combat damage to a player, choose a card in exile from the salvaged collection, then put it into its owner's hand.",
+          "collectionReferences": [
+            {
+              "participle": "salvaged",
+              "label": "salvaged"
+            }
+          ]
+        }
+      ],
+      "support_status": "scratch tagged-watched-recipient owner; native verification pending"
+    }
+  ]
+}

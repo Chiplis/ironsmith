@@ -42,6 +42,11 @@ pub struct DynamicManaCost {
     /// binds cost-choice references before the total cost is locked.
     #[cfg_attr(feature = "serde", serde(default))]
     pub mana_cost_of: Option<Box<crate::ChooseSpec>>,
+    /// The operand is the exact original object retained by this spell's
+    /// cast-origin snapshot. A later incarnation or the proposed spell's own
+    /// definition cannot supply this price. Requires a specific object operand.
+    #[cfg_attr(feature="serde",serde(default))]
+    pub mana_cost_of_cast_origin: bool,
     /// "its mana cost reduced by {2}" (Flash): generic mana removed from the
     /// resolved cost; colored requirements are never reduced (CR 601.2f).
     #[cfg_attr(feature = "serde", serde(default))]
@@ -65,6 +70,7 @@ impl DynamicManaCost {
             multiplier,
             display_hint,
             mana_cost_of: None,
+            mana_cost_of_cast_origin: false,
             generic_reduction: 0,
         }
     }
@@ -162,6 +168,7 @@ impl DynamicManaCost {
             multiplier: None,
             display_hint: DynamicManaDisplayHint::Default,
             mana_cost_of: None,
+            mana_cost_of_cast_origin: false,
             generic_reduction: 0,
         }
     }
@@ -174,6 +181,7 @@ impl DynamicManaCost {
 
     pub fn resolved_static_base(&self) -> Option<ManaCost> {
         if !self.source_mana_cost
+            && !self.mana_cost_of_cast_origin
             && self.mana_cost_of.is_none()
             && self.source_mana_cost_reduction_condition.is_none()
             && self.x_value.is_none()
@@ -227,6 +235,9 @@ impl DynamicManaCost {
         } else {
             self.base.to_oracle()
         };
+        if self.generic_reduction > 0 {
+            text.push_str(&format!(" reduced by {{{}}}", self.generic_reduction));
+        }
         if let Some(value) = self.x_value.as_ref() {
             text.push_str(&format!(", where X is {}", audit_value_text(value)));
         }
@@ -1384,6 +1395,9 @@ impl OptionalCostRef {
     }
 
     pub fn matches_query(&self, query: &Self) -> bool {
+        if query.custom_keyword.as_ref().is_some_and(|name| !self.attributed_to_custom_keyword(name)) {
+            return false;
+        }
         if !query.kind.is_query_for(&self.kind) {
             return false;
         }
@@ -1616,6 +1630,13 @@ pub struct OptionalCostsPaid {
     /// index. Unlisted one-of costs pay their first branch.
     #[cfg_attr(feature = "serde", serde(default))]
     pub branch_choices: Vec<(usize, usize)>,
+    /// Structural choices attached to repeatable costs; spell copies retain
+    /// which optional text groups were removed as well as the payment count.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub text_fragment_choices: Vec<(usize, u64)>,
+    /// Independent branch of each repeated optional payment (cost, occurrence, branch).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub payment_branch_choices: Vec<(usize, u32, usize)>,
     /// Exact pre-cast exile designation (CR 702.143c), independent of the
     /// selected casting price. Missing recovered evidence is unknown.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -1636,6 +1657,8 @@ impl OptionalCostsPaid {
             costs: vec![(OptionalCostRef::from(""), 0); num_optional_costs],
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+            text_fragment_choices: Vec::new(),
+            payment_branch_choices: Vec::new(),
             cast_was_foretold: None,
             cast_payment_turn: None,
             main_phase_caster: None,
@@ -1647,6 +1670,8 @@ impl OptionalCostsPaid {
             costs: costs.iter().map(|c| (c.cost_ref(), 0)).collect(),
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+            text_fragment_choices: Vec::new(),
+            payment_branch_choices: Vec::new(),
             cast_was_foretold: None,
             cast_payment_turn: None,
             main_phase_caster: None,
@@ -1661,6 +1686,13 @@ impl OptionalCostsPaid {
             .map(|(_, branch)| *branch)
     }
 
+    pub fn payment_branch_choice(&self,index:usize,occurrence:u32)->Option<usize>{
+        self.payment_branch_choices.iter().find(|(cost,payment,_)|*cost==index&&*payment==occurrence).map(|(_,_,branch)|*branch).or_else(||self.branch_choice(index))
+    }
+    pub fn set_payment_branch_choice(&mut self,index:usize,occurrence:u32,branch:usize){
+        self.payment_branch_choices.retain(|(cost,payment,_)|*cost!=index||*payment!=occurrence);
+        self.payment_branch_choices.push((index,occurrence,branch));
+    }
     /// Record the announced branch of the one-of optional cost at `index`.
     pub fn set_branch_choice(&mut self, index: usize, branch: usize) {
         self.branch_choices.retain(|(cost, _)| *cost != index);
@@ -1671,7 +1703,15 @@ impl OptionalCostsPaid {
     pub fn reset_costs<C>(&mut self, costs: &[OptionalCost<C>]) {
         self.costs = costs.iter().map(|cost| (cost.cost_ref(), 0)).collect();
         self.branch_choices.clear();
+        self.text_fragment_choices.clear();
+        self.payment_branch_choices.clear();
     }
+
+    pub fn set_text_fragment_choice(&mut self,index:usize,mask:u64){
+        self.text_fragment_choices.retain(|(known,_)|known!=&index);
+        self.text_fragment_choices.push((index,mask));
+    }
+    pub fn text_fragment_choice(&self,index:usize)->Option<u64>{self.text_fragment_choices.iter().find(|(known,_)|*known==index).map(|(_,mask)|*mask)}
 
     pub fn any_paid(&self) -> bool {
         self.costs.iter().any(|(_, n)| *n > 0)

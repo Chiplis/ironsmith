@@ -145,7 +145,7 @@ fn karn_pays_any_amount_and_looks_at_that_many() {
 #[test]
 fn liege_creates_all_payers_tokens_in_one_simultaneous_batch() {
     use ironsmith::ability::AbilityKind;
-    for definition in support::definitions("Liege of the Hollows", LIEGE_OF_THE_HOLLOWS) {
+    for (route, definition) in support::definitions("Liege of the Hollows", LIEGE_OF_THE_HOLLOWS).into_iter().enumerate() {
         let effects = definition.abilities.iter().find_map(|ability| {
             if let AbilityKind::Triggered(triggered) = &ability.kind {
                 Some(triggered.effects.clone())
@@ -163,7 +163,10 @@ fn liege_creates_all_payers_tokens_in_one_simultaneous_batch() {
             let tokens = game.battlefield.iter().filter(|id| {
                 game.object(**id).is_some_and(|object| matches!(object.kind, ironsmith::object::ObjectKind::Token) && game.current_controller(**id) == Some(player))
             }).count();
-            assert_eq!(tokens, amount);
+            assert_eq!(tokens, amount,
+                "route={route} actor={player:?}; remaining mana={:?}; battlefield={:?}; completed outcome={outcome:?}; retained program={effects:?}",
+                [play::A,play::B,play::C].map(|actor|(actor,game.player(actor).unwrap().mana_pool.total())),
+                game.battlefield.iter().map(|id|{let object=game.object(*id).unwrap();(*id,object.name.clone(),object.kind,object.owner,game.current_controller(*id),object.zone)}).collect::<Vec<_>>());
         }
         let entries: Vec<_> = outcome.events.iter().filter(|event|
             event.kind() == ironsmith::events::EventKind::EnterBattlefield).collect();

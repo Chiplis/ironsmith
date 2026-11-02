@@ -240,7 +240,8 @@ pub(super) fn try_apply_distinct_mana_values_clause(
             && all_words
                 .get(idx + phrase.len() + 1)
                 .is_some_and(|word| *word == "or");
-        if comparison_follows && crate::word_primitives::ends_with(&phrase, &["mana", "value"]) {
+        if comparison_follows && (crate::word_primitives::ends_with(&phrase, &["mana", "value"])
+            || crate::word_primitives::ends_with(&phrase, &["mana", "values"])) {
             crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len() - 2));
         } else {
             crate::word_claims::claim_drained(all_words.drain(idx..idx + phrase.len()));

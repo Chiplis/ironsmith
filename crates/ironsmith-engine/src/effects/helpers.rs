@@ -155,6 +155,13 @@ pub(crate) fn resolve_tagged_object_id(
     ctx: &ExecutionContext,
     snapshot: &ObjectSnapshot,
 ) -> Option<ObjectId> {
+    if ctx.tagged_objects.iter().filter(|(tag,_)|tag.as_str().starts_with("__entry_reference_exiled"))
+        .flat_map(|(_,objects)|objects).any(|entry| entry.object_id == snapshot.object_id && entry.stable_id == snapshot.stable_id) {
+        return game.object(snapshot.object_id).filter(|object|
+            object.zone == Zone::Exile && object.stable_id == snapshot.stable_id
+            && game.find_object_by_stable_id(snapshot.stable_id) == Some(snapshot.object_id))
+            .map(|object| object.id);
+    }
     // A tag naming an ability on the stack by its own stack id ("that spell
     // or ability") keeps naming that entry, not the source's current object.
     if game.stack_ability_entry(snapshot.object_id).is_some() {
@@ -367,7 +374,10 @@ pub(crate) fn pin_tagged_objects_to_current(
     tagged_objects: &mut HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
 ) {
     for (tag, snapshots) in tagged_objects.iter_mut() {
-        if tag.as_str() == crate::tag::SOURCE_EMERGE_SACRIFICE_TAG
+        if (tag.as_str().starts_with("__additional_cost_tap:")||tag.as_str().starts_with("__additional_cost_tap_instance:"))
+            || tag.as_str().starts_with("__entry_action_") || tag.as_str().starts_with("__entry_reference_exiled")
+            || tag.as_str().starts_with("__selected_additional_cost_tap:")
+            || tag.as_str() == crate::tag::SOURCE_EMERGE_SACRIFICE_TAG
             || tag.as_str().starts_with("__paid_departure__")
             || matches!(
                 ironsmith_core::tag::SacrificeCostTag::parse(tag),
@@ -1906,11 +1916,25 @@ pub(crate) fn preview_object_ids_for_filter(
     ids
 }
 
+/// Exactness belongs to the reference role, not to every alias which
+/// happens to contain the same snapshot. Ordinary aliases keep CR400.7 following.
+fn completed_tap_reference_ids(game:&GameState,spec:&ChooseSpec,ctx:&ExecutionContext)->Option<Vec<ObjectId>> {
+    let ChooseSpec::Tagged(tag)=spec.base() else{return None;};
+    if !(tag.as_str().starts_with("__additional_cost_tap:")
+        || tag.as_str().starts_with("__selected_additional_cost_tap:")) {return None;}
+    let snapshots=ctx.get_tagged_all(tag)?;
+    Some(snapshots.iter().filter_map(|snapshot|
+        game.object(snapshot.object_id).filter(|object|object.stable_id==snapshot.stable_id
+            && game.find_object_by_stable_id(snapshot.stable_id)==Some(snapshot.object_id))
+            .map(|object|object.id)).collect())
+}
+
 pub(crate) fn preview_object_ids_for_choose_spec(
     game: &GameState,
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> Option<Vec<ObjectId>> {
+    if let Some(objects)=completed_tap_reference_ids(game,spec,ctx){return Some(objects);}
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } => {
             preview_object_ids_for_choose_spec(game, spec, ctx)
@@ -1977,6 +2001,17 @@ fn value_tagged_snapshots_for_filter<'a>(
         &ctx.filter_context(game),
     ) {
         return Some(Vec::new());
+    }
+    if let Some(relation)=&filter.related_exile_anchor {
+        let hosts=crate::filter::related_exile_host_ids(game,&ctx.filter_context(game),&relation.host);
+        if !hosts.is_empty() && hosts.iter().all(|host|!game.object(*host).is_some_and(|object|object.zone==Zone::Battlefield)) {
+            let mut seen=HashSet::new();
+            let snapshots=ctx.source_snapshot.iter().chain(ctx.tagged_objects.values().flatten())
+                .filter(|snapshot|hosts.contains(&snapshot.object_id))
+                .flat_map(|snapshot|snapshot.related_exiled_cards.get(&relation.relationship.trim().to_ascii_lowercase()).into_iter().flatten())
+                .filter(|card|seen.insert(card.object_id)).collect();
+            return Some(snapshots);
+        }
     }
     // A public destination reference reads the exact still-present result,
     // rather than historical types of a card that has moved or turned face down.
@@ -2131,6 +2166,7 @@ pub fn resolve_player_from_spec(
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> Result<PlayerId, ExecutionError> {
+    reject_unprojected_scalar_target(spec, ctx)?;
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } => resolve_player_from_spec(game, spec, ctx),
         // Target wrapper - look in ctx.targets for a player target
@@ -2139,6 +2175,9 @@ pub fn resolve_player_from_spec(
                 return Ok(*player_id);
             }
             if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
+                return Err(ExecutionError::InvalidTarget);
+            }
+            if ctx.target_assignments.iter().any(|assignment| assignment.spec.base() == spec.base()) {
                 return Err(ExecutionError::InvalidTarget);
             }
             resolve_player_from_spec(game, inner, ctx)
@@ -2482,7 +2521,13 @@ pub fn resolve_player_filter(
                     )
                 })
         }
-        PlayerFilter::Target(_) => {
+        PlayerFilter::Target(inner) => {
+            let role = ChooseSpec::Target(Box::new(ChooseSpec::Player((**inner).clone())));
+            reject_unprojected_scalar_target(&role, ctx)?;
+            if ctx.target_assignments.iter().any(|assignment| assignment.spec.base() == role.base()) {
+                return matching_player_targets_for_spec(game, &role, ctx).first().copied()
+                    .ok_or(ExecutionError::InvalidTarget);
+            }
             let targets = if ctx.targets.is_empty() && !ctx.targets_are_cost_choices {
                 ctx.announced_targets.as_deref().unwrap_or(&ctx.targets)
             } else {
@@ -2510,6 +2555,12 @@ pub fn resolve_player_filter(
             Err(ExecutionError::InvalidTarget)
         }
         PlayerFilter::AliasedTarget(inner) => {
+            let role = ChooseSpec::Target(Box::new(ChooseSpec::Player((**inner).clone())));
+            reject_unprojected_scalar_target(&role, ctx)?;
+            if ctx.target_assignments.iter().any(|assignment| assignment.spec.base() == role.base()) {
+                return matching_player_targets_for_spec(game, &role, ctx).first().copied()
+                    .ok_or(ExecutionError::InvalidTarget);
+            }
             for target in &ctx.targets {
                 if let ResolvedTarget::Player(id) = target {
                     return Ok(*id);
@@ -2547,7 +2598,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
@@ -2965,6 +3016,7 @@ pub fn resolve_single_object_from_spec(
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> Result<ObjectId, ExecutionError> {
+    reject_unprojected_scalar_target(spec, ctx)?;
     resolve_objects_from_spec(game, spec, ctx)?
         .into_iter()
         .next()
@@ -2972,11 +3024,25 @@ pub fn resolve_single_object_from_spec(
 }
 
 /// Resolve a [`ChooseSpec`] to a single object or player target.
+fn reject_unprojected_scalar_target(spec: &ChooseSpec, ctx: &ExecutionContext) -> Result<(), ExecutionError> {
+    if spec.count_value().is_none() && spec.count().max == Some(1)
+        && ctx.target_assignments.iter().any(|assignment| {
+            (assignment.spec == *spec || assignment.spec.base() == spec.base())
+                && assignment.range.len() > 1
+        })
+    {
+        return Err(ExecutionError::IncompleteEvidence(
+            "expanded scalar target requires an explicit recipient projection policy".into()));
+    }
+    Ok(())
+}
+
 pub fn resolve_single_target_from_spec(
     game: &GameState,
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> Result<ResolvedTarget, ExecutionError> {
+    reject_unprojected_scalar_target(spec, ctx)?;
     if let Ok(object_id) = resolve_single_object_from_spec(game, spec, ctx) {
         return Ok(ResolvedTarget::Object(object_id));
     }
@@ -3096,7 +3162,10 @@ pub(crate) fn matching_player_targets_for_spec(
                 ResolvedTarget::Object(_) => None,
             })
             .collect();
-        if !assigned.is_empty() {
+        if ctx.target_assignments.iter().any(|assignment| {
+            assignment.spec == *spec || assignment.spec.base() == spec.base()
+                || crate::targeting::target_spec_matches_chooser_assignment(spec, &assignment.spec)
+        }) {
             return assigned;
         }
     }
@@ -3769,6 +3838,7 @@ pub fn resolve_single_object_for_effect(
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
 ) -> Result<ObjectId, ExecutionError> {
+    reject_unprojected_scalar_target(spec, ctx)?;
     resolve_objects_for_effect(game, ctx, spec)?
         .into_iter()
         .next()
@@ -4298,6 +4368,9 @@ pub fn resolve_objects_from_spec(
         target_ctx.targets_are_cost_choices = false;
         return resolve_objects_from_spec(game, spec, &target_ctx);
     }
+    if let Some(objects)=completed_tap_reference_ids(game,spec,ctx){
+        return if spec.is_target() && objects.is_empty(){Err(ExecutionError::InvalidTarget)}else{Ok(objects)};
+    }
     if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
         && !crate::object_query::require_captured_public_collections(
             game,
@@ -4365,6 +4438,7 @@ pub fn resolve_objects_from_spec(
                 // simply not affected while the remaining legal ones are.
                 // (A mixed "any target" group's minimum also counts players.)
                 if let Some(max) = count.max
+                    && !crate::effects::target_packets::retained(ctx,spec)
                     && objects.len() > max
                 {
                     return Err(ExecutionError::InvalidTarget);
@@ -4651,7 +4725,8 @@ pub fn resolve_players_from_spec(
         | ChooseSpec::WithCountValue(inner, _, _) => {
             let players = matching_player_targets_for_spec(game, spec, ctx);
 
-            if !players.is_empty() {
+            if !players.is_empty() || ctx.target_assignments.iter()
+                .any(|assignment| assignment.spec.base() == spec.base()) {
                 return Ok(players);
             }
             if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
@@ -5018,7 +5093,7 @@ pub(crate) fn resolve_player_filter_to_list(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => Ok(game
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())
@@ -7702,5 +7777,52 @@ mod investigate_participant_metric_tests {
         assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 2);
         ctx.store_outcome(id, EffectOutcome::count(99));
         assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 0);
+    }
+}
+
+/// Native player filters retain their authored target role without allocating
+/// a second choice. AliasedTarget consumes the same earlier role.
+pub(crate) fn scalar_player_target_spec(player:&PlayerFilter)->Option<ChooseSpec>{
+    match player {
+        PlayerFilter::Target(inner)|PlayerFilter::AliasedTarget(inner)=>Some(ChooseSpec::Target(Box::new(ChooseSpec::Player((**inner).clone())))),
+        _=>None,
+    }
+}
+
+#[cfg(test)]
+mod paid_tap_reference_role_tests {
+    use super::*;
+    #[test]
+    fn ordinary_alias_follows_its_authored_move_while_paid_receipt_stays_exact() {
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);let a=crate::ids::PlayerId(0);
+        let definition=crate::cards::definitions::grizzly_bears();
+        let payer=game.create_object_from_definition(&definition,a,Zone::Battlefield);
+        let snapshot=ObjectSnapshot::from_object(game.object(payer).unwrap(),&game);
+        let receipt=ironsmith_core::tag::additional_cost_tap_receipt("authored recipe");
+        let selected=ironsmith_core::tag::selected_additional_cost_tap("authored recipe");
+        let mut context=ExecutionContext::new_default(payer,a);
+        let target_receipt=ChooseSpec::Target(Box::new(ChooseSpec::Tagged(receipt.clone())));
+        assert!(completed_tap_reference_ids(&game,&target_receipt,&context).is_none(),"missing evidence is not a completed empty receipt");
+        assert!(matches!(resolve_objects_from_spec(&game,&target_receipt,&context),Err(ExecutionError::TagNotFound(_))));
+        context.set_tagged_objects(receipt.clone(),Vec::new());
+        assert_eq!(completed_tap_reference_ids(&game,&target_receipt,&context),Some(Vec::new()),"known empty completion remains explicit");
+        assert!(matches!(resolve_objects_from_spec(&game,&target_receipt,&context),Err(ExecutionError::InvalidTarget)));
+        context.set_tagged_objects(receipt.clone(),vec![snapshot.clone()]);
+        context.set_tagged_objects(selected.clone(),vec![snapshot.clone()]);
+        context.set_tagged_objects("ordinary",vec![snapshot]);
+        context.resolution_object_id_floor=Some(game.new_object_id());
+        let moved=game.move_object_by_effect(payer,Zone::Exile).unwrap();
+        assert_eq!(resolve_objects_from_spec(&game,&ChooseSpec::Tagged("ordinary".into()),&context).unwrap(),vec![moved]);
+        for tag in [receipt.clone(),selected.clone()] {
+            assert!(resolve_objects_from_spec(&game,&ChooseSpec::Tagged(tag.clone()),&context).unwrap().is_empty());
+            assert_eq!(preview_object_ids_for_choose_spec(&game,&ChooseSpec::Tagged(tag),&context),Some(Vec::new()));
+        }
+        let mut pinned=context.tagged_objects.clone();pin_tagged_objects_to_current(&game,&context,&mut pinned);
+        assert_eq!(pinned["ordinary"][0].object_id,moved);
+        assert_eq!(pinned[&receipt][0].object_id,payer);
+        assert_eq!(pinned[&selected][0].object_id,payer);
+        let reentered=game.move_object_by_effect(moved,Zone::Battlefield).unwrap();
+        assert_eq!(resolve_objects_from_spec(&game,&ChooseSpec::Tagged("ordinary".into()),&context).unwrap(),vec![reentered]);
+        assert!(resolve_objects_from_spec(&game,&ChooseSpec::Tagged(receipt),&context).unwrap().is_empty());
     }
 }

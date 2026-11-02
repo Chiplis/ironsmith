@@ -1,0 +1,10 @@
+[
+  {
+    "path": "crates/ironsmith-compiler-grammar/src/grammar/activated_lines.rs",
+    "filter": "next_spell_cost_windows_distinguish_immediate_next_from_future_first"
+  },
+  {
+    "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/clause_pattern_shapes/keywords/tests.rs",
+    "filter": "phase_out_owns_end_of_turn_duration_and_preserves_normal_or_source_durations"
+  }
+]

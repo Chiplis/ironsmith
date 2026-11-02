@@ -1,0 +1,814 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "scope": "msem",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "policy": "Exact complete faces; frontend expansion is not gameplay certification."
+  },
+  "mechanics": [
+    {
+      "id": "msem:sections:7:749.:Module Cards",
+      "keyword": "Module Cards",
+      "original_reminder": null,
+      "scope": "msem",
+      "source_rule_kind": "sections",
+      "rule_reference": "749.",
+      "rule_text": [
+        {
+          "name": "749.",
+          "text": "Module Cards"
+        },
+        {
+          "name": "749.1.",
+          "text": "Each Module card has a striated text box containing three submodule bars. Its illustration is vertically oriented on the left side of the card, and its type line is along the bottom of the card."
+        },
+        {
+          "name": "749.2.",
+          "text": "A submodule is a keyword ability that represents an activated ability. A submodule bar includes the activation cost of its activated ability and a flavor word. Any abilities printed within the same text box section as the submodule bar are part of its activated ability."
+        },
+        {
+          "name": "749.2a",
+          "text": "“[Cost]: [Flavor word] — [Effect]” means “[Cost]: [Effect]. Activate this ability only once. Activate this ability only as a sorcery or if a spell or ability instructs you to activate a submodule.”"
+        },
+        {
+          "name": "749.3.",
+          "text": "A Module card has the intrinsic ability “When this permanent enters the battlefield, you may activate one of its submodules without paying its activation cost.”"
+        }
+      ],
+      "source_cards": [
+        "Chaos Module",
+        "Creation Module",
+        "Fury Module",
+        "Identity Module",
+        "Imagination Module",
+        "Logic Module",
+        "Morality Module",
+        "Order Module",
+        "Power Module",
+        "Precognition Module",
+        "Rebirth Module",
+        "Replication Module",
+        "Rhythm Module",
+        "Root Module",
+        "Shadow Module",
+        "Pyp, the Indexer"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Module",
+          "appliesToSubtype": "Module",
+          "reminder": "Flavor-word bars name submodules. This layout has three submodule bars. Each bar is an activated ability with its printed cost and complete section effect. Activate each bar only once. Activate bars only as a sorcery or when instructed to activate a submodule. When this permanent enters the battlefield you may activate one of its submodules without paying its activation cost."
+        }
+      ],
+      "support_status": "frontend_materialized_unverified",
+      "semantic_gate": "Actual activation selection through shared retained occurrence owner; full source native tests pending.",
+      "representative_cards": [
+        {
+          "source_card_key": "Chaos Module_BTB",
+          "name": "Chaos Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chaos Module",
+              "original_text": "Mana cost: {B}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{R}: Anarchy\nExile the top three cards of your library. You may cast an enchantment, instant, or sorcery spell exiled this way until the end of your next turn.\n{2}{B}: Despair\nEach cursed opponent sacrifices a creature.\n{1}{B}{R}: Strife\nChaos Module gains “At the beginning of your end step, each cursed opponent loses life equal to the number of Curses attached to them.”"
+            }
+          ],
+          "id": "msem:Chaos Module_BTB",
+          "original_text": "Mana cost: {B}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{R}: Anarchy\nExile the top three cards of your library. You may cast an enchantment, instant, or sorcery spell exiled this way until the end of your next turn.\n{2}{B}: Despair\nEach cursed opponent sacrifices a creature.\n{1}{B}{R}: Strife\nChaos Module gains “At the beginning of your end step, each cursed opponent loses life equal to the number of Curses attached to them.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {B}{R}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{R}: Exile the top three cards of your library. You may cast an enchantment, instant, or sorcery spell exiled this way until the end of your next turn. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{B}: Each cursed opponent sacrifices a creature. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{B}{R}: Chaos Module gains “At the beginning of your end step, each cursed opponent loses life equal to the number of Curses attached to them.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Chaos Module",
+              "executable_text": "Mana cost: {B}{R}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{R}: Exile the top three cards of your library. You may cast an enchantment, instant, or sorcery spell exiled this way until the end of your next turn. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{B}: Each cursed opponent sacrifices a creature. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{B}{R}: Chaos Module gains “At the beginning of your end step, each cursed opponent loses life equal to the number of Curses attached to them.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{R}: Anarchy\nExile the top three cards of your library. You may cast an enchantment, instant, or sorcery spell exiled this way until the end of your next turn.\n{2}{B}: Despair\nEach cursed opponent sacrifices a creature.\n{1}{B}{R}: Strife\nChaos Module gains “At the beginning of your end step, each cursed opponent loses life equal to the number of Curses attached to them.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {B}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{R}: Anarchy\nExile the top three cards of your library. You may cast an enchantment, instant, or sorcery spell exiled this way until the end of your next turn.\n{2}{B}: Despair\nEach cursed opponent sacrifices a creature.\n{1}{B}{R}: Strife\nChaos Module gains “At the beginning of your end step, each cursed opponent loses life equal to the number of Curses attached to them.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Creation Module_BTB",
+          "name": "Creation Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Creation Module",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{3}{G}: Heart\nDraw a card. Until the end of your next turn, whenever an enchantment you control enters, you may draw a card.\n{3}{W}: Body\nCreate a 3/3 white Construct enchantment creature token.\n{2}{G}{W}: Soul\nCreation Module gains “Creatures you control get +1/+1 as long as you've had one or more enchantments you control enter this turn.”"
+            }
+          ],
+          "id": "msem:Creation Module_BTB",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{3}{G}: Heart\nDraw a card. Until the end of your next turn, whenever an enchantment you control enters, you may draw a card.\n{3}{W}: Body\nCreate a 3/3 white Construct enchantment creature token.\n{2}{G}{W}: Soul\nCreation Module gains “Creatures you control get +1/+1 as long as you've had one or more enchantments you control enter this turn.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {3}{G}: Draw a card. Until the end of your next turn, whenever an enchantment you control enters, you may draw a card. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {3}{W}: Create a 3/3 white Construct enchantment creature token. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {2}{G}{W}: Creation Module gains “Creatures you control get +1/+1 as long as you've had one or more enchantments you control enter this turn.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Creation Module",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {3}{G}: Draw a card. Until the end of your next turn, whenever an enchantment you control enters, you may draw a card. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {3}{W}: Create a 3/3 white Construct enchantment creature token. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {2}{G}{W}: Creation Module gains “Creatures you control get +1/+1 as long as you've had one or more enchantments you control enter this turn.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{3}{G}: Heart\nDraw a card. Until the end of your next turn, whenever an enchantment you control enters, you may draw a card.\n{3}{W}: Body\nCreate a 3/3 white Construct enchantment creature token.\n{2}{G}{W}: Soul\nCreation Module gains “Creatures you control get +1/+1 as long as you've had one or more enchantments you control enter this turn.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {1}{G}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{3}{G}: Heart\nDraw a card. Until the end of your next turn, whenever an enchantment you control enters, you may draw a card.\n{3}{W}: Body\nCreate a 3/3 white Construct enchantment creature token.\n{2}{G}{W}: Soul\nCreation Module gains “Creatures you control get +1/+1 as long as you've had one or more enchantments you control enter this turn.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Fury Module_BTB",
+          "name": "Fury Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fury Module",
+              "original_text": "Mana cost: {1}{R}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{3}{R}: Rage\nThe first instant or sorcery spell you cast during your next turn costs {3} less to cast.\n{3}{G}: Rampage\nThe first permanent spell you cast during your next turn costs {3} less to cast.\n{2}{R}{G}: Ruin\nFury Module gains “Whenever you cast a spell with mana value 5 or greater, you may draw a card.”"
+            }
+          ],
+          "id": "msem:Fury Module_BTB",
+          "original_text": "Mana cost: {1}{R}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{3}{R}: Rage\nThe first instant or sorcery spell you cast during your next turn costs {3} less to cast.\n{3}{G}: Rampage\nThe first permanent spell you cast during your next turn costs {3} less to cast.\n{2}{R}{G}: Ruin\nFury Module gains “Whenever you cast a spell with mana value 5 or greater, you may draw a card.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {1}{R}{G}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {3}{R}: The first instant or sorcery spell you cast during your next turn costs {3} less to cast. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {3}{G}: The first permanent spell you cast during your next turn costs {3} less to cast. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {2}{R}{G}: Fury Module gains “Whenever you cast a spell with mana value 5 or greater, you may draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Fury Module",
+              "executable_text": "Mana cost: {1}{R}{G}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {3}{R}: The first instant or sorcery spell you cast during your next turn costs {3} less to cast. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {3}{G}: The first permanent spell you cast during your next turn costs {3} less to cast. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {2}{R}{G}: Fury Module gains “Whenever you cast a spell with mana value 5 or greater, you may draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{3}{R}: Rage\nThe first instant or sorcery spell you cast during your next turn costs {3} less to cast.\n{3}{G}: Rampage\nThe first permanent spell you cast during your next turn costs {3} less to cast.\n{2}{R}{G}: Ruin\nFury Module gains “Whenever you cast a spell with mana value 5 or greater, you may draw a card.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {1}{R}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{3}{R}: Rage\nThe first instant or sorcery spell you cast during your next turn costs {3} less to cast.\n{3}{G}: Rampage\nThe first permanent spell you cast during your next turn costs {3} less to cast.\n{2}{R}{G}: Ruin\nFury Module gains “Whenever you cast a spell with mana value 5 or greater, you may draw a card.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Identity Module_BTB",
+          "name": "Identity Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Identity Module",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{R}{R}{R}: Bold\nAny player may have Identity Module deal 5 damage to them. If no one does, draw three cards.\n{R}{R}{R}: Brash\nIdentity Module deals 3 damage to any target.\n{R}{R}{R}: Burning\nIdentity Module gains “Players can't gain life” and “At the beginning of each player's upkeep, Identity Module deals 2 damage to that player.”"
+            }
+          ],
+          "id": "msem:Identity Module_BTB",
+          "original_text": "Mana cost: {2}{R}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{R}{R}{R}: Bold\nAny player may have Identity Module deal 5 damage to them. If no one does, draw three cards.\n{R}{R}{R}: Brash\nIdentity Module deals 3 damage to any target.\n{R}{R}{R}: Burning\nIdentity Module gains “Players can't gain life” and “At the beginning of each player's upkeep, Identity Module deals 2 damage to that player.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{R}{R}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {R}{R}{R}: Any player may have Identity Module deal 5 damage to them. If no one does, draw three cards. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {R}{R}{R}: Identity Module deals 3 damage to any target. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {R}{R}{R}: Identity Module gains “Players can't gain life” and “At the beginning of each player's upkeep, Identity Module deals 2 damage to that player.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Identity Module",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {R}{R}{R}: Any player may have Identity Module deal 5 damage to them. If no one does, draw three cards. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {R}{R}{R}: Identity Module deals 3 damage to any target. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {R}{R}{R}: Identity Module gains “Players can't gain life” and “At the beginning of each player's upkeep, Identity Module deals 2 damage to that player.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{R}{R}{R}: Bold\nAny player may have Identity Module deal 5 damage to them. If no one does, draw three cards.\n{R}{R}{R}: Brash\nIdentity Module deals 3 damage to any target.\n{R}{R}{R}: Burning\nIdentity Module gains “Players can't gain life” and “At the beginning of each player's upkeep, Identity Module deals 2 damage to that player.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{R}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{R}{R}{R}: Bold\nAny player may have Identity Module deal 5 damage to them. If no one does, draw three cards.\n{R}{R}{R}: Brash\nIdentity Module deals 3 damage to any target.\n{R}{R}{R}: Burning\nIdentity Module gains “Players can't gain life” and “At the beginning of each player's upkeep, Identity Module deals 2 damage to that player.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Imagination Module_BTB",
+          "name": "Imagination Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Imagination Module",
+              "original_text": "Mana cost: {2}{U}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{U}: Thinking\nConjure three cards named Data-Point into your hand. *(It's a sorcery that costs {2} with “Draw a card.”)*\n{4}{R}: Dreaming\nDiscard any number of cards, then draw that many cards and add that much {R}.\n{3}{U}{R}: Feeling\nImagination Module gains “Whenever you discard a card, exile the top card of your library. You may play it until the end of your next turn.”"
+            }
+          ],
+          "id": "msem:Imagination Module_BTB",
+          "original_text": "Mana cost: {2}{U}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{U}: Thinking\nConjure three cards named Data-Point into your hand. *(It's a sorcery that costs {2} with “Draw a card.”)*\n{4}{R}: Dreaming\nDiscard any number of cards, then draw that many cards and add that much {R}.\n{3}{U}{R}: Feeling\nImagination Module gains “Whenever you discard a card, exile the top card of your library. You may play it until the end of your next turn.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{U}{R}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {4}{U}: Conjure three cards named Data-Point into your hand. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {4}{R}: Discard any number of cards, then draw that many cards and add that much {R}. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {3}{U}{R}: Imagination Module gains “Whenever you discard a card, exile the top card of your library. You may play it until the end of your next turn.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Imagination Module",
+              "executable_text": "Mana cost: {2}{U}{R}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {4}{U}: Conjure three cards named Data-Point into your hand. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {4}{R}: Discard any number of cards, then draw that many cards and add that much {R}. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {3}{U}{R}: Imagination Module gains “Whenever you discard a card, exile the top card of your library. You may play it until the end of your next turn.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{4}{U}: Thinking\nConjure three cards named Data-Point into your hand.\n{4}{R}: Dreaming\nDiscard any number of cards, then draw that many cards and add that much {R}.\n{3}{U}{R}: Feeling\nImagination Module gains “Whenever you discard a card, exile the top card of your library. You may play it until the end of your next turn.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{U}{R}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{U}: Thinking\nConjure three cards named Data-Point into your hand. *(It's a sorcery that costs {2} with “Draw a card.”)*\n{4}{R}: Dreaming\nDiscard any number of cards, then draw that many cards and add that much {R}.\n{3}{U}{R}: Feeling\nImagination Module gains “Whenever you discard a card, exile the top card of your library. You may play it until the end of your next turn.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Logic Module_BTB",
+          "name": "Logic Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Logic Module",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{U}{U}{U}: Premise\nCreate a token that's a copy of target creature.\n{U}{U}{U}: Inference\nTap all creatures target player controls. Those creatures don't untap during that player's next untap step.\n{U}{U}{U}: Conclusion\nLogic Module gains “Whenever a creature you control deals combat damage to an opponent, you may draw a card.”"
+            }
+          ],
+          "id": "msem:Logic Module_BTB",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{U}{U}{U}: Premise\nCreate a token that's a copy of target creature.\n{U}{U}{U}: Inference\nTap all creatures target player controls. Those creatures don't untap during that player's next untap step.\n{U}{U}{U}: Conclusion\nLogic Module gains “Whenever a creature you control deals combat damage to an opponent, you may draw a card.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {U}{U}{U}: Create a token that's a copy of target creature. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {U}{U}{U}: Tap all creatures target player controls. Those creatures don't untap during that player's next untap step. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {U}{U}{U}: Logic Module gains “Whenever a creature you control deals combat damage to an opponent, you may draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Logic Module",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {U}{U}{U}: Create a token that's a copy of target creature. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {U}{U}{U}: Tap all creatures target player controls. Those creatures don't untap during that player's next untap step. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {U}{U}{U}: Logic Module gains “Whenever a creature you control deals combat damage to an opponent, you may draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{U}{U}{U}: Premise\nCreate a token that's a copy of target creature.\n{U}{U}{U}: Inference\nTap all creatures target player controls. Those creatures don't untap during that player's next untap step.\n{U}{U}{U}: Conclusion\nLogic Module gains “Whenever a creature you control deals combat damage to an opponent, you may draw a card.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{U}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{U}{U}{U}: Premise\nCreate a token that's a copy of target creature.\n{U}{U}{U}: Inference\nTap all creatures target player controls. Those creatures don't untap during that player's next untap step.\n{U}{U}{U}: Conclusion\nLogic Module gains “Whenever a creature you control deals combat damage to an opponent, you may draw a card.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Morality Module_BTB",
+          "name": "Morality Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Morality Module",
+              "original_text": "Mana cost: {W}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{W}: Virtue\nYou gain 6 life.\n{2}{B}: Corruption\nEach opponent loses 3 life.\n{1}{W}{B}: Absolution\nMorality Module gains “At the beginning of your end step, if you have more life than an opponent, you may pay 2 life. If you do, draw a card.”"
+            }
+          ],
+          "id": "msem:Morality Module_BTB",
+          "original_text": "Mana cost: {W}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{W}: Virtue\nYou gain 6 life.\n{2}{B}: Corruption\nEach opponent loses 3 life.\n{1}{W}{B}: Absolution\nMorality Module gains “At the beginning of your end step, if you have more life than an opponent, you may pay 2 life. If you do, draw a card.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {W}{B}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{W}: You gain 6 life. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{B}: Each opponent loses 3 life. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{W}{B}: Morality Module gains “At the beginning of your end step, if you have more life than an opponent, you may pay 2 life. If you do, draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Morality Module",
+              "executable_text": "Mana cost: {W}{B}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{W}: You gain 6 life. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{B}: Each opponent loses 3 life. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{W}{B}: Morality Module gains “At the beginning of your end step, if you have more life than an opponent, you may pay 2 life. If you do, draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{W}: Virtue\nYou gain 6 life.\n{2}{B}: Corruption\nEach opponent loses 3 life.\n{1}{W}{B}: Absolution\nMorality Module gains “At the beginning of your end step, if you have more life than an opponent, you may pay 2 life. If you do, draw a card.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {W}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{W}: Virtue\nYou gain 6 life.\n{2}{B}: Corruption\nEach opponent loses 3 life.\n{1}{W}{B}: Absolution\nMorality Module gains “At the beginning of your end step, if you have more life than an opponent, you may pay 2 life. If you do, draw a card.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Order Module_BTB",
+          "name": "Order Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Order Module",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{W}{W}{W}: Purpose\nCreate three 1/1 white Spirit creature tokens with flying.\n{W}{W}{W}: Justice\nExile target nonland permanent you don't control until Order Module leaves the battlefield.\n{W}{W}{W}: Unity\nOrder Module gains “Creatures you control get +1/+1.”"
+            }
+          ],
+          "id": "msem:Order Module_BTB",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{W}{W}{W}: Purpose\nCreate three 1/1 white Spirit creature tokens with flying.\n{W}{W}{W}: Justice\nExile target nonland permanent you don't control until Order Module leaves the battlefield.\n{W}{W}{W}: Unity\nOrder Module gains “Creatures you control get +1/+1.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {W}{W}{W}: Create three 1/1 white Spirit creature tokens with flying. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {W}{W}{W}: Exile target nonland permanent you don't control until Order Module leaves the battlefield. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {W}{W}{W}: Order Module gains “Creatures you control get +1/+1.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Order Module",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {W}{W}{W}: Create three 1/1 white Spirit creature tokens with flying. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {W}{W}{W}: Exile target nonland permanent you don't control until Order Module leaves the battlefield. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {W}{W}{W}: Order Module gains “Creatures you control get +1/+1.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{W}{W}{W}: Purpose\nCreate three 1/1 white Spirit creature tokens with flying.\n{W}{W}{W}: Justice\nExile target nonland permanent you don't control until Order Module leaves the battlefield.\n{W}{W}{W}: Unity\nOrder Module gains “Creatures you control get +1/+1.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{W}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{W}{W}{W}: Purpose\nCreate three 1/1 white Spirit creature tokens with flying.\n{W}{W}{W}: Justice\nExile target nonland permanent you don't control until Order Module leaves the battlefield.\n{W}{W}{W}: Unity\nOrder Module gains “Creatures you control get +1/+1.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Power Module_BTB",
+          "name": "Power Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Power Module",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{B}{B}{B}: Ambitous\nSearch your library for a card, put it into your hand, then shuffle. You lose 3 life.\n{B}{B}{B}: Ruthless\nDestroy target creature or planeswalker.\n{B}{B}{B}: Determined\nPower Module gains “At the beginning of your upkeep, you draw a card and you lose 1 life.”"
+            }
+          ],
+          "id": "msem:Power Module_BTB",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{B}{B}{B}: Ambitous\nSearch your library for a card, put it into your hand, then shuffle. You lose 3 life.\n{B}{B}{B}: Ruthless\nDestroy target creature or planeswalker.\n{B}{B}{B}: Determined\nPower Module gains “At the beginning of your upkeep, you draw a card and you lose 1 life.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {B}{B}{B}: Search your library for a card, put it into your hand, then shuffle. You lose 3 life. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {B}{B}{B}: Destroy target creature or planeswalker. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {B}{B}{B}: Power Module gains “At the beginning of your upkeep, you draw a card and you lose 1 life.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Power Module",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {B}{B}{B}: Search your library for a card, put it into your hand, then shuffle. You lose 3 life. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {B}{B}{B}: Destroy target creature or planeswalker. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {B}{B}{B}: Power Module gains “At the beginning of your upkeep, you draw a card and you lose 1 life.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{B}{B}{B}: Ambitous\nSearch your library for a card, put it into your hand, then shuffle. You lose 3 life.\n{B}{B}{B}: Ruthless\nDestroy target creature or planeswalker.\n{B}{B}{B}: Determined\nPower Module gains “At the beginning of your upkeep, you draw a card and you lose 1 life.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{B}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{B}{B}{B}: Ambitous\nSearch your library for a card, put it into your hand, then shuffle. You lose 3 life.\n{B}{B}{B}: Ruthless\nDestroy target creature or planeswalker.\n{B}{B}{B}: Determined\nPower Module gains “At the beginning of your upkeep, you draw a card and you lose 1 life.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Precognition Module_BTB",
+          "name": "Precognition Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Precognition Module",
+              "original_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\nFlash\n{3}{W}: Prioritize\nPut two +1/+1 counters on target creature.\n{3}{U}: Precipitate\nLook at the top six cards of your library. Exile one face down, then shuffle. For as long as that card is exiled, you may cast it if it's an instant or has flash.\n{2}{W}{U}: Process\nPrecognition Module gains “Whenever you cast another spell with flash or an instant, surveil 2.”"
+            }
+          ],
+          "id": "msem:Precognition Module_BTB",
+          "original_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\nFlash\n{3}{W}: Prioritize\nPut two +1/+1 counters on target creature.\n{3}{U}: Precipitate\nLook at the top six cards of your library. Exile one face down, then shuffle. For as long as that card is exiled, you may cast it if it's an instant or has flash.\n{2}{W}{U}: Process\nPrecognition Module gains “Whenever you cast another spell with flash or an instant, surveil 2.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Module\nFlash\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {3}{W}: Put two +1/+1 counters on target creature. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {3}{U}: Look at the top six cards of your library. Exile one face down, then shuffle. For as long as that card is exiled, you may cast it if it's an instant or has flash. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {2}{W}{U}: Precognition Module gains “Whenever you cast another spell with flash or an instant, surveil 2.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Precognition Module",
+              "executable_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Module\nFlash\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {3}{W}: Put two +1/+1 counters on target creature. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {3}{U}: Look at the top six cards of your library. Exile one face down, then shuffle. For as long as that card is exiled, you may cast it if it's an instant or has flash. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {2}{W}{U}: Precognition Module gains “Whenever you cast another spell with flash or an instant, surveil 2.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\n{3}{W}: Prioritize\nPut two +1/+1 counters on target creature.\n{3}{U}: Precipitate\nLook at the top six cards of your library. Exile one face down, then shuffle. For as long as that card is exiled, you may cast it if it's an instant or has flash.\n{2}{W}{U}: Process\nPrecognition Module gains “Whenever you cast another spell with flash or an instant, surveil 2.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {1}{W}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\nFlash\n{3}{W}: Prioritize\nPut two +1/+1 counters on target creature.\n{3}{U}: Precipitate\nLook at the top six cards of your library. Exile one face down, then shuffle. For as long as that card is exiled, you may cast it if it's an instant or has flash.\n{2}{W}{U}: Process\nPrecognition Module gains “Whenever you cast another spell with flash or an instant, surveil 2.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Rebirth Module_BTB",
+          "name": "Rebirth Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rebirth Module",
+              "original_text": "Mana cost: {B}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{B}: Reduce\nYou may sacrifice a nonland permanent. If you do, each opponent sacrifices a permanent that shares a type with it.\n{2}{G}: Reuse\nReturn target permanent card from your graveyard to your hand.\n{1}{B}{G}: Recycle\nRebirth Module gains “Once each turn, when you sacrifice a permanent, you may conjure a card named Data-Point into your hand.” *(It's a sorcery that costs {2} with “Draw a card.”)*"
+            }
+          ],
+          "id": "msem:Rebirth Module_BTB",
+          "original_text": "Mana cost: {B}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{B}: Reduce\nYou may sacrifice a nonland permanent. If you do, each opponent sacrifices a permanent that shares a type with it.\n{2}{G}: Reuse\nReturn target permanent card from your graveyard to your hand.\n{1}{B}{G}: Recycle\nRebirth Module gains “Once each turn, when you sacrifice a permanent, you may conjure a card named Data-Point into your hand.” *(It's a sorcery that costs {2} with “Draw a card.”)*",
+          "source_face": "front",
+          "executable_text": "Mana cost: {B}{G}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{B}: You may sacrifice a nonland permanent. If you do, each opponent sacrifices a permanent that shares a type with it. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{G}: Return target permanent card from your graveyard to your hand. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{B}{G}: Rebirth Module gains “Once each turn, when you sacrifice a permanent, you may conjure a card named Data-Point into your hand.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Rebirth Module",
+              "executable_text": "Mana cost: {B}{G}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{B}: You may sacrifice a nonland permanent. If you do, each opponent sacrifices a permanent that shares a type with it. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{G}: Return target permanent card from your graveyard to your hand. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{B}{G}: Rebirth Module gains “Once each turn, when you sacrifice a permanent, you may conjure a card named Data-Point into your hand.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{B}: Reduce\nYou may sacrifice a nonland permanent. If you do, each opponent sacrifices a permanent that shares a type with it.\n{2}{G}: Reuse\nReturn target permanent card from your graveyard to your hand.\n{1}{B}{G}: Recycle\nRebirth Module gains “Once each turn, when you sacrifice a permanent, you may conjure a card named Data-Point into your hand.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {B}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{B}: Reduce\nYou may sacrifice a nonland permanent. If you do, each opponent sacrifices a permanent that shares a type with it.\n{2}{G}: Reuse\nReturn target permanent card from your graveyard to your hand.\n{1}{B}{G}: Recycle\nRebirth Module gains “Once each turn, when you sacrifice a permanent, you may conjure a card named Data-Point into your hand.” *(It's a sorcery that costs {2} with “Draw a card.”)*",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Replication Module_BTB",
+          "name": "Replication Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Replication Module",
+              "original_text": "Mana cost: {2}{G}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{G}: Recreate\nPut two +1/+1 counters on each creature token you control.\n{4}{U}: Reproduce\nDraw a card for each noncreature token you control.\n{3}{G}{U}: Repeat\nReplication Module gains “At the beginning of your upkeep, you may create a token that's a copy of target token you control.”"
+            }
+          ],
+          "id": "msem:Replication Module_BTB",
+          "original_text": "Mana cost: {2}{G}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{G}: Recreate\nPut two +1/+1 counters on each creature token you control.\n{4}{U}: Reproduce\nDraw a card for each noncreature token you control.\n{3}{G}{U}: Repeat\nReplication Module gains “At the beginning of your upkeep, you may create a token that's a copy of target token you control.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{G}{U}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {4}{G}: Put two +1/+1 counters on each creature token you control. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {4}{U}: Draw a card for each noncreature token you control. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {3}{G}{U}: Replication Module gains “At the beginning of your upkeep, you may create a token that's a copy of target token you control.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Replication Module",
+              "executable_text": "Mana cost: {2}{G}{U}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {4}{G}: Put two +1/+1 counters on each creature token you control. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {4}{U}: Draw a card for each noncreature token you control. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {3}{G}{U}: Replication Module gains “At the beginning of your upkeep, you may create a token that's a copy of target token you control.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{4}{G}: Recreate\nPut two +1/+1 counters on each creature token you control.\n{4}{U}: Reproduce\nDraw a card for each noncreature token you control.\n{3}{G}{U}: Repeat\nReplication Module gains “At the beginning of your upkeep, you may create a token that's a copy of target token you control.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{G}{U}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{G}: Recreate\nPut two +1/+1 counters on each creature token you control.\n{4}{U}: Reproduce\nDraw a card for each noncreature token you control.\n{3}{G}{U}: Repeat\nReplication Module gains “At the beginning of your upkeep, you may create a token that's a copy of target token you control.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Rhythm Module_BTB",
+          "name": "Rhythm Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rhythm Module",
+              "original_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{R}: Hymn\nExile the top three cards of your library. During your next turn, you may play those cards.\n{4}{W}: Chorus\nCreate three 1/1 white Avatar enchantment creature tokens with prowess.\n{3}{R}{W}: Beat\nRhythm Module gains “Whenever you cast a noncreature spell, creatures you control get +1/+0 and gain haste until end of turn.”"
+            }
+          ],
+          "id": "msem:Rhythm Module_BTB",
+          "original_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{R}: Hymn\nExile the top three cards of your library. During your next turn, you may play those cards.\n{4}{W}: Chorus\nCreate three 1/1 white Avatar enchantment creature tokens with prowess.\n{3}{R}{W}: Beat\nRhythm Module gains “Whenever you cast a noncreature spell, creatures you control get +1/+0 and gain haste until end of turn.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {4}{R}: Exile the top three cards of your library. During your next turn, you may play those cards. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {4}{W}: Create three 1/1 white Avatar enchantment creature tokens with prowess. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {3}{R}{W}: Rhythm Module gains “Whenever you cast a noncreature spell, creatures you control get +1/+0 and gain haste until end of turn.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Rhythm Module",
+              "executable_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {4}{R}: Exile the top three cards of your library. During your next turn, you may play those cards. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {4}{W}: Create three 1/1 white Avatar enchantment creature tokens with prowess. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {3}{R}{W}: Rhythm Module gains “Whenever you cast a noncreature spell, creatures you control get +1/+0 and gain haste until end of turn.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{4}{R}: Hymn\nExile the top three cards of your library. During your next turn, you may play those cards.\n{4}{W}: Chorus\nCreate three 1/1 white Avatar enchantment creature tokens with prowess.\n{3}{R}{W}: Beat\nRhythm Module gains “Whenever you cast a noncreature spell, creatures you control get +1/+0 and gain haste until end of turn.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{4}{R}: Hymn\nExile the top three cards of your library. During your next turn, you may play those cards.\n{4}{W}: Chorus\nCreate three 1/1 white Avatar enchantment creature tokens with prowess.\n{3}{R}{W}: Beat\nRhythm Module gains “Whenever you cast a noncreature spell, creatures you control get +1/+0 and gain haste until end of turn.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Root Module_BTB",
+          "name": "Root Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Root Module",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{G}{G}{G}: Seed\nSearch your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.\n{G}{G}{G}: Soil\nDestroy target noncreature permanent.\n{G}{G}{G}: Stem\nRoot Module gains “You may play an additional land on each of your turns.” and “Lands you control are every basic land type in addition to their other types.”"
+            }
+          ],
+          "id": "msem:Root Module_BTB",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{G}{G}{G}: Seed\nSearch your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.\n{G}{G}{G}: Soil\nDestroy target noncreature permanent.\n{G}{G}{G}: Stem\nRoot Module gains “You may play an additional land on each of your turns.” and “Lands you control are every basic land type in addition to their other types.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {G}{G}{G}: Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {G}{G}{G}: Destroy target noncreature permanent. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {G}{G}{G}: Root Module gains “You may play an additional land on each of your turns.” and “Lands you control are every basic land type in addition to their other types.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Root Module",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {G}{G}{G}: Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {G}{G}{G}: Destroy target noncreature permanent. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {G}{G}{G}: Root Module gains “You may play an additional land on each of your turns.” and “Lands you control are every basic land type in addition to their other types.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{G}{G}{G}: Seed\nSearch your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.\n{G}{G}{G}: Soil\nDestroy target noncreature permanent.\n{G}{G}{G}: Stem\nRoot Module gains “You may play an additional land on each of your turns.” and “Lands you control are every basic land type in addition to their other types.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {2}{G}{G}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{G}{G}{G}: Seed\nSearch your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.\n{G}{G}{G}: Soil\nDestroy target noncreature permanent.\n{G}{G}{G}: Stem\nRoot Module gains “You may play an additional land on each of your turns.” and “Lands you control are every basic land type in addition to their other types.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Shadow Module_BTB",
+          "name": "Shadow Module",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shadow Module",
+              "original_text": "Mana cost: {U}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{U}: Imitate\nChoose any number of target cards in graveyards. Their owners shuffle them into their libraries. Then you draw a card.\n{2}{B}: Deceive\nSurveil 5.\n{1}{U}{B}: Obfuscate\nShadow Module gains “At the beginning of your upkeep, if there are four or more card types among cards in your graveyard, you may draw a card.”"
+            }
+          ],
+          "id": "msem:Shadow Module_BTB",
+          "original_text": "Mana cost: {U}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{U}: Imitate\nChoose any number of target cards in graveyards. Their owners shuffle them into their libraries. Then you draw a card.\n{2}{B}: Deceive\nSurveil 5.\n{1}{U}{B}: Obfuscate\nShadow Module gains “At the beginning of your upkeep, if there are four or more card types among cards in your graveyard, you may draw a card.”",
+          "source_face": "front",
+          "executable_text": "Mana cost: {U}{B}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{U}: Choose any number of target cards in graveyards. Their owners shuffle them into their libraries. Then you draw a card. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{B}: Surveil 5. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{U}{B}: Shadow Module gains “At the beginning of your upkeep, if there are four or more card types among cards in your graveyard, you may draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+          "executable_faces": [
+            {
+              "name": "Shadow Module",
+              "executable_text": "Mana cost: {U}{B}\nType: Enchantment — Module\nWhen this permanent enters the battlefield, you may activate an activated ability with designation module of this permanent without paying its costs during module actions.\nFamily 3617558685 Once group 0 step 0 — {2}{U}: Choose any number of target cards in graveyards. Their owners shuffle them into their libraries. Then you draw a card. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 1 — {2}{B}: Surveil 5. This activated ability has designation module. Activate only as a sorcery or during module actions.\nFamily 3617558685 Once group 0 step 2 — {1}{U}{B}: Shadow Module gains “At the beginning of your upkeep, if there are four or more card types among cards in your graveyard, you may draw a card.”. This activated ability has designation module. Activate only as a sorcery or during module actions.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "module",
+                  "plural": "modules",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}{U}: Imitate\nChoose any number of target cards in graveyards. Their owners shuffle them into their libraries. Then you draw a card.\n{2}{B}: Deceive\nSurveil 5.\n{1}{U}{B}: Obfuscate\nShadow Module gains “At the beginning of your upkeep, if there are four or more card types among cards in your graveyard, you may draw a card.”"
+            }
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "module",
+              "plural": "modules",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Mana cost: {U}{B}\nType: Enchantment — Module\n*(Activate each submodule once as a sorcery. When this enters, activate one submodule for free.)*\n{2}{U}: Imitate\nChoose any number of target cards in graveyards. Their owners shuffle them into their libraries. Then you draw a card.\n{2}{B}: Deceive\nSurveil 5.\n{1}{U}{B}: Obfuscate\nShadow Module gains “At the beginning of your upkeep, if there are four or more card types among cards in your graveyard, you may draw a card.”",
+          "support_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Pyp, the Indexer_BTB",
+          "source_card_key": "Pyp, the Indexer_BTB",
+          "name": "Pyp, the Indexer",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "original_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 2/4\nIf you would draw a card, you may instead reveal cards from the top of your library until you reveal an enchantment card. Put that card into your hand. Put the rest on the bottom of your library in a random order.\n{3}, {T}: You may cast an enchantment spell from your hand without paying its mana cost or activate a submodule of a permanent you control without paying its activation cost.",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pyp, the Indexer",
+              "original_text": "Mana cost: {W}{U}{B}{R}{G}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 2/4\nIf you would draw a card, you may instead reveal cards from the top of your library until you reveal an enchantment card. Put that card into your hand. Put the rest on the bottom of your library in a random order.\n{3}, {T}: You may cast an enchantment spell from your hand without paying its mana cost or activate a submodule of a permanent you control without paying its activation cost."
+            }
+          ],
+          "source_record": {
+            "fullName": "Pyp, the Indexer",
+            "cardName": "Pyp, the Indexer",
+            "manaCost": "{W}{U}{B}{R}{G}",
+            "typeLine": "Legendary Enchantment Creature — God",
+            "rarityLine": "*BTB M*",
+            "rulesText": "If you would draw a card, you may instead reveal cards from the top of your library until you reveal an enchantment card. Put that card into your hand. Put the rest on the bottom of your library in a random order.\n{3}, {T}: You may cast an enchantment spell from your hand without paying its mana cost or activate a submodule of a permanent you control without paying its activation cost.",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{White/Blue/Black/Red/Green} ",
+            "cmc": 5,
+            "cardType": " Enchantment Creature",
+            "rarity": "mythic rare",
+            "shape": "normal",
+            "setID": "BTB",
+            "cardID": "248",
+            "designer": "Bergland",
+            "script": "",
+            "notes": [],
+            "artist": "Scott Uminga",
+            "sdn": 18029,
+            "key": "Pyp, the Indexer_BTB",
+            "colorIdentity": [
+              "W",
+              "U",
+              "B",
+              "R",
+              "G"
+            ],
+            "prints": [
+              "BTB"
+            ],
+            "rarities": [
+              "mythic rare"
+            ],
+            "firstPrint": "Pyp, the Indexer_BTB",
+            "printKeys": [
+              "Pyp, the Indexer_BTB"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "spellbook": []
+          },
+          "source_provenance": {
+            "kind": "additional_complete_source_consumer_for_formal_rule",
+            "source_file": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+            "formal_rule_reference": "749.",
+            "seed_reminder_claim": false
+          },
+          "executable_text": null,
+          "rewrite_status": "pending_complete_source_frontend_and_native_validation"
+        }
+      ]
+    }
+  ]
+}

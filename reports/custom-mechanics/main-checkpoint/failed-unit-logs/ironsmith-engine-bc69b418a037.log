@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'effects::cards::create_cards::tests::random_batch_selects_one_matching_identity_for_all_copies' panicked at crates/ironsmith-engine/src/effects/cards/create_cards.rs:566:9:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::cards::create_cards::tests::random_batch_selects_one_matching_identity_for_all_copies ... FAILED
+
+failures:
+
+failures:
+    effects::cards::create_cards::tests::random_batch_selects_one_matching_identity_for_all_copies
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.04s
+

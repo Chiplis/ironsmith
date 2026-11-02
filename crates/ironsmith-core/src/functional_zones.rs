@@ -95,6 +95,12 @@ impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond> {
 
 impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, C, Cond, ICond> {
     fn default_functional_zones(&self) -> Vec<Zone> {
+        if matches!(&self.payload, StaticAbilityPayload::CastAnnouncementProgram { .. } | StaticAbilityPayload::SpellResolutionDestinationProgram { .. }) {
+            return vec![Zone::Stack];
+        }
+        if let StaticAbilityPayload::IntrinsicImmediateAction { source_zone, .. } = &self.payload {
+            return vec![*source_zone];
+        }
         if matches!(&self.payload, StaticAbilityPayload::KeywordMarkerMechanic {
             mechanic: crate::KeywordMarkerMechanic::CastAtInstantTiming
                 | crate::KeywordMarkerMechanic::DamageIsLethalToCreatures

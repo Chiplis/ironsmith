@@ -177,3 +177,25 @@ fn looked_card_partition_requires_full_consumption_and_top_remainder() {
         assert!(parse_looked_card_partition_shape(&lex(control)).is_none());
     }
 }
+
+#[test]
+fn bare_counted_looked_partitions_retain_exact_destination_and_complement() {
+    let hand = parse_looked_card_partition_shape(&lex(
+        "Put one into your hand and the rest into your graveyard."
+    )).unwrap();
+    assert_eq!(hand.selected_count, ChoiceCount::exactly(1));
+    assert_eq!(hand.selected_destination, LookedPartitionDestination::Hand);
+    assert_eq!(hand.remainder_destination, LookedPartitionDestination::Graveyard);
+    let top = parse_looked_card_partition_shape(&lex("Put one back and exile the rest.")).unwrap();
+    assert_eq!(top.selected_count, ChoiceCount::exactly(1));
+    assert_eq!(top.selected_destination,
+        LookedPartitionDestination::LibraryTop(LibraryBottomOrderAst::ChooserChooses));
+    assert_eq!(top.remainder_destination, LookedPartitionDestination::Exile);
+    for bad in [
+        "Put one creature into your hand and the rest into your graveyard.",
+        "Put one back and exile the rest until end of turn.",
+        "Put one back and exile target creature.",
+    ] {
+        assert!(parse_looked_card_partition_shape(&lex(bad)).is_none(), "{bad}");
+    }
+}

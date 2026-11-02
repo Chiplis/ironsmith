@@ -183,6 +183,12 @@ const STATEMENT_READINGS: &[Reading] = &[
         read: |input| input.outcome(super::local_self_replacement::read(input.sentence)),
     },
     Reading {
+        id: RuleId::new("directed-permanent-link"),
+        head: HeadDiscriminator::Words(&["link"]),
+        admits: |_| true,
+        read: |input| input.outcome(super::directed_permanent_links::parse(input.sentence)),
+    },
+    Reading {
         id: RuleId::new("bounded-number-choice"),
         head: HeadDiscriminator::Words(&["choose"]),
         admits: |_| true,

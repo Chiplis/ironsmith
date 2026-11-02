@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "scope": "msem",
+    "policy": "No new game rules; existing operations only; source variants retained independently",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces."
+  },
+  "mechanics": [
+    {
+      "id": "msem-690",
+      "keyword": "Harness",
+      "original_reminder": "You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.",
+      "source_cards": [
+        "Confusion"
+      ],
+      "rule_reference": "702.245.",
+      "rule_text": [
+        {
+          "name": "702.245a",
+          "rule": "“Harness” means “As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is that creature's power.”",
+          "custom": true
+        },
+        {
+          "name": "702.245b",
+          "rule": "The creature tapped this way “harnesses” that spell.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Confusion_MON",
+          "name": "Confusion",
+          "original_text": "Mana cost: {2}{U}\nType: Sorcery\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)*\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+          "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nReturn target nonland permanent to its owner's hand. if this spell paid the additional cost named power price, draw a card.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "rewrite_note": "This source has exactly one optional additional cost, so its harnessed condition is equivalent to testing payment of that cost. The source display Harness remains preserved separately; scoped import alias must be honored.",
+          "source_card_key": "Confusion_MON",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Confusion",
+              "original_text": "Mana cost: {2}{U}\nType: Sorcery\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)*\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Confusion",
+              "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nReturn target nonland permanent to its owner's hand. if this spell paid the additional cost named power price, draw a card.",
+              "custom_keyword_identities": [
+                "power price"
+              ],
+              "custom_keyword_payments": [
+                "power price"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Harness\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+              "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "power price"
+          ],
+          "custom_keyword_payments": [
+            "power price"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Harness\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+          "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_token_definitions": []
+        }
+      ],
+      "implementation_status": "source_materialization_native_pending",
+      "boundary_reason": "Existing optional tap-power cost and shared generic optional-spell-cost grant; completed typed tap receipt follows exact source through entry. Pending parent verification.",
+      "executable_keyword": "Power price",
+      "source_display_keyword": "Harness",
+      "alias_policy": "Explicit MSEM import alias only. Preserve original source display and rewrite linked cost references in the same source scope; never globally override official/permanent Harness identity.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Additional optional tap cost and power of its exact payment receipt reduce the total generic cast cost; no official identity or timing permission. Full source dependent harnessed/by-Ox references and granted ability scope remain pending."
+      },
+      "behavioral_assertions": [
+        {
+          "id": "optional-tap-power",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::optional_tap_power_reduction_pays_total_cost_and_preserves_identity",
+          "observable": "pay/decline, total increased cost reduction, no alternative-casting or harnessed identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "scoped-cost-receipt",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::scoped_optional_tap_metric_ignores_a_second_unrelated_tap_cost_even_when_declined",
+          "observable": "unrelated mandatory tap never contributes power",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "reserved-tap-source",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::the_tapped_discount_creature_cannot_also_pay_the_remaining_mana_cost",
+          "observable": "discount resource and tap mana ability cannot use the same tap",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Power price",
+          "sourceKeyword": "Harness",
+          "sourceReminders": [
+            "You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power."
+          ],
+          "reminder": "As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way."
+        }
+      ],
+      "support_status": "existing_operation_candidate"
+    },
+    {
+      "id": "msem-691",
+      "keyword": "Harness",
+      "original_reminder": "You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.",
+      "source_cards": [
+        "Darutu, God of Bounty"
+      ],
+      "rule_reference": "702.245.",
+      "rule_text": [
+        {
+          "name": "702.245a",
+          "rule": "“Harness” means “As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is that creature's power.”",
+          "custom": true
+        },
+        {
+          "name": "702.245b",
+          "rule": "The creature tapped this way “harnesses” that spell.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Darutu, God of Bounty_OTH",
+          "name": "Darutu, God of Bounty",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. *(You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)*",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have custom keyword \"power price\", and \"As an additional cost named 'power price' to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.\". ",
+          "mana_cost": "{1}{G}{W}",
+          "type_line": "Legendary Enchantment Creature — Ox God",
+          "power": "2",
+          "toughness": "4",
+          "source_card_key": "Darutu, God of Bounty_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Darutu, God of Bounty",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. *(You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Darutu, God of Bounty",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have custom keyword \"power price\", and \"As an additional cost named 'power price' to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.\". ",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells.",
+              "original_printed_rules_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. (You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells.",
+          "original_printed_rules_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. (You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_token_definitions": []
+        }
+      ],
+      "implementation_status": "source_materialization_native_pending",
+      "boundary_reason": "Existing optional tap-power cost and shared generic optional-spell-cost grant; completed typed tap receipt follows exact source through entry. Pending parent verification.",
+      "executable_keyword": "Power price",
+      "source_display_keyword": "Harness",
+      "alias_policy": "Explicit MSEM import alias only. Preserve original source display and rewrite linked cost references in the same source scope; never globally override official/permanent Harness identity.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Additional optional tap cost and power of its exact payment receipt reduce the total generic cast cost; no official identity or timing permission. Full source dependent harnessed/by-Ox references and granted ability scope remain pending."
+      },
+      "behavioral_assertions": [
+        {
+          "id": "optional-tap-power",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::optional_tap_power_reduction_pays_total_cost_and_preserves_identity",
+          "observable": "pay/decline, total increased cost reduction, no alternative-casting or harnessed identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "scoped-cost-receipt",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::scoped_optional_tap_metric_ignores_a_second_unrelated_tap_cost_even_when_declined",
+          "observable": "unrelated mandatory tap never contributes power",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "reserved-tap-source",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::the_tapped_discount_creature_cannot_also_pay_the_remaining_mana_cost",
+          "observable": "discount resource and tap mana ability cannot use the same tap",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Power price",
+          "sourceKeyword": "Harness",
+          "sourceReminders": [
+            "You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power."
+          ],
+          "reminder": "As an additional cost to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way."
+        }
+      ],
+      "support_status": "existing_operation_candidate"
+    },
+    {
+      "id": "msem-692",
+      "keyword": "Harness",
+      "original_reminder": "You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.",
+      "source_cards": [
+        "Darutu's Plow"
+      ],
+      "rule_reference": "702.245.",
+      "rule_text": [
+        {
+          "name": "702.245a",
+          "rule": "“Harness” means “As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is that creature's power.”",
+          "custom": true
+        },
+        {
+          "name": "702.245b",
+          "rule": "The creature tapped this way “harnesses” that spell.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Darutu's Plow_OTH",
+          "name": "Darutu's Plow",
+          "original_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)*\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "executable_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nWhen Darutu's Plow enters, if an Ox was tapped to pay its power price additional cost, choose an Ox from the creatures tapped to pay its power price additional cost. untap the selected power price payment object and attach Darutu's Plow to the selected power price payment object.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "mana_cost": "{2}{W}",
+          "type_line": "Enchantment Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Darutu's Plow_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Darutu's Plow",
+              "original_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)*\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Darutu's Plow",
+              "executable_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nWhen Darutu's Plow enters, if an Ox was tapped to pay its power price additional cost, choose an Ox from the creatures tapped to pay its power price additional cost. untap the selected power price payment object and attach Darutu's Plow to the selected power price payment object.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+              "custom_keyword_identities": [
+                "power price"
+              ],
+              "custom_keyword_payments": [
+                "power price"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Harness\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+              "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "power price"
+          ],
+          "custom_keyword_payments": [
+            "power price"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Harness\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_token_definitions": []
+        }
+      ],
+      "implementation_status": "source_materialization_native_pending",
+      "boundary_reason": "Existing optional tap-power cost and shared generic optional-spell-cost grant; completed typed tap receipt follows exact source through entry. Pending parent verification.",
+      "executable_keyword": "Power price",
+      "source_display_keyword": "Harness",
+      "alias_policy": "Explicit MSEM import alias only. Preserve original source display and rewrite linked cost references in the same source scope; never globally override official/permanent Harness identity.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Additional optional tap cost and power of its exact payment receipt reduce the total generic cast cost; no official identity or timing permission. Full source dependent harnessed/by-Ox references and granted ability scope remain pending."
+      },
+      "behavioral_assertions": [
+        {
+          "id": "optional-tap-power",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::optional_tap_power_reduction_pays_total_cost_and_preserves_identity",
+          "observable": "pay/decline, total increased cost reduction, no alternative-casting or harnessed identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "scoped-cost-receipt",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::scoped_optional_tap_metric_ignores_a_second_unrelated_tap_cost_even_when_declined",
+          "observable": "unrelated mandatory tap never contributes power",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "reserved-tap-source",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::the_tapped_discount_creature_cannot_also_pay_the_remaining_mana_cost",
+          "observable": "discount resource and tap mana ability cannot use the same tap",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Power price",
+          "sourceKeyword": "Harness",
+          "sourceReminders": [
+            "You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power."
+          ],
+          "reminder": "As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way."
+        }
+      ],
+      "support_status": "existing_operation_candidate"
+    }
+  ]
+}

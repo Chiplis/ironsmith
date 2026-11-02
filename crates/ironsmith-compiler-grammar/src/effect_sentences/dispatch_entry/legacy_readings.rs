@@ -52,6 +52,20 @@ pub(super) const REGISTRY: RuleId = RuleId::new("legacy-document-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("for-each-player-counter-program"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.first().is_some_and(|token| token.is_word("for")),
+        read: |input| input.outcome(read_for_each_player_counter_program(input)),
+    },
+
+    Reading {
+        id: RuleId::new("register-persistent-player-rule"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.first().is_some_and(|token| token.is_word("register")),
+        read: |input| input.outcome(read_register_persistent_player_rule(input)),
+    },
+
+    Reading {
         id: RuleId::new("choose-then-each-other-becomes-copy"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -649,7 +663,7 @@ fn leading_duration_with_recurring_delayed_trigger(
         one_shot: false,
         duration,
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None,
     }));
     Ok(Some(effects))
 }
@@ -868,7 +882,7 @@ fn rest_of_game_delayed_trigger(
         one_shot: false,
         duration: crate::effect::Until::Forever,
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None,
     })))
 }
 
@@ -1222,4 +1236,68 @@ fn read_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_r
                 return Ok(Some(effects));
             }
     Ok(None)
+}
+
+/// Registration identity and wrappers are read here; ordinary predicate and
+/// triggered-ability readers own the two quoted programs independently.
+pub(super) fn read_register_persistent_player_rule(input: &LegacyDocument<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::lexer::TokenKind;
+    let tokens = input.tokens;
+    let quotes: Vec<_> = tokens.iter().enumerate().filter_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index)).collect();
+    if quotes.len() != 6 { return Ok(None); }
+    let [a,b,c,d,e,f] = quotes.as_slice() else { return Ok(None); };
+    let words = |start:usize,end:usize| crate::lexer::parser_token_word_refs(&tokens[start..end]);
+    if words(0,*a) != ["register","a","persistent","rule","named"] || !words(*f+1,tokens.len()).is_empty() { return Ok(None); }
+    let bridge = words(*b+1,*c);
+    let (controller,event_only_condition) = match bridge.as_slice() {
+        ["for","you","with","condition"] => (crate::cards::builders::PlayerAst::You,false),
+        ["for","you","with","event","condition"] => (crate::cards::builders::PlayerAst::You,true),
+        ["for","that","player","with","condition"] => (crate::cards::builders::PlayerAst::That,false),
+        ["for","that","player","with","event","condition"] => (crate::cards::builders::PlayerAst::That,true),
+        _ => return Ok(None),
+    };
+    if words(*d+1,*e) != ["and","ability"] { return Ok(None); }
+    let name = crate::lexer::render_token_slice(&tokens[*a+1..*b]);
+    if name.trim().is_empty() { return Ok(None); }
+    let condition = crate::keyword_static::parse_static_condition_clause(&tokens[*c+1..*d])?;
+    let line = super::super::super::clause_support::parse_triggered_line_lexed(&tokens[*e+1..*f])?;
+    let (trigger,effects) = match line {
+        crate::cards::builders::LineAst::Triggered { trigger,effects,max_triggers_per_turn:None } => (trigger,effects),
+        crate::cards::builders::LineAst::Ability(parsed)
+            if matches!(parsed.kind(), crate::model::CompilerAbilityKindCore::Triggered(triggered) if triggered.intervening_if.is_none()) => {
+                let trigger=parsed.trigger_spec.ok_or_else(||CardTextError::ParseError("persistent rule needs its ordinary typed trigger".into()))?;
+                let effects=parsed.effects_ast.ok_or_else(||CardTextError::ParseError("persistent rule needs its ordinary typed body".into()))?;
+                (*trigger,effects)
+            }
+        _ => return Err(CardTextError::ParseError("persistent rule requires one ordinary uncapped triggered ability; put its condition in the condition slot".into())),
+    };
+    crate::word_claims::claim_tokens(&tokens[..*c+1]);
+    crate::word_claims::claim_tokens(&tokens[*d..*e+1]);
+    crate::word_claims::claim_tokens(&tokens[*f..]);
+    Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule {
+        name,controller,trigger,effects,condition:Some(condition),event_only_condition,
+    })]))
+}
+
+/// A named counter iteration snapshots its count once, then runs the complete
+/// ordinary program separately for each counter. Removing counters in a body
+/// never changes the number of iterations already established.
+fn read_for_each_player_counter_program(input: &LegacyDocument<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::lexer::TokenKind;
+    let tokens=input.tokens;
+    let Some(colon)=tokens.iter().position(|token| token.kind==TokenKind::Colon) else {return Ok(None);};
+    let header=crate::lexer::parser_token_word_refs(&tokens[..colon]);
+    let Some(rest)=header.strip_prefix(&["for","each"]) else {return Ok(None);};
+    let Some(counter)=rest.iter().position(|word|matches!(*word,"counter"|"counters")) else{return Ok(None);};
+    let player=match &rest[counter+1..] {
+        ["on","you","do","the","following"]=>crate::target::PlayerFilter::You,
+        _=>return Ok(None),
+    };
+    let Some(kind)=crate::grammar::filters::parse_counter_type_words(&rest[..=counter]) else {return Ok(None);};
+    let effects=super::super::parse_effect_sentences_lexed(&tokens[colon+1..])?;
+    if effects.is_empty(){return Err(CardTextError::ParseError("counter iteration requires an ordinary effect program".into()));}
+    crate::word_claims::claim_tokens(&tokens[..=colon]);
+    Ok(Some(vec![EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::RepeatEffects {
+        count:crate::effect::Value::PlayerCounters(player,kind),effects,
+    })]))
 }

@@ -155,7 +155,7 @@ fn prepare(
         for (index, effect) in next.follow_up.effects.iter().enumerate() {
             crate::effects::capture_triggers_before_added_program(
                 game,
-                &ctx,
+                &mut ctx,
                 Some(effect),
                 before
                     .iter_mut()
@@ -197,7 +197,7 @@ fn prepare(
         }
         crate::effects::capture_triggers_before_added_program(
             game,
-            &ctx,
+            &mut ctx,
             None,
             before
                 .iter_mut()

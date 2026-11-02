@@ -300,6 +300,8 @@ impl<T, E, C, Cond, ICond> GrantObjectAbilityForFilter<T, E, C, Cond, ICond> {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CopyActivatedAbilities {
     pub filter: ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub excluded_ability_designations: Vec<String>,
     pub counter: Option<CounterType>,
     pub only_loyalty: bool,
     pub exclude_source_name: bool,
@@ -317,6 +319,7 @@ pub struct CopyActivatedAbilities {
 impl CopyActivatedAbilities {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
+            excluded_ability_designations: Vec::new(),
             filter,
             counter: None,
             only_loyalty: false,
@@ -399,6 +402,10 @@ impl StaticAbilityVariantSelector {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CopyStaticAbilityVariants {
     pub filter: ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub excluded_ability_designations: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub copy_all: bool,
     pub selectors: Vec<StaticAbilityVariantSelector>,
     pub exclude_source_id: bool,
     pub display: String,
@@ -411,6 +418,8 @@ impl CopyStaticAbilityVariants {
         display: impl Into<String>,
     ) -> Self {
         Self {
+            excluded_ability_designations: Vec::new(),
+            copy_all: false,
             filter,
             selectors,
             exclude_source_id: true,
@@ -428,6 +437,8 @@ impl CopyStaticAbilityVariants {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CopyTriggeredAbilities {
     pub filter: ObjectFilter,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub excluded_ability_designations: Vec<String>,
     pub exclude_source_name: bool,
     pub display: String,
 }
@@ -435,6 +446,7 @@ pub struct CopyTriggeredAbilities {
 impl CopyTriggeredAbilities {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
+            excluded_ability_designations: Vec::new(),
             filter,
             exclude_source_name: false,
             display: "Has all triggered abilities of matching objects".to_string(),
@@ -622,6 +634,10 @@ pub struct CostReductionManaCost<Cond = Condition> {
     /// until it is re-baked. Current payloads always write the field.
     #[cfg_attr(feature = "serde", serde(default = "colored_only_default_for_stale_data"))]
     pub colored_only: bool,
+    /// Select a colored requirement actually present; only if none exists
+    /// reduce generic mana instead. Distinct from an explicit hybrid symbol.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub one_mana_of_any_color: bool,
     /// "costs {U} less to cast for each land you control with a flood
     /// counter on it" (Eluge): the mana reduction applies once per unit of
     /// this count, evaluated as the total cost is determined (CR 601.2f).
@@ -642,6 +658,7 @@ impl<Cond> CostReductionManaCost<Cond> {
             per_target,
             optional_life_additional_cost,
             colored_only,
+            one_mana_of_any_color,
             repetitions,
         } = self;
         Ok(CostReductionManaCost {
@@ -651,6 +668,7 @@ impl<Cond> CostReductionManaCost<Cond> {
             per_target,
             optional_life_additional_cost,
             colored_only,
+            one_mana_of_any_color,
             repetitions,
         })
     }
@@ -665,6 +683,7 @@ impl<Cond: ConditionConjunction> CostReductionManaCost<Cond> {
             per_target: false,
             optional_life_additional_cost: None,
             colored_only: false,
+            one_mana_of_any_color: false,
             repetitions: None,
         }
     }
@@ -861,6 +880,10 @@ pub struct ThisSpellCostReductionManaCost<Cond> {
     /// why a missing field defaults to `true`.
     #[cfg_attr(feature = "serde", serde(default = "colored_only_default_for_stale_data"))]
     pub colored_only: bool,
+    /// Select a colored requirement actually present; only if none exists
+    /// reduce generic mana instead. Distinct from an explicit hybrid symbol.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub one_mana_of_any_color: bool,
 }
 
 impl<Cond> ThisSpellCostReductionManaCost<Cond> {
@@ -870,6 +893,7 @@ impl<Cond> ThisSpellCostReductionManaCost<Cond> {
             repetitions: None,
             condition,
             colored_only: false,
+            one_mana_of_any_color: false,
         }
     }
 
@@ -994,6 +1018,8 @@ pub enum ActivatedAbilityCostCondition {
     /// activation events and their recorded targets. Appended for artifact
     /// compatibility.
     FirstTargetingActivationDuringYourTurn { filter: ObjectFilter },
+    /// The exact name on the original selected activation program.
+    Named(String),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1135,7 +1161,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond = Condition> {
 
 /// A consequence of choosing a copy for an enter-as-copy replacement.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum EnterAsCopyFollowup {
     /// "When you do, exile that card": a reflexive triggered ability
     /// (CR 603.12) that exiles the copied object if it's still where it was.
@@ -1155,6 +1181,16 @@ pub enum EnterAsCopyFollowup {
     RetainEmbalmCharacteristics,
     /// Add the chosen permanent's counter kinds and quantities to the entry event.
     CountersFromCopiedPermanent,
+    /// An exception to the resulting copy's characteristics, selected against
+    /// the entering object (not the permanent being copied). Frozen once
+    /// when this copy replacement applies, before later entry instructions.
+    ConditionalCharacteristics {
+        entering_filter: ObjectFilter,
+        remove_mana_cost: bool,
+        set_base_power_toughness: Option<(i32, i32)>,
+    },
+    /// A frozen copy exception, independent of its printed source name.
+    RemoveManaCost,
 
 }
 
@@ -1243,5 +1279,48 @@ impl LandwalkKind {
                 "Landwalk of each of the land types of the sacrificed land".to_string()
             }
         }
+    }
+}
+
+/// A completely parsed rules-text alternative. Source labels are presentation
+/// only; execution selects typed abilities and programs by the removal mask.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct OptionalTextFragmentVariant<T, E, C, Cond, ICond = Condition> {
+    pub removed: u64,
+    pub abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
+    pub ability_labels: Vec<String>,
+    pub spell_effect: Option<crate::ResolutionProgram<E>>,
+    pub aura_attach_filter: Option<crate::AuraAttachmentFilter>,
+    pub canonical_text: String,
+}
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct OptionalTextFragmentsSpec<T, E, C, Cond, ICond = Condition> {
+    pub labels: Vec<String>,
+    pub variants: Vec<OptionalTextFragmentVariant<T, E, C, Cond, ICond>>,
+    /// Immutable source slots whose acquisition/history owner survives changes.
+    pub invariant_slots: Vec<usize>,
+    pub current_removed: u64,
+    pub casting_payment: Option<usize>,
+}
+impl<T,E,C,Cond,ICond> OptionalTextFragmentsSpec<T,E,C,Cond,ICond> {
+    pub fn complete_mask(&self)->Option<u64>{(self.labels.len()<64).then(||(1u64<<self.labels.len())-1)}
+    pub fn variant(&self,mask:u64)->Option<&OptionalTextFragmentVariant<T,E,C,Cond,ICond>>{self.variants.iter().find(|variant|variant.removed==mask)}
+    pub fn selection_matches_payments(&self,mask:u64,payments:u32)->bool{
+        self.complete_mask().is_some_and(|all|mask & !all == 0 && mask.count_ones()==payments.min(self.labels.len() as u32))
+    }
+    pub fn validate(&self)->Result<(),&'static str>{
+        if self.labels.len()>12{return Err("optional text fragment variant resource limit exceeded")}
+        let count=1usize<<self.labels.len();
+        if self.variants.len()!=count{return Err("optional text fragment plan omits a typed subset")}
+        for (mask,variant) in self.variants.iter().enumerate(){
+            if variant.removed!=mask as u64{return Err("optional text fragment variants are not uniquely ordered")}
+            if variant.ability_labels.len()!=variant.abilities.len(){return Err("optional text fragment ability labels are incomplete")}
+            if variant.abilities.len()!=self.variants[0].abilities.len(){return Err("optional text fragment changes the ability acquisition shape")}
+        }
+        if self.current_removed & !self.complete_mask().unwrap_or(0)!=0{return Err("optional text fragment selection contains an unknown fragment")}
+        if self.invariant_slots.iter().any(|slot|*slot>=self.variants[0].abilities.len()){return Err("optional text fragment invariant slot is missing")}
+        Ok(())
     }
 }

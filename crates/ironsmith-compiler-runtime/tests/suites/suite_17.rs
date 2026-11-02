@@ -17,6 +17,9 @@ mod r#comparative_opponent_restrictions;
 #[path = "../craft_material_slots.rs"]
 mod r#craft_material_slots;
 
+#[path = "../custom_bounded_modal_program.rs"]
+mod r#custom_bounded_modal_program;
+
 #[path = "../damage_history_quantities.rs"]
 mod r#damage_history_quantities;
 

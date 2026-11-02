@@ -3033,3 +3033,32 @@ fn scoped_cast_activation_payment_restrictions_filter_objects_and_refresh_when_d
     assert!(game.player_cant_sacrifice_object_to_cast_or_activate(bob,land_creature), "retain the generating iteration's binding");
     assert!(!game.player_cant_sacrifice_object_to_cast_or_activate(alice,alice_creature));
 }
+
+
+#[test]
+fn lasting_designation_without_generated_effects_survives_mana_cache_optimization() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let marker = CardDefinitionBuilder::new(CardId::new(), "Static threshold")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker(
+                "If you control one or more tapped permanents, you are in your threshold for the rest of the game."
+            )
+        ))
+        .build();
+    let source = game.create_object_from_definition(&marker, alice, Zone::Battlefield);
+    game.refresh_continuous_state().unwrap();
+    assert!(!game.has_player_designation(alice, "threshold"));
+    game.tap(source);
+    game.with_player_mana_mut(alice, |player| {
+        player.mana_pool.add(crate::mana::ManaSymbol::Colorless, 1);
+    });
+    assert!(!game.retain_continuous_state_after_mana_activation(),
+        "a tap-dependent static rule still needs its refresh even with no generated effects");
+    game.refresh_continuous_state().unwrap();
+    assert!(game.has_player_designation(alice, "threshold"));
+    game.untap(source);
+    game.refresh_continuous_state().unwrap();
+    assert!(game.has_player_designation(alice, "threshold"));
+}

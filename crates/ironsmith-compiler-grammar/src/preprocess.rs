@@ -18,6 +18,8 @@ use crate::types::CardType;
 
 #[path = "preprocess/reminder_actions.rs"]
 mod reminder_actions;
+#[path = "preprocess/wrapped_operands.rs"]
+mod wrapped_operands;
 
 #[derive(Debug, Clone)]
 pub struct PreprocessedDocument {
@@ -569,6 +571,23 @@ fn split_escapes_with_enters_this_way_line(line: &str) -> Option<Vec<String>> {
 }
 
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    // An actual-action receipt belongs to its selected optional cost. Ask
+    // the same typed reader used by cost materialization before the ordinary
+    // additional-cost / resolution-sentence splitter discards that scope.
+    let words = crate::lexer::parser_token_word_refs(line_tokens);
+    if words.starts_with(&["as", "an", "additional", "cost", "to", "cast", "this", "spell"]) {
+        if let Some(tail) = crate::grammar::abilities::additional_cost_tail_tokens_lexed(line_tokens)
+            && tail.get(0).is_some_and(|token| token.is_word("you"))
+            && tail.get(1).is_some_and(|token| token.is_word("may"))
+        {
+            let (payment, _) = crate::word_claims::speculative(||
+                crate::keyword_payloads::read_selected_exile_payment(&tail[2..]));
+            if std::env::var_os("IRONSMITH_TRACE_COST_RECEIPTS").is_some() {
+                eprintln!("COST_RECEIPT_PREPROCESS preserved={} parsed={payment:?}", matches!(payment, Ok(Some((_, true)))));
+            }
+            if matches!(payment, Ok(Some((_, true)))) { return vec![line.to_owned()]; }
+        }
+    }
     // Price-owned modifiers retain their antecedent. Ask the clause composer,
     // not a keyword/paragraph whitelist, whether this is one complete permission.
     let (price, _) = crate::word_claims::speculative(||
@@ -1521,13 +1540,58 @@ fn replace_names_with_map(
     let bytes = lower.as_bytes();
     let full_bytes = full_name.text.as_bytes();
     let short_bytes = short_name.text.as_bytes();
+    // In the explicit `the <name> status` vocabulary, the name is opaque
+    // data. Protect its full span before any full/short source alias reader
+    // runs; an alias collision must not change a permanent designation.
+    let mut opaque_status_names = Vec::new();
+    for (start, word) in bytes.windows(3).enumerate() {
+        if word != b"the" || !has_word_boundaries_at(bytes,start,3) { continue; }
+        let mut name_start = start + 3;
+        while bytes.get(name_start).is_some_and(u8::is_ascii_whitespace) { name_start += 1; }
+        if name_start == start + 3 { continue; }
+        // A quoted designation owns punctuation as well as words. Its closing
+        // delimiter, followed by `status`, bounds the opaque name operand.
+        if bytes.get(name_start) == Some(&b'"') {
+            if let Some(relative_end) = bytes[name_start + 1..].iter().position(|byte| *byte == b'"') {
+                let name_end = name_start + 1 + relative_end;
+                let mut after = name_end + 1;
+                while bytes.get(after).is_some_and(u8::is_ascii_whitespace) { after += 1; }
+                if bytes.get(after..).is_some_and(|tail| tail.starts_with(b"status"))
+                    && has_word_boundaries_at(bytes, after, 6)
+                {
+                    opaque_status_names.push(name_start..name_end + 1);
+                }
+            }
+            continue;
+        }
+        for end in name_start..bytes.len() {
+            if matches!(bytes[end], b'.' | b',' | b';' | b':' | b'"' | b'\n') { break; }
+            if bytes[end..].starts_with(b"status") && has_word_boundaries_at(bytes,end,6) {
+                let mut name_end=end;
+                while name_end>name_start && bytes[name_end-1].is_ascii_whitespace(){name_end-=1;}
+                if name_end>name_start {opaque_status_names.push(name_start..name_end);}
+                break;
+            }
+        }
+    }
 
+
+    // Recognize the complete keyword declaration before source-name aliasing.
+    // The matching name at its head is the keyword, while names elsewhere in
+    // a keyword cost still retain their ordinary source-reference processing.
+    let keyword_declaration = crate::word_claims::probe_only(||
+        crate::clause_support::parse_ability_line_lexed(line_tokens).is_some());
     let mut out = String::new();
     let mut map = Vec::new();
     let mut idx = 0;
     let mut source_char = base_char_offset;
 
     while idx < bytes.len() {
+        if opaque_status_names.iter().any(|range|range.contains(&idx)) {
+            let character=lower[idx..].chars().next().expect("character boundary");
+            out.push(character);map.push(source_char);idx+=character.len_utf8();source_char+=1;
+            continue;
+        }
         let full_typed_override = preserve_source_surfaces
             && !full_bytes.is_empty()
             && bytes_start_with(&bytes[idx..], full_bytes)
@@ -1567,6 +1631,7 @@ fn replace_names_with_map(
         if !full_bytes.is_empty()
             && bytes_start_with(&bytes[idx..], full_bytes)
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
+            && !(idx == 0 && keyword_declaration)
             && !(idx == 0
                 && (is_single_word_keyword_verb(full_name)
                     || starts_with_typed_keyword_action_statement(line_tokens)))
@@ -1625,6 +1690,7 @@ fn replace_names_with_map(
                 && !full_bytes.is_empty()
                 && bytes_start_with(&bytes[idx..], full_bytes)
                 && has_word_boundaries_at(bytes, idx, full_bytes.len()))
+            && !(idx == 0 && keyword_declaration)
             && !(idx == 0
                 && (is_single_word_keyword_verb(short_name)
                     || starts_with_typed_keyword_action_statement(line_tokens)))
@@ -2954,6 +3020,12 @@ pub fn preprocess_document_with_provenance(
         provenance: &mut ProvenanceStore,
     ) -> Result<Option<PreprocessedLine>, CardTextError> {
         let source_tokens = authored_rules_tokens(raw_line.trim(), line_index)?;
+        // The source lexer is authoritative about layout-only lines. Some
+        // exported layout characters (such as U+200B) are skipped tokens but
+        // are deliberately retained in raw source/provenance, so raw trim
+        // cannot decide whether there is an authored rules instruction.
+        if source_tokens.is_empty() { return Ok(None); }
+
         let stripped = strip_parenthetical_segments(raw_line);
         // "Round down each time." (Hydroid Krasis) restates the default
         // rounding of the "half X" values in the same line.
@@ -3277,12 +3349,30 @@ pub fn preprocess_document_with_provenance(
                 })
                 .unwrap_or(false);
 
-            if spell_card_prefers_resolution_line_merge(&card)
+            // A hard-wrapped duration is the same sentence even on a
+            // permanent's activated or triggered ability. Keep other authored
+            // ability boundaries distinct.
+            let completes_wrapped_duration = split_line.trim_start().to_ascii_lowercase().starts_with("end of turn")
+                && items.last().is_some_and(|item| matches!(item, PreprocessedItem::Line(previous)
+                    if previous.info.raw_line.trim_end().to_ascii_lowercase().ends_with(" until")));
+            // A physical wrap after an unfinished prepositional operand can
+            // continue with an exact source reference. Require physical
+            // adjacency and a whole operand, so chapters/paragraphs and a new
+            // source-subject ability remain independent.
+            let completes_wrapped_operand = split_index == 0
+                && structural_line.is_some_and(|current| matches!(&current.kind,
+                    crate::front_end::CstLineKind::RulesText)
+                    && items.last().is_some_and(|item| matches!(item,
+                        PreprocessedItem::Line(previous)
+                            if previous.info.display_line_index.saturating_add(1) == line_index
+                                && wrapped_operands::completes_source_operand(
+                                    &previous.info.raw_line, current, text))));
+            if ((spell_card_prefers_resolution_line_merge(&card)
                 && looks_like_resolution_followup
                 && !is_standalone_keyword_action
                 && !split_tokens.as_deref().is_some_and(|tokens| {
                     super::grammar::document_shapes::parse_statement_label_split_tokens(tokens).is_some()
-                })
+                })) || completes_wrapped_duration || completes_wrapped_operand)
                 && let Some(PreprocessedItem::Line(previous)) = items.last_mut()
             {
                 let combined_raw_line =
@@ -3830,4 +3920,21 @@ pub(crate) fn described_face_down_action(text: &str) -> Option<String> {
     if text.split(|c: char| !c.is_alphabetic()).any(|word| word.eq_ignore_ascii_case("manifest") || word.eq_ignore_ascii_case("cloak")) { return None; }
     let expanded = reminder_actions::canonicalize(text);
     (expanded != text).then_some(expanded)
+}
+
+#[cfg(test)]
+mod opaque_status_name_alias_tests {
+    use super::*;
+    #[test]
+    fn full_and_short_source_aliases_do_not_rewrite_status_name_operands() {
+        for label in ["alpha","alpha creature","moon blessed", "\"unlocked alpha named canvas, dusk\"", "\"alpha creature: dawn\""] {
+            let line=format!("Give Alpha creature the {label} status. If Alpha creature has the {label} status, tap Alpha creature.");
+            let tokens=stage_tokens(&line).unwrap();
+            let (normalized,_)=replace_names_with_map(&line,&tokens,&SelfReferenceName::new("alpha creature".into()),&SelfReferenceName::new("alpha".into()),false,"this creature",0);
+            assert!(normalized.contains(&format!("the {label} status")),"{normalized}");
+            assert!(normalized.starts_with("give this the "),"source recipient remains a source reference: {normalized}");
+            assert!(normalized.ends_with("tap this."),"outside operands aliases must still normalize: {normalized}");
+            assert_eq!(normalized.matches(&format!("the {label} status")).count(),2,"{normalized}");
+        }
+    }
 }

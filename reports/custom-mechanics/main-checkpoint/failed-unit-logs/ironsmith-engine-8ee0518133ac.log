@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effects::cards::reveal_action_offer::tests::replacement_child_exiling_same_revealed_card_is_not_the_original_reveal_action' panicked at crates/ironsmith-engine/src/effects/cards/reveal_action_offer.rs:269:13:
+the real child movement observation remains published
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effects::cards::reveal_action_offer::tests::replacement_child_exiling_same_revealed_card_is_not_the_original_reveal_action ... FAILED
+
+failures:
+
+failures:
+    effects::cards::reveal_action_offer::tests::replacement_child_exiling_same_revealed_card_is_not_the_original_reveal_action
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.14s
+

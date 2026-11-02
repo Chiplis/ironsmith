@@ -27,6 +27,10 @@ impl EffectExecutor for MoveCountersEffect {
                 EffectOutcome::count(0),
             ));
         }
+        // CR122.5 tests the destination before removing any donor counter.
+        // Refresh live static prohibitions before the move's eligibility gate.
+        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+
         game.clear_pending_decision_controllers();
         crate::effects::composition::execute_transaction(
             game,

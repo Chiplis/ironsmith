@@ -1,3 +1,5 @@
+#[path = "anthem_grant_lines/universal_keyword_condition.rs"]
+mod universal_keyword_condition;
 use crate::word_primitives::WordWindows as _;
 use crate::ability::{PresentationKeyword, PresentationLabel};
 use crate::host::ConditionalEffectAst;
@@ -986,6 +988,9 @@ enum UnionGrantSubject {
 fn split_union_grant_subjects(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<(UnionGrantSubject, UnionGrantSubject)> {
+    let original_subject = subject_tokens;
+    let distributive = subject_tokens.last().is_some_and(|token| token.is_word("each"));
+    let subject_tokens = if distributive { &subject_tokens[..subject_tokens.len()-1] } else { subject_tokens };
     // A serial union can put the player before a comma and keep two or more
     // object-filter arms in the remainder:
     //
@@ -1014,6 +1019,7 @@ fn split_union_grant_subjects(
                         AnthemSubjectAst::Source => UnionGrantSubject::Source,
                         AnthemSubjectAst::Filter(filter) => UnionGrantSubject::Filter(filter),
                     };
+                    if distributive { crate::word_claims::claim_tokens(&original_subject[original_subject.len()-1..]); }
                     return Some((UnionGrantSubject::PlayerYou, right_subject));
                 }
             }
@@ -1053,6 +1059,7 @@ fn split_union_grant_subjects(
             AnthemSubjectAst::Source => UnionGrantSubject::Source,
             AnthemSubjectAst::Filter(filter) => UnionGrantSubject::Filter(filter),
         };
+        if distributive { crate::word_claims::claim_tokens(&original_subject[original_subject.len()-1..]); }
         return Some((left_subject, right_subject));
     }
     None
@@ -1066,6 +1073,17 @@ fn player_you_hexproof_static() -> StaticAbility {
         ),
         "You have hexproof".to_string(),
     )
+}
+
+fn player_you_granted_keyword_static(action: &KeywordAction) -> Option<StaticAbility> {
+    match action {
+        KeywordAction::Hexproof => Some(player_you_hexproof_static()),
+        KeywordAction::HexproofFrom(filter) => Some(StaticAbility::restriction(
+            crate::effect::Restriction::player_hexproof_from(PlayerFilter::You, filter.clone()),
+            format!("You have {}", action.display_text().to_ascii_lowercase()),
+        )),
+        _ => None,
+    }
 }
 
 /// Compile "you and <object-subject> have <keywords>" / "<source-reference>
@@ -1091,7 +1109,7 @@ fn parse_union_subject_keyword_grants(
     let supports = |subject: &UnionGrantSubject, action: &KeywordAction| match subject {
         // The player half only models keywords with a player-level
         // restriction form ("You have hexproof").
-        UnionGrantSubject::PlayerYou => matches!(action, KeywordAction::Hexproof),
+        UnionGrantSubject::PlayerYou => player_you_granted_keyword_static(action).is_some(),
         UnionGrantSubject::Source | UnionGrantSubject::Filter(_) => {
             action.lowers_to_static_ability()
         }
@@ -1108,7 +1126,7 @@ fn parse_union_subject_keyword_grants(
         for action in &actions {
             match subject {
                 UnionGrantSubject::PlayerYou => compiled.push(conditional_static_ability(
-                    player_you_hexproof_static(),
+                    player_you_granted_keyword_static(action).expect("supported player keyword was checked"),
                     condition.clone(),
                 )),
                 UnionGrantSubject::Source => compiled.push(match &condition {
@@ -1452,9 +1470,71 @@ fn parse_complete_plot_cost_grant_line(
     Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
 }
 
+/// A quoted ordinary preparation ability can derive each card's price
+/// independently. The ability reader and filter reader own separate operands.
+fn parse_described_preparation_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let prose = crate::lexer::render_token_slice(tokens).to_ascii_lowercase();
+    let Some((subject, quoted)) = prose.trim_end_matches('.').split_once(" has \"") else { return Ok(None); };
+    let Some(body) = quoted.strip_suffix('"') else { return Ok(None); };
+    let (body, label) = if let Some((body, annotation)) = body.rsplit_once(" this is the ") {
+        let Some(label) = annotation.strip_suffix(" preparation ability.") else { return Ok(None); };
+        if label.is_empty() || label.chars().any(|character| matches!(character, '"' | '{' | '}' | '.')) { return Ok(None); }
+        (body, Some(label.to_owned()))
+    } else { (body, None) };
+    let Some((price, optional_cast)) = crate::grammar::shared_util::alternative_cost_lines::described_resolution_preparation(body)
+    else { return Ok(None); };
+    let Some(reduction) = price.strip_prefix("its mana cost reduced by ") else { return Ok(None); };
+    let reduction = crate::grammar::values::parse_mana_cost_tokens(&crate::lexer::lex_line(reduction, 0)?)?;
+    if reduction.mana_value() != reduction.generic_mana_total() { return Ok(None); }
+    let mut filter = parse_object_filter(&crate::lexer::lex_line(subject, 0)?, false)?;
+    if filter.zone != Some(Zone::Hand) { return Ok(None); }
+    filter.zone = None;
+    let spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+            ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
+                reduction: reduction.generic_mana_total(), optional_cast, label,
+            }), filter, Zone::Hand,
+    );
+    crate::word_claims::claim_tokens(tokens);
+    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
+}
+
+/// An outer period is not an unrelated resolution sibling when the exact
+/// second sentence defines the granted keyword's own price. Keep this proof
+/// narrow; the existing complete grant readers still own all typed semantics.
+fn has_owned_granted_cost_companion(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
+    let [first, companion] = sentences.as_slice() else { return Ok(false); };
+    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else { return Ok(false); };
+    let keyword = &first[verb.have_token + 1..];
+    use anthem_grant_grammar::GrantedAlternativeCastKeyword as K;
+    let owned = match anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(keyword) {
+        Some(K::Flashback) => anthem_grant_grammar::parse_granted_flashback_cost_equals_mana(companion),
+        Some(K::Blitz) => is_granted_blitz_cost_tail(companion),
+        Some(K::Emerge) => is_granted_emerge_cost_tail(companion),
+        Some(K::Mayhem) => anthem_grant_grammar::parse_granted_mayhem_cost_equals_mana(companion),
+        Some(K::Escape) => parse_granted_escape_cost_tail_clause(companion).is_some_and(|parsed|
+            parse_number(parsed.exile_count_tokens).is_some_and(|(_,used)| used == parsed.exile_count_tokens.len())),
+        Some(K::Miracle) => parse_complete_miracle_cost_grant_line(tokens)?.is_some(),
+        None => {
+            (anthem_grant_grammar::classify_granted_keyword_tokens(keyword)
+                == anthem_grant_grammar::GrantedKeywordTokenKind::Scavenge
+                && is_granted_scavenge_cost_tail(companion))
+                || parse_complete_foretell_cost_grant_line(tokens)?.is_some()
+                || parse_complete_plot_cost_grant_line(tokens)?.is_some()
+        }
+    };
+    Ok(owned)
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if static_grant_has_outer_sentence_boundary(tokens)
+        && !has_owned_granted_cost_companion(tokens)? { return Ok(None); }
     // The complete compound reader separates granted keywords from a stated
     // blocking quality (CR 113.12). A broad grant must not consume both.
     if matches!(parse_subject_has_keywords_and_cant_be_blocked_line(tokens), Ok(Some(_)))
@@ -1566,6 +1646,7 @@ fn parse_granted_keyword_static_line_inner(
     if self::combat_requirements::owns_combat_requirement_line(tokens) {
         return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
+    if let Some(abilities) = parse_described_preparation_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
     if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
     if let Some(abilities) = parse_complete_plot_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
@@ -2716,6 +2797,35 @@ pub fn parse_lose_all_abilities_and_doesnt_untap_line(
     ]))
 }
 
+/// A coordinated attached-object anthem and control rule share their
+/// leading condition. Both existing typed static owners must read a complete
+/// clause, and both clauses must name the same attached object.
+pub fn parse_anthem_and_attached_control_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clauses = split_lexed_slices_on_and(tokens);
+    let [pump, control] = clauses.as_slice() else { return Ok(None); };
+    let pump = trim_edge_punctuation_tokens(pump);
+    let control = trim_edge_punctuation_tokens(control);
+    let Some(control_subject) = attached_grammar::parse_you_control_attached_tokens(control)
+        else { return Ok(None); };
+    let Some(gets) = pump.iter().position(|token| token.is_any_word(&["gets", "get"]))
+        else { return Ok(None); };
+    let (condition, start) = parse_anthem_prefix_condition(pump, gets)?;
+    let subject = trim_commas(&pump[start..gets]);
+    // Reuse the right clause's proven "you control" prefix with the left
+    // subject to compare typed attached domains without guessing by name.
+    let probe = control.iter().take(2).chain(subject.iter()).cloned().collect::<Vec<_>>();
+    if attached_grammar::parse_you_control_attached_tokens(&probe) != Some(control_subject) {
+        return Ok(None);
+    }
+    let Some(anthem) = crate::keyword_static::parse_anthem_line(pump)?
+        else { return Ok(None); };
+    let mut control = StaticAbility::control_attached_permanent(render_token_slice(control));
+    if let Some(condition) = condition { control = control.with_condition(condition); }
+    Ok(Some(vec![anthem, control]))
+}
+
 /// "Enchanted creature gets +1/+1 and doesn't untap during its controller's
 /// untap step." (Dance of the Dead): a power/toughness anthem and an untap
 /// restriction on the same subject.
@@ -3132,6 +3242,7 @@ fn granted_scavenge_abilities_from_subject(
                 is_loyalty_ability: false,
             },
         ),
+        designations: Default::default(),
         functional_zones: vec![Zone::Graveyard],
     };
     let grant = StaticAbilityAst::GrantObjectAbility {
@@ -3810,6 +3921,32 @@ fn parse_defending_player_counter_condition(words: &[&str]) -> Option<PredicateA
 pub fn parse_static_condition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<PredicateAst, CardTextError> {
+    if let Some(predicate) = universal_keyword_condition::read(tokens)? {
+        return Ok(predicate);
+    }
+    // A present-tense linked-zone statement is an existential condition on
+    // the complete authored population, including custom identity filters.
+    // It is not a past-event receipt or a property of the granting source.
+    let bounded = crate::util::trim_edge_punctuation_tokens(tokens);
+    if let Some(copula) = bounded.windows(3).position(|part|
+        part[0].is_any_word(&["is", "are"]) && part[1].is_word("exiled")
+            && part[2].is_any_word(&["by", "with"]))
+        && copula > 0
+    {
+        let reference = &bounded[copula + 3..];
+        let source_reference = reference.first().is_some_and(|token| token.is_word("this"))
+            && (reference.len() == 1 || (reference.len() == 2
+                && reference[1].is_any_word(&["permanent", "creature", "artifact", "enchantment", "land"])));
+        if source_reference {
+            let mut existential = crate::lexer::synthetic_word_tokens(["there", "is"]);
+            existential.extend_from_slice(&bounded[..copula]);
+            existential.extend(crate::lexer::synthetic_word_tokens(["exiled", "with", "this", "permanent"]));
+            if let Ok(predicate) = parse_static_condition_clause(&existential) {
+                crate::word_claims::claim_tokens(&bounded[copula..]);
+                return Ok(predicate);
+            }
+        }
+    }
     // A gendered pronoun for a named legendary source ("if her power is 1 or
     // less", Stature) reads exactly like the neuter possessive "its".
     if tokens
@@ -3828,6 +3965,10 @@ pub fn parse_static_condition_clause(
     }
     let clause_word_storage = AnthemNormalizedWords::new(&tokens);
     let clause_words = clause_word_storage.word_refs();
+    if matches!(clause_words.as_slice(),
+        ["it's" | "its" | "it is", "the", "first", "main", "phase", "of", "the", "turn"]
+        | ["it", "is", "the", "first", "main", "phase", "of", "the", "turn"])
+    { return Ok(PredicateAst::FirstMainPhaseOfTurn); }
     if clause_words.is_empty() {
         return Err(CardTextError::ParseError(
             "missing condition clause after 'as long as'".to_string(),
@@ -6916,5 +7057,117 @@ mod filtered_land_reset_tests {
         assert!(debug.contains("RemoveAllAbilities"), "{debug}");
         assert!(debug.contains("Opponent"), "{debug}");
         assert!(debug.contains("AddMana"), "{debug}");
+    }
+}
+
+#[cfg(test)]
+mod distributive_player_keyword_tests {
+    use super::*;
+    #[test]
+    fn chosen_quality_grants_keep_both_player_and_source_and_each_is_only_distributive() {
+        for subject in ["You and this creature", "You and this creature each"] {
+            let tokens = crate::lexer::lex_line(&format!("{subject} have hexproof from the chosen color."), 0).unwrap();
+            let actual = parse_granted_keyword_static_line(&tokens).unwrap().unwrap();
+            assert_eq!(actual.len(), 2, "{actual:#?}");
+            assert!(matches!(&actual[0], StaticAbilityAst::Static(ability)
+                if matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction: ironsmith_core::Restriction::PlayerHexproofFrom(PlayerFilter::You, filter), .. } if filter.chosen_color)), "{actual:#?}");
+            assert!(matches!(&actual[1], StaticAbilityAst::KeywordAction(KeywordAction::HexproofFrom(filter)) if filter.chosen_color), "{actual:#?}");
+        }
+        let unsupported = crate::lexer::lex_line("You and this creature each have flying.", 0).unwrap();
+        assert!(!matches!(parse_granted_keyword_static_line(&unsupported), Ok(Some(_))));
+    }
+}
+
+#[cfg(test)]
+mod complete_granted_cost_boundary_tests {
+    use super::*;
+    #[test]
+    fn derived_flashback_companion_preserves_the_whole_permission_on_both_reader_routes() {
+        for text in [
+            "Each instant and sorcery card in your graveyard has flashback. The flashback cost is equal to that card's mana cost.",
+            "During your turn, each non-Lesson instant and sorcery card in your graveyard has flashback. The flashback cost is equal to that card's mana cost.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(static_grant_has_outer_sentence_boundary(&tokens));
+            let keyword=parse_granted_keyword_static_line(&tokens).unwrap().expect("complete cost companion has one static owner");
+            let subject=parse_filter_has_granted_ability_line(&tokens).unwrap().expect("sibling route retains the same typed grant");
+            assert_eq!(keyword,subject);
+            let retained=format!("{keyword:?}");assert!(retained.contains("FlashbackFromCardManaCost"));assert!(retained.contains("Graveyard"));
+            if text.starts_with("During") {assert!(retained.contains("DuringYourTurn"));assert!(retained.contains("Lesson"));}
+        }
+    }
+    #[test]
+    fn recognized_complete_cost_definitions_remain_reachable_before_the_outer_guard() {
+        for text in [
+            "Each nonland card in your hand without foretell has foretell. Its foretell cost is equal to its mana cost reduced by {2}.",
+            "The top card of your library has plot. The plot cost is equal to its mana cost.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(has_owned_granted_cost_companion(&tokens).unwrap());
+            assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_some());
+            assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_some());
+        }
+    }
+    #[test]
+    fn an_unrelated_or_extra_sentence_never_becomes_a_cost_companion() {
+        for text in [
+            "Each instant and sorcery card in your graveyard has flashback. Draw a card.",
+            "Each instant and sorcery card in your graveyard has flashback. The flashback cost is equal to that card's mana cost. Draw a card.",
+            "Each instant and sorcery card in your graveyard has flashback. The flashback cost is equal to {1}.",
+            "Target creature gains custom keyword \"growwise\", and \"Whenever this creature attacks, draw a card.\" until end of turn. You may have it fight another target creature.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(!has_owned_granted_cost_companion(&tokens).unwrap());
+            assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_none());
+            assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+mod coordinated_attached_control_tests {
+    use super::*;
+    #[test]
+    fn coordinated_control_uses_same_attached_subject_and_complete_sibling() {
+        for text in [
+            "During your turn, enchanted creature gets +2/+1 and you control enchanted creature.",
+            "As long as it's your turn, enchanted land gets +1/+1 and you control enchanted land.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let abilities=parse_anthem_and_attached_control_line(&tokens).unwrap().unwrap();
+            assert_eq!(abilities.len(),2,"{abilities:#?}");
+            assert!(format!("{:?}",abilities[0]).contains("YourTurn"));
+            assert!(format!("{:?}",abilities[1]).contains("YourTurn"));
+        }
+        for text in [
+            "During your turn, enchanted creature gets +2/+1 and you control enchanted land.",
+            "During your turn, enchanted creature gets +2/+1 and you control enchanted creature and draw a card.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(parse_anthem_and_attached_control_line(&tokens).unwrap().is_none(),"{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod present_linked_exile_condition_tests {
+    use super::*;
+    #[test]
+    fn complete_custom_identity_population_is_counted_in_its_own_linked_exile() {
+        let read = |text: &str| parse_static_condition_clause(&crate::lexer::lex_line(text,0).unwrap()).unwrap();
+        let expected = read("there is a creature card with custom keyword \"experience\" exiled with this permanent");
+        for text in ["a creature card with custom keyword \"experience\" is exiled by this permanent", "a creature card with custom keyword \"experience\" is exiled by this"] {
+            assert_eq!(read(text), expected, "{text}");
+        }
+        let debug = format!("{expected:?}");
+        let PredicateAst::CountComparison { count: AnthemCountExpression::MatchingFilter(filter), .. } = &expected else { panic!("existential linked population: {debug}") };
+        assert_eq!(filter.ability_markers, ["experience"]);
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert!(filter.card_types.contains(&CardType::Creature));
+        assert!(filter.tagged_constraints.iter().any(|constraint|
+            constraint.tag == crate::tag::CompilerReferenceTag::SourceExiled.key()), "{debug}");
+        for invalid in ["a creature card with custom keyword \"experience\" is exiled by another permanent", "a creature card with custom keyword \"experience\" is exiled by this permanent tomorrow"] {
+            assert!(parse_static_condition_clause(&crate::lexer::lex_line(invalid,0).unwrap()).is_err(), "{invalid}");
+        }
     }
 }

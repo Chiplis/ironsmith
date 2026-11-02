@@ -23,6 +23,7 @@ mod put_tagged_remainder_on_library_bottom;
 mod rearrange_looked_cards_in_library;
 mod reorder_top_planar_deck;
 mod reveal;
+mod reveal_action_offer;
 mod reveal_from_hand;
 mod reveal_tagged;
 mod reveal_top;
@@ -69,7 +70,7 @@ pub use surveil::SurveilEffect;
 pub(crate) use draw_cards::{
     AutomaticDrawRevealCandidate, HiddenDrawRevealMode, automatic_draw_reveal_boolean_context,
     automatic_draw_reveal_candidate_for_pending, automatic_reveal_events_for_draw,
-    collect_automatic_draw_reveal_candidates, draw_observation, emit_automatic_draw_reveal_event,
+    collect_automatic_draw_reveal_candidates, draw_observation, emit_automatic_draw_reveal_event, emit_automatic_draw_reveal_event_without_offers,
     execute_scoped_draw_replacement_effects, hidden_automatic_draw_reveal_description,
     pending_hidden_automatic_draw_reveal,
 };
@@ -108,3 +109,31 @@ mod search_result_program;
 pub(crate) use library_arrangement::{capture_retained_library_set, normalize_order_response};
 
 pub(crate) use library_arrangement::choose_library_bottom_partition;
+
+pub(crate) use reveal_action_offer::{RevealedCardActionOffer, reveal_action_offers_for_event,
+    reveal_action_offer_boolean_context, reveal_action_offer_is_available, complete_reveal_action_offer,
+    finish_public_reveal_offer_boundary, process_public_reveal_action_offers};
+mod replacement_definitions;
+pub(crate) use replacement_definitions::{capture_replacement_definitions,CapturedReplacementDefinitions};
+mod create_cards;
+pub use create_cards::CreateCardsEffect;
+
+mod create_cards_entry;
+pub(crate) use create_cards_entry::execute_real_card_battlefield_creation;
+
+mod definition_scope;
+pub use definition_scope::{CardDefinitionScopeEffect,bind_card_creation_scope_runtime};
+pub(crate) use definition_scope::CardDefinitionScope;
+
+pub(crate) use create_cards::CardCreationDefinitionGraphExt;
+
+pub(crate) use definition_scope::scoped_creation_template;
+
+pub(crate) use definition_scope::replacement_template_definition;
+
+mod note_object_names;
+pub use note_object_names::NoteObjectNamesEffect;
+
+mod native_creation_graph;
+mod native_definition_equivalence;
+pub(crate) use native_definition_equivalence::trusted_native_scalar_effect;

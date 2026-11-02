@@ -146,6 +146,7 @@ pub fn generate_and_queue_step_triggers(game: &mut GameState, trigger_queue: &mu
         queue_triggers_from_event(game, &mut scratch, event.clone(), true);
         queue_inherent_radiation_trigger(game, &mut scratch, &event);
         let mut present_in_this_event = std::collections::HashSet::new();
+        trigger_queue.class_event_choices.append(&mut scratch.class_event_choices);
         for entry in scratch.take_all() {
             if !crate::triggers::check::triggered_ability_refers_to_trigger_player(&entry.ability)
             {

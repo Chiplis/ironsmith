@@ -120,7 +120,7 @@ fn cascade_threshold_uses_total_opponent_loss_and_only_your_turn() {
                         name: "Fixture free cast".into(),
                         total_cost: ironsmith::cost::TotalCost::mana(ManaCost::new()),
                         condition: None,
-                        prototype_power_toughness: None,
+                        prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),
                     },
                     ironsmith::grant_registry::GrantSource::Effect {
                         source_id: source,

@@ -1398,8 +1398,88 @@ fn compile_effect_inner(
     if let EffectAst::ChoosePlayerOption(choice) = effect {
         return Ok((vec![Effect::new(choice.clone())], Vec::new()));
     }
+    if let EffectAst::LinkObjectsToGroup(link) = effect {
+        let mut link = link.clone();
+        let refs = current_reference_env(ctx);
+        for group in &mut link.groups {
+            group.subjects = crate::reference_helpers::resolve_choose_spec_it_tag(&group.subjects, &refs)?;
+            group.owner = group.owner.as_ref().map(|owner|
+                crate::reference_helpers::resolve_choose_spec_it_tag(owner, &refs)).transpose()?;
+        }
+        let mut choices=Vec::new();
+        for group in &link.groups {
+            if group.subjects.is_target(){choices.push(group.subjects.clone());}
+            if let Some(owner)=group.owner.as_ref().filter(|owner|owner.is_target()){choices.push(owner.clone());}
+        }
+        if choices.len()>1{return Err(CardTextError::ParseError("simultaneous grouping with multiple independent targets is not yet an admitted announcement shape".into()))}
+        return Ok((vec![Effect::new(link.clone())],choices));
+    }
+    if let EffectAst::NoteObjectNames(note)=effect{
+        let mut note=note.clone();let refs=current_reference_env(ctx);
+        note.object=resolve_choose_spec_it_tag(&note.object,&refs)?;
+        note.for_object=resolve_choose_spec_it_tag(&note.for_object,&refs)?;
+        let choices=note.object.is_target().then(||note.object.clone()).into_iter().collect();
+        return Ok((vec![Effect::new(note)],choices));
+    }
     if let EffectAst::TagLastDamageSource(capture) = effect {
         return Ok((vec![Effect::new(capture.clone())], Vec::new()));
+    }
+    if let EffectAst::CreateCards { selection,count,player,zone,library_position,operation_label,result_tag } = effect {
+        use crate::model::ast::CardCreationSelectionAst as Selection;
+        let graph_scope=crate::supplied_card_definitions::creation_scope();
+        let admitted_names=crate::supplied_card_definitions::admitted_names();
+        let definitions=if graph_scope.is_some(){Vec::new()}else{crate::supplied_card_definitions::definitions()};
+        let mut names=std::collections::HashSet::new();
+        if admitted_names.iter().any(|name|!names.insert(name.trim().to_lowercase())) {
+            return Err(CardTextError::ParseError("supplied real-card definition names are ambiguous".into()));
+        }
+        let (selections,mut choices)=match selection {
+            Selection::ChosenName=>{
+                let tag=ctx.last_card_name_choice_tag.clone().ok_or_else(||CardTextError::ParseError("real-card creation has no concrete card-name choice producer".into()))?;
+                (vec![ironsmith_core::CardCreationSelection::ChosenName{tag}],Vec::new())
+            },
+            Selection::Named(name)=>{
+                if !admitted_names.iter().any(|candidate|candidate.trim().eq_ignore_ascii_case(name.trim())) {
+                    return Err(CardTextError::ParseError(format!("no supplied real-card definition named {name}")));
+                }
+                (vec![ironsmith_core::CardCreationSelection::Named(name.clone())],Vec::new())
+            },
+            Selection::AllNamed(names)=>{
+                if names.is_empty()||names.iter().any(|name|!admitted_names.iter().any(|candidate|candidate.trim().eq_ignore_ascii_case(name.trim()))){return Err(CardTextError::ParseError("real-card batch contains an unsupplied name".into()));}
+                (names.iter().cloned().map(ironsmith_core::CardCreationSelection::Named).collect(),Vec::new())
+            },
+            Selection::RandomMatching {filter,independent}=>(vec![ironsmith_core::CardCreationSelection::RandomMatching{filter:resolve_it_tag(filter,&current_reference_env(ctx))?,independent:*independent}],Vec::new()),
+            Selection::Duplicate(target)=>{let (target,choices)=resolve_target_spec_with_choices(target,&current_reference_env(ctx))?;(vec![ironsmith_core::CardCreationSelection::Duplicate(target)],choices)},
+        };
+        let count=resolve_value_it_tag(count,&current_reference_env(ctx))?;
+        let (player,player_choices)=resolve_effect_player_filter(*player,ctx,true,true,true)?;
+        choices.extend(player_choices);
+        let mut creations=selections.into_iter().map(|selection|Effect::new(ironsmith_core::CreateCardsEffect {definition_scope:graph_scope.as_ref().map(|(scope,_)|*scope),definition_refs:graph_scope.as_ref().map(|(_,refs)|refs.clone()).unwrap_or_default(),definitions:definitions.clone(),selection,count:count.clone(),player:player.clone(),zone:*zone,library_position:*library_position,operation_label:operation_label.clone()})).collect::<Vec<_>>();
+        let creation=if creations.len()==1{creations.remove(0)}else{Effect::new(crate::effects::SequenceEffect::coordinated(creations))};
+        let tagged=Effect::new(crate::effects::TaggedEffect {tag:result_tag.key.clone(),effect:Box::new(creation),outcome_only:true,action:Some(ironsmith_core::PriorEffectAction::Affected)});
+        let output=if let Some(label)=operation_label {
+            Effect::new(crate::effects::NamedActionProgramEffect {label:label.clone(),player,effects:vec![tagged],completion:ironsmith_core::effect::NamedActionProgramCompletion::ProgramCompleted,objects:Some(crate::target::ChooseSpec::Tagged(result_tag.key.clone()))})
+        }else{tagged};
+        return Ok((vec![output],choices));
+    }
+    if let EffectAst::LinkExiledCards { cards, host, relationship } = effect {
+        let (cards, mut choices) = match cards {
+            Some(cards) => resolve_target_spec_with_choices(cards, &current_reference_env(ctx))?,
+            None => (ChooseSpec::Iterated,Vec::new()),
+        };
+        let (host, host_choices)=resolve_target_spec_with_choices(host,&current_reference_env(ctx))?;
+        choices.extend(host_choices);
+        return Ok((vec![Effect::new(ironsmith_core::LinkExiledCardsEffect { cards,host,relationship:relationship.clone() })],choices));
+    }
+    if let EffectAst::CreateLinkedFaceToken { required_subtype, attached_to } = effect {
+        let (attached_to, choices) = resolve_target_spec_with_choices(attached_to, &current_reference_env(ctx))?;
+        return Ok((vec![Effect::new(ironsmith_core::CreateLinkedFaceTokenEffect { required_subtype: *required_subtype, attached_to })], choices));
+    }
+    if let EffectAst::MergePermanents(merge)=effect {
+        let mut merge=merge.clone();let refs=current_reference_env(ctx);
+        merge.incoming=resolve_it_tag(&merge.incoming,&refs)?;
+        merge.host=resolve_it_tag(&merge.host,&refs)?;
+        return Ok((vec![Effect::new(merge)],Vec::new()));
     }
     if let EffectAst::UnblockSoleBlockedAttackers(unblock) = effect {
         return Ok((vec![Effect::new(unblock.clone())], Vec::new()));
@@ -1683,13 +1763,14 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
-    if let EffectAst::GrantLoyaltyActivationAllowance { scope, allowance } = effect {
+    if let EffectAst::GrantLoyaltyActivationAllowance { target, scope, allowance } = effect {
+        let (scope, choices) = if let Some(target) = target {
+            let (spec, choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            (ironsmith_core::LoyaltyActivationScope::Objects(spec), choices)
+        } else { (scope.clone(), Vec::new()) };
         return Ok((
-            vec![Effect::new(crate::effects::GrantLoyaltyActivationAllowanceEffect::new(
-                scope.clone(),
-                *allowance,
-            ))],
-            Vec::new(),
+            vec![Effect::new(crate::effects::GrantLoyaltyActivationAllowanceEffect::new(scope, *allowance))],
+            choices,
         ));
     }
     if let EffectAst::CastFaceDownUsingActivationMana { player, filter, turn_face_up_before_action } = effect {
@@ -1926,7 +2007,12 @@ fn compile_effect_inner(
         {
             filter
         } else {
-            chooser.clone()
+            // An explicit modal chooser is bound before any mode changes the
+            // last-object antecedent (for example, by creating an Aura).
+            match resolve_choose_spec_it_tag(&ChooseSpec::Player(chooser.clone()), &current_reference_env(ctx))? {
+                ChooseSpec::Player(player) => player,
+                _ => return Err(CardTextError::ParseError("modal chooser did not resolve to a player".into())),
+            }
         };
         let mut lowered_modes = Vec::with_capacity(modes.len());
         let mut choices = Vec::new();
@@ -1954,8 +2040,14 @@ fn compile_effect_inner(
         // chooser so their modes are announced before targets. Keeping the
         // chooser explicit here prevents inline "A or B" instructions from
         // being mistaken for casting-time modal choices.
-        let choose =
+        let mut choose =
             crate::effects::ChooseModeEffect::choose_one(lowered_modes).with_chooser(chooser);
+        // These are resolution-time instruction choices, not authored modal
+        // blocks. Preserve their supplied prompt labels in the typed model so
+        // raw artifact and native conversion receive the same metadata.
+        if modes.iter().all(|mode| !mode.description.trim().is_empty()) {
+            choose.decision_labels = modes.iter().map(|mode|mode.description.clone()).collect();
+        }
         return Ok((vec![Effect::new(choose)], choices));
     }
     if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes }) = effect {
@@ -2483,7 +2575,7 @@ fn compile_compiler_control_flow(
                             CharacteristicActionAst::BecomeCreatureTypeChoice { duration, .. },
                         )
                         | SubjectVerbActionAst::Characteristics(
-                            CharacteristicActionAst::ChangeText { duration, .. },
+                            CharacteristicActionAst::ChangeText { duration, .. } | CharacteristicActionAst::RemoveOptionalTextFragment { duration, .. },
                         ) | SubjectVerbActionAst::Characteristics(
                             CharacteristicActionAst::BecomeColorChoice { duration, .. },
                         )
@@ -2710,6 +2802,24 @@ fn compile_compiler_control_flow(
         }
         ControlFlowNodeAst::Replacement(replacement) => {
             let replacement_effects = program_effects(replacement.replacement_program)?.to_vec();
+            if let Some(registration)=&replacement.registration {
+                let target=registration.target.as_ref().map(|target|resolve_target_spec_with_choices(target,&current_reference_env(ctx))).transpose()?;
+                if target.as_ref().is_some_and(|(_,choices)|!choices.is_empty()){return Err(CardTextError::InvariantViolation("replacement registration cannot announce a new target".into()));}
+                let target=target.map(|(target,_)|target);
+                // Future event pronouns are event-local, never the unrelated
+                // last object from the registering spell's earlier instruction.
+                let mut event_ctx=crate::model::facts::EffectLoweringContext::new();
+                event_ctx.last_object_tag=Some(crate::tag::CompilerReferenceTag::It.key());
+                event_ctx.iterated_player=true;
+                event_ctx.last_player_filter=Some(PlayerFilter::IteratedPlayer);
+                event_ctx.allow_life_event_value=true;
+                let (effects,choices)=compile_effects(&replacement_effects,&mut event_ctx)?;
+                if !choices.is_empty(){return Err(CardTextError::InvariantViolation("event replacement cannot announce targets".into()));}
+                return Ok((vec![Effect::new(crate::effects::RegisterEventReplacementEffect {
+                    event:registration.event.clone(),replacement_effects:effects,mode:registration.mode,display:registration.display.clone(),
+                    target,resolving_object_only:registration.resolving_object_only,
+                })],Vec::new()));
+            }
             if let (Some(condition), Some(original_program)) =
                 (&replacement.condition, replacement.original_program)
                 && let ControlPredicateAst::State(predicate) = &condition.predicate

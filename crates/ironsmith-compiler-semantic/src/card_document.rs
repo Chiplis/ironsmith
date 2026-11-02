@@ -16,6 +16,16 @@ pub struct ParsedCleaveBranch {
     pub items: Vec<ParsedCardItem>,
 }
 
+/// A finite family of typed documents, one for each subset of optional text.
+#[derive(Debug, Clone)]
+pub struct OptionalTextVariantBranch<I> { pub removed: u64, pub items: Vec<I> }
+#[derive(Debug, Clone)]
+pub struct OptionalTextVariants<I> {
+    pub labels: Vec<String>,
+    pub branches: Vec<OptionalTextVariantBranch<I>>,
+    pub casting_payment: bool,
+}
+
 /// The sole card-level front-end result. It owns compiler semantic nodes,
 /// diagnostics, provenance, and scoped symbols; runtime materialization is a
 /// separate operation in the lowering phase.
@@ -29,5 +39,6 @@ pub struct ParsedCardAst {
     pub items: Vec<ParsedCardItem>,
     pub overload_branch: Option<ParsedOverloadBranch>,
     pub cleave_branch: Option<ParsedCleaveBranch>,
+    pub optional_text_variants: Option<OptionalTextVariants<ParsedCardItem>>,
     pub allow_unsupported: bool,
 }

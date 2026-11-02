@@ -142,6 +142,10 @@ pub(super) fn calculate_with_layers(
     let mut next_ability_counter = 0;
 
     for layer in layers {
+        if layer == Layer::Text {
+            super::optional_text_fragments::apply_cast_choice(&mut chars,object);
+            calc_guard.update(&chars);
+        }
         if layer == Layer::Ability {
             add_intrinsic_abilities(&mut chars);
             calc_guard.update(&chars);
@@ -306,6 +310,7 @@ pub(super) fn calculate_with_layers(
             // supertype, including type- and copy-changing effects.
             let had_world = chars.supertypes.contains(&Supertype::World);
             chars.abilities.begin_effect(effect);
+            canonicalize_subtype_associations(&mut chars.subtypes,ctx.game);
             match &effect.modification {
                 Modification::MergeComponent { component, on_top } => {
                     apply_merge_component(&mut chars, object, *component, *on_top, effect, ctx.game);
@@ -314,6 +319,7 @@ pub(super) fn calculate_with_layers(
                 Modification::CopyOf {
                     copiable_values,
                     preserve_source_abilities,
+                    retain_original_types,
                     name_override,
                     name_override_surface,
                     add_supertypes,
@@ -323,8 +329,11 @@ pub(super) fn calculate_with_layers(
                     // name, mana cost, color indicator, card type, subtype, supertype,
                     // rules text, power, toughness, and loyalty.
                     // It does NOT copy counters, damage, or other non-copiable state.
+                    let full_effects = all_effects.get_or_insert_with(|| effects.iter().map(|effect| (*effect).clone()).collect());
+                    let Some(copiable_values) = copy_values_in_layer_frame(effect, copiable_values, full_effects, ctx.game) else { continue; };
+                    let retained_types = (*retain_original_types).then(|| (chars.card_types.clone(), chars.supertypes.clone(), chars.subtypes.clone()));
                     copy_characteristics_from_copiable_values(
-                        copiable_values,
+                        copiable_values.as_ref(),
                         &mut chars,
                         *preserve_source_abilities,
                         name_override,
@@ -332,6 +341,15 @@ pub(super) fn calculate_with_layers(
                         add_supertypes,
                         Some(effect.into()),
                     );
+                    if let Some((card_types, supertypes, subtypes)) = retained_types {
+                        chars.card_types = card_types; chars.supertypes = supertypes; chars.subtypes = subtypes;
+                        if let Some(values) = chars.copy_values.as_mut() {
+                            let values = Arc::make_mut(values);
+                            values.card_types = chars.card_types.to_vec();
+                            values.supertypes = chars.supertypes.to_vec();
+                            values.subtypes = chars.subtypes.to_vec();
+                        }
+                    }
                 }
 
                 // Layer 2: Control
@@ -345,6 +363,7 @@ pub(super) fn calculate_with_layers(
                     // Legacy wire vocabulary. New instructions use RewriteText.
                 }
                 Modification::RewriteText(change) => text_changes::apply_text_change(&mut chars, *change, object),
+                Modification::RemoveOptionalTextFragments(mask) => super::optional_text_fragments::apply_removed_mask(&mut chars,*mask,object),
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
                     replace_rules_text_abilities(
@@ -376,39 +395,30 @@ pub(super) fn calculate_with_layers(
                     }
                 }
                 Modification::RemoveCardTypes(types) => {
-                    remove_card_types_and_prune_subtypes(
+                    remove_card_types_and_prune_subtypes_in_game(
                         &mut chars.card_types,
                         &mut chars.subtypes,
                         types,
-                    );
+                     ctx.game);
                 }
                 Modification::SetCardTypes(types) => {
-                    replace_card_types_and_prune_subtypes(
+                    replace_card_types_and_prune_subtypes_in_game(
                         &mut chars.card_types,
                         &mut chars.subtypes,
                         types,
-                    );
+                     ctx.game);
                 }
                 Modification::AddSubtypes(types) => {
-                    // CR 205.3d: an object can't gain a subtype that doesn't
-                    // correspond to one of its card types.
-                    for t in types {
-                        if !chars.subtypes.contains(t)
-                            && card_types_support_subtype(&chars.card_types, *t)
-                        {
-                            chars.subtypes.push(*t);
-                        }
+                    for subtype in types {
+                        let subtype=ctx.game.admitted_subtype(*subtype);
+                        if card_types_support_subtype(&chars.card_types,subtype) {merge_characteristic_subtype(&mut chars.subtypes,subtype);}
                     }
                 }
                 Modification::RemoveSubtypes(types) => {
                     chars.subtypes.retain(|t| !types.contains(t));
                 }
                 Modification::AddAllSubtypesOfFamily(family) => {
-                    for subtype in &ctx.game.subtypes_in_family(*family) {
-                        if !chars.subtypes.contains(subtype) {
-                            chars.subtypes.push(*subtype);
-                        }
-                    }
+                    for subtype in ctx.game.subtypes_in_family(*family) {merge_characteristic_subtype(&mut chars.subtypes,subtype);}
                 }
                 Modification::RemoveAllSubtypesOfFamily(family) => {
                     chars.subtypes.retain(|t| !t.belongs_to_family(*family));
@@ -419,7 +429,8 @@ pub(super) fn calculate_with_layers(
                     // and keeps a Saga a Saga; "creatures are Goblins" replaces
                     // creature types and keeps an Aura an Aura.
 
-                    replace_subtypes_for_set(&mut chars.subtypes, types);
+                    let types:Vec<_>=types.iter().map(|ty|ctx.game.admitted_subtype(*ty)).collect();
+                    replace_subtypes_for_set_in_game(&mut chars.subtypes, &types, ctx.game);
                     // CR 205.3d: the new subtypes replace their families, but
                     // only those matching one of the object's types are gained.
                     let card_types = chars.card_types.clone();
@@ -477,17 +488,14 @@ pub(super) fn calculate_with_layers(
                 Modification::AddAbilityGeneric(ability) => {
                     let bound_ability =
                         bind_effect_controller_in_ability(ability, effect.controller);
-                    if let AbilityKind::Static(static_ability) = &bound_ability.kind {
-                        push_granted_static_ability(&mut chars, static_ability.clone());
-                    } else {
-                        chars.abilities.push(bound_ability);
-                    }
+                    push_granted_complete_ability(&mut chars, bound_ability);
                 }
                 Modification::SetAbilities(abilities) => {
                     chars.abilities.replace_with_origin(abilities.clone(), Some(effect.into()));
                     chars.static_abilities = extract_static_abilities(abilities).into();
                 }
                 Modification::CopyActivatedAbilities {
+                    excluded_ability_designations,
                     filter,
                     counter,
                     include_mana,
@@ -548,6 +556,7 @@ pub(super) fn calculate_with_layers(
 
                         for (ability_index, ability) in candidate_chars.abilities.iter().enumerate()
                         {
+                            if excluded_ability_designations.iter().any(|name| ability.has_designation(name)) { continue; }
                             let AbilityKind::Activated(activated) = &ability.kind else {
                                 continue;
                             };
@@ -588,6 +597,8 @@ pub(super) fn calculate_with_layers(
                     }
                 }
                 Modification::CopyStaticAbilityVariants {
+                    excluded_ability_designations,
+                    copy_all,
                     filter,
                     selectors,
                     exclude_source_id,
@@ -601,6 +612,8 @@ pub(super) fn calculate_with_layers(
                         &mut chars,
                         filter,
                         selectors,
+                        *copy_all,
+                        excluded_ability_designations,
                         *exclude_source_id,
                         object,
                         ctx.objects,
@@ -612,6 +625,7 @@ pub(super) fn calculate_with_layers(
                     );
                 }
                 Modification::CopyTriggeredAbilities {
+                    excluded_ability_designations,
                     filter,
                     exclude_source_name,
                     exclude_source_id,
@@ -661,6 +675,7 @@ pub(super) fn calculate_with_layers(
                         }
 
                         for (slot, ability) in candidate_chars.abilities.iter().enumerate() {
+                            if excluded_ability_designations.iter().any(|name| ability.has_designation(name)) { continue; }
                             if matches!(ability.kind, AbilityKind::Triggered(_)) {
                                 chars.abilities.push_with_origin(ability.clone(), AbilityOrigin::Borrowed {
                                     effect: effect.into(),
@@ -734,6 +749,7 @@ pub(super) fn calculate_with_layers(
                 | Modification::SwitchPowerToughness => {}
             }
 
+            canonicalize_subtype_associations(&mut chars.subtypes,ctx.game);
             enforce_ability_gain_prohibitions(&mut chars, &effect.modification);
 
             update_world_supertype_since(
@@ -1135,6 +1151,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::ChangeControllerToEffectController
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
+            | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }
@@ -2054,10 +2071,7 @@ pub(super) fn ability_counter_timestamps(
         .counters
         .iter()
         .filter(|&(&counter_type, &count)| {
-            count > 0
-                && (counter_type == CounterType::Decayed
-                    || is_exalted_counter(counter_type)
-                    || counter_type.granted_ability().is_some())
+            count > 0 && !object.counters.ability_occurrences(counter_type).is_empty()
         })
         .map(|(&counter_type, _)| {
             (

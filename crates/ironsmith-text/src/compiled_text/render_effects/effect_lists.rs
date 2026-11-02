@@ -8488,7 +8488,7 @@ pub(super) fn describe_choose_top_exile_then_play_structural(effects: &[Effect])
         || grant.filter.is_some()
         || grant.cast_pool_is_plural
         || grant.during_turns_cast_another_spell
-        || grant.while_player_controls.is_some()
+        || (grant.while_player_controls.is_some() || grant.control_duration.is_some())
         || grant.permanents_enter_tapped
     {
         return None;
@@ -26652,7 +26652,7 @@ fn describe_linked_exile_top_play_parts(
         .mana_spend_cast_suffix(spell_reference)
         .unwrap_or_default();
 
-    if grant_play.during_turns_attacked_with.is_some() || grant_play.during_turns_cast_another_spell || grant_play.while_player_controls.is_some() || grant_play.permanents_enter_tapped {
+    if grant_play.during_turns_attacked_with.is_some() || grant_play.during_turns_cast_another_spell || (grant_play.while_player_controls.is_some() || grant_play.control_duration.is_some()) || grant_play.permanents_enter_tapped {
         return None;
     }
     let permission = if let Some(counter_type) = grant_play.during_turns_counter_put_on_source {
@@ -32599,6 +32599,7 @@ fn describe_simultaneous_tap_untap_snapshots(effects: &[Effect]) -> Option<Strin
             describe_effect(&Effect::new(crate::effects::TapEffect {
                 target,
                 actor: None,
+                named_payment: None,
             }))
         };
         clauses.push(lowercase_first(rendered.trim().trim_end_matches('.')));

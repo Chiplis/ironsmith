@@ -1,0 +1,499 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Exact late source grant recipe variants",
+  "notes": [
+    "Source originals and linked faces retained. Grant recipe materialization requires next-wave late-grant-recipes patch. Function-token Compose homonym remains pending exact definition; do not substitute Saga Compose."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-763",
+      "keyword": "Agonize",
+      "original_reminder": "You may cast it by putting a -1/-1 counter on a creature you control in addition to paying its other costs. Then exile that card.",
+      "executable_reminder": "You may cast this card from your graveyard if the resulting spell is an instant or sorcery spell by putting a -1/-1 counter on a creature you control as an additional cost to cast it. If this spell was cast using its agonize ability, exile it instead of putting it anywhere else any time it would leave the stack.",
+      "source_cards": [
+        "Reconstructed Adept"
+      ],
+      "rule_reference": "702.262.",
+      "rule_text": [
+        {
+          "name": "702.262a",
+          "rule": "Agonize appears on some instants and sorceries. It represents two static abilities: one that functions while the card is in a player’s graveyard and another that functions while the card is on the stack. “Agonize” means “You may cast this card from your graveyard if the resulting spell is an instant or sorcery spell by putting a -1/-1 counter on a creature you control as an additional cost to cast it” and “If this spell was cast using its agonize ability, exile this card instead of putting it anywhere else any time it would leave the stack.” Casting a spell using its agonize ability follows the rules for paying additional costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Reconstructed Adept_ETF",
+          "name": "Reconstructed Adept",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nFlash\nProwess\nWhen Reconstructed Adept enters, target instant or sorcery card in your graveyard gains agonize until end of turn. *(You may cast it by putting a -1/-1 counter on a creature you control in addition to paying its other costs. Then exile that card.)*",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nFlash\nProwess\nWhen Reconstructed Adept enters, target instant or sorcery card in your graveyard gains agonize until end of turn. (You may cast it by putting a -1/-1 counter on a creature you control in addition to paying its other costs. Then exile that card.)",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Human Wizard",
+          "power": "1",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Reconstructed Adept_ETF",
+          "source_card_name": "Reconstructed Adept",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reconstructed Adept",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nFlash\nProwess\nWhen Reconstructed Adept enters, target instant or sorcery card in your graveyard gains agonize until end of turn. *(You may cast it by putting a -1/-1 counter on a creature you control in addition to paying its other costs. Then exile that card.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Reconstructed Adept",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nFlash\nProwess\nWhen Reconstructed Adept enters, target instant or sorcery card in your graveyard gains agonize until end of turn. (You may cast it by putting a -1/-1 counter on a creature you control in addition to paying its other costs. Then exile that card.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Requires exact graveyard additional-counter payment identity and a stack-departure redirect scoped to that payment; granted instances remain separate."
+    },
+    {
+      "id": "msem-800",
+      "keyword": "Showcase",
+      "original_reminder": "If you cast it for its showcase cost, create a 1/1 red Bard creature token that can't block and exile that card. Whenever the Bard attacks, you may cast a free copy of the exiled card.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. If its showcase cost was paid, exile this card, then create a 1/1 red Bard creature token with \"This creature can't block\" and \"Whenever this creature attacks, you may copy the exiled card and cast the copy without paying its mana cost.\"",
+      "source_cards": [
+        "Ma'Long, the Skystorm//Boxue, Imperial Ally"
+      ],
+      "rule_reference": "702.268.",
+      "rule_text": [
+        {
+          "name": "702.268a",
+          "rule": "Showcase appears on some instants and sorceries. It represents two abilities: a static ability that functions while the spell with showcase is on the stack and a spell ability. “Showcase [cost]” means “You may pay [cost] rather than pay this spell’s mana cost as you cast this spell” and “If this spell’s showcase cost was paid, exile this card, then create a 1/1 red Bard creature token with “This creature can't block.” Whenever that token attacks, you may copy the exiled card and cast it without paying its mana cost.” Casting a spell using its showcase ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ma'Long, the Skystorm//Boxue, Imperial Ally_NJB",
+          "name": "Ma'Long, the Skystorm",
+          "original_text": "Mana cost: {4}{U}{R}\nType: Legendary Creature — Dragon\nPower/Toughness: 4/4\nFlying, haste\nWhenever Ma'Long deals combat damage to a player, draw a card, then add that much mana in any combination of {U} and/or {R}. Until end of turn, you don't lose this mana as steps and phases end.\nInstant and sorcery cards in your hand have showcase. The showcase cost is equal to the card's mana cost plus {2}. *(If you cast it for its showcase cost, create a 1/1 red Bard creature token that can't block and exile that card. Whenever the Bard attacks, you may cast a free copy of the exiled card.)*",
+          "executable_text": "Mana cost: {4}{U}{R}\nType: Legendary Creature — Dragon\nPower/Toughness: 4/4\nFlying, haste\nWhenever Ma'Long deals combat damage to a player, draw a card, then add that much mana in any combination of {U} and/or {R}. Until end of turn, you don't lose this mana as steps and phases end.\nInstant and sorcery cards in your hand have showcase. The showcase cost is equal to the card's mana cost plus {2}. (If you cast it for its showcase cost, create a 1/1 red Bard creature token that can't block and exile that card. Whenever the Bard attacks, you may cast a free copy of the exiled card.)",
+          "mana_cost": "{4}{U}{R}",
+          "type_line": "Legendary Creature — Dragon",
+          "power": "4",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Ma'Long, the Skystorm//Boxue, Imperial Ally_NJB",
+          "source_card_name": "Ma'Long, the Skystorm",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ma'Long, the Skystorm",
+              "original_text": "Mana cost: {4}{U}{R}\nType: Legendary Creature — Dragon\nPower/Toughness: 4/4\nFlying, haste\nWhenever Ma'Long deals combat damage to a player, draw a card, then add that much mana in any combination of {U} and/or {R}. Until end of turn, you don't lose this mana as steps and phases end.\nInstant and sorcery cards in your hand have showcase. The showcase cost is equal to the card's mana cost plus {2}. *(If you cast it for its showcase cost, create a 1/1 red Bard creature token that can't block and exile that card. Whenever the Bard attacks, you may cast a free copy of the exiled card.)*"
+            },
+            {
+              "face": "back",
+              "name": "Boxue, Imperial Ally",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Boxue\nLoyalty: 3\n[+1]: Ma'Long deals 1 damage to each opponent. You may draw a card, then discard a card.\n[-1]: Create a tapped Treasure token.\n[-5]: Copy the next spell you cast this turn. You may choose new targets for the copy. *(A copied permanent spell becomes a token.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ma'Long, the Skystorm",
+              "executable_text": "Mana cost: {4}{U}{R}\nType: Legendary Creature — Dragon\nPower/Toughness: 4/4\nFlying, haste\nWhenever Ma'Long deals combat damage to a player, draw a card, then add that much mana in any combination of {U} and/or {R}. Until end of turn, you don't lose this mana as steps and phases end.\nInstant and sorcery cards in your hand have showcase. The showcase cost is equal to the card's mana cost plus {2}. (If you cast it for its showcase cost, create a 1/1 red Bard creature token that can't block and exile that card. Whenever the Bard attacks, you may cast a free copy of the exiled card.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            },
+            {
+              "name": "Boxue, Imperial Ally",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Boxue\nLoyalty: 3\n[+1]: Ma'Long deals 1 damage to each opponent. You may draw a card, then discard a card.\n[-1]: Create a tapped Treasure token.\n[-5]: Copy the next spell you cast this turn. You may choose new targets for the copy. (A copied permanent spell becomes a token.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Requires exact paid alternative instance, linked exile incarnation, and token attack copying that same card; dynamic grants remain separate."
+    },
+    {
+      "id": "msem-802",
+      "keyword": "Rerun",
+      "original_reminder": "Exile it as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.",
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a delayed triggered ability with \"Whenever a creature you control dies, you may cast the exiled card without paying its mana cost.\"",
+      "source_cards": [
+        "Keeper of the Collection"
+      ],
+      "rule_reference": "702.269.",
+      "rule_text": [
+        {
+          "name": "702.269a",
+          "rule": "Rerun appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Rerun” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, whenever a creature you control dies, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.269b",
+          "rule": "Casting a spell as an effect of its rerun ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.269c",
+          "rule": "Multiple instances of rerun on the same spell are redundant.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Keeper of the Collection_VHS",
+          "name": "Keeper of the Collection",
+          "original_text": "Mana cost: {2}{U}{B}\nType: Legendary Artifact Creature — Illusion\nPower/Toughness: 2/4\nWhenever you cast a spell from exile, copy that spell. You may choose new targets for the copy.\n{B}, Discard a card: When you next cast a spell from your hand this turn, it gains rerun. Activate this ability only once each turn. *(Exile it as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{U}{B}\nType: Legendary Artifact Creature — Illusion\nPower/Toughness: 2/4\nWhenever you cast a spell from exile, copy that spell. You may choose new targets for the copy.\n{B}, Discard a card: When you next cast a spell from your hand this turn, it gains rerun. Activate this ability only once each turn. (Exile it as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)",
+          "mana_cost": "{2}{U}{B}",
+          "type_line": "Legendary Artifact Creature — Illusion",
+          "power": "2",
+          "toughness": "4",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Keeper of the Collection_VHS",
+          "source_card_name": "Keeper of the Collection",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Keeper of the Collection",
+              "original_text": "Mana cost: {2}{U}{B}\nType: Legendary Artifact Creature — Illusion\nPower/Toughness: 2/4\nWhenever you cast a spell from exile, copy that spell. You may choose new targets for the copy.\n{B}, Discard a card: When you next cast a spell from your hand this turn, it gains rerun. Activate this ability only once each turn. *(Exile it as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Keeper of the Collection",
+              "executable_text": "Mana cost: {2}{U}{B}\nType: Legendary Artifact Creature — Illusion\nPower/Toughness: 2/4\nWhenever you cast a spell from exile, copy that spell. You may choose new targets for the copy.\n{B}, Discard a card: When you next cast a spell from your hand this turn, it gains rerun. Activate this ability only once each turn. (Exile it as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Requires hand-cast resolution-only redirect creating a delayed death watcher bound to the exiled incarnation; countered spells must not install it."
+    },
+    {
+      "id": "msem-803",
+      "keyword": "Rerun",
+      "original_reminder": "Exile the spell as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.",
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a delayed triggered ability with \"Whenever a creature you control dies, you may cast the exiled card without paying its mana cost.\"",
+      "source_cards": [
+        "The Collection"
+      ],
+      "rule_reference": "702.269.",
+      "rule_text": [
+        {
+          "name": "702.269a",
+          "rule": "Rerun appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Rerun” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and, whenever a creature you control dies, you may cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.269b",
+          "rule": "Casting a spell as an effect of its rerun ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.269c",
+          "rule": "Multiple instances of rerun on the same spell are redundant.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "The Collection_VHS",
+          "name": "The Collection",
+          "original_text": "Mana cost: {5}\nType: Legendary Artifact\nInstant and sorcery spells you control have rerun. *(Exile the spell as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {5}\nType: Legendary Artifact\nInstant and sorcery spells you control have rerun. (Exile the spell as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)",
+          "mana_cost": "{5}",
+          "type_line": "Legendary Artifact",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "The Collection_VHS",
+          "source_card_name": "The Collection",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Collection",
+              "original_text": "Mana cost: {5}\nType: Legendary Artifact\nInstant and sorcery spells you control have rerun. *(Exile the spell as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "The Collection",
+              "executable_text": "Mana cost: {5}\nType: Legendary Artifact\nInstant and sorcery spells you control have rerun. (Exile the spell as it resolves if you cast it from your hand. Whenever a creature you control dies, you may cast that card from exile without paying its mana cost.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Requires hand-cast resolution-only redirect creating a delayed death watcher bound to the exiled incarnation; countered spells must not install it."
+    },
+    {
+      "id": "msem-841",
+      "keyword": "Compose",
+      "original_reminder": "Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”",
+      "executable_reminder": "If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+      "source_cards": [
+        "All Part of the Show",
+        "Paul, Making Greatness"
+      ],
+      "rule_reference": "702.277.",
+      "rule_text": [
+        {
+          "name": "702.277a",
+          "rule": "Compose appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Compose” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with “{r3}—Copy the exiled card. You may cast the copy without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.277b",
+          "rule": "The card with compose will only be copied if the same object remains in exile by the time its associated Saga tokens have their final chapter ability trigger.",
+          "custom": true
+        },
+        {
+          "name": "702.277c",
+          "rule": "Casting a spell as an effect of its Saga's ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.277d",
+          "rule": "Multiple instances of compose will cause multiple Saga tokens to be created, each of which will be able to copy the original card with compose.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "All Part of the Show_ACT",
+          "name": "All Part of the Show",
+          "original_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "executable_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+          "mana_cost": "{3}{R}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "All Part of the Show_ACT",
+          "source_card_name": "All Part of the Show",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "All Part of the Show",
+              "original_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase. \nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "All Part of the Show",
+              "executable_text": "Mana cost: {3}{R}{W}\nType: Sorcery\nCreatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nIf this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with \"III — Copy the exiled card. You may cast the copy without paying its mana cost.\"",
+              "custom_keyword_identities": [
+                "compose"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nCompose"
+            }
+          ],
+          "custom_keyword_identities": [
+            "compose"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Creatures you control gain vigilance until end of turn. After this main phase, there's an additional combat phase followed by an additional main phase.\nCompose",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Paul, Making Greatness_ACT",
+          "name": "Paul, Making Greatness",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Legendary Creature — Construct Actor",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Paul, Making Greatness_ACT",
+          "source_card_name": "Paul, Making Greatness",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Paul, Making Greatness",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Paul, Making Greatness",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Construct Actor\nPower/Toughness: 2/2\nProwess\nWhenever you cast your first instant or sorcery spell from your hand during each of your turns, if it doesn't have compose, it gains compose. (Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Requires resolution-only hand-cast redirect and linked Saga chapter III copy; repeat instances each make a token. Compose Function remains a separate composition operation."
+    },
+    {
+      "id": "msem-842",
+      "keyword": "Compose",
+      "original_reminder": "It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.",
+      "executable_reminder": null,
+      "source_cards": [
+        "Digital Encores"
+      ],
+      "rule_reference": "702.277.",
+      "rule_text": [
+        {
+          "name": "702.277a",
+          "rule": "Compose appears on some instants and sorceries. It represents a static ability that functions while the spell is on the stack and may create a delayed triggered ability. “Compose” means “If this spell was cast from your hand, instead of putting it into your graveyard as it resolves, exile it and create a colorless Saga enchantment token with “{r3}—Copy the exiled card. You may cast the copy without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.277b",
+          "rule": "The card with compose will only be copied if the same object remains in exile by the time its associated Saga tokens have their final chapter ability trigger.",
+          "custom": true
+        },
+        {
+          "name": "702.277c",
+          "rule": "Casting a spell as an effect of its Saga's ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.277d",
+          "rule": "Multiple instances of compose will cause multiple Saga tokens to be created, each of which will be able to copy the original card with compose.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Digital Encores_MC25",
+          "name": "Digital Encores",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*",
+          "executable_text": null,
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Digital Encores_MC25",
+          "source_card_name": "Digital Encores",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Digital Encores",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Sorcery\nDraw two cards. Then if this spell wasn't cast from your hand, create a Function token with “Compose.” *(It's an enchantment. As you cast an instant or sorcery spell, sacrifice any number of Functions to add their effects to that spell.)*\nCompose *(Then if you cast this from your hand, exile it and create a Saga token with “r3—You may cast a copy of this card from exile without paying its mana cost.”)*"
+            }
+          ]
+        }
+      ],
+      "support_status": "pending_function_composition_reader",
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Requires resolution-only hand-cast redirect and linked Saga chapter III copy; repeat instances each make a token. Compose Function remains a separate composition operation."
+    },
+    {
+      "id": "msem-843",
+      "keyword": "Arise",
+      "original_reminder": "Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.",
+      "executable_reminder": "{Cost}, Exile this card from your graveyard: Create a token that's a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has \"This creature can't block.\" Have those tokens perform the arise action. Activate only as a sorcery.",
+      "source_cards": [
+        "Corpsecaster Mage"
+      ],
+      "rule_reference": "702.278.",
+      "rule_text": [
+        {
+          "name": "702.278a",
+          "rule": "Arise is an activated ability that functions while the card with revive is in a graveyard. “Arise (cost)” means “(cost), Exile this card from your graveyard: Create a token that’s a copy of this card, except it's black, it's a Zombie in addition to its other types, and it has 'This creature can't block.' Activate this ability only any time you could cast a sorcery.”",
+          "custom": true
+        },
+        {
+          "name": "702.278b",
+          "rule": "Arise will create a token that's a copy of the card as it was in the graveyard, rather than it is in exile.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Corpsecaster Mage_MSL",
+          "name": "Corpsecaster Mage",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost. *(Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost. (Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Warlock",
+          "power": "2",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Corpsecaster Mage_MSL",
+          "source_card_name": "Corpsecaster Mage",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Corpsecaster Mage",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost. *(Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Corpsecaster Mage",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Warlock\nPower/Toughness: 2/1\nDeathtouch\nWhen this creature enters, if you cast it, target creature card in your graveyard gains arise until end of turn. Its arise cost is equal to its mana cost. (Exile that card from your graveyard and pay its arise cost as a sorcery: Create a black token copy of it that's also a Zombie and can't block.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "verification_status": "pending_grant_recipe_frontend_and_native_verification",
+      "remaining_semantic_obligation": "Source copy exceptions/cost/timing/LKI covered by custom_arise; named arises watchers and dynamic grants remain separate reader obligations."
+    }
+  ]
+}

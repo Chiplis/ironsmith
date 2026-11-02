@@ -5,6 +5,10 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,CardTe
     let complete = if tokens.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Period) {
         &tokens[..tokens.len() - 1]
     } else { tokens };
+    if complete.len() == 6 && complete.iter().zip(["choose", "a", "number", "for", "this", "permanent"]).all(|(token, word)| token.is_word(word)) {
+        return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, PlayerAst::You,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min: 0, max: None, source_owned: true, draw_count_choice: false }))));
+    }
     if complete.len() == 3 && complete.iter().zip(["choose", "a", "number"]).all(|(token, word)| token.is_word(word)) {
         return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, PlayerAst::You,
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min: 0, max: None, source_owned: false, draw_count_choice: false }))));

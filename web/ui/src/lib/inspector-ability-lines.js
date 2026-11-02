@@ -107,7 +107,10 @@ export function activatedAbilityLineIndices(lines = []) {
     .filter((index) => index != null);
 }
 
-const rulesLines = text => String(text || "").split(/\n+/).map(line => line.trim()).filter(Boolean);
+// These engine markers implement the starting counters; they are not printed
+// abilities. Keep actual enter-with-counter abilities in the rules text.
+export const isIntrinsicStartingCounterLine = line => /^Enters with (loyalty|defense) counters equal to its printed \1 number\.?$/i.test(String(line).trim());
+const rulesLines = text => String(text || "").split(/\n+/).map(line => line.trim()).filter(line => line && !isIntrinsicStartingCounterLine(line));
 const symbolSignature = line => (line.match(/\{[^}]+\}/g) || []).join("").toUpperCase();
 
 // Resolve engine actions only against canonical text. Translations retain
@@ -159,7 +162,7 @@ export function inspectorRulesLines(compiledText, abilities, fallback = '') {
   const source = Array.isArray(compiledText) ? compiledText
     : Array.isArray(abilities) ? abilities : [fallback];
   return source.flatMap(line => stripInspectorAbilityPrefixes(String(line ?? '')).split(/\n+/))
-    .map(line => line.trim()).filter(Boolean);
+    .map(line => line.trim()).filter(line => line && !isIntrinsicStartingCounterLine(line));
 }
 
 const TURN_FACE_UP_KEYWORDS = {

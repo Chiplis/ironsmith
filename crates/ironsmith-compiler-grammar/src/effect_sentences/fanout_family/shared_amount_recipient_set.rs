@@ -11,58 +11,48 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         return Ok(None);
     }
     let source = non_article_token_word_refs(&tokens[..deal_index]);
-    if !matches!(
-        source.as_slice(),
-        ["this"]
-            | ["this", "spell"]
-            | ["this", "creature"]
-            | ["this", "artifact"]
-            | ["this", "enchantment"]
-            | ["this", "permanent"]
-    ) {
-        return Ok(None);
-    }
+    if !crate::util::is_source_reference_words(&source) { return Ok(None); }
     let after = &tokens[deal_index + 1..];
-    if after.len() < 3 || !after[0].is_word("damage") || !after[1].is_word("to") {
-        return Ok(None);
-    }
-    let Some((equal_start, equal_end)) = find_token_word_sequence_span(after, &["equal", "to"])
-    else {
-        return Ok(None);
+    let (target_tokens, amount) = if after.first().is_some_and(|token| token.is_word("damage"))
+        && after.get(1).is_some_and(|token| token.is_word("to"))
+    {
+        let Some((equal_start,equal_end))=find_token_word_sequence_span(after,&["equal","to"]) else{return Ok(None);};
+        let amount_tokens=&after[equal_end..];
+        let Some((amount,used))=crate::grammar::shared_util::value_expr::parse_value_expr_tokens(amount_tokens) else{return Ok(None);};
+        if used!=amount_tokens.len(){return Ok(None);}
+        (&after[2..equal_start],amount)
+    } else {
+        let Some((damage_start,damage_end))=find_token_word_sequence_span(after,&["damage","to"]) else{return Ok(None);};
+        let amount_tokens=&after[..damage_start];
+        let Some((amount,used))=crate::grammar::shared_util::value_expr::parse_value_expr_tokens(amount_tokens) else{return Ok(None);};
+        if used!=amount_tokens.len(){return Ok(None);}
+        (&after[damage_end..],amount)
     };
-    let target_tokens = &after[2..equal_start];
-    if target_tokens.iter().any(|token| token.is_word("target")) {
-        return Ok(None);
-    }
-
-    let Some(and) = target_tokens.iter().position(|token| token.is_word("and")) else {
-        return Ok(None);
-    };
-    let pieces = [&target_tokens[..and], &target_tokens[and + 1..]];
-    let mut recipients = Vec::new();
-    let mut object_groups = Vec::new();
-    let mut player_groups = Vec::new();
+    if target_tokens.iter().any(|token|token.is_word("target")){return Ok(None);}
+    // One inherited quantifier can govern a comma/conjunction list of
+    // independently read recipient operands ("each creature, player, and
+    // planeswalker"). Do not execute the operands as separate instructions.
+    let pieces=target_tokens.split(|token|token.is_word("and") || token.is_comma())
+        .filter(|piece|!piece.is_empty()).collect::<Vec<_>>();
+    if pieces.len()<2{return Ok(None);}
+    let inherited_each=pieces[0].first().is_some_and(|token|token.is_word("each"));
+    let mut recipients=Vec::new();let mut object_groups=Vec::new();let mut player_groups=Vec::new();
     for piece in pieces {
-        let words = crate::lexer::parser_token_word_refs(piece);
-        match words.as_slice() {
-            ["each", "player"] => player_groups.push(PlayerFilter::Any),
-            ["each", "opponent"] => player_groups.push(PlayerFilter::Opponent),
-            ["each", ..] => object_groups.push(parse_object_filter(&piece[1..], false)?),
-            ["that", "creature"] | ["that", "permanent"] | ["that", "player"] | ["you"] => {
-                recipients.push(parse_target_phrase(piece)?)
+        let explicit_each=piece.first().is_some_and(|token|token.is_word("each"));
+        let operand=if explicit_each{&piece[1..]}else{piece};
+        let words=crate::lexer::parser_token_word_refs(operand);
+        match words.as_slice(){
+            ["player"] if explicit_each || inherited_each=>player_groups.push(PlayerFilter::Any),
+            ["opponent"] if explicit_each || inherited_each=>player_groups.push(PlayerFilter::Opponent),
+            ["that","creature"]|["that","permanent"]|["that","player"]|["you"]=>recipients.push(parse_target_phrase(piece)?),
+            _ if explicit_each || inherited_each=>{
+                let filter=match parse_object_filter(operand,false){Ok(filter)=>filter,Err(_)=>return Ok(None)};
+                object_groups.push(filter);
             }
-            _ => return Ok(None),
+            _=>return Ok(None),
         }
     }
-    let amount_tokens = &after[equal_end..];
-    let Some((amount, used)) =
-        crate::grammar::shared_util::value_expr::parse_value_expr_tokens(amount_tokens)
-    else {
-        return Ok(None);
-    };
-    if used != amount_tokens.len() {
-        return Ok(None);
-    }
+    crate::word_claims::claim_tokens(&tokens);
     Ok(Some(vec![EffectAst::subject_verb(
         crate::cards::builders::SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
@@ -126,5 +116,21 @@ mod tests {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
             assert!(parse(&tokens).unwrap().is_none(), "{text}");
         }
+    }
+}
+
+#[cfg(test)]
+mod inherited_damage_recipient_tests {
+    use super::*;
+    #[test]
+    fn fixed_amount_and_inherited_each_form_one_typed_union() {
+        let tokens=crate::lexer::lex_line("This spell deals 1 damage to each creature, player, and planeswalker.",0).unwrap();
+        let effects=parse(&tokens).unwrap().unwrap();
+        let [EffectAst::SubjectVerb(SubjectVerbEffectAst {action:SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {amount,object_groups,player_groups,..}),..})]=effects.as_slice() else{panic!("{effects:#?}")};
+        assert!(matches!(amount.unhinted(),Value::Fixed(1)));assert_eq!(object_groups.len(),2);assert_eq!(player_groups.len(),1);
+    }
+    #[test]
+    fn recipient_union_reader_does_not_reinterpret_target_selection() {
+        let tokens=crate::lexer::lex_line("This spell deals 1 damage to target creature or player.",0).unwrap();assert!(parse(&tokens).unwrap().is_none());
     }
 }

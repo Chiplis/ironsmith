@@ -1,0 +1,870 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Rediscover exact looked selection and remainder",
+  "notes": [
+    "Private look is independent from public reveal of selected hand cards only.",
+    "All12 original reminder variants preserved. Repetition, ordered type programs, and chosen-quality composition have focused native evidence; full source-card verification remains distinct."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-338",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's an enchantment card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Bright-Eyed Adventurer"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bright-Eyed Adventurer_LAW",
+          "name": "Bright-Eyed Adventurer",
+          "original_text": "Mana cost: {2}{W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nLifelink\nWhen Bright-Eyed Adventurer enters, rediscover an enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an enchantment card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nLifelink\nWhen Bright-Eyed Adventurer enters, Look at the top card of your library. You may reveal an enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature \u2014 Human Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Bright-Eyed Adventurer_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bright-Eyed Adventurer",
+              "original_text": "Mana cost: {2}{W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nLifelink\nWhen Bright-Eyed Adventurer enters, rediscover an enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an enchantment card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bright-Eyed Adventurer",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nLifelink\nWhen Bright-Eyed Adventurer enters, Look at the top card of your library. You may reveal an enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Lifelink\nWhen Bright-Eyed Adventurer enters, rediscover an enchantment card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Lifelink\nWhen Bright-Eyed Adventurer enters, rediscover an enchantment card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-339",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's an instant card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a instant card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Cantrip Collector"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Cantrip Collector_LAW",
+          "name": "Cantrip Collector",
+          "original_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Warlock\nPower/Toughness: 2/2\nHexproof\nWhen Cantrip Collector enters, rediscover an instant card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an instant card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Warlock\nPower/Toughness: 2/2\nHexproof\nWhen Cantrip Collector enters, Look at the top card of your library. You may reveal an instant card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature \u2014 Human Warlock",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Cantrip Collector_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cantrip Collector",
+              "original_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Warlock\nPower/Toughness: 2/2\nHexproof\nWhen Cantrip Collector enters, rediscover an instant card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an instant card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cantrip Collector",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature \u2014 Human Warlock\nPower/Toughness: 2/2\nHexproof\nWhen Cantrip Collector enters, Look at the top card of your library. You may reveal an instant card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Hexproof\nWhen Cantrip Collector enters, rediscover an instant card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Hexproof\nWhen Cantrip Collector enters, rediscover an instant card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-340",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a artifact card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Excavator of the Beyond"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Excavator of the Beyond_LAW",
+          "name": "Excavator of the Beyond",
+          "original_text": "Mana cost: {2}{R}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nFirst strike\nWhen Excavator of the Beyond enters, rediscover an artifact card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nFirst strike\nWhen Excavator of the Beyond enters, Look at the top card of your library. You may reveal an artifact card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature \u2014 Human Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Excavator of the Beyond_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Excavator of the Beyond",
+              "original_text": "Mana cost: {2}{R}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nFirst strike\nWhen Excavator of the Beyond enters, rediscover an artifact card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Excavator of the Beyond",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature \u2014 Human Scout\nPower/Toughness: 2/2\nFirst strike\nWhen Excavator of the Beyond enters, Look at the top card of your library. You may reveal an artifact card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "First strike\nWhen Excavator of the Beyond enters, rediscover an artifact card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "First strike\nWhen Excavator of the Beyond enters, rediscover an artifact card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-341",
+      "keyword": "Rediscover",
+      "original_reminder": "Repeat this process X times: Look at the top card of your library. You may reveal it and put it into your hand if it's a creature or enchantment card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Fate Tracer"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Fate Tracer_LAW",
+          "name": "Fate Tracer",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Creature \u2014 Human Shaman\nPower/Toughness: 1/4\nVigilance\nWhenever Fate Tracer attacks, rediscover a creature or enchantment card X times, where X is Fate Tracer's power. *(Repeat this process X times: Look at the top card of your library. You may reveal it and put it into your hand if it's a creature or enchantment card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Creature \u2014 Human Shaman\nPower/Toughness: 1/4\nVigilance\nWhenever Fate Tracer attacks, Repeat the following process X times, where X is Fate Tracer's power. Look at the top card of your library. You may reveal a creature or enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{1}{G}{W}",
+          "type_line": "Creature \u2014 Human Shaman",
+          "power": "1",
+          "toughness": "4",
+          "source_card_key": "Fate Tracer_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fate Tracer",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Creature \u2014 Human Shaman\nPower/Toughness: 1/4\nVigilance\nWhenever Fate Tracer attacks, rediscover a creature or enchantment card X times, where X is Fate Tracer's power. *(Repeat this process X times: Look at the top card of your library. You may reveal it and put it into your hand if it's a creature or enchantment card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Fate Tracer",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Creature \u2014 Human Shaman\nPower/Toughness: 1/4\nVigilance\nWhenever Fate Tracer attacks, Repeat the following process X times, where X is Fate Tracer's power. Look at the top card of your library. You may reveal a creature or enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nWhenever Fate Tracer attacks, rediscover a creature or enchantment card X times, where X is Fate Tracer's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nWhenever Fate Tracer attacks, rediscover a creature or enchantment card X times, where X is Fate Tracer's power."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_full_source_gameplay_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "operative declaration parameterizes whole existing looked-selection/remainder program; repeat count or explicit ordered type list retained"
+    },
+    {
+      "id": "msem-342",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Fluctuating Locale",
+        "Surveyor's Rifle"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Fluctuating Locale_LAW",
+          "name": "Fluctuating Locale",
+          "original_text": "Type: Land\n{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Rediscover a land card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Type: Land\n{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "",
+          "type_line": "Land",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Fluctuating Locale_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fluctuating Locale",
+              "original_text": "Type: Land\n{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Rediscover a land card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a land card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fluctuating Locale",
+              "executable_text": "Type: Land\n{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Rediscover a land card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "{T}: Add {C}.\n{T}, Sacrifice Fluctuating Locale: Rediscover a land card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-343",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's a sorcery card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a sorcery card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Neophyte of the Old Gods"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Neophyte of the Old Gods_LAW",
+          "name": "Neophyte of the Old Gods",
+          "original_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 2/2\nDeathtouch\nWhen Neophyte of the Old Gods enters, rediscover a sorcery card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a sorcery card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 2/2\nDeathtouch\nWhen Neophyte of the Old Gods enters, Look at the top card of your library. You may reveal a sorcery card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature \u2014 Human Cleric",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Neophyte of the Old Gods_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Neophyte of the Old Gods",
+              "original_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 2/2\nDeathtouch\nWhen Neophyte of the Old Gods enters, rediscover a sorcery card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a sorcery card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Neophyte of the Old Gods",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 2/2\nDeathtouch\nWhen Neophyte of the Old Gods enters, Look at the top card of your library. You may reveal a sorcery card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deathtouch\nWhen Neophyte of the Old Gods enters, rediscover a sorcery card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Deathtouch\nWhen Neophyte of the Old Gods enters, rediscover a sorcery card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-344",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a creature card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Open the Cryo-Chambers",
+        "Risti Watchkeeper"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Open the Cryo-Chambers_LAW",
+          "name": "Open the Cryo-Chambers",
+          "original_text": "Mana cost: {4}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield, then rediscover a creature card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {4}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield, then Look at the top card of your library. You may reveal a creature card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{4}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Open the Cryo-Chambers_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Open the Cryo-Chambers",
+              "original_text": "Mana cost: {4}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield, then rediscover a creature card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a creature card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Open the Cryo-Chambers",
+              "executable_text": "Mana cost: {4}{B}\nType: Instant\nReturn target creature card from your graveyard to the battlefield, then Look at the top card of your library. You may reveal a creature card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Return target creature card from your graveyard to the battlefield, then rediscover a creature card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Return target creature card from your graveyard to the battlefield, then rediscover a creature card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-345",
+      "keyword": "Rediscover",
+      "original_reminder": "Each time, look at the top card of your library. You may reveal it and put it into your hand if it's of that type. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Rebuild History"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Rebuild History_LAW",
+          "name": "Rebuild History",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nRediscover an artifact card, then do the same for creature, enchantment, instant, land, planeswalker, and sorcery. *(Each time, look at the top card of your library. You may reveal it and put it into your hand if it's of that type. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nLook at the top card of your library. You may reveal an artifact card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a creature card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal an enchantment card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal an instant card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a planeswalker card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a sorcery card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Rebuild History_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rebuild History",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nRediscover an artifact card, then do the same for creature, enchantment, instant, land, planeswalker, and sorcery. *(Each time, look at the top card of your library. You may reveal it and put it into your hand if it's of that type. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Rebuild History",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Sorcery\nLook at the top card of your library. You may reveal an artifact card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a creature card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal an enchantment card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal an instant card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a planeswalker card from among them and put it into your hand. You may put the rest into your graveyard. Look at the top card of your library. You may reveal a sorcery card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Rediscover an artifact card, then do the same for creature, enchantment, instant, land, planeswalker, and sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Rediscover an artifact card, then do the same for creature, enchantment, instant, land, planeswalker, and sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_full_source_gameplay_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "operative declaration parameterizes whole existing looked-selection/remainder program; repeat count or explicit ordered type list retained"
+    },
+    {
+      "id": "msem-346",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's a permanent card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a permanent card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Refuse Trawler"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Refuse Trawler_LAW",
+          "name": "Refuse Trawler",
+          "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/3\nWhen Refuse Trawler enters, you may pay {G}. If you do, choose one \u2014\n\u2022 Return a permanent card from your graveyard to your hand.\n\u2022 Rediscover a permanent card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a permanent card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/3\nWhen Refuse Trawler enters, you may pay {G}. If you do, choose one \u2014\n\u2022 Return a permanent card from your graveyard to your hand.\n\u2022 Look at the top card of your library. You may reveal a permanent card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature \u2014 Human Scout",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Refuse Trawler_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Refuse Trawler",
+              "original_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/3\nWhen Refuse Trawler enters, you may pay {G}. If you do, choose one \u2014\n\u2022 Return a permanent card from your graveyard to your hand.\n\u2022 Rediscover a permanent card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a permanent card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Refuse Trawler",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/3\nWhen Refuse Trawler enters, you may pay {G}. If you do, choose one \u2014\n\u2022 Return a permanent card from your graveyard to your hand.\n\u2022 Look at the top card of your library. You may reveal a permanent card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Refuse Trawler enters, you may pay {G}. If you do, choose one \u2014\n\u2022 Return a permanent card from your graveyard to your hand.\n\u2022 Rediscover a permanent card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "When Refuse Trawler enters, you may pay {G}. If you do, choose one \u2014\n\u2022 Return a permanent card from your graveyard to your hand.\n\u2022 Rediscover a permanent card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-347",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact or enchantment card. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a artifact or enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Risti Salvager"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Risti Salvager_LAW",
+          "name": "Risti Salvager",
+          "original_text": "Mana cost: {R}{W}\nType: Creature \u2014 Human Soldier\nPower/Toughness: 2/2\nArtifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, rediscover an artifact or enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact or enchantment card. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {R}{W}\nType: Creature \u2014 Human Soldier\nPower/Toughness: 2/2\nArtifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, Look at the top card of your library. You may reveal an artifact or enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{R}{W}",
+          "type_line": "Creature \u2014 Human Soldier",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Risti Salvager_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Risti Salvager",
+              "original_text": "Mana cost: {R}{W}\nType: Creature \u2014 Human Soldier\nPower/Toughness: 2/2\nArtifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, rediscover an artifact or enchantment card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's an artifact or enchantment card. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Risti Salvager",
+              "executable_text": "Mana cost: {R}{W}\nType: Creature \u2014 Human Soldier\nPower/Toughness: 2/2\nArtifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, Look at the top card of your library. You may reveal an artifact or enchantment card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Artifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, rediscover an artifact or enchantment card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Artifact and enchantment spells you cast cost {1} less to cast.\nWhenever Risti Salvager attacks, rediscover an artifact or enchantment card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    },
+    {
+      "id": "msem-348",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's a card of the chosen type. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Scavengermobile"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Scavengermobile_LAW",
+          "name": "Scavengermobile",
+          "original_text": "Mana cost: {1}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\nCrew 1 *(Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)*\nWhenever Scavengermobile deals combat damage to a player, choose land or nonland, then rediscover a card of that kind. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a card of the chosen type. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {1}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\nCrew 1\nWhenever Scavengermobile deals combat damage to a player, Choose land or nonland. If land was chosen, Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard. Otherwise, Look at the top card of your library. You may reveal a nonland card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{1}",
+          "type_line": "Artifact \u2014 Vehicle",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Scavengermobile_LAW",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scavengermobile",
+              "original_text": "Mana cost: {1}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\nCrew 1 *(Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)*\nWhenever Scavengermobile deals combat damage to a player, choose land or nonland, then rediscover a card of that kind. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a card of the chosen type. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scavengermobile",
+              "executable_text": "Mana cost: {1}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\nCrew 1\nWhenever Scavengermobile deals combat damage to a player, Choose land or nonland. If land was chosen, Look at the top card of your library. You may reveal a land card from among them and put it into your hand. You may put the rest into your graveyard. Otherwise, Look at the top card of your library. You may reveal a nonland card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Crew 1\nWhenever Scavengermobile deals combat damage to a player, choose land or nonland, then rediscover a card of that kind."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Crew 1\nWhenever Scavengermobile deals combat damage to a player, choose land or nonland, then rediscover a card of that kind.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "full_source_compiled_with_focused_native_evidence",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "Choose land or nonland once during resolution; each branch contains the complete private-view, optional matching hand selection, and optional remainder movement. Native scoped program verified; full source card audit remains pending.",
+      "verification_evidence": {
+        "structural": "reports/custom-mechanics/msem-rediscover-source-audit-round70.jsonl",
+        "native_log": "/tmp/custom-chosen-quality-round72.log",
+        "native_test": "scavengermobile_materialized_source_chooses_only_on_combat_trigger_resolution",
+        "scope": "Exact materialized source; combat/noncombat; quality/match/mismatch; fresh top at resolution; source departure; direct and artifact restored."
+      }
+    },
+    {
+      "id": "msem-349",
+      "keyword": "Rediscover",
+      "original_reminder": "Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.",
+      "executable_reminder": "Look at the top card of your library. You may reveal a Pirate or Rogue card from among them and put it into your hand. You may put the rest into your graveyard.",
+      "source_cards": [
+        "Recruiter of Irregulars"
+      ],
+      "rule_reference": "701.87.",
+      "rule_text": [
+        {
+          "name": "701.87a",
+          "rule": "To rediscover a [quality] card, look at the top card of your library. You may reveal it and put it into your hand if it's a [quality] card. Otherwise, put it into your graveyard or back on top of your library.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Recruiter of Irregulars_OTH",
+          "name": "Recruiter of Irregulars",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/2\nDeception {U} *({U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.)*",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/2\n{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever a Pirate or Rogue you control deals combat damage to a player, Look at the top card of your library. You may reveal a Pirate or Rogue card from among them and put it into your hand. You may put the rest into your graveyard.",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Creature \u2014 Human Pirate",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Recruiter of Irregulars_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Recruiter of Irregulars",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/2\nDeception {U} *({U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)*\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card. *(Look at the top card of your library. You may reveal it and put it into your hand if it's a Pirate or Rogue. Otherwise, put it back or into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Recruiter of Irregulars",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Creature \u2014 Human Pirate\nPower/Toughness: 3/2\n{U}, Return an unblocked attacker you control to its owner's hand: Put this card onto the battlefield from your hand tapped and attacking the same player, planeswalker, or battle as the returned creature. Activate only if this card is in your hand.\nWhenever a Pirate or Rogue you control deals combat damage to a player, Look at the top card of your library. You may reveal a Pirate or Rogue card from among them and put it into your hand. You may put the rest into your graveyard.",
+              "custom_keyword_identities": [
+                "rediscover",
+                "deception"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Deception {U}\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rediscover",
+            "deception"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Deception {U}\nWhenever a Pirate or Rogue you control deals combat damage to a player, rediscover a Pirate or Rogue card."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Rediscover",
+          "template": "a {Type} card",
+          "reminder": "Look at the top card of your library. You may reveal a {Type} card from among them and put it into your hand. You may put the rest into your graveyard."
+        }
+      ],
+      "equivalence_basis": "MSEM701.87: optional matching hand selection followed by optional exact-complement graveyard move; leaving remainder in library preserves top",
+      "candidate_status": "frontend_candidate_pending_native_verification"
+    }
+  ],
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/mechanic-definitions.json",
+    "card_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "snapshot_fetched": "2026-10-31",
+    "scope": "msem",
+    "status": "Source-preserving candidate cohort; native and full-source equivalence verification incomplete",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces.",
+    "source_inventory": "fixtures/custom_mechanics/msem-source.json"
+  }
+}

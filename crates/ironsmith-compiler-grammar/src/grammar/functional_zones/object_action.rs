@@ -17,6 +17,18 @@ pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<
     {
         return Some(vec![Zone::Command, Zone::Battlefield]);
     }
+    // A source's own departure replacement functions in its stated origin.
+    // The replacement reader independently validates the complete event/body.
+    let words = crate::lexer::parser_token_word_refs(body);
+    if words.first() == Some(&"if")
+        && let Some(would) = words.iter().position(|word| *word == "would")
+        && crate::util::is_source_reference_words(&words[1..would])
+        && words.get(would + 1..would + 3) == Some(&["leave", "the"][..])
+        && let Some(zone_word) = words.get(would + 3)
+        && let Some(zone) = crate::util::parse_zone_word(zone_word)
+    {
+        return Some(vec![zone]);
+    }
     if has_any_phrase(tokens, SOURCE_NOT_ON_BATTLEFIELD_PHRASES) {
         return Some(vec![
             Zone::Hand,
@@ -31,6 +43,14 @@ pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<
         && has_phrase(tokens, FROM_YOUR_LIBRARY_PHRASE)
     {
         return Some(vec![Zone::Library]);
+    }
+    // A static replacement offering to return its own source from a graveyard
+    // functions there (113.6), independently of ordinary battlefield statics.
+    if words.first() == Some(&"if")
+        && words.contains(&"would")
+        && has_any_phrase(tokens, RETURN_SELF_FROM_GRAVEYARD_PHRASES)
+    {
+        return Some(vec![Zone::Graveyard]);
     }
     if has_any_phrase(tokens, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
         return Some(vec![Zone::Graveyard]);

@@ -954,7 +954,7 @@ fn parse_shuffle_zone_list_into_library(
         return Ok(None);
     }
     let target_tokens = &tokens[..into_idx];
-    if !target_tokens.iter().any(|token| token.is_comma()) {
+    if !target_tokens.iter().any(|token| token.is_comma() || token.is_word("and")) {
         return Ok(None);
     }
     let Some(owner) =
@@ -963,7 +963,18 @@ fn parse_shuffle_zone_list_into_library(
         return Ok(None);
     };
     let mut parts = Vec::new();
-    for item in target_tokens.split(|token| token.is_comma()) {
+    let mut arms = Vec::new();
+    let mut start = 0;
+    for (index, token) in target_tokens.iter().enumerate() {
+        let starts_arm = token.is_word("and") && target_tokens.get(index + 1)
+            .is_some_and(|next| next.is_any_word(&["each", "all", "their", "your", "hand", "graveyard"]));
+        if token.is_comma() || starts_arm {
+            if start < index { arms.push(&target_tokens[start..index]); }
+            start = index + 1;
+        }
+    }
+    if start < target_tokens.len() { arms.push(&target_tokens[start..]); }
+    for item in arms {
         let words = crate::lexer::token_word_refs(item);
         let words = match words.as_slice() {
             ["and", rest @ ..] => rest.to_vec(),
@@ -979,7 +990,18 @@ fn parse_shuffle_zone_list_into_library(
             ["all", "permanents", "they" | "you", "own"] => ObjectFilter::default()
                 .in_zone(Zone::Battlefield)
                 .owned_by(owner.clone()),
-            _ => return Ok(None),
+            _ => {
+                // Each arm is an ordinary, complete zone-qualified filter.
+                // Its owner is the actor whose library is the destination.
+                let candidate = match parse_object_filter(item, false) {
+                    Ok(candidate) => candidate,
+                    Err(_) => return Ok(None),
+                };
+                if !candidate.zone.is_some_and(|zone| matches!(zone, Zone::Hand | Zone::Graveyard)) {
+                    return Ok(None);
+                }
+                candidate.owned_by(owner.clone())
+            },
         };
         parts.push(filter);
     }
@@ -1474,6 +1496,7 @@ fn parse_assimilate(tokens: &[OwnedLexToken], subject: Option<SubjectAst>) -> Re
         {
             *entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
                 color_changes: Vec::new(),
+                set_card_types: None,
                 added_card_types: vec![CardType::Artifact, CardType::Creature],
                 removed_subtype_families: vec![crate::types::SubtypeFamily::Creature],
                 added_subtypes: vec![Subtype::Borg],
@@ -1495,4 +1518,23 @@ fn parse_assimilate(tokens: &[OwnedLexToken], subject: Option<SubjectAst>) -> Re
         leading_duration: false,
         result_conjunction: false,
     })
+}
+
+#[cfg(test)]
+mod filtered_shuffle_union_regressions {
+    use super::*;
+    #[test]
+    fn one_shuffle_collects_hand_and_filtered_graveyard_for_same_player() {
+        let tokens=crate::lexer::lex_line("their hand and each noncreature card from their graveyard into their library",0).unwrap();
+        let effect=parse_shuffle_zone_list_into_library(&tokens,PlayerAst::That).unwrap().unwrap();
+        let debug=format!("{effect:?}");
+        assert!(debug.contains("Hand") && debug.contains("Graveyard") && debug.contains("Creature"),"{debug}");
+        for bad in [
+            "their hand and draw two cards into their library",
+            "their hand and each creature on the battlefield into their library",
+        ] {
+            let tokens=crate::lexer::lex_line(bad,0).unwrap();
+            assert!(parse_shuffle_zone_list_into_library(&tokens,PlayerAst::That).unwrap().is_none(),"{bad}");
+        }
+    }
 }

@@ -38,7 +38,11 @@ fn fallback_static_ability_issue(
         | crate::static_abilities::StaticAbilityPayload::Megamorph(_)
         | crate::static_abilities::StaticAbilityPayload::EnlistAttack { .. }
         | crate::static_abilities::StaticAbilityPayload::Splice(_)
-        | crate::static_abilities::StaticAbilityPayload::Escalate(_)) {
+        | crate::static_abilities::StaticAbilityPayload::Escalate(_)
+        // A complete typed announcement program is executable semantics, not
+        // display fallback text. Its nested grant keeps that same typed owner.
+        | crate::static_abilities::StaticAbilityPayload::CastAnnouncementProgram { .. }
+        | crate::static_abilities::StaticAbilityPayload::ActivateAbilitiesAsThoughZone { .. }) {
         return Some(format!(
             "{context} compiled to an unsupported static ability without a semantic id: {}",
             ability.display()
@@ -50,6 +54,9 @@ fn fallback_static_ability_issue(
     use ironsmith_core::Grantable;
 
     match &ability.payload {
+        StaticAbilityPayload::OptionalTextFragments(plan) => plan.variants.iter()
+            .flat_map(|variant|variant.abilities.iter())
+            .find_map(|ability|fallback_ability_issue(ability,"optional text subset ability")),
         StaticAbilityPayload::AttachedAbilityGrant(grant) => {
             fallback_ability_issue(&grant.ability, "attached granted ability")
         }
@@ -348,7 +355,7 @@ impl CompilerFacade {
         }
         let mut custom_subtypes = Vec::new();
         ironsmith_core::tag::TagKeyWalk::for_each_subtype(&compiled.definition, &mut |subtype| {
-            if subtype.is_custom_vocabulary() && !custom_subtypes.contains(subtype) { custom_subtypes.push(*subtype); }
+            ironsmith_core::custom_subtypes::merge_subtype_associations(&mut custom_subtypes, *subtype);
         });
         compiled.definition.card.custom_subtypes = custom_subtypes;
         Ok(CompiledCardText {
@@ -721,5 +728,36 @@ mod tests {
 
         assert_eq!(compiled.definition, "definition");
         assert_eq!(analyzed, 5);
+    }
+}
+
+#[cfg(test)]
+mod announcement_payload_fallback_tests {
+    use super::*;
+    #[test]
+    fn typed_announcement_program_is_not_an_unidentified_text_fallback() {
+        let program=ironsmith_core::ResolutionProgram::from_effects(Vec::new());
+        let ability=crate::static_abilities::StaticAbility::cast_announcement_program(program);
+        assert!(fallback_static_ability_issue(&ability,"typed announcement").is_none());
+        let untyped=crate::static_abilities::StaticAbility {id:None,label:"As you cast this spell".into(),payload:crate::static_abilities::StaticAbilityPayload::None};
+        assert!(fallback_static_ability_issue(&untyped,"untyped text").is_some());
+    }
+}
+
+#[cfg(test)]
+mod activation_zone_payload_admission {
+    #[test]
+    fn actual_typed_activation_zone_permission_does_not_require_a_fake_semantic_id() {
+        let ability=crate::static_abilities::StaticAbility {
+            id:None, label:"opaque activation-zone permission".into(),
+            payload:crate::static_abilities::StaticAbilityPayload::ActivateAbilitiesAsThoughZone {
+                filter:crate::filter::ObjectFilter::default(), designation:"scriptmark".into(),
+                from:crate::zone::Zone::Graveyard, as_though:crate::zone::Zone::Hand,
+                display:"opaque activation-zone permission".into(),
+            },
+        };
+        assert!(super::fallback_static_ability_issue(&ability,"test").is_none());
+        let unidentified=crate::static_abilities::StaticAbility::unsupported_parser_line("unknown ability","test");
+        assert!(super::fallback_static_ability_issue(&unidentified,"test").is_some());
     }
 }

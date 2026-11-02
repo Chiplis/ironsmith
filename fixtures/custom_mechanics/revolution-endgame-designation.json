@@ -1,0 +1,1560 @@
+{
+  "schema_version": 1,
+  "scope": "revolution",
+  "cohort": "boundary-remaining-endgame",
+  "mechanics": [
+    {
+      "id": "rev-endgame-133",
+      "keyword": "Endgame",
+      "scope": "revolution",
+      "rule_reference": "702.205.",
+      "rule_text": {
+        "name": "702.205.",
+        "rule": "Endgame",
+        "subrules": [
+          {
+            "name": "702.205a",
+            "rule": "Endgame on a permanent represents a static ability. It means “Any time you control eight or more tapped permanents and you're not in your endgame, you're in your endgame for the rest of the game.”",
+            "custom": true
+          },
+          {
+            "name": "702.205b",
+            "rule": "Endgame on an instant or sorcery spell represents a spell ability. It means “If you control eight or more tapped permanents and you're not in your endgame, you're in your endgame for the rest of the game.”",
+            "custom": true
+          },
+          {
+            "name": "702.205c",
+            "rule": "Your endgame is a designation that has no rules meaning other than to act as a marker that other rules and effects can identify. Any number of players may be in their endgame at the same time.",
+            "custom": true
+          },
+          {
+            "name": "702.205d",
+            "rule": "After a player enters their endgame, continuous effects are reapplied before the game checks to see if the game state or preceding events have matched any trigger conditions.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Awoken Arbiter",
+          "Awoken Corruptor",
+          "Awoken Ravager",
+          "Awoken Thunderer",
+          "Awoken Whelp",
+          "Bankbuster Heavy",
+          "Bodyguard Bruisers",
+          "Citystalker Moth",
+          "Confronter of Evil",
+          "Conquest Terminal",
+          "Crooked Politician",
+          "Disposable Mook",
+          "Electric Goon",
+          "Escaped Subject",
+          "Evelyn Snakewood, Dark Druid",
+          "Execution Table",
+          "Gearheart Baron",
+          "Lairbuster Vanguard",
+          "Monument to Vanity",
+          "Night Drudger",
+          "Prototype Jetmobile",
+          "Rogue's Palace Bouncer",
+          "Standard-Issue Firearm",
+          "Taranka's Posse",
+          "Torment Nexus",
+          "Tough Customer",
+          "Unkillable Henchman",
+          "Viridian's Trusty Sidearm"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "If you control eight or more tapped permanents, enter your endgame for the rest of the game.",
+      "executable_reminder": "If you control eight or more tapped permanents, you are in your endgame for the rest of the game.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Awoken Arbiter_VRD",
+          "name": "Awoken Arbiter",
+          "original_text": "Type: Creature — Nightmare Angel \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn.",
+          "executable_text": "Type: Creature — Nightmare Angel \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Awoken Arbiter",
+              "executable_text": "Type: Creature — Nightmare Angel \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nEndgame\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn.",
+              "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nEndgame\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Awoken Arbiter",
+              "original_text": "Type: Creature — Nightmare Angel \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn."
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of combat on your turn, another target creature you control gains indestructible until end of turn. If you're in your endgame, it also gains double strike until end of turn."
+        },
+        {
+          "id": "Awoken Corruptor_VRD",
+          "name": "Awoken Corruptor",
+          "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Nightmare Horror \nPower/Toughness: 3/3\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame.",
+          "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Nightmare Horror \nPower/Toughness: 3/3\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame.",
+          "mana_cost": "{2}{B}{B}",
+          "type_line": "Creature — Nightmare Horror ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Awoken Corruptor_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Awoken Corruptor",
+              "original_text": "Mana cost: {2}{B}{B}\nType: Creature — Nightmare Horror \nPower/Toughness: 3/3\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Awoken Corruptor",
+              "executable_text": "Mana cost: {2}{B}{B}\nType: Creature — Nightmare Horror \nPower/Toughness: 3/3\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nEndgame\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame.",
+              "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nEndgame\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of your upkeep, reveal the top card of your library and put it into your hand. You lose life equal to its mana value unless you're in your endgame."
+        },
+        {
+          "id": "Awoken Ravager_VRD",
+          "name": "Awoken Ravager",
+          "original_text": "Mana cost: {X}{G}{G}\nType: Creature — Nightmare Hydra \nPower/Toughness: 0/0\nAwoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power.",
+          "executable_text": "Mana cost: {X}{G}{G}\nType: Creature — Nightmare Hydra \nPower/Toughness: 0/0\nAwoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power.",
+          "mana_cost": "{X}{G}{G}",
+          "type_line": "Creature — Nightmare Hydra ",
+          "power": "0",
+          "toughness": "0",
+          "source_card_key": "Awoken Ravager_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Awoken Ravager",
+              "original_text": "Mana cost: {X}{G}{G}\nType: Creature — Nightmare Hydra \nPower/Toughness: 0/0\nAwoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Awoken Ravager",
+              "executable_text": "Mana cost: {X}{G}{G}\nType: Creature — Nightmare Hydra \nPower/Toughness: 0/0\nAwoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Awoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nEndgame\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power.",
+              "original_printed_rules_text": "Awoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Awoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nEndgame\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Awoken Ravager enters with a +1/+1 counter on it for each mana spent to cast it.\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Awoken Ravager dies, if you're in your endgame, create a number of 1/1 black Nightmare creature tokens equal to its power."
+        },
+        {
+          "id": "Awoken Thunderer_VRD",
+          "name": "Awoken Thunderer",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Nightmare Sphinx \nPower/Toughness: 4/4\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Nightmare Sphinx \nPower/Toughness: 4/4\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand.",
+          "mana_cost": "{2}{U}{U}",
+          "type_line": "Creature — Nightmare Sphinx ",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Awoken Thunderer_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Awoken Thunderer",
+              "original_text": "Mana cost: {2}{U}{U}\nType: Creature — Nightmare Sphinx \nPower/Toughness: 4/4\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Awoken Thunderer",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Creature — Nightmare Sphinx \nPower/Toughness: 4/4\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nEndgame\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand.",
+              "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nEndgame\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhenever Awoken Thunderer attacks, surveil 2. When you do, if you're in your endgame, you may return target instant or sorcery card from your graveyard to your hand."
+        },
+        {
+          "id": "Awoken Whelp_VRD",
+          "name": "Awoken Whelp",
+          "original_text": "Mana cost: {R}{R}\nType: Creature — Nightmare Dragon \nPower/Toughness: 2/2\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn.",
+          "executable_text": "Mana cost: {R}{R}\nType: Creature — Nightmare Dragon \nPower/Toughness: 2/2\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn.",
+          "mana_cost": "{R}{R}",
+          "type_line": "Creature — Nightmare Dragon ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Awoken Whelp_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Awoken Whelp",
+              "original_text": "Mana cost: {R}{R}\nType: Creature — Nightmare Dragon \nPower/Toughness: 2/2\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Awoken Whelp",
+              "executable_text": "Mana cost: {R}{R}\nType: Creature — Nightmare Dragon \nPower/Toughness: 2/2\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nEndgame\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn.",
+              "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nEndgame\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{R}{R}: Awoken Whelp gets +1/+0 until\nend of turn. If you're in your endgame, it also gains double strike until end of turn."
+        },
+        {
+          "id": "Bankbuster Heavy_VRD",
+          "name": "Bankbuster Heavy",
+          "original_text": "Mana cost: {G}{G}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame.",
+          "executable_text": "Mana cost: {G}{G}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame.",
+          "mana_cost": "{G}{G}",
+          "type_line": "Creature — Human Minion ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Bankbuster Heavy_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bankbuster Heavy",
+              "original_text": "Mana cost: {G}{G}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bankbuster Heavy",
+              "executable_text": "Mana cost: {G}{G}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{G}, Sacrifice Bankbuster Heavy: Destroy target noncreature permanent. Activate only if you're in your endgame."
+        },
+        {
+          "id": "Bodyguard Bruisers_VRD",
+          "name": "Bodyguard Bruisers",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Minion ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Bodyguard Bruisers_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bodyguard Bruisers",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bodyguard Bruisers",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nBodyguard Bruisers gets +2/+2 as long as you're in your endgame."
+        },
+        {
+          "id": "Citystalker Moth_VRD",
+          "name": "Citystalker Moth",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Nightmare Insect \nPower/Toughness: 4/4\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Nightmare Insect \nPower/Toughness: 4/4\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Nightmare Insect ",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Citystalker Moth_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Citystalker Moth",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Nightmare Insect \nPower/Toughness: 4/4\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Citystalker Moth",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Nightmare Insect \nPower/Toughness: 4/4\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nEndgame\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature.",
+              "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nEndgame\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of combat on your turn, if you're in your endgame, you may tap target creature."
+        },
+        {
+          "id": "Confronter of Evil_VRD",
+          "name": "Confronter of Evil",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 2/3\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nConfronter of Evil has vigilance as long as you're in your endgame.",
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 2/3\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nConfronter of Evil has vigilance as long as you're in your endgame.",
+          "mana_cost": "{1}{W}{W}",
+          "type_line": "Creature — Angel Soldier ",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Confronter of Evil_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Confronter of Evil",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 2/3\nFlying\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nConfronter of Evil has vigilance as long as you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Confronter of Evil",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Soldier \nPower/Toughness: 2/3\nFlying\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nConfronter of Evil has vigilance as long as you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nEndgame\nConfronter of Evil has vigilance as long as you're in your endgame.",
+              "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nConfronter of Evil has vigilance as long as you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nEndgame\nConfronter of Evil has vigilance as long as you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nConfronter of Evil has vigilance as long as you're in your endgame."
+        },
+        {
+          "id": "Conquest Terminal_VRD",
+          "name": "Conquest Terminal",
+          "original_text": "Mana cost: {1}{U}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead.",
+          "executable_text": "Mana cost: {1}{U}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Conquest Terminal_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Conquest Terminal",
+              "original_text": "Mana cost: {1}{U}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Conquest Terminal",
+              "executable_text": "Mana cost: {1}{U}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Target player mills a card. If you're in your endgame, that player mills two cards instead."
+        },
+        {
+          "id": "Crooked Politician_VRD",
+          "name": "Crooked Politician",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Advisor \nPower/Toughness: 2/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Advisor \nPower/Toughness: 2/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Advisor ",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Crooked Politician_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Crooked Politician",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Advisor \nPower/Toughness: 2/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Crooked Politician",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Advisor \nPower/Toughness: 2/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhenever a nontoken creature you control dies, create a 1/1 black Minion creature token. If you're in your endgame, you gain 1 life. Otherwise, you lose 1 life."
+        },
+        {
+          "id": "Escaped Subject_VRD",
+          "name": "Escaped Subject",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Nightmare Serpent \nPower/Toughness: 1/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Nightmare Serpent \nPower/Toughness: 1/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Nightmare Serpent ",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Escaped Subject_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Escaped Subject",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Nightmare Serpent \nPower/Toughness: 1/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Escaped Subject",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Nightmare Serpent \nPower/Toughness: 1/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add one mana of any color.\n{W}{U}{B}{R}{G}: Draw two cards. Put two +1/+1 counters on Escaped Subject. Activate only as a sorcery and only if you're in your endgame."
+        },
+        {
+          "id": "Evelyn Snakewood, Dark Druid_VRD",
+          "name": "Evelyn Snakewood, Dark Druid",
+          "original_text": "Mana cost: {B}{G}\nType: Legendary Creature — Elf Druid \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame.",
+          "executable_text": "Mana cost: {B}{G}\nType: Legendary Creature — Elf Druid \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame.",
+          "mana_cost": "{B}{G}",
+          "type_line": "Legendary Creature — Elf Druid ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Evelyn Snakewood, Dark Druid_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Evelyn Snakewood, Dark Druid",
+              "original_text": "Mana cost: {B}{G}\nType: Legendary Creature — Elf Druid \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Evelyn Snakewood, Dark Druid",
+              "executable_text": "Mana cost: {B}{G}\nType: Legendary Creature — Elf Druid \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add {B} or {G}.\n{T}, Sacrifice Evelyn Snakewood: Return target creature card from your graveyard to the battlefield tapped. Activate only if you're in your endgame."
+        },
+        {
+          "id": "Execution Table_VRD",
+          "name": "Execution Table",
+          "original_text": "Mana cost: {2}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead.",
+          "executable_text": "Mana cost: {2}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead.",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Execution Table_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Execution Table",
+              "original_text": "Mana cost: {2}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Execution Table",
+              "executable_text": "Mana cost: {2}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{3}, Sacrifice Execution Table: It deals 3 damage to target creature. If you're in your endgame, it deals 5 damage instead."
+        },
+        {
+          "id": "Gearheart Baron_VRD",
+          "name": "Gearheart Baron",
+          "original_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Rogue Noble \nPower/Toughness: 4/4\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control.",
+          "executable_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Rogue Noble \nPower/Toughness: 4/4\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control.",
+          "mana_cost": "{4}{R}{R}",
+          "type_line": "Artifact Creature — Rogue Noble ",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Gearheart Baron_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gearheart Baron",
+              "original_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Rogue Noble \nPower/Toughness: 4/4\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Gearheart Baron",
+              "executable_text": "Mana cost: {4}{R}{R}\nType: Artifact Creature — Rogue Noble \nPower/Toughness: 4/4\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nAt the beginning of your end step, if you're in your endgame, Gearheart Baron deals damage to any target equal to the number of tapped artifacts you control."
+        },
+        {
+          "id": "Lairbuster Vanguard_VRD",
+          "name": "Lairbuster Vanguard",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Soldier ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Lairbuster Vanguard_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lairbuster Vanguard",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lairbuster Vanguard",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Soldier \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhenever you cast a spell that targets Lairbuster Vanguard, if you're in your endgame, put two +1/+1 counters on it."
+        },
+        {
+          "id": "Monument to Vanity_VRD",
+          "name": "Monument to Vanity",
+          "original_text": "Mana cost: {B}{R}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame.",
+          "executable_text": "Mana cost: {B}{R}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame.",
+          "mana_cost": "{B}{R}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Monument to Vanity_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Monument to Vanity",
+              "original_text": "Mana cost: {B}{R}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Monument to Vanity",
+              "executable_text": "Mana cost: {B}{R}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add {C}.\n{T}: Exile the top card of your library. You may play that card this turn. Active only if you’re in your endgame."
+        },
+        {
+          "id": "Night Drudger_VRD",
+          "name": "Night Drudger",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Human Soldier ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Night Drudger_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Night Drudger",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Night Drudger",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Human Soldier \nPower/Toughness: 3/3\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{G}: Exile target creature card from a graveyard. Put a +1/+1 counter on Night Drudger. If you're in your endgame, you gain 2 life."
+        },
+        {
+          "id": "Prototype Jetmobile_VRD",
+          "name": "Prototype Jetmobile",
+          "original_text": "Mana cost: {3}\nType: Artifact — Vehicle \nPower/Toughness: 5/3\nFlying, haste\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3",
+          "executable_text": "Mana cost: {3}\nType: Artifact — Vehicle \nPower/Toughness: 5/3\nFlying, haste\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3",
+          "mana_cost": "{3}",
+          "type_line": "Artifact — Vehicle ",
+          "power": "5",
+          "toughness": "3",
+          "source_card_key": "Prototype Jetmobile_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Prototype Jetmobile",
+              "original_text": "Mana cost: {3}\nType: Artifact — Vehicle \nPower/Toughness: 5/3\nFlying, haste\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Prototype Jetmobile",
+              "executable_text": "Mana cost: {3}\nType: Artifact — Vehicle \nPower/Toughness: 5/3\nFlying, haste\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, haste\nEndgame\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3",
+              "original_printed_rules_text": "Flying, haste\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3"
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying, haste\nEndgame\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying, haste\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nPrototype Jetmobile is an artifact creature as long as you're in your endgame.\nCrew 3"
+        },
+        {
+          "id": "Rogue's Palace Bouncer_VRD",
+          "name": "Rogue's Palace Bouncer",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nDefender\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nDefender\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Minion ",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Rogue's Palace Bouncer_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rogue's Palace Bouncer",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nDefender\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rogue's Palace Bouncer",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Minion \nPower/Toughness: 3/3\nDefender\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Defender\nEndgame\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame.",
+              "original_printed_rules_text": "Defender\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Defender\nEndgame\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Defender\nEndgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nRogue's Palace Bouncer can attack as though it didn't have defender as long as you're in your endgame."
+        },
+        {
+          "id": "Standard-Issue Firearm_VRD",
+          "name": "Standard-Issue Firearm",
+          "original_text": "Mana cost: {W}\nType: Artifact — Equipment \nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame.",
+          "executable_text": "Mana cost: {W}\nType: Artifact — Equipment \nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame.",
+          "mana_cost": "{W}",
+          "type_line": "Artifact — Equipment ",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Standard-Issue Firearm_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Standard-Issue Firearm",
+              "original_text": "Mana cost: {W}\nType: Artifact — Equipment \nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Standard-Issue Firearm",
+              "executable_text": "Mana cost: {W}\nType: Artifact — Equipment \nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nEquipped creature gets +2/+2.\nEquip {4}. This ability costs {3} less to activate as long as you're in your endgame."
+        },
+        {
+          "id": "Taranka's Posse_VRD",
+          "name": "Taranka's Posse",
+          "original_text": "Mana cost: {1}{R}{W}\nType: Creature — Cat Minion \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame.",
+          "executable_text": "Mana cost: {1}{R}{W}\nType: Creature — Cat Minion \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame.",
+          "mana_cost": "{1}{R}{W}",
+          "type_line": "Creature — Cat Minion ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Taranka's Posse_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Taranka's Posse",
+              "original_text": "Mana cost: {1}{R}{W}\nType: Creature — Cat Minion \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Taranka's Posse",
+              "executable_text": "Mana cost: {1}{R}{W}\nType: Creature — Cat Minion \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Taranka's Posse enters, create a Gold token.\nTaranka's Posse gets +3/+3 as long as you're in your endgame."
+        },
+        {
+          "id": "Torment Nexus_VRD",
+          "name": "Torment Nexus",
+          "original_text": "Mana cost: {2}{B}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame.",
+          "executable_text": "Mana cost: {2}{B}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Torment Nexus_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Torment Nexus",
+              "original_text": "Mana cost: {2}{B}\nType: Artifact\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Torment Nexus",
+              "executable_text": "Mana cost: {2}{B}\nType: Artifact\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Target player loses 1 life.\n{T}, Sacrifice Torment Nexus: Target player loses 3 life. Activate only if you're in your endgame."
+        },
+        {
+          "id": "Tough Customer_VRD",
+          "name": "Tough Customer",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Minion ",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Tough Customer_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tough Customer",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Tough Customer",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Minion \nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Tough Customer dies, up to one target creature gets -1/-1 until end of turn. If you're in your endgame, that creature gets -2/-2 until end of turn instead."
+        },
+        {
+          "id": "Unkillable Henchman_VRD",
+          "name": "Unkillable Henchman",
+          "original_text": "Mana cost: {B}\nType: Creature — Zombie Minion \nPower/Toughness: 2/1\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame.",
+          "executable_text": "Mana cost: {B}\nType: Creature — Zombie Minion \nPower/Toughness: 2/1\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame.",
+          "mana_cost": "{B}",
+          "type_line": "Creature — Zombie Minion ",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Unkillable Henchman_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Unkillable Henchman",
+              "original_text": "Mana cost: {B}\nType: Creature — Zombie Minion \nPower/Toughness: 2/1\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Unkillable Henchman",
+              "executable_text": "Mana cost: {B}\nType: Creature — Zombie Minion \nPower/Toughness: 2/1\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame."
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nUnkillable Henchman can't block.\nYou may cast Unkillable Henchman from your graveyard as long as you're in your endgame."
+        },
+        {
+          "id": "Viridian's Trusty Sidearm_VRD",
+          "name": "Viridian's Trusty Sidearm",
+          "original_text": "Mana cost: {2}\nType: Legendary Artifact — Equipment \nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}",
+          "executable_text": "Mana cost: {2}\nType: Legendary Artifact — Equipment \nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}",
+          "mana_cost": "{2}",
+          "type_line": "Legendary Artifact — Equipment ",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Viridian's Trusty Sidearm_VRD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Viridian's Trusty Sidearm",
+              "original_text": "Mana cost: {2}\nType: Legendary Artifact — Equipment \nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Viridian's Trusty Sidearm",
+              "executable_text": "Mana cost: {2}\nType: Legendary Artifact — Equipment \nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nEquipped creature gets +2/+0.\nSacrifice Viridian's Trusty Sidearm: Equipped creature gains indestructible until end of turn. If you're in your endgame, draw a card.\nEquip {1}"
+        }
+      ],
+      "source_cards": [
+        "Awoken Arbiter"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "endgame-native-designation",
+          "status": "pending",
+          "test_reference": "custom_endgame_designation",
+          "observable": "Static timing, source removal persistence, tapped/controller count and resolution-only spell check, generic named marker distinction, artifact parity."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_verification",
+      "equivalence_basis": "702.205a-d: count tapped controlled phased-in permanents; grant lasting independent named player designation; permanent check after continuous reapplication, spell check only during resolution; reapply continuous effects before trigger conditions."
+    },
+    {
+      "id": "rev-endgame-134",
+      "keyword": "Endgame",
+      "scope": "revolution",
+      "rule_reference": "702.205.",
+      "rule_text": {
+        "name": "702.205.",
+        "rule": "Endgame",
+        "subrules": [
+          {
+            "name": "702.205a",
+            "rule": "Endgame on a permanent represents a static ability. It means “Any time you control eight or more tapped permanents and you're not in your endgame, you're in your endgame for the rest of the game.”",
+            "custom": true
+          },
+          {
+            "name": "702.205b",
+            "rule": "Endgame on an instant or sorcery spell represents a spell ability. It means “If you control eight or more tapped permanents and you're not in your endgame, you're in your endgame for the rest of the game.”",
+            "custom": true
+          },
+          {
+            "name": "702.205c",
+            "rule": "Your endgame is a designation that has no rules meaning other than to act as a marker that other rules and effects can identify. Any number of players may be in their endgame at the same time.",
+            "custom": true
+          },
+          {
+            "name": "702.205d",
+            "rule": "After a player enters their endgame, continuous effects are reapplied before the game checks to see if the game state or preceding events have matched any trigger conditions.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Awoken Arbiter",
+          "Awoken Corruptor",
+          "Awoken Ravager",
+          "Awoken Thunderer",
+          "Awoken Whelp",
+          "Bankbuster Heavy",
+          "Bodyguard Bruisers",
+          "Citystalker Moth",
+          "Confronter of Evil",
+          "Conquest Terminal",
+          "Crooked Politician",
+          "Disposable Mook",
+          "Electric Goon",
+          "Escaped Subject",
+          "Evelyn Snakewood, Dark Druid",
+          "Execution Table",
+          "Gearheart Baron",
+          "Lairbuster Vanguard",
+          "Monument to Vanity",
+          "Night Drudger",
+          "Prototype Jetmobile",
+          "Rogue's Palace Bouncer",
+          "Standard-Issue Firearm",
+          "Taranka's Posse",
+          "Torment Nexus",
+          "Tough Customer",
+          "Unkillable Henchman",
+          "Viridian's Trusty Sidearm"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Gold is an artifact with “Sacrifice this artifact: Add one mana of any color.”",
+      "executable_reminder": "If you control eight or more tapped permanents, you are in your endgame for the rest of the game.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Disposable Mook_VRD",
+          "name": "Disposable Mook",
+          "original_text": "Type: Creature — Human Minion \nMana cost: {R}\nPower/Toughness: 1/1\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card. *(Gold is an artifact with “Sacrifice this artifact: Add one mana of any color.”)*",
+          "executable_text": "Type: Creature — Human Minion \nMana cost: {R}\nPower/Toughness: 1/1\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card.",
+          "executable_faces": [
+            {
+              "name": "Disposable Mook",
+              "executable_text": "Type: Creature — Human Minion \nMana cost: {R}\nPower/Toughness: 1/1\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card. (Gold is an artifact with “Sacrifice this artifact: Add one mana of any color.”)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Disposable Mook",
+              "original_text": "Type: Creature — Human Minion \nMana cost: {R}\nPower/Toughness: 1/1\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card. *(Gold is an artifact with “Sacrifice this artifact: Add one mana of any color.”)*"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\nWhen Disposable Mook dies, create a Gold token. Then if you're in your endgame, draw a card. (Gold is an artifact with “Sacrifice this artifact: Add one mana of any color.”)"
+        }
+      ],
+      "source_cards": [
+        "Disposable Mook"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "endgame-native-designation",
+          "status": "pending",
+          "test_reference": "custom_endgame_designation",
+          "observable": "Static timing, source removal persistence, tapped/controller count and resolution-only spell check, generic named marker distinction, artifact parity."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_verification",
+      "equivalence_basis": "702.205a-d: count tapped controlled phased-in permanents; grant lasting independent named player designation; permanent check after continuous reapplication, spell check only during resolution; reapply continuous effects before trigger conditions."
+    },
+    {
+      "id": "rev-endgame-135",
+      "keyword": "Endgame",
+      "scope": "revolution",
+      "rule_reference": "702.205.",
+      "rule_text": {
+        "name": "702.205.",
+        "rule": "Endgame",
+        "subrules": [
+          {
+            "name": "702.205a",
+            "rule": "Endgame on a permanent represents a static ability. It means “Any time you control eight or more tapped permanents and you're not in your endgame, you're in your endgame for the rest of the game.”",
+            "custom": true
+          },
+          {
+            "name": "702.205b",
+            "rule": "Endgame on an instant or sorcery spell represents a spell ability. It means “If you control eight or more tapped permanents and you're not in your endgame, you're in your endgame for the rest of the game.”",
+            "custom": true
+          },
+          {
+            "name": "702.205c",
+            "rule": "Your endgame is a designation that has no rules meaning other than to act as a marker that other rules and effects can identify. Any number of players may be in their endgame at the same time.",
+            "custom": true
+          },
+          {
+            "name": "702.205d",
+            "rule": "After a player enters their endgame, continuous effects are reapplied before the game checks to see if the game state or preceding events have matched any trigger conditions.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Awoken Arbiter",
+          "Awoken Corruptor",
+          "Awoken Ravager",
+          "Awoken Thunderer",
+          "Awoken Whelp",
+          "Bankbuster Heavy",
+          "Bodyguard Bruisers",
+          "Citystalker Moth",
+          "Confronter of Evil",
+          "Conquest Terminal",
+          "Crooked Politician",
+          "Disposable Mook",
+          "Electric Goon",
+          "Escaped Subject",
+          "Evelyn Snakewood, Dark Druid",
+          "Execution Table",
+          "Gearheart Baron",
+          "Lairbuster Vanguard",
+          "Monument to Vanity",
+          "Night Drudger",
+          "Prototype Jetmobile",
+          "Rogue's Palace Bouncer",
+          "Standard-Issue Firearm",
+          "Taranka's Posse",
+          "Torment Nexus",
+          "Tough Customer",
+          "Unkillable Henchman",
+          "Viridian's Trusty Sidearm"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Look at the top card of your library. You may put that card into your graveyard.",
+      "executable_reminder": "If you control eight or more tapped permanents, you are in your endgame for the rest of the game.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Electric Goon_VRD",
+          "name": "Electric Goon",
+          "original_text": "Type: Artifact Creature — Minion \nMana cost: {3}\nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1. *(Look at the top card of your library. You may put that card into your graveyard.)*",
+          "executable_text": "Type: Artifact Creature — Minion \nMana cost: {3}\nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1.",
+          "executable_faces": [
+            {
+              "name": "Electric Goon",
+              "executable_text": "Type: Artifact Creature — Minion \nMana cost: {3}\nPower/Toughness: 2/2\nIf you control eight or more tapped permanents, you are in your endgame for the rest of the game\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1.",
+              "custom_keyword_identities": [
+                "endgame"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Endgame\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1.",
+              "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1. (Look at the top card of your library. You may put that card into your graveyard.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "endgame"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Endgame\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Electric Goon",
+              "original_text": "Type: Artifact Creature — Minion \nMana cost: {3}\nPower/Toughness: 2/2\nEndgame *(If you control eight or more tapped permanents, enter your endgame for the rest of the game.)*\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1. *(Look at the top card of your library. You may put that card into your graveyard.)*"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Endgame (If you control eight or more tapped permanents, enter your endgame for the rest of the game.)\n{T}: Add one mana of any color.\nAt the beginning of your upkeep, if you're in your endgame, surveil 1. (Look at the top card of your library. You may put that card into your graveyard.)"
+        }
+      ],
+      "source_cards": [
+        "Electric Goon"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "endgame-native-designation",
+          "status": "pending",
+          "test_reference": "custom_endgame_designation",
+          "observable": "Static timing, source removal persistence, tapped/controller count and resolution-only spell check, generic named marker distinction, artifact parity."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_verification",
+      "equivalence_basis": "702.205a-d: count tapped controlled phased-in permanents; grant lasting independent named player designation; permanent check after continuous reapplication, spell check only during resolution; reapply continuous effects before trigger conditions."
+    }
+  ]
+}

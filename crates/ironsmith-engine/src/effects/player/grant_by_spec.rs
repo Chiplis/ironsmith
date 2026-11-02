@@ -93,22 +93,23 @@ impl EffectExecutor for GrantBySpecEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if !self.spec.cast_mana_spend_mode.is_normal() && !matches!(self.spec.grantable, Grantable::PlayFrom) {
+        let spec=ctx.bind_definition_scope_grant_spec(self.spec.clone())?;
+        if !spec.cast_mana_spend_mode.is_normal() && !matches!(spec.grantable, Grantable::PlayFrom) {
             return Err(ExecutionError::IncompleteEvidence("permission-local mana requires a plain play permission".into()));
         }
-        if self.spec.linked_exile_class_level.is_some() {
+        if spec.linked_exile_class_level.is_some() {
             return Err(ExecutionError::IncompleteEvidence("Class-linked permission requires its live static acquisition".into()));
         }
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if self.spec.zone == Zone::Battlefield
-            && let Grantable::Ability(ability) = &self.spec.grantable
+        if spec.zone == Zone::Battlefield
+            && let Grantable::Ability(ability) = &spec.grantable
         {
             let filter_ctx = game.filter_context_for(player_id, Some(ctx.source));
             let locked_targets: Vec<_> = game
                 .battlefield
                 .iter()
                 .filter_map(|&id| game.object(id))
-                .filter(|obj| self.spec.filter.matches(obj, &filter_ctx, game))
+                .filter(|obj| spec.filter.matches(obj, &filter_ctx, game))
                 .map(|obj| obj.id)
                 .collect();
             let duration = match self.duration {
@@ -118,7 +119,7 @@ impl EffectExecutor for GrantBySpecEffect {
                 GrantDuration::UntilYourNextTurnEnd => crate::effect::Until::YourNextTurnEnd,
             };
             let effect = crate::effects::ApplyContinuousEffect::new(
-                EffectTarget::Filter(self.spec.filter.clone()),
+                EffectTarget::Filter(spec.filter.clone()),
                 Modification::AddAbility(ability.clone()),
                 duration,
             )
@@ -128,13 +129,13 @@ impl EffectExecutor for GrantBySpecEffect {
 
         let grant_source = grant_duration_source(self.duration, game, ctx.source, ctx.controller);
 
-        let shared_budget = self.spec.max_plays.map(|uses| {
+        let shared_budget = spec.max_plays.map(|uses| {
             game.effect_store
                 .grant_registry
                 .create_shared_usage_budget(uses)
         });
         let mut identity = None;
-        for spec in self.spec.zone_specs() {
+        for spec in spec.zone_specs() {
             // CR 608.2h: "from that player's graveyard" names the player this
             // resolution is talking about; the stored permission keeps naming
             // that player after the resolution context is gone.

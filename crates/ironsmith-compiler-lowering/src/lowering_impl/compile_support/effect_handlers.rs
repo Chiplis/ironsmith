@@ -193,6 +193,9 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
+        TriggerSpec::CharacteristicGained(trigger) => Ok(
+            ironsmith_core::DelayedTriggerSpec::CharacteristicGained(trigger.clone()),
+        ),
         TriggerSpec::ControlChanged(trigger) => Ok(
             ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger.clone()),
         ),
@@ -868,6 +871,11 @@ fn resolve_play_or_cast_trigger_references(
                 .map(|trigger| resolve_play_or_cast_trigger_references(trigger, refs))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
+        TriggerSpec::CharacteristicGained(control) if references_it(&control.filter) => {
+            let mut control = control.clone();
+            control.filter = resolve_it_tag(&control.filter, refs)?;
+            TriggerSpec::CharacteristicGained(control)
+        }
         TriggerSpec::ControlChanged(control) if references_it(&control.filter) => {
             let mut control = control.clone();
             control.filter = resolve_it_tag(&control.filter, refs)?;
@@ -1046,6 +1054,7 @@ fn compile_duration_scoped_delayed_trigger(
         match trigger_without_intro(trigger) {
             TriggerSpec::ThisBecomesUntapped => true,
             TriggerSpec::PermanentBecomesUntapped { filter, .. } => filter.source,
+            TriggerSpec::CharacteristicGained(control) => control.filter.source,
             TriggerSpec::ControlChanged(control) => control.filter.source,
             TriggerSpec::Either(left, right) => {
                 watches_ability_source(left) && watches_ability_source(right)
@@ -1069,6 +1078,35 @@ fn compile_duration_scoped_delayed_trigger(
             watched_tag = Some(tag);
             watch_ability_source = true;
             ironsmith_core::DelayedTriggerSpec::ZoneChange(event.clone())
+        }
+        TriggerSpec::ZoneChange(event) => {
+            let mut event = event.clone();
+            if let Some(filter) = &event.filter {
+                let resolved = resolve_it_tag(filter, &refs)?;
+                if let Some(tag) = watch_tag_from_filter(&resolved) {
+                    // A reference to an earlier selected object is an exact
+                    // watcher, just like a tagged dies/attack subject. Empty
+                    // choices register nothing; each captured object owns its
+                    // own source-local delayed occurrence.
+                    watched_tag = Some(tag);
+                    watched_filter = Some(resolved);
+                    event.filter = Some(ObjectFilter::source());
+                } else {
+                    event.filter = Some(resolved);
+                }
+            }
+            ironsmith_core::DelayedTriggerSpec::ZoneChange(event)
+        }
+        TriggerSpec::CharacteristicGained(control) => {
+            let mut control = control.clone();
+            control.filter = resolve_it_tag(&control.filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&control.filter) {
+                watched_tag = Some(tag);
+                watched_filter = Some(control.filter.clone());
+                control.filter.tagged_constraints.clear();
+                control.filter.source = true;
+            }
+            ironsmith_core::DelayedTriggerSpec::CharacteristicGained(control)
         }
         TriggerSpec::ControlChanged(control) => {
             let mut control = control.clone();
@@ -1272,6 +1310,48 @@ fn compile_duration_scoped_delayed_trigger(
 }
 
 pub(super) fn try_compile_timing_and_control_effect(
+    effect: &EffectAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    // Every scheduling path passes this boundary, including fixed next-step
+    // constructors and branches that return early from the lowering worker.
+    let body = match effect {
+        EffectAst::Delayed(delayed) => Some(match delayed {
+            // A permanent player rule lowers its own triggered program in a
+            // fresh scope. Its future local tags are not captured from this
+            // registration action by the ordinary delayed-import adapter.
+            DelayedEffectAst::RegisterPersistentPlayerRule { .. } =>
+                return try_compile_timing_and_control_effect_inner(effect,ctx),
+            DelayedEffectAst::DelayedUntilNextEndStep{effects,..}
+            |DelayedEffectAst::DelayedUntilNextCleanupStep{effects,..}
+            |DelayedEffectAst::DelayedUntilNextUntapStep{effects,..}
+            |DelayedEffectAst::DelayedUntilNextUpkeep{effects,..}
+            |DelayedEffectAst::DelayedUntilNextDrawStep{effects,..}
+            |DelayedEffectAst::DelayedUntilNextMainPhase{effects,..}
+            |DelayedEffectAst::DelayedUntilNextFirstMainPhase{effects,..}
+            |DelayedEffectAst::DelayedUntilEndStepOfExtraTurn{effects,..}
+            |DelayedEffectAst::DelayedUntilEndOfCombat{effects,..}
+            |DelayedEffectAst::DelayedUntilNextDeclareAttackersStep{effects,..}
+            |DelayedEffectAst::DelayedTriggerThisTurn{effects,..}
+            |DelayedEffectAst::DelayedTriggerForDuration{effects,..}
+            |DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn{effects,..}
+            |DelayedEffectAst::DelayedWhenLastObjectLeavesBattlefield{effects,..}=>effects,
+        }), _=>None,
+    };
+    let refs=current_reference_env(ctx);
+    let imports=body.map(|effects|ironsmith_compiler_resolve::tag_support::delayed_cast_object_reference_imports(effects))
+        .unwrap_or_default().into_iter().map(|tag|resolve_it_tag_key(&tag,&refs))
+        .collect::<Result<Vec<_>,_>>()?;
+    Ok(try_compile_timing_and_control_effect_inner(effect,ctx)?.map(|(compiled,choices)|{
+        let compiled=compiled.into_iter().map(|effect|{
+            if let Some(schedule)=effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+                let mut schedule=schedule.clone();schedule.object_reference_imports=imports.clone();Effect::new(schedule)
+            }else{effect}
+        }).collect();(compiled,choices)
+    }))
+}
+
+fn try_compile_timing_and_control_effect_inner(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
@@ -1552,6 +1632,18 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
+        EffectAst::Delayed(DelayedEffectAst::RegisterPersistentPlayerRule { name, controller, trigger, effects, condition, event_only_condition }) => {
+            let (effects, choices) = compile_trigger_effects(Some(trigger), effects)?;
+            if !choices.is_empty() { return Err(CardTextError::InvariantViolation("persistent player rules choose their objects when resolving; they cannot have announced targets".into())); }
+            let mut schedule = crate::effects::ScheduleDelayedTriggerEffect::new(
+                compile_delayed_trigger_spec(trigger)?, effects, false, Vec::new(),
+                resolve_non_target_player_filter(*controller, &current_reference_env(ctx))?);
+            schedule.persistent_player_rule = Some(name.clone());
+            schedule.intervening_if = condition.as_ref().map(|predicate|
+                compile_condition_from_predicate_ast(predicate, &mut EffectLoweringContext::new(), &None))
+                .transpose()?.map(|condition| if *event_only_condition { crate::effect::Condition::TriggerEventOnly(Box::new(condition)) } else { condition });
+            (vec![Effect::new(schedule)], Vec::new())
+        }
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
             trigger,
             effects,
@@ -1559,8 +1651,9 @@ pub(super) fn try_compile_timing_and_control_effect(
             duration,
             either_of_watched_objects,
             while_any_tagged_object_in_zone,
+            source_collection_scope,
         }) => {
-            return compile_duration_scoped_delayed_trigger(
+            let (mut compiled, choices) = compile_duration_scoped_delayed_trigger(
                 trigger,
                 effects,
                 *one_shot,
@@ -1570,8 +1663,18 @@ pub(super) fn try_compile_timing_and_control_effect(
                     .as_ref()
                     .map(|(tag, zone)| (tag.key.clone(), *zone)),
                 ctx,
-            )
-            .map(Some);
+            )?;
+            if let Some(scope) = source_collection_scope {
+                for effect in &mut compiled {
+                    if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+                        let mut schedule = schedule.clone();
+                        schedule.source_collection_scope = Some(scope.clone());
+                        schedule.watch_ability_source = true;
+                        *effect = Effect::new(schedule);
+                    }
+                }
+            }
+            return Ok(Some((compiled, choices)));
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
             trigger,
@@ -2817,6 +2920,7 @@ fn compile_conditional_ast(
                     grant.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
                         && grant.player == PlayerFilter::You
                         && grant.while_player_controls.is_none()
+                        && grant.control_duration.is_none()
                         && grant.during_turns_counter_put_on_source.is_none()
                         && grant.during_turns_attacked_with.is_none()
                         && !grant.during_turns_cast_another_spell

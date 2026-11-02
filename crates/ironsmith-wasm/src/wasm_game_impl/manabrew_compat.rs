@@ -503,6 +503,7 @@ fn manabrew_replan_command(
                     ironsmith::mana_payment::ManaPaymentSourceKind::Convoke => "convoke",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => "improvise",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => "waterbend",
+                    ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => "put_minus_one_counter",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Delve => "delve",
                     ironsmith::mana_payment::ManaPaymentSourceKind::ManaAbility => return None,
                 };
@@ -1347,6 +1348,8 @@ impl WasmGame {
                 SpecialAction::PlayLand { card_id }
                 | SpecialAction::PlayLandBackFace { card_id }
                 | SpecialAction::Suspend { card_id }
+                | SpecialAction::PrepareExile { card_id, .. }
+                | SpecialAction::PrepareGrantedExile { card_id, .. }
                 | SpecialAction::Foretell { card_id }
                 | SpecialAction::Plot { card_id }
                 | SpecialAction::Companion { card_id }
@@ -1356,7 +1359,8 @@ impl WasmGame {
                 SpecialAction::UnlockRoomDoor { room_id, .. } => Some(*room_id),
                 SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => Some(*conspiracy_id),
                 SpecialAction::IgnoreAttachedRestriction { source_id, .. }
-                | SpecialAction::IgnoreSourceEffect { source_id, .. } => Some(*source_id),
+                | SpecialAction::IgnoreSourceEffect { source_id, .. }
+                | SpecialAction::PerformIntrinsicAction { source_id, .. } => Some(*source_id),
                 SpecialAction::RollPlanarDie
                 | SpecialAction::PayDelayedTrigger { .. }
                 | SpecialAction::PerformRepeatableManaPaymentAction { .. } => None,
@@ -1727,7 +1731,10 @@ impl WasmGame {
                 .preferences
                 .required_alternatives
                 .iter()
-                .any(|selected| selected.source == option.source);
+                .any(|selected| {
+                    selected.source == option.source
+                        && selected.kind != ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter
+                });
             let has_specific_color_action = activation_inventory.iter().any(|candidate| {
                 candidate.source == option.source
                     && candidate.ability_index == option.ability_index
@@ -1798,9 +1805,7 @@ impl WasmGame {
                         .find(|candidate| selected_activation_matches(selected, candidate))
                         .is_none_or(|candidate| !candidate.repeatable)
                 });
-            if source_has_blocking_activation {
-                continue;
-            }
+
             for kind in source_option.kinds.into_iter().filter(|kind| {
                 matches!(
                     kind,
@@ -1808,8 +1813,10 @@ impl WasmGame {
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Delve
+                        | ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter
                 )
             }) {
+                if source_has_blocking_activation && kind != ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter { continue; }
                 let selected = context
                     .request
                     .preferences
@@ -1823,7 +1830,9 @@ impl WasmGame {
                     .preferences
                     .required_alternatives
                     .iter()
-                    .any(|selected| selected.source == source_option.source);
+                    .any(|selected| selected.source == source_option.source
+                        && selected.kind != ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter
+                        && kind != ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter);
                 if source_has_selected_alternative && selected.is_none() {
                     continue;
                 }
@@ -1844,6 +1853,7 @@ impl WasmGame {
                         ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
                             PaymentResourceKind::Waterbend
                         }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => { PaymentResourceKind::PutMinusOneCounter }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
                         }
@@ -1873,6 +1883,7 @@ impl WasmGame {
                         ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
                             PaymentResourceKind::Waterbend
                         }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::PutMinusOneCounter => { PaymentResourceKind::PutMinusOneCounter }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
                         }
@@ -2385,8 +2396,9 @@ impl WasmGame {
                 let max_targets = ctx
                     .requirements
                     .iter()
-                    .map(|req| req.max_targets.unwrap_or(req.legal_targets.len()))
-                    .sum::<usize>();
+                    .map(|req| req.max_targets.map_or(req.legal_targets.len(),|max|max.saturating_sub(req.additional_target_budget)))
+                    .sum::<usize>()
+                    .saturating_add(ctx.requirements.iter().map(|req|req.additional_target_budget).max().unwrap_or(0));
                 let mut targets = HashMap::new();
                 let mut candidates = Vec::new();
                 for requirement in &ctx.requirements {

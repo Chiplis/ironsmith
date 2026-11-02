@@ -3686,6 +3686,7 @@ pub(super) fn backup_etb_trigger_renders_as_keyword_surface() {
 
     let ability = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     assert_eq!(
@@ -3747,6 +3748,7 @@ pub(super) fn hideaway_etb_trigger_renders_as_numbered_keyword_surface() {
         );
         let ability = Ability {
             kind: AbilityKind::Triggered(triggered),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         };
         assert_eq!(
@@ -3788,6 +3790,7 @@ pub(super) fn tap_for_mana_trigger_tap_matching_lands_renders_mana_web_surface()
 
     let ability = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     assert_eq!(
@@ -4360,6 +4363,7 @@ pub(super) fn riot_structural_keyword_accepts_permanent_haste_choice() {
     assert_eq!(describe_keyword_ability(&replacement(None)), None);
     let after_entry = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
     assert_ne!(
@@ -4388,6 +4392,7 @@ pub(super) fn inline_mana_ability_normalizes_this_source_cost_to_subject() {
             activation_condition: None,
             mana_usage_restrictions: vec![],
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -4422,6 +4427,7 @@ pub(super) fn granted_attack_trigger_target_blocks_it_compacts_tagged_requiremen
     };
     let ability = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -4450,6 +4456,7 @@ pub(super) fn granted_damage_trigger_to_effect_controller_uses_spell_caster_surf
     };
     let ability = Ability {
         kind: AbilityKind::Triggered(triggered),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -4479,6 +4486,7 @@ pub(super) fn zero_cost_loyalty_mana_ability_renders_zero_prefix() {
             activation_condition: None,
             mana_usage_restrictions: vec![],
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -4520,6 +4528,7 @@ pub(super) fn loyalty_mana_ability_keeps_usage_restriction_clause() {
                 },
             ],
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 
@@ -4553,6 +4562,7 @@ pub(super) fn display_x_counter_removal_cost_preserves_x_damage_surface() {
             activation_condition: None,
             mana_usage_restrictions: vec![],
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     };
 

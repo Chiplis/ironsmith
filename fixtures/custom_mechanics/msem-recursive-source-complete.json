@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "inventory_selection": "complete_source_overlay",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "note": "Two exact physical Recursive actors/consumers, one source formerly omitted. Immutable raw source retained; executable expansion unclaimed until parent preparation."
+  },
+  "mechanics": [
+    {
+      "id": "msem-rules-recursive",
+      "keyword": "Recursive",
+      "scope": "msem",
+      "original_reminder": "",
+      "rule_reference": "702.282.",
+      "source_variant_provenance": {
+        "kind": "additional_formal_rule_source_cards_without_seed_inventory_row",
+        "formal_source_file": "reports/cards/lackey-audit-2026-11-01/msem-rules.json",
+        "formal_rule_reference": "702.282.",
+        "formal_rule_name": "Recursive"
+      },
+      "support_status": "pending_full_source_reader_verification",
+      "source_cards": [
+        "Xirix's Study",
+        "Mayar, Nullcrowned"
+      ],
+      "representative_cards": [
+        {
+          "id": "Xirix's Study_SPK",
+          "source_card_key": "Xirix's Study_SPK",
+          "name": "Xirix's Study",
+          "original_text": "Mana cost: {B}{G}{U}\nType: Enchantment — Study\nArchive 5 *(As this enters, shuffle the top five cards of your main library into a new face up library. Sacrifice this after the archived library is empty.)*\nRecursive — Xirix's Study has all nonrecursive abilities of all Study cards in graveyards except for their archive abilities.",
+          "source_shape": "normal",
+          "source_face": "front",
+          "mana_cost": "{B}{G}{U}",
+          "type_line": "Enchantment — Study",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Xirix's Study",
+              "original_text": "Mana cost: {B}{G}{U}\nType: Enchantment — Study\nArchive 5 *(As this enters, shuffle the top five cards of your main library into a new face up library. Sacrifice this after the archived library is empty.)*\nRecursive — Xirix's Study has all nonrecursive abilities of all Study cards in graveyards except for their archive abilities."
+            }
+          ],
+          "original_source_record": {
+            "fullName": "Xirix's Study",
+            "cardName": "Xirix's Study",
+            "manaCost": "{B}{G}{U}",
+            "typeLine": "Enchantment — Study",
+            "rarityLine": "*SPK R*",
+            "rulesText": "Archive 5 *(As this enters, shuffle the top five cards of your main library into a new face up library. Sacrifice this after the archived library is empty.)*\nRecursive — Xirix's Study has all nonrecursive abilities of all Study cards in graveyards except for their archive abilities.",
+            "flavorText": "*“This one seems familiar, let me check something for just a moment...”*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black/Green/Blue} ",
+            "cmc": 3,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "SPK",
+            "cardID": "137",
+            "designer": "Cajun",
+            "script": "",
+            "notes": [],
+            "artist": "Sheen Ponce",
+            "sdn": 16053,
+            "key": "Xirix's Study_SPK",
+            "colorIdentity": [
+              "B",
+              "G",
+              "U"
+            ],
+            "spellbook": [],
+            "ctags": [
+              "unique-cr"
+            ],
+            "prints": [
+              "SPK"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Xirix's Study_SPK",
+            "printKeys": [
+              "Xirix's Study_SPK"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 3.121748178980229,
+            "pm": 1.3880320789636027,
+            "psr": 0,
+            "psm": 0
+          },
+          "executable_text": null,
+          "rewrite_status": "pending_complete_source_materialization",
+          "ordinary_sibling_dependency": "Archive 5 and graveyard Study ability inheritance remain full-source obligations; do not remove Archive or its exclusion from nonrecursive inheritance."
+        },
+        {
+          "id": "Mayar, Nullcrowned_BTB",
+          "name": "Mayar, Nullcrowned",
+          "source_card_key": "Mayar, Nullcrowned_BTB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {U}{B}{R}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 3/3\nBreach *(Whenever this deals combat damage to a player, you may have it become an Aura Curse until your next turn. Attach it to that player.)*\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+          "executable_text": "Mana cost: {U}{B}{R}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 3/3\nWhenever this creature deals combat damage to a player, you may have it become an Aura Curse enchantment with enchant opponent until your next turn. If you do, attach it to that player\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with custom keyword \"breach\" you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+          "mana_cost": "{U}{B}{R}",
+          "type_line": "Legendary Enchantment Creature — God",
+          "power": "3",
+          "toughness": "3",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mayar, Nullcrowned",
+              "original_text": "Mana cost: {U}{B}{R}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 3/3\nBreach *(Whenever this deals combat damage to a player, you may have it become an Aura Curse until your next turn. Attach it to that player.)*\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mayar, Nullcrowned",
+              "executable_text": "Mana cost: {U}{B}{R}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 3/3\nWhenever this creature deals combat damage to a player, you may have it become an Aura Curse enchantment with enchant opponent until your next turn. If you do, attach it to that player\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with custom keyword \"breach\" you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+              "custom_keyword_identities": [
+                "breach"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Breach\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+              "original_printed_rules_text": "Breach (Whenever this deals combat damage to a player, you may have it become an Aura Curse until your next turn. Attach it to that player.)\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "breach"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Breach\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Breach (Whenever this deals combat damage to a player, you may have it become an Aura Curse until your next turn. Attach it to that player.)\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+          "original_source_record": {
+            "fullName": "Mayar, Nullcrowned",
+            "cardName": "Mayar, Nullcrowned",
+            "manaCost": "{U}{B}{R}",
+            "typeLine": "Legendary Enchantment Creature — God",
+            "rarityLine": "*BTB M*",
+            "rulesText": "Breach *(Whenever this deals combat damage to a player, you may have it become an Aura Curse until your next turn. Attach it to that player.)*\nRecursive — As long as Mayar, Nullcrowned is a Curse, they have all nonrecursive abilities of other Curses and creatures with breach you control.\nPay 3 life: Target enchantment creature gains haste and menace until end of turn.",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Blue/Black/Red} ",
+            "cmc": 3,
+            "cardType": " Enchantment Creature",
+            "rarity": "mythic rare",
+            "shape": "normal",
+            "setID": "BTB",
+            "cardID": "239",
+            "designer": "Bergland",
+            "script": "",
+            "notes": [],
+            "artist": "Eduardo Pena",
+            "sdn": 17966,
+            "key": "Mayar, Nullcrowned_BTB",
+            "colorIdentity": [
+              "U",
+              "B",
+              "R"
+            ],
+            "ctags": [
+              "unique-cr"
+            ],
+            "prints": [
+              "BTB"
+            ],
+            "rarities": [
+              "mythic rare"
+            ],
+            "firstPrint": "Mayar, Nullcrowned_BTB",
+            "printKeys": [
+              "Mayar, Nullcrowned_BTB"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "spellbook": []
+          }
+        }
+      ]
+    }
+  ]
+}

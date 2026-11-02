@@ -2757,6 +2757,7 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
             crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
             crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+            crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives => "distinct represented colors",
             crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(_) => "mana symbols",
         };
         if let crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = constraint.metric
@@ -6246,6 +6247,7 @@ pub(super) fn describe_choice_aggregate_constraint_suffix(
         crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
         crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
         crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+        crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives => "distinct represented colors",
         crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(_) => "mana symbols",
     };
     if let crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = constraint.metric

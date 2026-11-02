@@ -1,0 +1,899 @@
+{
+  "constraint": "Only ordinary Quest type/counter consumers/producers. Quest intrinsic actors remain separately exact-rule-boundary evidence; no category-wide exclusion applies to these eleven cards.",
+  "mechanics": [
+    {
+      "id": "msem:sections:7:744.:Quest Cards",
+      "keyword": "Quest Cards",
+      "scope": "msem",
+      "source_rule_kind": "category",
+      "rule_reference": "744.",
+      "rule_text": {
+        "name": "744.",
+        "rule": "Quest Cards",
+        "subrules": [
+          {
+            "name": "744.1.",
+            "rule": "Each Quest card has a striated text box containing a number of quest symbols. Its illustration is vertically oriented on the right side of the card, and its type line is along the bottom of the card.",
+            "subrules": [],
+            "custom": true
+          },
+          {
+            "name": "744.2.",
+            "rule": "An quest symbol is a keyword ability that represents a triggered ability referred to as an quest ability.",
+            "subrules": [
+              {
+                "name": "744.2a",
+                "rule": "An quest symbol includes a number, indicated here as “{N}.”",
+                "custom": true
+              },
+              {
+                "name": "744.2b",
+                "rule": "“{N}—[Effect]” means “When one or more quest counters are put onto this Quest, if the number of quest counters on it was less than N and became at least N, [effect].”",
+                "custom": true
+              },
+              {
+                "name": "744.2c",
+                "rule": "“{N1}, {N2}—[Effect]” means the same as “{N1}—[Effect]” and “{N2}—[Effect].”",
+                "custom": true
+              },
+              {
+                "name": "744.2d",
+                "rule": "An Quest’s final quest number is the greatest value among quest abilities. If an Quest somehow has no quest abilities, its final quest number is 0.",
+                "custom": true
+              }
+            ],
+            "custom": true
+          },
+          {
+            "name": "744.3.",
+            "rule": "Quests use quest counters to track their progress.",
+            "subrules": [
+              {
+                "name": "744.3a",
+                "rule": "As an Quest enters the battlefield, its controller puts a quest counter on it.",
+                "custom": true
+              },
+              {
+                "name": "744.3b",
+                "rule": "Each Quest has a triggered ability that “adds a quest counter.” To add a quest counter, put a quest counter on the Quest that is the source of that triggered ability.",
+                "custom": true
+              }
+            ],
+            "custom": true
+          },
+          {
+            "name": "744.4.",
+            "rule": "If the number of quest counters on an Quest permanent is greater than or equal to its final quest number, and it isn't the source of a quest ability that has triggered but not yet left the stack, that Quest's controller sacrifices it. This state-based action doesn't use the stack.",
+            "subrules": [],
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "744",
+        "matched_card_names": [
+          "Align the Astrolabe",
+          "Beckon Darkness",
+          "Fallback Plan",
+          "Gate to the Beyond",
+          "Lockdown",
+          "Seek Perfection",
+          "Awaken the SOURCE",
+          "Bind the Great Evil",
+          "Collect the World Stones",
+          "Gambler's Tournament",
+          "Gather the Ingredients",
+          "Hunt the Elusive Titans",
+          "Map All Creation",
+          "Premium Membership",
+          "Prepare for the Onslaught",
+          "Raid the Cursed Temple",
+          "Raid the Dragon's Lair",
+          "Raid the Forgotten Tomb",
+          "Raid the Infested Woods",
+          "Raid the Sunken Ruin",
+          "Romantic Interlude",
+          "Scour Forgotten Archives",
+          "Seek the Buried Relic",
+          "Seek the Lost Child",
+          "Seek the Maker's Egg",
+          "Selvar, the Seeker",
+          "Vital Companion",
+          "A Slave's Vengeance//Crown of the Urchin King",
+          "Seek Far and Wide",
+          "Steward of Empire's Cradle",
+          "Attune the Stoneshrine",
+          "Brothers' Reunion",
+          "Conquer the Fang Den",
+          "Flourish in the Slipsands",
+          "Gloomhollow Expedition",
+          "Hoof Cliff Expedition",
+          "Mattia's Fated Showdown",
+          "Mikkino's Climactic Clash",
+          "Northrime Messenger",
+          "Paw Valley Expedition",
+          "Performance of a Lifetime",
+          "Plots that Span Realms",
+          "Repel the Tinyvale Siege",
+          "Siltbottom Expedition",
+          "Slipsand Expedition",
+          "The Gloomhollow Draught",
+          "The Grand Conchport Heist",
+          "The Heart of Paw Valley",
+          "The Symphony of Leafdown",
+          "Treasure Dive",
+          "Venture into Bleakrealm",
+          "X Marks the Spot"
+        ]
+      },
+      "original_reminder": null,
+      "executable_definitions": [],
+      "representative_cards": [
+        {
+          "id": "Align the Astrolabe_DOA",
+          "name": "Align the Astrolabe",
+          "scope": "msem",
+          "source_card_key": "Align the Astrolabe_DOA",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Align the Astrolabe",
+            "cardName": "Align the Astrolabe",
+            "manaCost": "{1}{W}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*DOA R*",
+            "rulesText": "Whenever you cast a noncreature spell, put a quest counter on Align the Astrolabe.\nAt the beginning of your upkeep, create a 1/1 colorless Construct artifact creature token for each three quest counters on Align the Astrolabe.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "DOA",
+            "cardID": "3",
+            "designer": "Pipsqueak",
+            "script": "",
+            "notes": [],
+            "artist": "Kati Sarin S",
+            "sdn": 6980,
+            "key": "Align the Astrolabe_DOA",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "DOA"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Align the Astrolabe_DOA",
+            "printKeys": [
+              "Align the Astrolabe_DOA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 2.4096385542168677,
+            "pm": 5.3927315357561545,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Align the Astrolabe",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment\nWhenever you cast a noncreature spell, put a quest counter on Align the Astrolabe.\nAt the beginning of your upkeep, create a 1/1 colorless Construct artifact creature token for each three quest counters on Align the Astrolabe.",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment\nWhenever you cast a noncreature spell, put a quest counter on Align the Astrolabe.\nAt the beginning of your upkeep, create a 1/1 colorless Construct artifact creature token for each three quest counters on Align the Astrolabe.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Beckon Darkness_DOA",
+          "name": "Beckon Darkness",
+          "scope": "msem",
+          "source_card_key": "Beckon Darkness_DOA",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Beckon Darkness",
+            "cardName": "Beckon Darkness",
+            "manaCost": "{B}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*DOA R*",
+            "rulesText": "Sabotage — Whenever an opponent or permanent an opponent controls becomes the target of a spell you control, put a quest counter on Beckon Darkness.\nAt the beginning of your upkeep, if Beckon Darkness has four or more quest counters on it, return target creature card from your graveyard to the battlefield.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 1,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "DOA",
+            "cardID": "55",
+            "designer": "Pipsqueak",
+            "script": "",
+            "notes": [],
+            "artist": "Maxim Kostin",
+            "sdn": 6993,
+            "key": "Beckon Darkness_DOA",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "DOA"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Beckon Darkness_DOA",
+            "printKeys": [
+              "Beckon Darkness_DOA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 1.8757327080890973,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Beckon Darkness",
+              "original_text": "Mana cost: {B}\nType: Enchantment\nSabotage — Whenever an opponent or permanent an opponent controls becomes the target of a spell you control, put a quest counter on Beckon Darkness.\nAt the beginning of your upkeep, if Beckon Darkness has four or more quest counters on it, return target creature card from your graveyard to the battlefield.",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {B}\nType: Enchantment\nSabotage — Whenever an opponent or permanent an opponent controls becomes the target of a spell you control, put a quest counter on Beckon Darkness.\nAt the beginning of your upkeep, if Beckon Darkness has four or more quest counters on it, return target creature card from your graveyard to the battlefield.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Fallback Plan_DOA",
+          "name": "Fallback Plan",
+          "scope": "msem",
+          "source_card_key": "Fallback Plan_DOA",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Fallback Plan",
+            "cardName": "Fallback Plan",
+            "manaCost": "{B}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*DOA R*",
+            "rulesText": "Whenever you draw a card, put a quest counter on Fallback Plan.\nRemove four quest counters from Fallback Plan and sacrifice it: Search your library for a card, put that card into your hand, then shuffle.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 1,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "DOA",
+            "cardID": "61",
+            "designer": "Pipsqueak",
+            "script": "",
+            "notes": [],
+            "artist": "Jaan van Eeden",
+            "sdn": 7037,
+            "key": "Fallback Plan_DOA",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "DOA"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Fallback Plan_DOA",
+            "printKeys": [
+              "Fallback Plan_DOA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 9.876543209876543,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fallback Plan",
+              "original_text": "Mana cost: {B}\nType: Enchantment\nWhenever you draw a card, put a quest counter on Fallback Plan.\nRemove four quest counters from Fallback Plan and sacrifice it: Search your library for a card, put that card into your hand, then shuffle.",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {B}\nType: Enchantment\nWhenever you draw a card, put a quest counter on Fallback Plan.\nRemove four quest counters from Fallback Plan and sacrifice it: Search your library for a card, put that card into your hand, then shuffle.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Gate to the Beyond_DOA",
+          "name": "Gate to the Beyond",
+          "scope": "msem",
+          "source_card_key": "Gate to the Beyond_DOA",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Gate to the Beyond",
+            "cardName": "Gate to the Beyond",
+            "manaCost": "{B}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*DOA R*",
+            "rulesText": "Whenever you cast a noncreature spell, put a quest counter on Gate to the Beyond.\nAt the beginning of your upkeep, if there are three or more quest counters on Gate to the Beyond, you draw a card and you lose 1 life. Then if there are six or more quest counters on it, each opponent loses 2 life.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Black} ",
+            "cmc": 1,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "DOA",
+            "cardID": "62",
+            "designer": "Pipsqueak",
+            "script": "",
+            "notes": [],
+            "artist": "Caelan Stokkermans",
+            "sdn": 7049,
+            "key": "Gate to the Beyond_DOA",
+            "colorIdentity": [
+              "B"
+            ],
+            "spellbook": [],
+            "prints": [
+              "DOA"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Gate to the Beyond_DOA",
+            "printKeys": [
+              "Gate to the Beyond_DOA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "reworked",
+              "nerfed"
+            ],
+            "pr": 0,
+            "pm": 2.4691358024691357,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gate to the Beyond",
+              "original_text": "Mana cost: {B}\nType: Enchantment\nWhenever you cast a noncreature spell, put a quest counter on Gate to the Beyond.\nAt the beginning of your upkeep, if there are three or more quest counters on Gate to the Beyond, you draw a card and you lose 1 life. Then if there are six or more quest counters on it, each opponent loses 2 life.",
+              "color_indicator": [
+                "Black"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {B}\nType: Enchantment\nWhenever you cast a noncreature spell, put a quest counter on Gate to the Beyond.\nAt the beginning of your upkeep, if there are three or more quest counters on Gate to the Beyond, you draw a card and you lose 1 life. Then if there are six or more quest counters on it, each opponent loses 2 life.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Lockdown_DOA",
+          "name": "Lockdown",
+          "scope": "msem",
+          "source_card_key": "Lockdown_DOA",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Lockdown",
+            "cardName": "Lockdown",
+            "manaCost": "{W}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*DOA R*",
+            "rulesText": "Whenever you draw a card, put a quest counter on Lockdown.\nAs long as there are three or more quest counters on Lockdown, creatures with power 3 or greater don't untap during their controller's untap steps.",
+            "flavorText": "*Rilken is the city in the League positioned most perilously. Consequently, it has the best defenses.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 1,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "DOA",
+            "cardID": "15",
+            "designer": "Pipsqueak",
+            "script": "",
+            "notes": [],
+            "artist": "Tuomas Korpi",
+            "sdn": 7077,
+            "key": "Lockdown_DOA",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "DOA"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Lockdown_DOA",
+            "printKeys": [
+              "Lockdown_DOA"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 0.8597108245408362,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lockdown",
+              "original_text": "Mana cost: {W}\nType: Enchantment\nWhenever you draw a card, put a quest counter on Lockdown.\nAs long as there are three or more quest counters on Lockdown, creatures with power 3 or greater don't untap during their controller's untap steps.",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {W}\nType: Enchantment\nWhenever you draw a card, put a quest counter on Lockdown.\nAs long as there are three or more quest counters on Lockdown, creatures with power 3 or greater don't untap during their controller's untap steps.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Seek Perfection_DOA",
+          "name": "Seek Perfection",
+          "scope": "msem",
+          "source_card_key": "Seek Perfection_DOA",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Seek Perfection",
+            "cardName": "Seek Perfection",
+            "manaCost": "{1}{W}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*DOA R*",
+            "rulesText": "Whenever you draw a card, put a quest counter on Seek Perfection.\nAt the beginning of each end step, if Seek Perfection has four or more quest counters on it, exile target permanent you control, then return it to the battlefield under your control.",
+            "flavorText": "",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{White} ",
+            "cmc": 2,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "DOA",
+            "cardID": "25",
+            "designer": "Pipsqueak",
+            "script": "",
+            "notes": [],
+            "artist": "Yunpeng Chen",
+            "sdn": 7133,
+            "key": "Seek Perfection_DOA",
+            "colorIdentity": [
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "DOA",
+              "MSY"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Seek Perfection_DOA",
+            "printKeys": [
+              "Seek Perfection_DOA",
+              "Seek Perfection_MSY"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seek Perfection",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment\nWhenever you draw a card, put a quest counter on Seek Perfection.\nAt the beginning of each end step, if Seek Perfection has four or more quest counters on it, exile target permanent you control, then return it to the battlefield under your control.",
+              "color_indicator": [
+                "White"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment\nWhenever you draw a card, put a quest counter on Seek Perfection.\nAt the beginning of each end step, if Seek Perfection has four or more quest counters on it, exile target permanent you control, then return it to the battlefield under your control.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Premium Membership_AKD",
+          "name": "Premium Membership",
+          "scope": "msem",
+          "source_card_key": "Premium Membership_AKD",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Premium Membership",
+            "cardName": "Premium Membership",
+            "manaCost": "{1}{G}",
+            "typeLine": "Enchantment",
+            "rarityLine": "*AKD R*",
+            "rulesText": "If one or more +1/+1 counters or quest counters would be put on a permanent you control, that many plus one of those counters are put on it instead.",
+            "flavorText": "*The Adventurers' Guild grants many benefits, some more obvious than others.*\n",
+            "power": "",
+            "toughness": "",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 2,
+            "cardType": "Enchantment",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "AKD",
+            "cardID": "192",
+            "designer": "Parasign",
+            "script": "",
+            "notes": [],
+            "artist": "Cristian Chihaia",
+            "sdn": 9510,
+            "key": "Premium Membership_AKD",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "AKD"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Premium Membership_AKD",
+            "printKeys": [
+              "Premium Membership_AKD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "pr": 0,
+            "pm": 1.0441683199331733,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Premium Membership",
+              "original_text": "Mana cost: {1}{G}\nType: Enchantment\nIf one or more +1/+1 counters or quest counters would be put on a permanent you control, that many plus one of those counters are put on it instead.",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{G}\nType: Enchantment\nIf one or more +1/+1 counters or quest counters would be put on a permanent you control, that many plus one of those counters are put on it instead.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Selvar, the Seeker_AKD",
+          "name": "Selvar, the Seeker",
+          "scope": "msem",
+          "source_card_key": "Selvar, the Seeker_AKD",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Selvar, the Seeker",
+            "cardName": "Selvar, the Seeker",
+            "manaCost": "{G}{W}",
+            "typeLine": "Legendary Creature — Elf Scout Avatar",
+            "rarityLine": "*AKD R*",
+            "rulesText": "Whenever a quest counter is put on a permanent you control, upgrade Selvar, the Seeker. *(Give it one of the listed counters it doesn't already have.)*\n• +1/+1\n• First strike\n• Vigilance\n• Reach\n• Trample\n• Lifelink",
+            "flavorText": "",
+            "power": "3",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Green/White} ",
+            "cmc": 2,
+            "cardType": " Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "AKD",
+            "cardID": "219",
+            "designer": "Parasign",
+            "script": "",
+            "notes": [],
+            "artist": "Wang Lei",
+            "sdn": 9539,
+            "key": "Selvar, the Seeker_AKD",
+            "colorIdentity": [
+              "G",
+              "W"
+            ],
+            "spellbook": [],
+            "prints": [
+              "AKD"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Selvar, the Seeker_AKD",
+            "printKeys": [
+              "Selvar, the Seeker_AKD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Selvar, the Seeker",
+              "original_text": "Mana cost: {G}{W}\nType: Legendary Creature — Elf Scout Avatar\nPower/Toughness: 3/3\nWhenever a quest counter is put on a permanent you control, upgrade Selvar, the Seeker. *(Give it one of the listed counters it doesn't already have.)*\n• +1/+1\n• First strike\n• Vigilance\n• Reach\n• Trample\n• Lifelink",
+              "color_indicator": []
+            }
+          ],
+          "original_text": "Mana cost: {G}{W}\nType: Legendary Creature — Elf Scout Avatar\nPower/Toughness: 3/3\nWhenever a quest counter is put on a permanent you control, upgrade Selvar, the Seeker. *(Give it one of the listed counters it doesn't already have.)*\n• +1/+1\n• First strike\n• Vigilance\n• Reach\n• Trample\n• Lifelink",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Vital Companion_AKD",
+          "name": "Vital Companion",
+          "scope": "msem",
+          "source_card_key": "Vital Companion_AKD",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Vital Companion",
+            "cardName": "Vital Companion",
+            "manaCost": "{3}{G}",
+            "typeLine": "Creature — Wolf",
+            "rarityLine": "*AKD U*",
+            "rulesText": "Vigilance\nWhenever Vital Companion attacks, you may put a quest counter on an enchantment you control.",
+            "flavorText": "*“We need the dog. Trust me on this one.”\n—Lelin, the Wise*\n",
+            "power": "3",
+            "toughness": "4",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 4,
+            "cardType": "Creature",
+            "rarity": "uncommon",
+            "shape": "normal",
+            "setID": "AKD",
+            "cardID": "205",
+            "designer": "Parasign",
+            "script": "",
+            "notes": [],
+            "artist": "Judith Canillo",
+            "sdn": 9579,
+            "key": "Vital Companion_AKD",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "AKD"
+            ],
+            "rarities": [
+              "uncommon"
+            ],
+            "firstPrint": "Vital Companion_AKD",
+            "printKeys": [
+              "Vital Companion_AKD"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Vital Companion",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Wolf\nPower/Toughness: 3/4\nVigilance\nWhenever Vital Companion attacks, you may put a quest counter on an enchantment you control.",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {3}{G}\nType: Creature — Wolf\nPower/Toughness: 3/4\nVigilance\nWhenever Vital Companion attacks, you may put a quest counter on an enchantment you control.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Steward of Empire's Cradle_OTH",
+          "name": "Steward of Empire's Cradle",
+          "scope": "msem",
+          "source_card_key": "Steward of Empire's Cradle_OTH",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Steward of Empire's Cradle",
+            "cardName": "Steward of Empire's Cradle",
+            "manaCost": "{2}{G}",
+            "typeLine": "Creature — Human Shaman",
+            "rarityLine": "*OTH R*",
+            "rulesText": "When Steward of Empire's Cradle enters, you may search your library for a Discovery, Quest, or Saga card, reveal it, then shuffle and put that card on top.\nCivilized — If an ability of an enchantment you control triggers, if you control an artifact, a creature and an enchantment, that ability triggers an additional time.",
+            "flavorText": "",
+            "power": "2",
+            "toughness": "3",
+            "loyalty": "",
+            "color": "{Green} ",
+            "cmc": 3,
+            "cardType": "Creature",
+            "rarity": "rare",
+            "shape": "normal",
+            "setID": "OTH",
+            "cardID": "234",
+            "designer": "Matt & DrChillbrain",
+            "script": "",
+            "notes": [],
+            "artist": "Ekaterina Chesalova",
+            "sdn": 12781,
+            "key": "Steward of Empire's Cradle_OTH",
+            "colorIdentity": [
+              "G"
+            ],
+            "spellbook": [],
+            "prints": [
+              "OTH"
+            ],
+            "rarities": [
+              "rare"
+            ],
+            "firstPrint": "Steward of Empire's Cradle_OTH",
+            "printKeys": [
+              "Steward of Empire's Cradle_OTH"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ],
+            "ctags": [
+              "nerfed"
+            ],
+            "pr": 29.069767441860463,
+            "pm": 47.31488052992666,
+            "psr": 0,
+            "psm": 0
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Steward of Empire's Cradle",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Human Shaman\nPower/Toughness: 2/3\nWhen Steward of Empire's Cradle enters, you may search your library for a Discovery, Quest, or Saga card, reveal it, then shuffle and put that card on top.\nCivilized — If an ability of an enchantment you control triggers, if you control an artifact, a creature and an enchantment, that ability triggers an additional time.",
+              "color_indicator": [
+                "Green"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Human Shaman\nPower/Toughness: 2/3\nWhen Steward of Empire's Cradle enters, you may search your library for a Discovery, Quest, or Saga card, reveal it, then shuffle and put that card on top.\nCivilized — If an ability of an enchantment you control triggers, if you control an artifact, a creature and an enchantment, that ability triggers an additional time.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        },
+        {
+          "id": "Northrime Messenger_ONO",
+          "name": "Northrime Messenger",
+          "scope": "msem",
+          "source_card_key": "Northrime Messenger_ONO",
+          "source_shape": "normal",
+          "source_layout": "normal",
+          "source_raw_record": {
+            "fullName": "Northrime Messenger",
+            "cardName": "Northrime Messenger",
+            "manaCost": "{1}{U}",
+            "typeLine": "Creature — Bird",
+            "rarityLine": "*ONO C*",
+            "rulesText": "Flying\nMenagerie — When Northrime Messenger enters, if there are five or more creature types among creatures you control, you may search your library for a Quest card, reveal it, put it into your hand, then shuffle.",
+            "flavorText": "",
+            "power": "1",
+            "toughness": "2",
+            "loyalty": "",
+            "color": "{Blue} ",
+            "cmc": 2,
+            "cardType": "Creature",
+            "rarity": "common",
+            "shape": "normal",
+            "setID": "ONO",
+            "cardID": "68",
+            "designer": "Dodger",
+            "script": "",
+            "notes": [],
+            "artist": "Grace Liu",
+            "sdn": 12925,
+            "key": "Northrime Messenger_ONO",
+            "colorIdentity": [
+              "U"
+            ],
+            "spellbook": [],
+            "prints": [
+              "ONO"
+            ],
+            "rarities": [
+              "common"
+            ],
+            "firstPrint": "Northrime Messenger_ONO",
+            "printKeys": [
+              "Northrime Messenger_ONO"
+            ],
+            "formats": [
+              "msem",
+              "msedh"
+            ]
+          },
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Northrime Messenger",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nMenagerie — When Northrime Messenger enters, if there are five or more creature types among creatures you control, you may search your library for a Quest card, reveal it, put it into your hand, then shuffle.",
+              "color_indicator": [
+                "Blue"
+              ]
+            }
+          ],
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Bird\nPower/Toughness: 1/2\nFlying\nMenagerie — When Northrime Messenger enters, if there are five or more creature types among creatures you control, you may search your library for a Quest card, reveal it, put it into your hand, then shuffle.",
+          "executable_text": null,
+          "executable_faces": null,
+          "rewrite_status": "pending_ordinary_consumer_materialization"
+        }
+      ],
+      "source_cards": [
+        "Align the Astrolabe",
+        "Beckon Darkness",
+        "Fallback Plan",
+        "Gate to the Beyond",
+        "Lockdown",
+        "Seek Perfection",
+        "Premium Membership",
+        "Selvar, the Seeker",
+        "Vital Companion",
+        "Steward of Empire's Cradle",
+        "Northrime Messenger"
+      ],
+      "support_status": "ordinary_consumers_preserved_inputs_unmaterialized"
+    }
+  ]
+}

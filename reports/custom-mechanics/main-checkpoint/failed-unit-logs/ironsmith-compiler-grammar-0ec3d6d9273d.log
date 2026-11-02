@@ -1,0 +1,16 @@
+
+running 1 test
+IDENTITY_FILTER_TRACE text="custom keyword \"growwise" tokens=[(Word, Some("custom")), (Word, Some("keyword")), (Quote, None), (Word, Some("growwise"))]
+IDENTITY_FILTER_TRACE text="custom keyword \"growwise" tokens=[(Word, Some("custom")), (Word, Some("keyword")), (Quote, None), (Word, Some("growwise"))]
+IDENTITY_FILTER_TRACE text="custom keyword \"growwise" tokens=[(Word, Some("custom")), (Word, Some("keyword")), (Quote, None), (Word, Some("growwise"))]
+IDENTITY_FILTER_TRACE text="custom keyword \"growwise" tokens=[(Word, Some("custom")), (Word, Some("keyword")), (Quote, None), (Word, Some("growwise"))]
+Error: ParseError("unsupported predicate (predicate: 'it had custom keyword \"growwise\"')")
+test grammar::filters::predicate_phrases::tests::custom_identity_had_reads_historical_evidence_without_performing_a_program ... FAILED
+
+failures:
+
+failures:
+    grammar::filters::predicate_phrases::tests::custom_identity_had_reads_historical_evidence_without_performing_a_program
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.03s
+

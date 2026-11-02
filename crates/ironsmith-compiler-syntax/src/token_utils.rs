@@ -568,7 +568,9 @@ mod tests {
         let (label, body) = split_em_dash_label_prefix(&tokens).expect("label prefix");
 
         assert_eq!(label, "Boast");
-        assert_eq!(render_token_slice(body), "\"Dash\"means nothing here.");
+        assert_eq!(render_token_slice(body), "\"Dash\" means nothing here.");
+        let quoted_only = lex_line("\"Dash — a quoted label\" means nothing here.", 0).expect("lex quoted dash");
+        assert!(split_em_dash_label_prefix(&quoted_only).is_none(), "a quoted dash cannot become an outer label");
     }
 
     #[test]

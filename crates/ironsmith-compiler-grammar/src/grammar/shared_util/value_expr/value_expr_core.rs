@@ -4,6 +4,27 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    let offset=usize::from(words.first()==Some(&"the"));
+    if words.get(offset..offset+3)==Some(&["number","of","times"][..]) {
+        let begin=offset+3;
+        if let Some(performed)=words[begin..].windows(3).position(|part|part==["has","performed","the"]).map(|i|begin+i)
+            && let Some(action)=words[performed+3..].iter().position(|word|*word=="action").map(|i|performed+3+i) {
+            let subject=&words[begin..performed];
+            let object=if matches!(subject,["it"]|["that","object"]) {Some(ChooseSpec::Iterated)}else if crate::util::is_source_reference_words(subject) {Some(ChooseSpec::Source)}else{None};
+            if let Some(object)=object {
+                let this_turn=words.get(action+1..action+3)==Some(&["this","turn"][..]);
+                let used=action+1+if this_turn{2}else{0};
+                if action>performed+3 {
+                    crate::word_claims::claim_words(&words[..used]);
+                    return Some((Value::NamedActionCount {object:Box::new(object),label:words[performed+3..action].join(" "),this_turn},used));
+                }
+            }
+        }
+    }
+    if words.starts_with(&["the", "last", "number", "chosen", "for", "this", "permanent"]) {
+        crate::word_claims::claim_words(&words[..7]);
+        return Some((Value::SourceChosenNumber { if_unset: Some(0), pair: None }, 7));
+    }
     let draft_offset = usize::from(words.first() == Some(&"the"));
     let draft_prefix = &["highest", "number", "you", "noted", "for", "cards", "named"];
     if words.get(draft_offset..draft_offset + draft_prefix.len()) == Some(draft_prefix)
@@ -74,6 +95,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some((Value::VoteCount((*option).to_string()), offset + 4));
     }
     if let Some(quantity) = parse_life_total_quantity_words(words) {
+        // This term reader owns exactly the scoped life quantity, leaving any
+        // following arithmetic operator and operand to the expression reader.
+        crate::word_claims::claim_words(&words[..quantity.1]);
         return Some(quantity);
     }
     if words.get(offset) == Some(&"difference") {
@@ -108,6 +132,13 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         )
     }) {
         return Some((Value::ManaSpentToCastThisSpell, offset + 8));
+    }
+    // A proper source name normalizes to the bare source pronoun. Leave
+    // following operands to the ordinary value-expression continuation.
+    if permission_shapes::starts_at_words(
+        words, offset, &["amount", "of", "mana", "spent", "to", "cast", "this"],
+    ) {
+        return Some((Value::ManaSpentToCastThisSpell, offset + 7));
     }
     // "where X is the amount of mana spent to cast her" (Toph, Greatest
     // Earthbender): a gendered pronoun names the legendary source itself.

@@ -1,0 +1,774 @@
+--- a/crates/ironsmith-artifact-effect-decoder/src/creation_graph.rs
++++ b/crates/ironsmith-artifact-effect-decoder/src/creation_graph.rs
+@@ -163,14 +163,24 @@
+             operation_label:None,selection:ironsmith_core::CardCreationSelection::Named("Scoped card".into()),
+             count:1.into(),player:ironsmith_core::PlayerFilter::You,zone:ironsmith_core::Zone::Hand,
+             library_position:ironsmith_core::CardCreationLibraryPosition::Top};
+-        let (value,_)=crate::authored_definition_graph(&creation,&mut |id|Ok(id+1000),&[]).unwrap();
++        let (normalized,_)=crate::authored_definition_graph(&creation,&mut |id|Ok(id+1000),&[]).unwrap();
++        assert_eq!(normalized["definitions"][0]["card"]["id"],serde_json::json!(1041));
++        assert_eq!(normalized["definition_scope"],serde_json::json!(1041));
++        assert_eq!(normalized["definition_refs"],serde_json::json!([1041]));
++        assert!(normalized["definitions"][0].get("canonical_text").is_none(),"authored identity deliberately excludes presentation; it is not a materialization envelope");
++        // The lossless mapper owns a typed runtime transport roundtrip.
++        let value=crate::remap_card_ids(&creation,&mut |id|Ok(id+1000)).unwrap();
+         let mapped:Creation=serde_json::from_value(value).unwrap();
+         assert_eq!(mapped.definitions[0].card.id,CardId(1041));
+         assert_eq!(mapped.definition_scope,Some(CardId(1041)));
+         assert_eq!(mapped.definition_refs,vec![CardId(1041)]);
+         let scope=Scope {scope:CardId(41),definitions:creation.definitions.clone(),effect:Box::new(ironsmith_compiled_artifact::WireEffect::new("CreateCardsEffect",serde_json::to_value(Creation{definitions:Vec::new(),..creation}).unwrap()))};
+         let effect=ironsmith_compiled_artifact::WireEffect::new("CardDefinitionScopeEffect",serde_json::to_value(scope).unwrap());
+-        let (value,_)=crate::authored_definition_graph(&effect,&mut |id|Ok(id+2000),&[]).unwrap();
++        let (normalized,_)=crate::authored_definition_graph(&effect,&mut |id|Ok(id+2000),&[]).unwrap();
++        assert_eq!(normalized["payload"]["scope"],serde_json::json!(2041));
++        assert_eq!(normalized["payload"]["definitions"][0]["card"]["id"],serde_json::json!(2041));
++        assert_eq!(normalized["payload"]["effect"]["payload"]["definition_refs"],serde_json::json!([2041]));
++        let value=crate::remap_card_ids(&effect,&mut |id|Ok(id+2000)).unwrap();
+         let mapped:ironsmith_compiled_artifact::WireEffect=serde_json::from_value(value).unwrap();
+         let scope:Scope=serde_json::from_value(mapped.payload().clone()).unwrap();
+         assert_eq!(scope.scope,CardId(2041));
+--- a/crates/ironsmith-compiler/src/supplied_definitions.rs
++++ b/crates/ironsmith-compiler/src/supplied_definitions.rs
+@@ -143,9 +143,23 @@
+                 _ => {}
+             }
+         }
+-        let mut references = 0;
+-        check(&serialized, root_id.0, &mut references);
+-        assert_eq!(references, 2);
++        // ResolutionProgram serializes its authoritative segments and a
++        // mirrored flattened-default cache. Count executable occurrences from
++        // segments, while independently proving that the cache is identical.
++        let mut authoritative_references=0;
++        let mut cached_references=0;
++        for node in &bundle.catalog {
++            let program=node.spell_effect.as_ref().expect("one creation spell per catalog node");
++            let authoritative=program.segments.iter().flat_map(|segment|segment.default_effects.iter()).collect::<Vec<_>>();
++            assert_eq!(program.flattened_default_effects().iter().collect::<Vec<_>>(),authoritative);
++            check(&serde_json::to_value(&program.segments).unwrap(),root_id.0,&mut authoritative_references);
++            check(&serde_json::to_value(program.flattened_default_effects()).unwrap(),root_id.0,&mut cached_references);
++        }
++        assert_eq!(authoritative_references,2,"one actual shallow creation per declared source");
++        assert_eq!(cached_references,authoritative_references,"the cache cannot introduce another executable program");
++        let mut serialized_references=0;
++        check(&serialized,root_id.0,&mut serialized_references);
++        assert_eq!(serialized_references,authoritative_references+cached_references,"all serialized reference occurrences belong to the checked programs or their cache");
+     }
+ 
+     #[test]
+--- a/crates/ironsmith-compiler-grammar/src/custom_status.rs
++++ b/crates/ironsmith-compiler-grammar/src/custom_status.rs
+@@ -288,9 +288,13 @@
+     use super::*;
+     #[test]
+     fn status_operand_uses_authored_literal_surface_not_source_alias_spelling() {
+-        let mut tokens=crate::lexer::lex_line("unlocked source named canvas",0).unwrap();
+-        tokens[1].set_literal_surface("work");
++        let mut tokens=crate::lexer::lex_line("unlocked Work named canvas",0).unwrap();
++        tokens[1].set_literal_surface("WORK");
+         assert_eq!(name(&tokens),Some("unlocked work named canvas".into()));
++        let mut rewritten=crate::lexer::lex_line("unlocked source named canvas",0).unwrap();
++        rewritten[1].set_literal_surface("work");
++        assert_eq!(name(&rewritten),Some("unlocked source named canvas".into()),
++            "a semantic replacement cannot borrow a different operand's old literal spelling");
+     }
+ }
+ 
+--- a/crates/ironsmith-compiler-grammar/src/effect_sentences/chain_carry.rs
++++ b/crates/ironsmith-compiler-grammar/src/effect_sentences/chain_carry.rs
+@@ -4789,5 +4789,11 @@
+         let tokens=crate::lexer::lex_line(&text,0).unwrap();
+         let parsed=crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+         assert_eq!(parsed.len(),1,"the complete guarded player loop stays inside the condition");
+-    }
+-}
++        assert!(matches!(parsed.as_slice(), [EffectAst::Conditionals(
++            crate::cards::builders::ConditionalEffectAst::Conditional { if_true, if_false, .. })]
++            if if_false.is_empty() && matches!(if_true.as_slice(), [EffectAst::ForEach(
++                crate::cards::builders::ForEachEffectAst::ForEachTargetPlayers { effects, .. })]
++                if matches!(effects.as_slice(), [EffectAst::CreateLinkedFaceToken { .. }]))),
++            "the outer guard retains the complete inner player loop and linked-face instruction");
++    }
++}
+--- a/crates/ironsmith-compiler-grammar/src/effect_sentences/document_readings.rs
++++ b/crates/ironsmith-compiler-grammar/src/effect_sentences/document_readings.rs
+@@ -1696,9 +1696,12 @@
+             crate::util::trim_edge_punctuation_tokens(followup.tail_tokens)) == ["do", "the", "following"]);
+     let predicate = if plain || result_followup { None } else {
+         if !header.first().is_some_and(|token| token.is_word("if")) { return Ok(None); }
+-        if header.len() < 6 || crate::lexer::parser_token_word_refs(&header[header.len()-3..]) != ["do", "the", "following"]
+-            || header[header.len()-4].kind != TokenKind::Comma { return Ok(None); }
+-        Some(crate::grammar::filters::parse_condition_predicate_lexed(&header[1..header.len()-4])?)
++        // This reader owns only a guard directly followed by its bounded
++        // instruction head. An outer condition followed by another complete
++        // player/object program belongs to the ordinary conditional reader.
++        let Some(comma) = header.iter().position(|token| token.kind == TokenKind::Comma) else { return Ok(None); };
++        if crate::lexer::parser_token_word_refs(&header[comma+1..]) != ["do", "the", "following"] { return Ok(None); }
++        Some(crate::grammar::filters::parse_condition_predicate_lexed(&header[1..comma])?)
+     };
+     if !document.tokens.get(colon+1).is_some_and(|token| token.kind == TokenKind::LBracket) { return Ok(None); }
+     let (body, mut tail) = bounded_program_payload(document, colon)?;
+@@ -1821,7 +1824,19 @@
+         let effects=read_named_action_program(&document).unwrap().unwrap();
+         assert_eq!(effects.len(),1,"the creation entry rider belongs inside the complete named program");
+         assert_eq!(named_program_creation_count(&effects),1);
+-        assert!(format!("{effects:?}").contains("tapped: true"),"entry condition must be folded into the token creation before entry");
++        fn tapped_creation_count(effects: &[EffectAst]) -> usize {
++            let mut count = 0;
++            for effect in effects {
++                if matches!(effect, EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
++                    action: crate::cards::builders::SubjectVerbActionAst::Tokens(
++                        crate::cards::builders::TokenActionAst::CreateTokenWithMods { tapped: true, .. }
++                        | crate::cards::builders::TokenActionAst::CreateTokenCopy { enters_tapped: true, .. }
++                        | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { enters_tapped: true, .. }), .. })) { count += 1; }
++                crate::effect_ast_traversal::for_each_nested_effects(effect, true, |body| count += tapped_creation_count(body));
++            }
++            count
++        }
++        assert_eq!(tapped_creation_count(&effects),1,"the exact sole creation has its entry rider folded before entry");
+     }
+     #[test]
+     fn ordinary_quoted_optional_actions_keep_their_original_owner() {
+--- a/crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability_inline_tests.rs
++++ b/crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability_inline_tests.rs
+@@ -1713,7 +1713,7 @@
+         assert!(!choice);assert_eq!(abilities.len(),2);
+         let debug=format!("{abilities:?}");assert!(debug.contains("CustomKeywordIdentity")&&debug.contains(name)&&debug.contains("Activated"),"{debug}");
+     }
+-    for text in ["custom keyword \"improve\" {R}","custom keyword \"improve\" and \"{{1}}: Draw a card.\"","custom keyword \"improve"] {
++    for text in ["custom keyword \"improve\" {R}","custom keyword \"improve\" and \"{1}: Draw a card.\"","custom keyword \"improve"] {
+         assert!(parse_custom_keyword_identity_grant_component(&lex_line(text,0).unwrap()).is_err(),"component cannot swallow a following grant/list item: {text}");
+     }
+ }
+@@ -1721,13 +1721,23 @@
+ #[test]
+ fn historical_keyword_grant_and_same_true_list_preserve_a_payload_copy_operand() {
+     let text="This creature gains first strike until end of turn if that creature had first strike. The same is true for double strike, deathtouch, hexproof, indestructible, lifelink, menace, protection, and trample.";
+-    let tokens=crate::lexer::lex_line(text,0).unwrap();
+-    let effects=crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+-    fn find(effect:&EffectAst)->Option<Vec<crate::static_abilities::StaticAbilityId>> {
+-        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst{action:crate::cards::builders::SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantKeywordAbilitiesFrom{keywords,last_known:true,..}),..})=effect{return Some(keywords.clone());}
+-        let mut found=None;crate::effect_ast_traversal::for_each_nested_effects(effect,true,|children|{for child in children {if found.is_none(){found=find(child);}}});found
+-    }
+-    let ids=effects.iter().find_map(find).expect("one typed historical copy grant");
++    let document=crate::preprocess::preprocess_document(
++        ironsmith_core::card::CardBuilder::new(crate::CardId::new(), "Independent family-copy source"),text).unwrap();
++    let mut effects=Vec::new();
++    for item in document.items {
++        if let crate::preprocess::PreprocessedItem::Line(line)=item {
++            effects.extend(crate::effect_sentences::parse_effect_sentences_lexed(&line.tokens).unwrap());
++        }
++    }
++    fn collect(effect:&EffectAst, grants:&mut Vec<Vec<crate::static_abilities::StaticAbilityId>>) {
++        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst{action:crate::cards::builders::SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantKeywordAbilitiesFrom{keywords,last_known:true,..}),..})=effect {
++            grants.push(keywords.clone());
++        }
++        crate::effect_ast_traversal::for_each_nested_effects(effect,true,|children|for child in children {collect(child,grants)});
++    }
++    let mut grants=Vec::new();for effect in &effects {collect(effect,&mut grants);}
++    assert_eq!(grants.len(),9,"the preprocessor expands the full same-true list into independent historical family copies");
++    let ids=grants.into_iter().flatten().collect::<Vec<_>>();
+     assert_eq!(ids.len(),9);assert!(ids.contains(&crate::static_abilities::StaticAbilityId::Protection));
+     assert!(!ids.contains(&crate::static_abilities::StaticAbilityId::Flying));
+ }
+--- a/crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs
++++ b/crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs
+@@ -5048,10 +5048,16 @@
+     let reference = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+     demonstrative_reference_prefix(reference)?;
+     let keyword = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
++    // Rest is captured by word range, whose end excludes punctuation after
++    // its final word. Recover the complete token suffix so an operand's
++    // closing quote is retained, without accepting any unparsed tail.
++    let first_keyword = keyword.tokens().first()?;
++    let keyword_start = tokens.iter().position(|token| std::ptr::eq(token, first_keyword))?;
++    let keyword_tokens = crate::util::trim_statement_separators(&tokens[keyword_start..]);
+     // A custom identity is a complete quoted data operand. Reuse the
+     // ordinary identity-filter reader while preserving the past-tense match
+     // policy below; this never grants the named program.
+-    let mut identity_tokens = keyword.tokens().to_vec();
++    let mut identity_tokens = keyword_tokens.to_vec();
+     let mut introducer = identity_tokens.first()?.clone();
+     introducer.replace_word("with");
+     identity_tokens.insert(0, introducer);
+@@ -5063,8 +5069,8 @@
+         filter.ability_markers.push(name);
+         None
+     } else {
+-        let (constraint, consumed) = parse_filter_keyword_constraint_tokens(keyword.tokens())?;
+-        if consumed != keyword.tokens().len() { return None; }
++        let (constraint, consumed) = parse_filter_keyword_constraint_tokens(keyword_tokens)?;
++        if consumed != keyword_tokens.len() { return None; }
+         Some(constraint)
+     };
+     let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+--- a/crates/ironsmith-compiler-grammar/src/grammar/modal_results/modal_results_object_action.rs
++++ b/crates/ironsmith-compiler-grammar/src/grammar/modal_results/modal_results_object_action.rs
+@@ -44,7 +44,8 @@
+         else {(false,tail)};
+     let (verb,tail)=tail.split_first()?;
+     if !matches!(*verb,"create"|"created") {return None;}
+-    let tail=tail.strip_prefix(&["a"]).or_else(||tail.strip_prefix(&["any"])).unwrap_or(tail);
++    let tail=tail.strip_prefix(&["a"]).or_else(||tail.strip_prefix(&["an"]))
++        .or_else(||tail.strip_prefix(&["any"])).unwrap_or(tail);
+     if !tail.ends_with(&["this", "way"]) {return None;}
+     let descriptor = &tail[..tail.len()-2];
+     // Unspecified or existential creation is a result-object predicate.
+@@ -56,7 +57,15 @@
+     } else {
+         let verb_index=tokens.iter().position(|token|token.is_any_word(&["create","created"]))?;
+         let end=tokens.iter().rposition(|token|token.is_word("this"))?;
+-        let operand=&tokens[verb_index+1..end];
++        let mut start = verb_index + 1;
++        // The result reader owns an existential determiner. The ordinary
++        // object-filter reader receives the complete descriptor alone, just
++        // as the word-level cardinality check above already does.
++        if tokens.get(start).is_some_and(|token|token.is_any_word(&["a","an","any"])) {
++            crate::word_claims::claim_tokens(&tokens[start..start+1]);
++            start += 1;
++        }
++        let operand=&tokens[start..end];
+         crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(operand,false).ok()?
+     };
+     filter.token=true;
+--- a/crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs
++++ b/crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs
+@@ -7160,7 +7160,12 @@
+             assert_eq!(read(text), expected, "{text}");
+         }
+         let debug = format!("{expected:?}");
+-        assert!(debug.contains("custom keyword:experience") && debug.contains("Exile") && debug.contains("Tagged"), "{debug}");
++        let PredicateAst::CountComparison { count: AnthemCountExpression::MatchingFilter(filter), .. } = &expected else { panic!("existential linked population: {debug}") };
++        assert_eq!(filter.ability_markers, ["experience"]);
++        assert_eq!(filter.zone, Some(Zone::Exile));
++        assert!(filter.card_types.contains(&CardType::Creature));
++        assert!(filter.tagged_constraints.iter().any(|constraint|
++            constraint.tag == crate::tag::CompilerReferenceTag::SourceExiled.key()), "{debug}");
+         for invalid in ["a creature card with custom keyword \"experience\" is exiled by another permanent", "a creature card with custom keyword \"experience\" is exiled by this permanent tomorrow"] {
+             assert!(parse_static_condition_clause(&crate::lexer::lex_line(invalid,0).unwrap()).is_err(), "{invalid}");
+         }
+--- a/crates/ironsmith-compiler-grammar/src/keyword_static/conditional_copy_characteristics.rs
++++ b/crates/ironsmith-compiler-grammar/src/keyword_static/conditional_copy_characteristics.rs
+@@ -27,7 +27,13 @@
+         let prefix=if tail.starts_with(&["if","its"]) {2} else if tail.starts_with(&["if","it","is"]) {3} else {return Ok(None)};
+         let Some(start)=view.token_index_after_words(index+prefix) else{return Ok(None)};
+         descriptor_start=Some(start);
+-        parse_object_filter(&tokens[start..],false)?
++        // This filter is the complete condition of the exception, not a
++        // best-effort prefix that can silently swallow a sibling action.
++        let (parsed, claims) = crate::word_claims::scoped(|| parse_object_filter(&tokens[start..],false));
++        let parsed = parsed?;
++        if claims.leaves_unread(&tokens[start..]) { return Ok(None); }
++        crate::word_claims::adopt(&claims);
++        parsed
+     } else {ObjectFilter::default()};
+     crate::word_claims::claim_tokens(&tokens[..descriptor_start.unwrap_or(tokens.len())]);
+     Ok(Some(ironsmith_core::EnterAsCopyFollowup::ConditionalCharacteristics {entering_filter,remove_mana_cost,set_base_power_toughness:pt}))
+--- a/crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs
++++ b/crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs
+@@ -681,7 +681,11 @@
+         let Some(tail) = tokens.get(start+5..start+8) else { continue };
+         if crate::lexer::token_word_refs(tail) != ["less", "to", "cast"] { continue; }
+         let mut rewritten = tokens[..start].to_vec();
+-        rewritten.extend(crate::lexer::synthetic_phrase_tokens("{W/U/B/R/G}"));
++        // The complete cost reader consumes a typed mana group. Synthetic
++        // phrase tokens are words, even when their spelling contains braces,
++        // and would make that owner decline the otherwise valid clause.
++        rewritten.push(OwnedLexToken::new(crate::lexer::TokenKind::ManaGroup,
++            "{W/U/B/R/G}",crate::lexer::span_from_tokens(phrase).expect("five-word mana phrase")));
+         rewritten.extend_from_slice(&tokens[start+5..]);
+         let Some(mut ability) = parse_spells_cost_modifier_line(&rewritten)? else { return Ok(None) };
+         match &mut ability.payload {
+--- a/crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
++++ b/crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs
+@@ -1124,7 +1124,8 @@
+         // list is complete. Each grammar requires the complete
+         // "<filter> enter(s) tapped/untapped/with ... counter" shape and
+         // declines source, pronoun and trigger-intro subjects itself.
+-        "parse_enters_tapped_for_filter_line"
++        "parse_as_enters_becomes_characteristics_for_filter_line"
++        | "parse_enters_tapped_for_filter_line"
+         | "parse_enters_untapped_for_filter_line"
+         | "parse_enters_with_additional_counter_for_filter_line" => Vec::new(),
+         // These rule names describe the choice payload, while every accepted
+@@ -2752,6 +2753,16 @@
+     if looks_like_trigger_intro_tokens(tokens) || looks_like_trigger_intro_after_label(tokens) {
+         return Ok(None);
+     }
++    // A complete attached Otherwise program owns its first sentence's
++    // condition. Do not let a broad trailing-condition probe absorb the
++    // independently bounded alternative into that condition.
++    let attached_sentences = crate::lexer::split_lexed_sentences(tokens);
++    if matches!(attached_sentences.as_slice(), [_, second]
++        if second.first().is_some_and(|token| token.is_word("otherwise")))
++        && let Some(abilities) = parse_attached_conditional_anthem_otherwise_base_and_restriction_line(tokens)?
++    {
++        return Ok(Some(abilities));
++    }
+     // A trailing condition governs the entire restriction, including its
+     // blocker filter. Read it before a broad filter can absorb the predicate.
+     if !tokens.iter().any(OwnedLexToken::is_quote)
+--- a/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/parse_compile_tests.rs
++++ b/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/parse_compile_tests.rs
+@@ -3711,39 +3711,8 @@
+     }
+ }
+ 
+-#[test]
+-fn unsized_animation_never_invents_or_freezes_a_base_characteristic() {
+-    let ast = EffectAst::subject_verb_become_object_template(
+-        None, TargetAst::Source(None), vec![CardType::Artifact, CardType::Creature],
+-        vec![], vec![], None, vec![], vec![], false, None, None, None, Until::EndOfTurn,
+-    );
+-    let (effects, choices) = compile_effect(&ast, &mut EffectLoweringContext::new()).unwrap();
+-    assert!(choices.is_empty());
+-    let debug = format!("{effects:?}");
+-    assert!(debug.contains("AddCardTypes"));
+-    assert!(!debug.contains("SetPowerToughness"));
+-    assert!(!debug.contains("resolve_set_pt_values_at_resolution: true"));
+-}
+-
+-
+-
+-#[test]
+-fn explicit_damage_source_keeps_target_legality_after_reference_capture() {
+-    let definition = CardDefinitionBuilder::new(CardId::new(), "Targeted damage source probe")
+-        .card_types(vec![CardType::Sorcery])
+-        .parse_text("Target creature an opponent controls deals damage equal to its power to another target creature that player controls. The Ring tempts you.")
+-        .expect("dependent targeted damage should compile");
+-    fn visit(effect: &Effect, sources: &mut Vec<ChooseSpec>) {
+-        if let Some(bound) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+-            sources.push(bound.source.clone());
+-        }
+-        effect.visit_child_effects(&mut |child| visit(child, sources));
+-    }
+-    let mut sources = Vec::new();
+-    for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
+-        visit(effect, &mut sources);
+-    }
+-    assert_eq!(sources.len(), 1, "{sources:#?}");
+-    assert!(sources[0].is_target(), "an explicit damage source must retain CR 608.2b legality: {sources:#?}");
+-    assert!(matches!(sources[0].base(), ChooseSpec::Object(_)), "{sources:#?}");
+-}
++
++
++
++
++
+--- /dev/null
++++ b/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support/reference_animation_tests.rs
+@@ -0,0 +1,39 @@
++//! Live regressions relocated from the unwired legacy parse_compile_tests file.
++use super::{compile_effect, EffectAst, EffectLoweringContext, TargetAst, Until};
++use crate::{effect::Effect, ids::CardId, target::ChooseSpec, types::CardType};
++use ironsmith_compiler::{CardDefinitionBuilder, ParseCardText};
++
++#[test]
++fn unsized_animation_never_invents_or_freezes_a_base_characteristic() {
++    let ast = EffectAst::subject_verb_become_object_template(
++        None, TargetAst::Source(None), vec![CardType::Artifact, CardType::Creature],
++        vec![], vec![], None, vec![], vec![], false, None, None, None, Until::EndOfTurn,
++    );
++    let (effects, choices) = compile_effect(&ast, &mut EffectLoweringContext::new()).unwrap();
++    assert!(choices.is_empty());
++    let debug = format!("{effects:?}");
++    assert!(debug.contains("AddCardTypes"));
++    assert!(!debug.contains("SetPowerToughness"));
++    assert!(!debug.contains("resolve_set_pt_values_at_resolution: true"));
++}
++
++#[test]
++fn explicit_damage_source_keeps_target_legality_after_reference_capture() {
++    let definition = CardDefinitionBuilder::new(CardId::new(), "Targeted damage source probe")
++        .card_types(vec![CardType::Sorcery])
++        .parse_text("Target creature an opponent controls deals damage equal to its power to another target creature that player controls. The Ring tempts you.")
++        .expect("dependent targeted damage should compile");
++    fn visit(effect: &Effect, sources: &mut Vec<ChooseSpec>) {
++        if let Some(bound) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
++            sources.push(bound.source.clone());
++        }
++        effect.visit_child_effects(&mut |child| visit(child, sources));
++    }
++    let mut sources = Vec::new();
++    for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
++        visit(effect, &mut sources);
++    }
++    assert_eq!(sources.len(), 1, "{sources:#?}");
++    assert!(sources[0].is_target(), "an explicit damage source must retain CR 608.2b legality: {sources:#?}");
++    assert!(matches!(sources[0].base(), ChooseSpec::Object(_)), "{sources:#?}");
++}
+--- a/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support.rs
++++ b/crates/ironsmith-compiler-lowering/src/lowering_impl/compile_support.rs
+@@ -4088,3 +4088,7 @@
+     }
+     None
+ }
++
++#[cfg(test)]
++#[path = "compile_support/reference_animation_tests.rs"]
++mod reference_animation_tests;
+--- a/crates/ironsmith-compiler-wasm/src/lib.rs
++++ b/crates/ironsmith-compiler-wasm/src/lib.rs
+@@ -123,7 +123,7 @@
+                 )
+             },
+         ).map_err(|error| format!("ability counter {}: {error}",counter.name))?;
+-        if program.definition.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith_compiler::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())) || program.definition.spell_effect.is_some() {
++        if program.definition.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith_compiler::ability::AbilityKind::Static(value) if matches!(&value.payload, ironsmith_core::StaticAbilityPayload::CustomKeywordIdentity { .. }))) || program.definition.spell_effect.is_some() {
+             return Err(format!("ability counter {} must define permanent abilities",counter.name));
+         }
+         for subtype in &program.definition.card.custom_subtypes {
+--- a/crates/ironsmith-engine/src/effects/cards/create_cards.rs
++++ b/crates/ironsmith-engine/src/effects/cards/create_cards.rs
+@@ -553,7 +553,9 @@
+         ];
+         let mut action = effect(pool, "unused", Zone::Hand, 8);
+         action.selection = CardCreationSelection::RandomMatching {
+-            filter: ObjectFilter::creature(),
++            // This is an identity predicate over a supplied catalog, not
++            // a battlefield-object selector (ObjectFilter::creature()).
++            filter: ObjectFilter { card_types:vec![CardType::Creature],..Default::default() },
+             independent: false,
+         };
+         let mut ctx = ExecutionContext::new_default(game.new_object_id(), PlayerId::from_index(0));
+@@ -635,30 +637,26 @@
+     }
+     #[test]
+     fn definition_substitution_preserves_actor_count_destination_and_library_position() {
+-        use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
++        use crate::static_abilities::{CardCreationSelectionReplacement,StaticAbility};
+         let mut game = crate::tests::test_helpers::setup_two_player_game();
+         let a = PlayerId::from_index(0);
+         let b = PlayerId::from_index(1);
+-        let source = game.create_object_from_definition(
+-            &definition("Creation rule source", CardType::Artifact),
+-            a,
+-            Zone::Battlefield,
+-        );
+-        game.effect_store.replacement_effects.add_resolution_effect(
+-            ReplacementEffect::with_matcher(
+-                source,
+-                a,
+-                crate::events::WouldCreateCardsMatcher {
+-                    operation_label: Some("recorded operation".into()),
+-                    player: Some(PlayerFilter::Any),
+-                },
+-                ReplacementAction::Modify(EventModification::ReplaceCardDefinition(
+-                    "Replacement identity".into(),
+-                )),
+-            ),
+-        );
++        let replacement=CardDefinitionBuilder::new(CardId::new(),"Replacement identity")
++            .card_types(vec![CardType::Sorcery]).with_spell_effect(vec![crate::Effect::gain_life(9)]).build();
++        // The replacement provider, rather than the initiating creator, owns
++        // the actual supplied definition. Prototype actor/count/zone are inert.
++        let rule=CardCreationSelectionReplacement {
++            operation_label:Some("recorded operation".into()),player:PlayerFilter::Any,
++            replacement:crate::Effect::new(effect(vec![replacement.clone()],"Replacement identity",Zone::Hand,1)),
++            display:"Use the provider's selected identity instead.".into(),
++        };
++        let source_definition=CardDefinitionBuilder::new(CardId::new(),"Creation rule source")
++            .card_types(vec![CardType::Artifact]).with_ability(crate::Ability::static_ability(StaticAbility::new(rule))).build();
++        let source=game.create_object_from_definition(&source_definition,a,Zone::Battlefield);
++        let existing_top=game.create_object_from_definition(&definition("Existing actor library top",CardType::Sorcery),b,Zone::Library);
+         let pool = vec![
+             definition("Original identity", CardType::Sorcery),
++            // Same printed name is deliberately not the provider's identity.
+             definition("Replacement identity", CardType::Sorcery),
+         ];
+         let mut action = effect(pool, "Original identity", Zone::Library, 3);
+@@ -673,12 +671,14 @@
+             assert_eq!(object.name.as_str(), "Replacement identity");
+             assert_eq!(object.owner, b);
+             assert_eq!(object.zone, Zone::Library);
++            assert_eq!(object.card,Some(replacement.card.id),"same-name creator catalog cannot replace the source-owned definition");
+         }
+         assert_eq!(
+             out.action_objects(ironsmith_core::PriorEffectAction::Affected, Some(b))
+                 .len(),
+             3
+         );
++        assert_eq!(game.player(b).unwrap().library.last().copied(),Some(existing_top),"substitution preserves original bottom placement");
+         assert!(game.player(a).unwrap().hand.is_empty());
+         assert!(game.player(a).unwrap().library.is_empty());
+         assert!(
+@@ -782,13 +782,20 @@
+     fn duplicate_back_face_name_selects_the_supplied_physical_front_card() {
+         let mut game = crate::tests::test_helpers::setup_two_player_game();
+         let a = PlayerId::from_index(0);
+-        let back = definition("Supplied reverse identity", CardType::Creature);
+-        let original = game.create_object_from_definition(&back, a, Zone::Battlefield);
+-        let front = CardDefinitionBuilder::new(CardId::new(), "Supplied physical front")
+-            .card_types(vec![CardType::Creature])
++        let front_id=CardId::new();let back_id=CardId::new();
++        let front = CardDefinitionBuilder::new(front_id, "Supplied physical front")
++            .card_types(vec![CardType::Creature]).other_face(back_id)
+             .other_face_name("Supplied reverse identity")
+-            .linked_face_layout(crate::card::LinkedFaceLayout::TransformLike)
+-            .build();
++            .linked_face_layout(crate::card::LinkedFaceLayout::TransformLike).build();
++        let back=CardDefinitionBuilder::new(back_id,"Supplied reverse identity")
++            .card_types(vec![CardType::Creature]).other_face(front_id)
++            .other_face_name("Supplied physical front")
++            .linked_face_layout(crate::card::LinkedFaceLayout::TransformLike).build();
++        game.register_linked_face_definition(&front);game.register_linked_face_definition(&back);
++        let original=game.create_object_from_definition(&front,a,Zone::Battlefield);
++        assert!(game.transform_permanent(original).unwrap(),"the target is the reverse of this physical front, not an independent same-name card");
++        assert_eq!(game.current_name(original).as_deref(),Some("Supplied reverse identity"));
++        assert_eq!(game.object(original).unwrap().card,Some(front_id),"transforming does not replace the physical identity anchor");
+         let mut action = effect(vec![front], "unused", Zone::Hand, 1);
+         action.selection = CardCreationSelection::Duplicate(ChooseSpec::SpecificObject(original));
+         let mut ctx = ExecutionContext::new_default(game.new_object_id(), a);
+@@ -1034,3 +1041,35 @@
+         assert!(game.player(a).unwrap().hand.is_empty());
+     }
+ }
++
++#[cfg(test)]
++mod native_creation_evidence_fixture_tests {
++    use super::*;
++    use crate::{CardDefinitionBuilder,CardId,CardType,PlayerId};
++    #[test]
++    fn raw_name_substitution_without_a_source_owned_definition_still_fails_closed() {
++        let mut game=crate::tests::test_helpers::setup_two_player_game();let player=PlayerId(0);
++        let source=game.create_object_from_definition(&CardDefinitionBuilder::new(CardId::new(),"Raw replacement source").card_types(vec![CardType::Artifact]).build(),player,Zone::Battlefield);
++        game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
++            source,player,crate::events::WouldCreateCardsMatcher{operation_label:None,player:None},
++            crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::ReplaceCardDefinition("Unproven identity".into()))));
++        let action=CreateCardsEffect { definitions:vec![CardDefinitionBuilder::new(CardId::new(),"Original identity").build()],definition_scope:None,definition_refs:vec![],operation_label:None,
++            selection:CardCreationSelection::Named("Original identity".into()),count:1.into(),player:ironsmith_core::PlayerFilter::You,zone:Zone::Hand,library_position:CardCreationLibraryPosition::Top };
++        let result=action.execute(&mut game,&mut ExecutionContext::new_default(source,player));
++        assert!(matches!(result,Err(ExecutionError::IncompleteEvidence(_))));
++        assert!(game.player(player).unwrap().hand.is_empty());
++    }
++    #[test]
++    fn an_independent_real_reverse_named_card_is_not_an_unrelated_supplied_front() {
++        let mut game=crate::tests::test_helpers::setup_two_player_game();let player=PlayerId(0);
++        let reverse=CardDefinitionBuilder::new(CardId::new(),"Independent reverse identity").card_types(vec![CardType::Creature]).build();
++        let target=game.create_object_from_definition(&reverse,player,Zone::Battlefield);
++        let unrelated=CardDefinitionBuilder::new(CardId::new(),"Unrelated supplied front").card_types(vec![CardType::Creature])
++            .other_face_name("Independent reverse identity").linked_face_layout(crate::card::LinkedFaceLayout::TransformLike).build();
++        let action=CreateCardsEffect { definitions:vec![unrelated],definition_scope:None,definition_refs:vec![],operation_label:None,
++            selection:CardCreationSelection::Duplicate(crate::target::ChooseSpec::SpecificObject(target)),count:1.into(),player:ironsmith_core::PlayerFilter::You,zone:Zone::Hand,library_position:CardCreationLibraryPosition::Top };
++        let result=action.execute(&mut game,&mut ExecutionContext::new_default(target,player)).unwrap();
++        let created=game.object(result.output_objects()[0]).unwrap();
++        assert_eq!(created.card,Some(reverse.card.id));assert_eq!(created.name.as_str(),"Independent reverse identity");
++    }
++}
+--- a/crates/ironsmith-engine/src/effects/cards/create_cards_entry.rs
++++ b/crates/ironsmith-engine/src/effects/cards/create_cards_entry.rs
+@@ -272,9 +272,9 @@
+     fn suspended_as_enters_choice_rolls_back_all_real_cards_and_entry_choices() {
+         struct PauseSecond { calls: usize, pending: bool }
+         impl crate::decision::DecisionMaker for PauseSecond {
+-            fn decide_options(&mut self, _: &GameState, _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
++            fn decide_colors(&mut self, _: &GameState, _: &crate::decisions::context::ColorsContext) -> Vec<crate::color::Color> {
+                 self.calls += 1; self.pending = self.calls == 2;
+-                if self.pending { Vec::new() } else { vec![0] }
++                if self.pending { Vec::new() } else { vec![crate::color::Color::Blue] }
+             }
+             fn awaiting_choice(&self) -> bool { self.pending }
+         }
+--- a/crates/ironsmith-engine/src/effects/cards/reveal_action_offer.rs
++++ b/crates/ironsmith-engine/src/effects/cards/reveal_action_offer.rs
+@@ -208,6 +208,11 @@
+         let ctx = EffectContext::new_default(first, A);
+         let mut ctx = ctx;
+         ctx.set_tagged_objects("revealed pool", vec![original.snapshot.clone().unwrap()]);
++        // A plain local tag intentionally follows an authored zone change.
++        // An exact source collection must explicitly retain its incarnation.
++        assert_eq!(crate::effects::helpers::resolve_objects_from_spec(&game,
++            &ChooseSpec::Tagged("revealed pool".into()), &ctx).unwrap(), vec![arrival]);
++        ctx.exact_object_reference_tags.insert("revealed pool".into());
+         assert!(crate::effects::helpers::resolve_objects_from_spec(&game,
+             &ChooseSpec::Tagged("revealed pool".into()), &ctx).unwrap().is_empty());
+     }
+@@ -271,7 +276,9 @@
+                 observation.downcast::<crate::events::zones::ZoneChangeEvent>().is_some_and(|move_event|
+                     move_event.from == origin && move_event.to == Zone::Exile
+                         && move_event.objects.contains(&first))),
+-                "the real child movement observation remains published");
++                "the real child movement observation remains published; origin={origin:?}, original={first:?}, arrival={child_arrival:?}, observations={:?}",
++                game.retained_action_observations().chain(game.effect_store.pending_trigger_events.iter())
++                    .map(|event|(event.kind(),event.provenance(),event.downcast::<crate::events::ZoneChangeEvent>().map(|change|(change.from,change.to,change.objects.clone(),change.result_objects.clone())))).collect::<Vec<_>>());
+             // The failed original spent no once-per-player allowance. A new
+             // ordinary reveal of a different card can still complete it.
+             let legitimate = event(&mut game, second);
+--- a/crates/ironsmith-engine/src/effects/consult_helpers.rs
++++ b/crates/ironsmith-engine/src/effects/consult_helpers.rs
+@@ -1161,6 +1161,12 @@
+             assert_ne!(arrival, departed);
+             assert_eq!(game.object(arrival).unwrap().zone, Zone::Exile);
+             ctx.set_tagged_objects("departed selection", vec![result.exposed_snapshots[0].clone()]);
++            // Generic local tags retain same-card followups. This assertion
++            // specifically tests an exact viewed-source collection, matching
++            // the cleanup consumer's exact old ObjectId policy below.
++            assert_eq!(crate::effects::helpers::resolve_objects_from_spec(
++                &game, &ChooseSpec::Tagged("departed selection".into()), &ctx).unwrap(), vec![arrival]);
++            ctx.exact_object_reference_tags.insert("departed selection".into());
+             assert!(crate::effects::helpers::resolve_objects_from_spec(
+                 &game, &ChooseSpec::Tagged("departed selection".into()), &ctx).unwrap().is_empty());
+             move_tagged_remainder_to_library_bottom_with_outputs(
+--- a/crates/ironsmith-engine/src/effects/zones/battlefield_entry.rs
++++ b/crates/ironsmith-engine/src/effects/zones/battlefield_entry.rs
+@@ -806,6 +806,13 @@
+         if prohibited_entries.contains(&index) { continue; }
+         if let Some(projection) = projections.get_mut(object) {
+             projection.activate(&mut working)?;
++        }
++        #[cfg(test)]
++        if !options.entry_modifications.is_empty() {
++            eprintln!("ENTRY_PROJECTION eligibility object={object:?} raw={:?} current={:?} forbidden={} effects={:?}",
++                working.object(*object).map(|object| object.card_types.to_vec()),
++                working.current_card_types(*object), working.card_cannot_enter_battlefield(*object),
++                working.effect_store.continuous_effects.effects());
+         }
+         let eligible = !working
+             .object(*object)
+@@ -1032,6 +1039,11 @@
+         prepared.entry_attachment_specified = options.entry_attachment_specified;
+         prepared.entry_attachment_filter = options.entry_attachment_filter.clone();
+         controllers[index] = entering_controller.or_else(|| working.current_controller(*object));
++        #[cfg(test)]
++        if !options.entry_modifications.is_empty() {
++            eprintln!("ENTRY_PROJECTION prepared object={object:?} prevented={} new_destination={:?} current={:?}",
++                prepared.result.prevented, prepared.result.new_destination, working.current_card_types(*object));
++        }
+         prepared_entries[index] = Some((old_zone, prepared));
+         if let Some(projection) = projections.get_mut(object) {
+             projection.detach(&mut working)?;
+@@ -1147,6 +1159,11 @@
+                 &mut ctx.decision_maker,
+             );
+             let mut committed = committed?;
++            #[cfg(test)]
++            if !options.entry_modifications.is_empty() {
++                eprintln!("ENTRY_PROJECTION committed object={object:?} pending={} outcome={:?} current={:?}",
++                    committed.pending, committed.original, working.current_card_types(*object));
++            }
+             if committed.pending || ctx.decision_maker.awaiting_choice() {
+                 game.retain_pending_decision_controllers_from(&mut working);
+                 return Ok(None);
+@@ -1893,7 +1910,8 @@
+             ]).unwrap();
+             let current = game.find_object_by_stable_id(stable).unwrap();
+             assert_eq!(game.object(current).unwrap().zone,
+-                if should_enter { Zone::Battlefield } else { Zone::Hand });
++                if should_enter { Zone::Battlefield } else { Zone::Hand },
++                "printed={printed:?} expected_entry={should_enter} actual_current={:?}", game.current_card_types(current));
+             assert_eq!(matches!(outcomes[0].assert_without_additions(), BattlefieldEntryOutcome::Moved(_)), should_enter);
+             assert!(matches!(outcomes[1].assert_without_additions(), BattlefieldEntryOutcome::Prevented));
+             assert_eq!(game.object(sibling).unwrap().zone, Zone::Hand);
+--- a/crates/ironsmith-engine/src/game_state/zone_movement_admission_tests.rs
++++ b/crates/ironsmith-engine/src/game_state/zone_movement_admission_tests.rs
+@@ -18,6 +18,10 @@
+ fn card(game: &mut GameState, zone: Zone) -> ObjectId {
+     let definition = CardDefinitionBuilder::new(CardId::new(), "Ordinary zone card")
+         .card_types(vec![CardType::Artifact]).build();
++    // Composite movement retains each physical source's complete definition.
++    // Supply this fixture's graph explicitly rather than falling through to
++    // the production catalog's parser-backed legacy built-in definitions.
++    game.register_linked_face_definition(&definition);
+     game.create_object_from_definition(&definition, A, zone)
+ }
+ #[test]
+@@ -56,6 +60,8 @@
+     assert!(!game.zone_move_is_prohibited(copy_id, Zone::Stack));
+     assert!(game.move_object_by_effect(copy_id, Zone::Stack).is_some(), "707.12 card-copy casting is not physical-card movement");
+     crate::turn::execute_cleanup_step(&mut game);
++    assert!(game.effect_store.restriction_effects.is_empty(), "the EOT instance itself expired");
++    assert!(game.effect_store.cant_effects.cant_move_between_zones.is_empty(), "rebuilding admission must discard the expired rule's cached row");
+     assert!(!game.zone_move_is_prohibited(target, Zone::Exile));
+     assert!(game.move_object_by_effect(target, Zone::Exile).is_some());
+ }
+@@ -195,3 +201,19 @@
+         }
+     }
+ }
++
++#[test]
++fn rebuilding_current_zone_admission_replaces_provider_rows_instead_of_accumulating_them() {
++    let mut game = crate::tests::test_helpers::setup_two_player_game();
++    let provider = guard(&mut game);
++    let target = card(&mut game, Zone::Graveyard);
++    game.update_cant_effects();
++    assert_eq!(game.effect_store.cant_effects.cant_move_between_zones.len(), 1);
++    game.update_cant_effects();
++    assert_eq!(game.effect_store.cant_effects.cant_move_between_zones.len(), 1, "one current provider contributes one current rule after each rebuild");
++    game.object_mut(provider).unwrap().abilities_mut().clear();
++    game.update_cant_effects();
++    assert!(game.effect_store.cant_effects.cant_move_between_zones.is_empty());
++    assert!(!game.zone_move_is_prohibited(target, Zone::Exile));
++    assert!(game.move_object_by_effect(target, Zone::Exile).is_some());
++}
+--- a/crates/ironsmith-engine/src/game_state.rs
++++ b/crates/ironsmith-engine/src/game_state.rs
+@@ -3544,6 +3544,7 @@
+     /// Clear all tracked "can't" effects.
+     /// Called when rebuilding the tracker from current game state.
+     pub fn clear(&mut self) {
++        self.cant_move_between_zones.clear();
+         self.cast_or_activate_payment_restrictions.clear();
+         self.cant_gain_life.clear();
+         self.cant_search.clear();
+--- /dev/null
++++ b/reports/custom-mechanics/seventh-cut-unfinished-handoff.json
+@@ -0,0 +1,58 @@
++{
++  "cutoff": "User quota priority: merge ready work now; stop new investigations",
++  "status": "Explicit unresolved handoff; not source success or gameplay certification",
++  "unresolved": [
++    {
++      "owner": "abilities_links",
++      "test": "characteristic-gain mixed event OR577704",
++      "diagnosis": "Permissive characteristic filter consumes full independent cast-event OR before distinct-event owner; needs bounded proof-based atom decline preserving shared-subject/object-noun OR and quoted boundaries. No patch ready."
++    },
++    {
++      "owner": "abilities_links",
++      "test": "timed filtered unpreventability1163",
++      "diagnosis": "Strict passive owner correctly declines this-turn duration, then generic object restriction errors; needs probe-only recognized-duration/full-shape proof before generic admission. No patch ready."
++    },
++    {
++      "owner": "grant_frontend",
++      "test": "namedpayment unit",
++      "diagnosis": "Prefix compares parserWordPieces cant against can't. No frozen patch."
++    },
++    {
++      "owner": "grant_frontend",
++      "test": "complete flashback companion",
++      "diagnosis": "Complete keyword route succeeds but broad sibling route reinterprets companion as cost. No frozen patch."
++    },
++    {
++      "owner": "grant_frontend",
++      "test": "foretell/plot companion",
++      "diagnosis": "Raw token_word_refs sentenceinitial Its/The case-sensitive. No frozen patch."
++    },
++    {
++      "owner": "grant_frontend",
++      "test": "unsupported player Flying union",
++      "diagnosis": "Explicit player owner declines then lossy suffix fallback. No frozen patch."
++    },
++    {
++      "owner": "action_choices",
++      "test": "reveal replacement child ZoneChange",
++      "diagnosis": "Actual movement/life/no falsecompletion controls pass; authoritative missing child event remains unresolved; f8f2 adds diagnostic only."
++    },
++    {
++      "owner": "tokens",
++      "test": "projected entry",
++      "diagnosis": "No proven production fix; cf2f9 diagnostic records eligibility/prepared/commit seams; retain failing assertion."
++    },
++    {
++      "owner": "abilities_late",
++      "packet": "e38 grammar static boundary",
++      "review": "Author candidate frozen included; independent review requested but not received at cut; no execution claim."
++    },
++    {
++      "owner": "abilities_final",
++      "topic": "Dewshaper/COST producer attribution",
++      "status": "Explicitly unfinished/outside cut; preserve existing reports."
++    }
++  ],
++  "user_boundaries": "Cosmic ambiguous counter quantity and Tunu destination remain explicit user unresolved; intrinsic-rule exclusions retained",
++  "execution": "No worker builds/tests/live edits; root owns verification"
++}

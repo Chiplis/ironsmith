@@ -66,6 +66,10 @@ impl GameEventType for ObjectBecameUnattachedEvent {
         Some(self.object)
     }
 
+    fn player(&self) -> Option<PlayerId> {
+        match self.previous_target { AttachmentTarget::Player(player) => Some(player), AttachmentTarget::Object(_) => None }
+    }
+
     fn controller(&self) -> Option<PlayerId> {
         Some(self.controller)
     }

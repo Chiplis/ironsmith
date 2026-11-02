@@ -210,7 +210,7 @@ fn price(game: &GameState, source: ObjectId, ordinal: usize, targets: &[Target])
         source,
         &activated.mana_cost,
         targets,
-        ironsmith::decision::ActivationCostAbility::at(game, payer, source, index),
+        (ironsmith::decision::ActivationCostAbility::at(game, payer, source, index)).as_ref(),
     );
     let mut pips = Vec::new();
     for component in cost.costs() {

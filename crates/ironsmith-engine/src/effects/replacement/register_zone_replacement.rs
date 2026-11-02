@@ -288,6 +288,7 @@ fn granted_suspend_abilities() -> Vec<crate::ability::Ability> {
                 }),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Exile],
         },
         Ability {
@@ -309,6 +310,7 @@ fn granted_suspend_abilities() -> Vec<crate::ability::Ability> {
                 intervening_if: Some(crate::effect::Condition::SourceIsInZone(Zone::Exile)),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Exile],
         },
     ]

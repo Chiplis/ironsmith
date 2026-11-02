@@ -1,0 +1,1271 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "complete_source": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "scope": "All direct Wander cards and source grant variant; native scratch patch not integrated."
+  },
+  "mechanics": [
+    {
+      "id": "rev-wander-198",
+      "keyword": "Wander",
+      "scope": "revolution",
+      "rule_reference": "702.215.",
+      "rule_text": {
+        "name": "702.215.",
+        "rule": "Wander",
+        "subrules": [
+          {
+            "name": "702.215a",
+            "rule": "Wander appears on some permanent cards. \u201cWander (cost)\u201d means \u201cYou may cast this permanent from the battlefield for (cost).\u201d Casting a spell using its wander ability follows the rules for paying alternative costs in rules 601.2b and 601.2f\u2013h.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alpha's Example",
+          "Alrantan Visionary",
+          "Askir, the Defiler",
+          "Askir's Rearguard",
+          "Aspirant's Hookrope",
+          "Audacious Roughrider",
+          "Barbarous Roughrider",
+          "Breaching Jaxl",
+          "Bumbling Bigfoot",
+          "Cassia the Carefree",
+          "Cliffside Scrappers",
+          "Cliffwalker",
+          "Elderflame Pilgrims",
+          "Forever Alone",
+          "Hearty Roughrider",
+          "Indomitable Jicru",
+          "Jens Slopeskidder",
+          "Jorgen, Martyr of the Rathomar",
+          "Leyrune Collector",
+          "Lofty Aspirations",
+          "Lofty Frontiers",
+          "Mokar Cliffbreaker",
+          "Narzi, Hero of the Mokar",
+          "Opal-Eye Allseer",
+          "Opal-Eye Caretaker",
+          "Opulent Roughrider",
+          "Protean's Animosity",
+          "Renowned Roughrider",
+          "Rib Collector",
+          "Roaming Treefolk",
+          "Seer of the Aspirants",
+          "Siflir, Elder Pawn",
+          "Sink into Obscurity",
+          "Springsoarer",
+          "Squallrunner Duo",
+          "Taiga Bonder",
+          "Tireless Aspirants",
+          "Valley Caravan",
+          "Verdant Grandeur",
+          "Weathered Blackguard"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this from the battlefield for its wander cost.",
+      "executable_reminder": "You may cast this spell from the battlefield for {Cost} rather than pay its mana cost.",
+      "semantic_equivalence": {
+        "status": "pending_native_verification",
+        "evidence": "702.215a calls for an actual cast of same permanent from battlefield for alternative price, with ordinary casting timing. Generic FromZone permission plus live current-ability gate and normal proposal transition; neither blink nor ETB-only approximation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Alpha's Example_OLD",
+          "name": "Alpha's Example",
+          "original_text": "Type: Enchantment \u2014 Aura \nMana cost: {2}{R}\nEnchant creature\nEnchanted creature gets +2/+0 and has \u201cAttacking creatures you control get +1/+0.\u201d\nWander {2}{R} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {2}{R}\nEnchant creature\nEnchanted creature gets +2/+0 and has \u201cAttacking creatures you control get +1/+0.\u201d\nYou may cast this spell from the battlefield for {2}{R} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Alpha's Example",
+              "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {2}{R}\nEnchant creature\nEnchanted creature gets +2/+0 and has \u201cAttacking creatures you control get +1/+0.\u201d\nYou may cast this spell from the battlefield for {2}{R} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +2/+0 and has \u201cAttacking creatures you control get +1/+0.\u201d\nWander {2}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Enchant creature\nEnchanted creature gets +2/+0 and has \u201cAttacking creatures you control get +1/+0.\u201d\nWander {2}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Alrantan Visionary_OLD",
+          "source_card_key": "rev:Alrantan Visionary_OLD",
+          "name": "Alrantan Visionary",
+          "original_text": "Type: Creature \u2014 Human Shaman \nMana cost: {2}{G}\nPower/Toughness: 2/2\nWhen Alrantan Visionary enters, reveal the top three cards of your library. Put a noncreature permanent card from among them into your hand and the rest into your graveyard.\n{T}: Add one mana of any color.\nWander {4}{G}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Shaman \nMana cost: {2}{G}\nPower/Toughness: 2/2\nWhen Alrantan Visionary enters, reveal the top three cards of your library. Put a noncreature permanent card from among them into your hand and the rest into your graveyard.\n{T}: Add one mana of any color.\nYou may cast this spell from the battlefield for {4}{G}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Alrantan Visionary",
+              "executable_text": "Type: Creature \u2014 Human Shaman \nMana cost: {2}{G}\nPower/Toughness: 2/2\nWhen Alrantan Visionary enters, reveal the top three cards of your library. Put a noncreature permanent card from among them into your hand and the rest into your graveyard.\n{T}: Add one mana of any color.\nYou may cast this spell from the battlefield for {4}{G}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Alrantan Visionary enters, reveal the top three cards of your library. Put a noncreature permanent card from among them into your hand and the rest into your graveyard.\n{T}: Add one mana of any color.\nWander {4}{G}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Alrantan Visionary enters, reveal the top three cards of your library. Put a noncreature permanent card from among them into your hand and the rest into your graveyard.\n{T}: Add one mana of any color.\nWander {4}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Askir, the Defiler_OLD",
+          "source_card_key": "rev:Askir, the Defiler_OLD",
+          "name": "Askir, the Defiler",
+          "original_text": "Type: Legendary Creature \u2014 Human Shaman \nMana cost: {3}{B}{B}\nPower/Toughness: 4/5\nMenace\nWhen Askir enters, each opponent loses life equal to the amount of life they've lost this turn.\nWander\u2014{1}{B}{B}, Pay 4 life. *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Shaman \nMana cost: {3}{B}{B}\nPower/Toughness: 4/5\nMenace\nWhen Askir enters, each opponent loses life equal to the amount of life they've lost this turn.\nYou may cast this spell from the battlefield for {1}{B}{B}, Pay 4 life rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Askir, the Defiler",
+              "executable_text": "Type: Legendary Creature \u2014 Human Shaman \nMana cost: {3}{B}{B}\nPower/Toughness: 4/5\nMenace\nWhen Askir enters, each opponent loses life equal to the amount of life they've lost this turn.\nYou may cast this spell from the battlefield for {1}{B}{B}, Pay 4 life rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Menace\nWhen Askir enters, each opponent loses life equal to the amount of life they've lost this turn.\nWander\u2014{1}{B}{B}, Pay 4 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Menace\nWhen Askir enters, each opponent loses life equal to the amount of life they've lost this turn.\nWander\u2014{1}{B}{B}, Pay 4 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Askir's Rearguard_OLD",
+          "source_card_key": "rev:Askir's Rearguard_OLD",
+          "name": "Askir's Rearguard",
+          "original_text": "Type: Creature \u2014 Human Soldier \nMana cost: {2}{U}\nPower/Toughness: 1/3\nWhen Askir's Rearguard enters, if a creature you control dealt combat damage to a player this turn, draw a card.\nWander {1}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Soldier \nMana cost: {2}{U}\nPower/Toughness: 1/3\nWhen Askir's Rearguard enters, if a creature you control dealt combat damage to a player this turn, draw a card.\nYou may cast this spell from the battlefield for {1}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Askir's Rearguard",
+              "executable_text": "Type: Creature \u2014 Human Soldier \nMana cost: {2}{U}\nPower/Toughness: 1/3\nWhen Askir's Rearguard enters, if a creature you control dealt combat damage to a player this turn, draw a card.\nYou may cast this spell from the battlefield for {1}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Askir's Rearguard enters, if a creature you control dealt combat damage to a player this turn, draw a card.\nWander {1}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Askir's Rearguard enters, if a creature you control dealt combat damage to a player this turn, draw a card.\nWander {1}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Audacious Roughrider_OLD",
+          "source_card_key": "rev:Audacious Roughrider_OLD",
+          "name": "Audacious Roughrider",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{R}{R}\nPower/Toughness: 3/3\nWhen Audacious Roughrider enters or leaves the battlefield, exile the top card of your library. Then you may discard a card. If you do, put the exiled card into your hand. If you don't, create a Treasure token.\nWander {4}{R}{R} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{R}{R}\nPower/Toughness: 3/3\nWhen Audacious Roughrider enters or leaves the battlefield, exile the top card of your library. Then you may discard a card. If you do, put the exiled card into your hand. If you don't, create a Treasure token.\nYou may cast this spell from the battlefield for {4}{R}{R} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Audacious Roughrider",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{R}{R}\nPower/Toughness: 3/3\nWhen Audacious Roughrider enters or leaves the battlefield, exile the top card of your library. Then you may discard a card. If you do, put the exiled card into your hand. If you don't, create a Treasure token.\nYou may cast this spell from the battlefield for {4}{R}{R} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Audacious Roughrider enters or leaves the battlefield, exile the top card of your library. Then you may discard a card. If you do, put the exiled card into your hand. If you don't, create a Treasure token.\nWander {4}{R}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Audacious Roughrider enters or leaves the battlefield, exile the top card of your library. Then you may discard a card. If you do, put the exiled card into your hand. If you don't, create a Treasure token.\nWander {4}{R}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Barbarous Roughrider_OLD",
+          "source_card_key": "rev:Barbarous Roughrider_OLD",
+          "name": "Barbarous Roughrider",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{B}{B}\nPower/Toughness: 3/3\nWhen Barbarous Roughrider enters or leaves the battlefield, each opponent loses 2 life unless they sacrifice a nontoken creature.\nWander {4}{B}{B} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{B}{B}\nPower/Toughness: 3/3\nWhen Barbarous Roughrider enters or leaves the battlefield, each opponent loses 2 life unless they sacrifice a nontoken creature.\nYou may cast this spell from the battlefield for {4}{B}{B} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Barbarous Roughrider",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{B}{B}\nPower/Toughness: 3/3\nWhen Barbarous Roughrider enters or leaves the battlefield, each opponent loses 2 life unless they sacrifice a nontoken creature.\nYou may cast this spell from the battlefield for {4}{B}{B} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Barbarous Roughrider enters or leaves the battlefield, each opponent loses 2 life unless they sacrifice a nontoken creature.\nWander {4}{B}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Barbarous Roughrider enters or leaves the battlefield, each opponent loses 2 life unless they sacrifice a nontoken creature.\nWander {4}{B}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Breaching Jaxl_OLD",
+          "source_card_key": "rev:Breaching Jaxl_OLD",
+          "name": "Breaching Jaxl",
+          "original_text": "Type: Creature \u2014 Serpent \nMana cost: {4}{U}\nPower/Toughness: 3/4\nFlying\nWhen Breaching Jaxl enters, untap target nonland permanent.\nWander {2}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Serpent \nMana cost: {4}{U}\nPower/Toughness: 3/4\nFlying\nWhen Breaching Jaxl enters, untap target nonland permanent.\nYou may cast this spell from the battlefield for {2}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Breaching Jaxl",
+              "executable_text": "Type: Creature \u2014 Serpent \nMana cost: {4}{U}\nPower/Toughness: 3/4\nFlying\nWhen Breaching Jaxl enters, untap target nonland permanent.\nYou may cast this spell from the battlefield for {2}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Flying\nWhen Breaching Jaxl enters, untap target nonland permanent.\nWander {2}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Flying\nWhen Breaching Jaxl enters, untap target nonland permanent.\nWander {2}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Bumbling Bigfoot_OLD",
+          "source_card_key": "rev:Bumbling Bigfoot_OLD",
+          "name": "Bumbling Bigfoot",
+          "original_text": "Type: Creature \u2014 Yeti \nMana cost: {1}{G}{G}\nPower/Toughness: 5/4\nReach\nBumbling Bigfoot doesn't untap during your untap step.\nWander {1}{G}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Yeti \nMana cost: {1}{G}{G}\nPower/Toughness: 5/4\nReach\nBumbling Bigfoot doesn't untap during your untap step.\nYou may cast this spell from the battlefield for {1}{G}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Bumbling Bigfoot",
+              "executable_text": "Type: Creature \u2014 Yeti \nMana cost: {1}{G}{G}\nPower/Toughness: 5/4\nReach\nBumbling Bigfoot doesn't untap during your untap step.\nYou may cast this spell from the battlefield for {1}{G}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Reach\nBumbling Bigfoot doesn't untap during your untap step.\nWander {1}{G}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Reach\nBumbling Bigfoot doesn't untap during your untap step.\nWander {1}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Cassia the Carefree_OLD",
+          "source_card_key": "rev:Cassia the Carefree_OLD",
+          "name": "Cassia the Carefree",
+          "original_text": "Type: Legendary Planeswalker \u2014 Cassia \nMana cost: {2}{W}{W}\nLoyalty: 5\nWander {2}{W}{W} *(You may cast this from the battlefield for its wander cost.)*\n[-1]: Create your choice of a 1/1 white Bird creature token with flying or a 2/2 black Cat creature token.\n[-2]: If a permanent entering the battlefield under your control this turn causes an ability of a permanent you control to trigger, that ability triggers an additional time.\n[-3]: Put a +1/+1 counter on each creature you control.",
+          "executable_text": "Type: Legendary Planeswalker \u2014 Cassia \nMana cost: {2}{W}{W}\nLoyalty: 5\nYou may cast this spell from the battlefield for {2}{W}{W} rather than pay its mana cost.\n[-1]: Create your choice of a 1/1 white Bird creature token with flying or a 2/2 black Cat creature token.\n[-2]: If a permanent entering the battlefield under your control this turn causes an ability of a permanent you control to trigger, that ability triggers an additional time.\n[-3]: Put a +1/+1 counter on each creature you control.",
+          "executable_faces": [
+            {
+              "name": "Cassia the Carefree",
+              "executable_text": "Type: Legendary Planeswalker \u2014 Cassia \nMana cost: {2}{W}{W}\nLoyalty: 5\nYou may cast this spell from the battlefield for {2}{W}{W} rather than pay its mana cost.\n[-1]: Create your choice of a 1/1 white Bird creature token with flying or a 2/2 black Cat creature token.\n[-2]: If a permanent entering the battlefield under your control this turn causes an ability of a permanent you control to trigger, that ability triggers an additional time.\n[-3]: Put a +1/+1 counter on each creature you control.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Wander {2}{W}{W}\n[-1]: Create your choice of a 1/1 white Bird creature token with flying or a 2/2 black Cat creature token.\n[-2]: If a permanent entering the battlefield under your control this turn causes an ability of a permanent you control to trigger, that ability triggers an additional time.\n[-3]: Put a +1/+1 counter on each creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Wander {2}{W}{W}\n[-1]: Create your choice of a 1/1 white Bird creature token with flying or a 2/2 black Cat creature token.\n[-2]: If a permanent entering the battlefield under your control this turn causes an ability of a permanent you control to trigger, that ability triggers an additional time.\n[-3]: Put a +1/+1 counter on each creature you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Cliffside Scrappers_OLD",
+          "source_card_key": "rev:Cliffside Scrappers_OLD",
+          "name": "Cliffside Scrappers",
+          "original_text": "Type: Creature \u2014 Human Scout\nMana cost: {2}{R}\nPower/Toughness: 2/2\nWhen Cliffside Scrappers enters, destroy target artifact an opponent controls.\nWander {3}{R}{R} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Scout\nMana cost: {2}{R}\nPower/Toughness: 2/2\nWhen Cliffside Scrappers enters, destroy target artifact an opponent controls.\nYou may cast this spell from the battlefield for {3}{R}{R} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Cliffside Scrappers",
+              "executable_text": "Type: Creature \u2014 Human Scout\nMana cost: {2}{R}\nPower/Toughness: 2/2\nWhen Cliffside Scrappers enters, destroy target artifact an opponent controls.\nYou may cast this spell from the battlefield for {3}{R}{R} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Cliffside Scrappers enters, destroy target artifact an opponent controls.\nWander {3}{R}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Cliffside Scrappers enters, destroy target artifact an opponent controls.\nWander {3}{R}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Cliffwalker_OLD",
+          "source_card_key": "rev:Cliffwalker_OLD",
+          "name": "Cliffwalker",
+          "original_text": "Type: Creature \u2014 Human Scout \nMana cost: {2}{W}\nPower/Toughness: 3/4\nWhen Cliffwalker enters, return a permanent you control to its owner's hand.\nWander {1}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {2}{W}\nPower/Toughness: 3/4\nWhen Cliffwalker enters, return a permanent you control to its owner's hand.\nYou may cast this spell from the battlefield for {1}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Cliffwalker",
+              "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {2}{W}\nPower/Toughness: 3/4\nWhen Cliffwalker enters, return a permanent you control to its owner's hand.\nYou may cast this spell from the battlefield for {1}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Cliffwalker enters, return a permanent you control to its owner's hand.\nWander {1}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Cliffwalker enters, return a permanent you control to its owner's hand.\nWander {1}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Elderflame Pilgrims_OLD",
+          "source_card_key": "rev:Elderflame Pilgrims_OLD",
+          "name": "Elderflame Pilgrims",
+          "original_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{R}\nPower/Toughness: 2/3\nWhen Elderflame Pilgrims enters, it deals 2 damage to target player or planeswalker.\nWander {5}{R} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{R}\nPower/Toughness: 2/3\nWhen Elderflame Pilgrims enters, it deals 2 damage to target player or planeswalker.\nYou may cast this spell from the battlefield for {5}{R} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Elderflame Pilgrims",
+              "executable_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{R}\nPower/Toughness: 2/3\nWhen Elderflame Pilgrims enters, it deals 2 damage to target player or planeswalker.\nYou may cast this spell from the battlefield for {5}{R} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Elderflame Pilgrims enters, it deals 2 damage to target player or planeswalker.\nWander {5}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Elderflame Pilgrims enters, it deals 2 damage to target player or planeswalker.\nWander {5}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Hearty Roughrider_OLD",
+          "source_card_key": "rev:Hearty Roughrider_OLD",
+          "name": "Hearty Roughrider",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{G}{G}\nPower/Toughness: 3/3\nWhen Hearty Roughrider enters or leaves the battlefield, you gain life equal to the greatest toughness among creatures you control.\nWander {4}{G}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{G}{G}\nPower/Toughness: 3/3\nWhen Hearty Roughrider enters or leaves the battlefield, you gain life equal to the greatest toughness among creatures you control.\nYou may cast this spell from the battlefield for {4}{G}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Hearty Roughrider",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{G}{G}\nPower/Toughness: 3/3\nWhen Hearty Roughrider enters or leaves the battlefield, you gain life equal to the greatest toughness among creatures you control.\nYou may cast this spell from the battlefield for {4}{G}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Hearty Roughrider enters or leaves the battlefield, you gain life equal to the greatest toughness among creatures you control.\nWander {4}{G}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Hearty Roughrider enters or leaves the battlefield, you gain life equal to the greatest toughness among creatures you control.\nWander {4}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Indomitable Jicru_OLD",
+          "source_card_key": "rev:Indomitable Jicru_OLD",
+          "name": "Indomitable Jicru",
+          "original_text": "Type: Creature \u2014 Beast \nMana cost: {3}{G}{W}\nPower/Toughness: 3/6\nVigilance\nWhen Indomitable Jicru enters, you gain 5 life and draw a card. If it wandered, creatures you control get +2/+2 until end of turn.\nWander {6}{G}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Beast \nMana cost: {3}{G}{W}\nPower/Toughness: 3/6\nVigilance\nWhen Indomitable Jicru enters, you gain 5 life and draw a card. If it wandered, creatures you control get +2/+2 until end of turn.\nYou may cast this spell from the battlefield for {6}{G}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Indomitable Jicru",
+              "executable_text": "Type: Creature \u2014 Beast \nMana cost: {3}{G}{W}\nPower/Toughness: 3/6\nVigilance\nWhen Indomitable Jicru enters, you gain 5 life and draw a card. If it wandered, creatures you control get +2/+2 until end of turn.\nYou may cast this spell from the battlefield for {6}{G}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Vigilance\nWhen Indomitable Jicru enters, you gain 5 life and draw a card. If it wandered, creatures you control get +2/+2 until end of turn.\nWander {6}{G}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Vigilance\nWhen Indomitable Jicru enters, you gain 5 life and draw a card. If it wandered, creatures you control get +2/+2 until end of turn.\nWander {6}{G}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Jens Slopeskidder_OLD",
+          "source_card_key": "rev:Jens Slopeskidder_OLD",
+          "name": "Jens Slopeskidder",
+          "original_text": "Type: Legendary Creature \u2014 Human Scout \nMana cost: {2}{G}{G}\nPower/Toughness: 3/3\nHaste\nWhenever Jens Slopeskidder or a land you control enters, put a +1/+1 counter on target creature you control.\nWander\u2014{1}{G}, Return a land you control to its owner's hand. *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Scout \nMana cost: {2}{G}{G}\nPower/Toughness: 3/3\nHaste\nWhenever Jens Slopeskidder or a land you control enters, put a +1/+1 counter on target creature you control.\nYou may cast this spell from the battlefield for {1}{G}, Return a land you control to its owner's hand rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Jens Slopeskidder",
+              "executable_text": "Type: Legendary Creature \u2014 Human Scout \nMana cost: {2}{G}{G}\nPower/Toughness: 3/3\nHaste\nWhenever Jens Slopeskidder or a land you control enters, put a +1/+1 counter on target creature you control.\nYou may cast this spell from the battlefield for {1}{G}, Return a land you control to its owner's hand rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Haste\nWhenever Jens Slopeskidder or a land you control enters, put a +1/+1 counter on target creature you control.\nWander\u2014{1}{G}, Return a land you control to its owner's hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Haste\nWhenever Jens Slopeskidder or a land you control enters, put a +1/+1 counter on target creature you control.\nWander\u2014{1}{G}, Return a land you control to its owner's hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Jorgen, Martyr of the Rathomar_OLD",
+          "source_card_key": "rev:Jorgen, Martyr of the Rathomar_OLD",
+          "name": "Jorgen, Martyr of the Rathomar",
+          "original_text": "Type: Legendary Creature \u2014 Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\n{X}{R}: Jorgen gets +X/+0 until end of turn.\nWhen Jorgen leaves the battlefield, he deals damage equal to his power to target opponent or planeswalker.\nWander {1}{R} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\n{X}{R}: Jorgen gets +X/+0 until end of turn.\nWhen Jorgen leaves the battlefield, he deals damage equal to his power to target opponent or planeswalker.\nYou may cast this spell from the battlefield for {1}{R} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Jorgen, Martyr of the Rathomar",
+              "executable_text": "Type: Legendary Creature \u2014 Human Berserker \nMana cost: {R}\nPower/Toughness: 1/1\n{X}{R}: Jorgen gets +X/+0 until end of turn.\nWhen Jorgen leaves the battlefield, he deals damage equal to his power to target opponent or planeswalker.\nYou may cast this spell from the battlefield for {1}{R} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "{X}{R}: Jorgen gets +X/+0 until end of turn.\nWhen Jorgen leaves the battlefield, he deals damage equal to his power to target opponent or planeswalker.\nWander {1}{R}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "{X}{R}: Jorgen gets +X/+0 until end of turn.\nWhen Jorgen leaves the battlefield, he deals damage equal to his power to target opponent or planeswalker.\nWander {1}{R}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Leyrune Collector_OLD",
+          "source_card_key": "rev:Leyrune Collector_OLD",
+          "name": "Leyrune Collector",
+          "original_text": "Type: Creature \u2014 Human Wizard \nMana cost: {1}{G}{U}\nPower/Toughness: 1/1\nWhen Leyrune Collector enters, look at the top four cards of your library. You may reveal an artifact or land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you revealed a land this way, you may put a land card from your hand onto the battlefield tapped.\nWander {3}{G}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Wizard \nMana cost: {1}{G}{U}\nPower/Toughness: 1/1\nWhen Leyrune Collector enters, look at the top four cards of your library. You may reveal an artifact or land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you revealed a land this way, you may put a land card from your hand onto the battlefield tapped.\nYou may cast this spell from the battlefield for {3}{G}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Leyrune Collector",
+              "executable_text": "Type: Creature \u2014 Human Wizard \nMana cost: {1}{G}{U}\nPower/Toughness: 1/1\nWhen Leyrune Collector enters, look at the top four cards of your library. You may reveal an artifact or land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you revealed a land this way, you may put a land card from your hand onto the battlefield tapped.\nYou may cast this spell from the battlefield for {3}{G}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Leyrune Collector enters, look at the top four cards of your library. You may reveal an artifact or land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you revealed a land this way, you may put a land card from your hand onto the battlefield tapped.\nWander {3}{G}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Leyrune Collector enters, look at the top four cards of your library. You may reveal an artifact or land card from among them and put it into your hand. Put the rest on the bottom of your library in a random order. If you revealed a land this way, you may put a land card from your hand onto the battlefield tapped.\nWander {3}{G}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Lofty Aspirations_OLD",
+          "source_card_key": "rev:Lofty Aspirations_OLD",
+          "name": "Lofty Aspirations",
+          "original_text": "Type: Enchantment \u2014 Aura \nMana cost: {1}{W}\nEnchant creature\nEnchanted creature gets +2/+2.\nWander {2}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {1}{W}\nEnchant creature\nEnchanted creature gets +2/+2.\nYou may cast this spell from the battlefield for {2}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Lofty Aspirations",
+              "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {1}{W}\nEnchant creature\nEnchanted creature gets +2/+2.\nYou may cast this spell from the battlefield for {2}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +2/+2.\nWander {2}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Enchant creature\nEnchanted creature gets +2/+2.\nWander {2}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Mokar Cliffbreaker_OLD",
+          "source_card_key": "rev:Mokar Cliffbreaker_OLD",
+          "name": "Mokar Cliffbreaker",
+          "original_text": "Type: Creature \u2014 Human Warrior \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nWhen Mokar Cliffbreaker enters, you may exile a land card from your graveyard. If you do, you gain 4 life.\nWander {5}{G}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Warrior \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nWhen Mokar Cliffbreaker enters, you may exile a land card from your graveyard. If you do, you gain 4 life.\nYou may cast this spell from the battlefield for {5}{G}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Mokar Cliffbreaker",
+              "executable_text": "Type: Creature \u2014 Human Warrior \nMana cost: {2}{G}{G}\nPower/Toughness: 4/4\nWhen Mokar Cliffbreaker enters, you may exile a land card from your graveyard. If you do, you gain 4 life.\nYou may cast this spell from the battlefield for {5}{G}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Mokar Cliffbreaker enters, you may exile a land card from your graveyard. If you do, you gain 4 life.\nWander {5}{G}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Mokar Cliffbreaker enters, you may exile a land card from your graveyard. If you do, you gain 4 life.\nWander {5}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Narzi, Hero of the Mokar_OLD",
+          "source_card_key": "rev:Narzi, Hero of the Mokar_OLD",
+          "name": "Narzi, Hero of the Mokar",
+          "original_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlash\nWhen Narzi, Hero of the Mokar enters, up to one other target creature gets +1/+1 and gains indestructible until end of turn. If she wandered, other creatures you control get +1/+1 and gain indestructible until end of turn instead.\nWander {4}{W}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlash\nWhen Narzi, Hero of the Mokar enters, up to one other target creature gets +1/+1 and gains indestructible until end of turn. If she wandered, other creatures you control get +1/+1 and gain indestructible until end of turn instead.\nYou may cast this spell from the battlefield for {4}{W}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Narzi, Hero of the Mokar",
+              "executable_text": "Type: Legendary Creature \u2014 Human Knight \nMana cost: {1}{W}\nPower/Toughness: 1/1\nFlash\nWhen Narzi, Hero of the Mokar enters, up to one other target creature gets +1/+1 and gains indestructible until end of turn. If she wandered, other creatures you control get +1/+1 and gain indestructible until end of turn instead.\nYou may cast this spell from the battlefield for {4}{W}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Flash\nWhen Narzi, Hero of the Mokar enters, up to one other target creature gets +1/+1 and gains indestructible until end of turn. If she wandered, other creatures you control get +1/+1 and gain indestructible until end of turn instead.\nWander {4}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Flash\nWhen Narzi, Hero of the Mokar enters, up to one other target creature gets +1/+1 and gains indestructible until end of turn. If she wandered, other creatures you control get +1/+1 and gain indestructible until end of turn instead.\nWander {4}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Opal-Eye Allseer_OLD",
+          "source_card_key": "rev:Opal-Eye Allseer_OLD",
+          "name": "Opal-Eye Allseer",
+          "original_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{U}{U}\nPower/Toughness: 2/3\nWhenever Opal-Eye Allseer enters or you cast a noncreature spell, create a 1/1 white Bird creature token with flying.\nWander\u2014{1}{U}, Exile two instant and/or sorcery cards from your graveyard. *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{U}{U}\nPower/Toughness: 2/3\nWhenever Opal-Eye Allseer enters or you cast a noncreature spell, create a 1/1 white Bird creature token with flying.\nYou may cast this spell from the battlefield for {1}{U}, Exile two instant and/or sorcery cards from your graveyard rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Opal-Eye Allseer",
+              "executable_text": "Type: Creature \u2014 Human Wizard \nMana cost: {2}{U}{U}\nPower/Toughness: 2/3\nWhenever Opal-Eye Allseer enters or you cast a noncreature spell, create a 1/1 white Bird creature token with flying.\nYou may cast this spell from the battlefield for {1}{U}, Exile two instant and/or sorcery cards from your graveyard rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Whenever Opal-Eye Allseer enters or you cast a noncreature spell, create a 1/1 white Bird creature token with flying.\nWander\u2014{1}{U}, Exile two instant and/or sorcery cards from your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Whenever Opal-Eye Allseer enters or you cast a noncreature spell, create a 1/1 white Bird creature token with flying.\nWander\u2014{1}{U}, Exile two instant and/or sorcery cards from your graveyard.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Opal-Eye Caretaker_OLD",
+          "source_card_key": "rev:Opal-Eye Caretaker_OLD",
+          "name": "Opal-Eye Caretaker",
+          "original_text": "Type: Creature \u2014 Human Wizard\nMana cost: {W}\nPower/Toughness: 2/1\nWhen Opal-Eye Caretaker enters, put a +1/+1 counter on each creature you control that entered this turn and wasn't cast from your hand.\nWander {1}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Wizard\nMana cost: {W}\nPower/Toughness: 2/1\nWhen Opal-Eye Caretaker enters, put a +1/+1 counter on each creature you control that entered this turn and wasn't cast from your hand.\nYou may cast this spell from the battlefield for {1}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Opal-Eye Caretaker",
+              "executable_text": "Type: Creature \u2014 Human Wizard\nMana cost: {W}\nPower/Toughness: 2/1\nWhen Opal-Eye Caretaker enters, put a +1/+1 counter on each creature you control that entered this turn and wasn't cast from your hand.\nYou may cast this spell from the battlefield for {1}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Opal-Eye Caretaker enters, put a +1/+1 counter on each creature you control that entered this turn and wasn't cast from your hand.\nWander {1}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Opal-Eye Caretaker enters, put a +1/+1 counter on each creature you control that entered this turn and wasn't cast from your hand.\nWander {1}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Opulent Roughrider_OLD",
+          "source_card_key": "rev:Opulent Roughrider_OLD",
+          "name": "Opulent Roughrider",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{U}{U}\nPower/Toughness: 3/3\nWhen Opulent Roughrider enters or leaves the battlefield, surveil 1, then you may reveal the top card of your library. If that card has the same name as a permanent you control or a card in your graveyard, put it into your hand.\nWander {4}{U}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{U}{U}\nPower/Toughness: 3/3\nWhen Opulent Roughrider enters or leaves the battlefield, surveil 1, then you may reveal the top card of your library. If that card has the same name as a permanent you control or a card in your graveyard, put it into your hand.\nYou may cast this spell from the battlefield for {4}{U}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Opulent Roughrider",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{U}{U}\nPower/Toughness: 3/3\nWhen Opulent Roughrider enters or leaves the battlefield, surveil 1, then you may reveal the top card of your library. If that card has the same name as a permanent you control or a card in your graveyard, put it into your hand.\nYou may cast this spell from the battlefield for {4}{U}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Opulent Roughrider enters or leaves the battlefield, surveil 1, then you may reveal the top card of your library. If that card has the same name as a permanent you control or a card in your graveyard, put it into your hand.\nWander {4}{U}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Opulent Roughrider enters or leaves the battlefield, surveil 1, then you may reveal the top card of your library. If that card has the same name as a permanent you control or a card in your graveyard, put it into your hand.\nWander {4}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Protean's Animosity_OLD",
+          "source_card_key": "rev:Protean's Animosity_OLD",
+          "name": "Protean's Animosity",
+          "original_text": "Type: Enchantment \u2014 Aura \nMana cost: {B}\nEnchant creature\nEnchanted creature gets +1/+1 and can't block.\nWander {1}{B} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {B}\nEnchant creature\nEnchanted creature gets +1/+1 and can't block.\nYou may cast this spell from the battlefield for {1}{B} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Protean's Animosity",
+              "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {B}\nEnchant creature\nEnchanted creature gets +1/+1 and can't block.\nYou may cast this spell from the battlefield for {1}{B} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Enchant creature\nEnchanted creature gets +1/+1 and can't block.\nWander {1}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Enchant creature\nEnchanted creature gets +1/+1 and can't block.\nWander {1}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Renowned Roughrider_OLD",
+          "source_card_key": "rev:Renowned Roughrider_OLD",
+          "name": "Renowned Roughrider",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nWhen Renowned Roughrider enters or leaves the battlefield, create a 1/1 white Human creature token. Then if you control four or more creatures, put a +1/+1 counter on a creature you control.\nWander {4}{W}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nWhen Renowned Roughrider enters or leaves the battlefield, create a 1/1 white Human creature token. Then if you control four or more creatures, put a +1/+1 counter on a creature you control.\nYou may cast this spell from the battlefield for {4}{W}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Renowned Roughrider",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {1}{W}{W}\nPower/Toughness: 3/3\nWhen Renowned Roughrider enters or leaves the battlefield, create a 1/1 white Human creature token. Then if you control four or more creatures, put a +1/+1 counter on a creature you control.\nYou may cast this spell from the battlefield for {4}{W}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Renowned Roughrider enters or leaves the battlefield, create a 1/1 white Human creature token. Then if you control four or more creatures, put a +1/+1 counter on a creature you control.\nWander {4}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Renowned Roughrider enters or leaves the battlefield, create a 1/1 white Human creature token. Then if you control four or more creatures, put a +1/+1 counter on a creature you control.\nWander {4}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Rib Collector_OLD",
+          "source_card_key": "rev:Rib Collector_OLD",
+          "name": "Rib Collector",
+          "original_text": "Type: Creature \u2014 Human Mercenary\nMana cost: {2}{B}\nPower/Toughness: 3/2\nWhen Rib Collector enters, if a creature has died this turn, return target non-Mercenary creature card from your graveyard to your hand.\nWander\u2014{3}{B}, Sacrifice another creature. *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Mercenary\nMana cost: {2}{B}\nPower/Toughness: 3/2\nWhen Rib Collector enters, if a creature has died this turn, return target non-Mercenary creature card from your graveyard to your hand.\nYou may cast this spell from the battlefield for {3}{B}, Sacrifice another creature rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Rib Collector",
+              "executable_text": "Type: Creature \u2014 Human Mercenary\nMana cost: {2}{B}\nPower/Toughness: 3/2\nWhen Rib Collector enters, if a creature has died this turn, return target non-Mercenary creature card from your graveyard to your hand.\nYou may cast this spell from the battlefield for {3}{B}, Sacrifice another creature rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Rib Collector enters, if a creature has died this turn, return target non-Mercenary creature card from your graveyard to your hand.\nWander\u2014{3}{B}, Sacrifice another creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Rib Collector enters, if a creature has died this turn, return target non-Mercenary creature card from your graveyard to your hand.\nWander\u2014{3}{B}, Sacrifice another creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Roaming Treefolk_OLD",
+          "source_card_key": "rev:Roaming Treefolk_OLD",
+          "name": "Roaming Treefolk",
+          "original_text": "Type: Creature \u2014 Treefolk \nMana cost: {4}{G}\nPower/Toughness: 4/4\nReach\nWhen Roaming Treefolk enters, target creature or Ruin gets +2/+2 until end of turn.\nWander {5}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Treefolk \nMana cost: {4}{G}\nPower/Toughness: 4/4\nReach\nWhen Roaming Treefolk enters, target creature or Ruin gets +2/+2 until end of turn.\nYou may cast this spell from the battlefield for {5}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Roaming Treefolk",
+              "executable_text": "Type: Creature \u2014 Treefolk \nMana cost: {4}{G}\nPower/Toughness: 4/4\nReach\nWhen Roaming Treefolk enters, target creature or Ruin gets +2/+2 until end of turn.\nYou may cast this spell from the battlefield for {5}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Reach\nWhen Roaming Treefolk enters, target creature or Ruin gets +2/+2 until end of turn.\nWander {5}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Reach\nWhen Roaming Treefolk enters, target creature or Ruin gets +2/+2 until end of turn.\nWander {5}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Seer of the Aspirants_OLD",
+          "source_card_key": "rev:Seer of the Aspirants_OLD",
+          "name": "Seer of the Aspirants",
+          "original_text": "Type: Creature \u2014 Human Druid \nMana cost: {1}{G}\nPower/Toughness: 1/3\nWhen Seer of the Aspirants enters, surveil 1. *(Look at the top card of your library. You may put that card into your graveyard.)*\nWander {2}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Druid \nMana cost: {1}{G}\nPower/Toughness: 1/3\nWhen Seer of the Aspirants enters, surveil 1.\nYou may cast this spell from the battlefield for {2}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Seer of the Aspirants",
+              "executable_text": "Type: Creature \u2014 Human Druid \nMana cost: {1}{G}\nPower/Toughness: 1/3\nWhen Seer of the Aspirants enters, surveil 1.\nYou may cast this spell from the battlefield for {2}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Seer of the Aspirants enters, surveil 1.\nWander {2}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Seer of the Aspirants enters, surveil 1.\nWander {2}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Siflir, Elder Pawn_OLD",
+          "source_card_key": "rev:Siflir, Elder Pawn_OLD",
+          "name": "Siflir, Elder Pawn",
+          "original_text": "Type: Legendary Creature \u2014 Human Wizard \nMana cost: {1}{U}{U}\nPower/Toughness: 3/2\nFlash\nWhenever you cast Siflir, Elder Pawn or another spell, if you paid an alternate or additional cost to cast it, draw a card.\nWander {3}{U}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Legendary Creature \u2014 Human Wizard \nMana cost: {1}{U}{U}\nPower/Toughness: 3/2\nFlash\nWhenever you cast Siflir, Elder Pawn or another spell, if you paid an alternate or additional cost to cast it, draw a card.\nYou may cast this spell from the battlefield for {3}{U}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Siflir, Elder Pawn",
+              "executable_text": "Type: Legendary Creature \u2014 Human Wizard \nMana cost: {1}{U}{U}\nPower/Toughness: 3/2\nFlash\nWhenever you cast Siflir, Elder Pawn or another spell, if you paid an alternate or additional cost to cast it, draw a card.\nYou may cast this spell from the battlefield for {3}{U}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Flash\nWhenever you cast Siflir, Elder Pawn or another spell, if you paid an alternate or additional cost to cast it, draw a card.\nWander {3}{U}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Flash\nWhenever you cast Siflir, Elder Pawn or another spell, if you paid an alternate or additional cost to cast it, draw a card.\nWander {3}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Sink into Obscurity_OLD",
+          "source_card_key": "rev:Sink into Obscurity_OLD",
+          "name": "Sink into Obscurity",
+          "original_text": "Type: Enchantment \u2014 Aura \nMana cost: {1}{U}\nEnchant artifact or creature\nEnchanted permanent loses all abilities and doesn't untap during its controller's untap step.\nWander {3}{U}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {1}{U}\nEnchant artifact or creature\nEnchanted permanent loses all abilities and doesn't untap during its controller's untap step.\nYou may cast this spell from the battlefield for {3}{U}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Sink into Obscurity",
+              "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {1}{U}\nEnchant artifact or creature\nEnchanted permanent loses all abilities and doesn't untap during its controller's untap step.\nYou may cast this spell from the battlefield for {3}{U}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Enchant artifact or creature\nEnchanted permanent loses all abilities and doesn't untap during its controller's untap step.\nWander {3}{U}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Enchant artifact or creature\nEnchanted permanent loses all abilities and doesn't untap during its controller's untap step.\nWander {3}{U}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Springsoarer_OLD",
+          "source_card_key": "rev:Springsoarer_OLD",
+          "name": "Springsoarer",
+          "original_text": "Type: Creature \u2014 Human Scout \nMana cost: {1}{U}\nPower/Toughness: 1/2\nFlying\nSpringsoarer enters with a +1/+1 counter on it if a creature you controlled dealt combat damage to a player this turn.\nWander {2}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {1}{U}\nPower/Toughness: 1/2\nFlying\nSpringsoarer enters with a +1/+1 counter on it if a creature you controlled dealt combat damage to a player this turn.\nYou may cast this spell from the battlefield for {2}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Springsoarer",
+              "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {1}{U}\nPower/Toughness: 1/2\nFlying\nSpringsoarer enters with a +1/+1 counter on it if a creature you controlled dealt combat damage to a player this turn.\nYou may cast this spell from the battlefield for {2}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Flying\nSpringsoarer enters with a +1/+1 counter on it if a creature you controlled dealt combat damage to a player this turn.\nWander {2}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Flying\nSpringsoarer enters with a +1/+1 counter on it if a creature you controlled dealt combat damage to a player this turn.\nWander {2}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Taiga Bonder_OLD",
+          "source_card_key": "rev:Taiga Bonder_OLD",
+          "name": "Taiga Bonder",
+          "original_text": "Type: Creature \u2014 Human Cleric \nMana cost: {1}{W}\nPower/Toughness: 1/1\nWhen Taiga Bonder enters, put a +1/+1 counter on target creature.\nWander {3}{W}{W} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {1}{W}\nPower/Toughness: 1/1\nWhen Taiga Bonder enters, put a +1/+1 counter on target creature.\nYou may cast this spell from the battlefield for {3}{W}{W} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Taiga Bonder",
+              "executable_text": "Type: Creature \u2014 Human Cleric \nMana cost: {1}{W}\nPower/Toughness: 1/1\nWhen Taiga Bonder enters, put a +1/+1 counter on target creature.\nYou may cast this spell from the battlefield for {3}{W}{W} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Taiga Bonder enters, put a +1/+1 counter on target creature.\nWander {3}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Taiga Bonder enters, put a +1/+1 counter on target creature.\nWander {3}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Tireless Aspirants_OLD",
+          "source_card_key": "rev:Tireless Aspirants_OLD",
+          "name": "Tireless Aspirants",
+          "original_text": "Type: Creature \u2014 Human Scout \nMana cost: {U}\nPower/Toughness: 1/1\nWhen Tireless Aspirants enters, you may draw a card. If you do, discard a card.\nWander {1}{U} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {U}\nPower/Toughness: 1/1\nWhen Tireless Aspirants enters, you may draw a card. If you do, discard a card.\nYou may cast this spell from the battlefield for {1}{U} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Tireless Aspirants",
+              "executable_text": "Type: Creature \u2014 Human Scout \nMana cost: {U}\nPower/Toughness: 1/1\nWhen Tireless Aspirants enters, you may draw a card. If you do, discard a card.\nYou may cast this spell from the battlefield for {1}{U} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "When Tireless Aspirants enters, you may draw a card. If you do, discard a card.\nWander {1}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "When Tireless Aspirants enters, you may draw a card. If you do, discard a card.\nWander {1}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Valley Caravan_OLD",
+          "source_card_key": "rev:Valley Caravan_OLD",
+          "name": "Valley Caravan",
+          "original_text": "Type: Creature \u2014 Human \nMana cost: {2}{W}\nPower/Toughness: \u2605/\u2605\nValley Caravan's power and toughness are each equal to the number of creatures you control.\nWander {3}{W}{W} *(You may cast this from the battlefield for its wander cost.)*\nWhen Valley Caravan enters, if it wandered, create a 1/1 white Human creature token.",
+          "executable_text": "Type: Creature \u2014 Human \nMana cost: {2}{W}\nPower/Toughness: \u2605/\u2605\nValley Caravan's power and toughness are each equal to the number of creatures you control.\nYou may cast this spell from the battlefield for {3}{W}{W} rather than pay its mana cost.\nWhen Valley Caravan enters, if it wandered, create a 1/1 white Human creature token.",
+          "executable_faces": [
+            {
+              "name": "Valley Caravan",
+              "executable_text": "Type: Creature \u2014 Human \nMana cost: {2}{W}\nPower/Toughness: \u2605/\u2605\nValley Caravan's power and toughness are each equal to the number of creatures you control.\nYou may cast this spell from the battlefield for {3}{W}{W} rather than pay its mana cost.\nWhen Valley Caravan enters, if it wandered, create a 1/1 white Human creature token.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Valley Caravan's power and toughness are each equal to the number of creatures you control.\nWander {3}{W}{W}\nWhen Valley Caravan enters, if it wandered, create a 1/1 white Human creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Valley Caravan's power and toughness are each equal to the number of creatures you control.\nWander {3}{W}{W}\nWhen Valley Caravan enters, if it wandered, create a 1/1 white Human creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Verdant Grandeur_OLD",
+          "source_card_key": "rev:Verdant Grandeur_OLD",
+          "name": "Verdant Grandeur",
+          "original_text": "Type: Enchantment \u2014 Aura \nMana cost: {3}{G}\nEnchant creature or land\nWhen Verdant Grandeur enters, scry 2.\nEnchanted permanent has vigilance and \u201c{T}: Add {G}{G}.\u201d\nWander {3}{G}{G} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {3}{G}\nEnchant creature or land\nWhen Verdant Grandeur enters, scry 2.\nEnchanted permanent has vigilance and \u201c{T}: Add {G}{G}.\u201d\nYou may cast this spell from the battlefield for {3}{G}{G} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Verdant Grandeur",
+              "executable_text": "Type: Enchantment \u2014 Aura \nMana cost: {3}{G}\nEnchant creature or land\nWhen Verdant Grandeur enters, scry 2.\nEnchanted permanent has vigilance and \u201c{T}: Add {G}{G}.\u201d\nYou may cast this spell from the battlefield for {3}{G}{G} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Enchant creature or land\nWhen Verdant Grandeur enters, scry 2.\nEnchanted permanent has vigilance and \u201c{T}: Add {G}{G}.\u201d\nWander {3}{G}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Enchant creature or land\nWhen Verdant Grandeur enters, scry 2.\nEnchanted permanent has vigilance and \u201c{T}: Add {G}{G}.\u201d\nWander {3}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Weathered Blackguard_OLD",
+          "source_card_key": "rev:Weathered Blackguard_OLD",
+          "name": "Weathered Blackguard",
+          "original_text": "Type: Creature \u2014 Human Knight \nMana cost: {2}{B}\nPower/Toughness: 2/3\nLifelink\nWhen Weathered Blackguard enters, you may attach target Equipment you control to it.\nWander {2}{B} *(You may cast this from the battlefield for its wander cost.)*",
+          "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {2}{B}\nPower/Toughness: 2/3\nLifelink\nWhen Weathered Blackguard enters, you may attach target Equipment you control to it.\nYou may cast this spell from the battlefield for {2}{B} rather than pay its mana cost.",
+          "executable_faces": [
+            {
+              "name": "Weathered Blackguard",
+              "executable_text": "Type: Creature \u2014 Human Knight \nMana cost: {2}{B}\nPower/Toughness: 2/3\nLifelink\nWhen Weathered Blackguard enters, you may attach target Equipment you control to it.\nYou may cast this spell from the battlefield for {2}{B} rather than pay its mana cost.",
+              "custom_keyword_identities": [
+                "wander"
+              ],
+              "custom_keyword_payments": [
+                "wander"
+              ],
+              "original_display_text": "Lifelink\nWhen Weathered Blackguard enters, you may attach target Equipment you control to it.\nWander {2}{B}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "wander"
+          ],
+          "custom_keyword_payments": [
+            "wander"
+          ],
+          "original_display_text": "Lifelink\nWhen Weathered Blackguard enters, you may attach target Equipment you control to it.\nWander {2}{B}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "rev:Aspirant's Hookrope_OLD",
+          "source_card_key": "rev:Aspirant's Hookrope_OLD",
+          "name": "Aspirant's Hookrope",
+          "original_text": "Type: Artifact \u2014 Equipment \nMana cost: {1}\nEquipped creature gets +2/+0 and has reach.\nWhenever a creature you control enters, if it wandered, you may attach Aspirant's Hookrope to it.\nEquip {2}",
+          "executable_text": null
+        },
+        {
+          "id": "rev:Forever Alone_OLD",
+          "source_card_key": "rev:Forever Alone_OLD",
+          "name": "Forever Alone",
+          "original_text": "Type: Enchantment \u2014 Aura \nMana cost: {2}{W}\nEnchant permanent\nEnchanted permanent can't attack, block, or wander.",
+          "executable_text": null
+        },
+        {
+          "id": "rev:Lofty Frontiers_OLD",
+          "source_card_key": "rev:Lofty Frontiers_OLD",
+          "name": "Lofty Frontiers",
+          "original_text": "Type: Sorcery\nMana cost: {2}{U}\nCreate a 2/2 blue Drake creature token with flying.\nWhenever a creature you control enters, if it wandered, you may exile Lofty Frontiers from your graveyard. If you do, create a 2/2 blue Drake creature token with flying.",
+          "executable_text": null
+        }
+      ],
+      "source_cards": [
+        "Alpha's Example",
+        "Alrantan Visionary",
+        "Askir, the Defiler",
+        "Askir's Rearguard",
+        "Audacious Roughrider",
+        "Barbarous Roughrider",
+        "Breaching Jaxl",
+        "Bumbling Bigfoot",
+        "Cassia the Carefree",
+        "Cliffside Scrappers",
+        "Cliffwalker",
+        "Elderflame Pilgrims",
+        "Hearty Roughrider",
+        "Indomitable Jicru",
+        "Jens Slopeskidder",
+        "Jorgen, Martyr of the Rathomar",
+        "Leyrune Collector",
+        "Lofty Aspirations",
+        "Mokar Cliffbreaker",
+        "Narzi, Hero of the Mokar",
+        "Opal-Eye Allseer",
+        "Opal-Eye Caretaker",
+        "Opulent Roughrider",
+        "Protean's Animosity",
+        "Renowned Roughrider",
+        "Rib Collector",
+        "Roaming Treefolk",
+        "Seer of the Aspirants",
+        "Siflir, Elder Pawn",
+        "Sink into Obscurity",
+        "Springsoarer",
+        "Taiga Bonder",
+        "Tireless Aspirants",
+        "Valley Caravan",
+        "Verdant Grandeur",
+        "Weathered Blackguard",
+        "Aspirant's Hookrope",
+        "Forever Alone",
+        "Lofty Frontiers"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "battlefield-cast",
+          "status": "pending",
+          "test_reference": "custom_wander_battlefield_cast",
+          "observable": "Actual battlefield-origin alternative casting costs, timing, LTB and ETB, reset incarnation state, current controller permission, live ability loss and origin receipt."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Wander",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell from the battlefield for {Cost} rather than pay its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-wander-199",
+      "keyword": "Wander",
+      "scope": "revolution",
+      "rule_reference": "702.215.",
+      "rule_text": {
+        "name": "702.215.",
+        "rule": "Wander",
+        "subrules": [
+          {
+            "name": "702.215a",
+            "rule": "Wander appears on some permanent cards. \u201cWander (cost)\u201d means \u201cYou may cast this permanent from the battlefield for (cost).\u201d Casting a spell using its wander ability follows the rules for paying alternative costs in rules 601.2b and 601.2f\u2013h.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Alpha's Example",
+          "Alrantan Visionary",
+          "Askir, the Defiler",
+          "Askir's Rearguard",
+          "Aspirant's Hookrope",
+          "Audacious Roughrider",
+          "Barbarous Roughrider",
+          "Breaching Jaxl",
+          "Bumbling Bigfoot",
+          "Cassia the Carefree",
+          "Cliffside Scrappers",
+          "Cliffwalker",
+          "Elderflame Pilgrims",
+          "Forever Alone",
+          "Hearty Roughrider",
+          "Indomitable Jicru",
+          "Jens Slopeskidder",
+          "Jorgen, Martyr of the Rathomar",
+          "Leyrune Collector",
+          "Lofty Aspirations",
+          "Lofty Frontiers",
+          "Mokar Cliffbreaker",
+          "Narzi, Hero of the Mokar",
+          "Opal-Eye Allseer",
+          "Opal-Eye Caretaker",
+          "Opulent Roughrider",
+          "Protean's Animosity",
+          "Renowned Roughrider",
+          "Rib Collector",
+          "Roaming Treefolk",
+          "Seer of the Aspirants",
+          "Siflir, Elder Pawn",
+          "Sink into Obscurity",
+          "Springsoarer",
+          "Squallrunner Duo",
+          "Taiga Bonder",
+          "Tireless Aspirants",
+          "Valley Caravan",
+          "Verdant Grandeur",
+          "Weathered Blackguard"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast those creatures from the battlefield for {2}. Timing restrictions still apply.",
+      "executable_reminder": "You may cast this spell from the battlefield for {Cost} rather than pay its mana cost.",
+      "semantic_equivalence": {
+        "status": "pending_native_verification",
+        "evidence": "702.215a calls for an actual cast of same permanent from battlefield for alternative price, with ordinary casting timing. Generic FromZone permission plus live current-ability gate and normal proposal transition; neither blink nor ETB-only approximation."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Squallrunner Duo_OLD",
+          "name": "Squallrunner Duo",
+          "original_text": "Type: Creature \u2014 Human Soldier Knight \nMana cost: {W}{U}\nPower/Toughness: 1/1\nFlying\nWhen Squallrunner Duo enters, create a 1/1 white Human creature token.\nNontoken creatures you control that have attacked this turn have wander {2}. *(You may cast those creatures from the battlefield for {2}. Timing restrictions still apply.)*",
+          "executable_text": "Type: Creature \u2014 Human Soldier Knight \nMana cost: {W}{U}\nPower/Toughness: 1/1\nFlying\nWhen Squallrunner Duo enters, create a 1/1 white Human creature token.\nNontoken creatures you control that have attacked this turn have wander {2}. (You may cast those creatures from the battlefield for {2}. Timing restrictions still apply.)",
+          "executable_faces": [
+            {
+              "name": "Squallrunner Duo",
+              "executable_text": "Type: Creature \u2014 Human Soldier Knight \nMana cost: {W}{U}\nPower/Toughness: 1/1\nFlying\nWhen Squallrunner Duo enters, create a 1/1 white Human creature token.\nNontoken creatures you control that have attacked this turn have wander {2}. (You may cast those creatures from the battlefield for {2}. Timing restrictions still apply.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "source_cards": [
+        "Squallrunner Duo"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "battlefield-cast",
+          "status": "pending",
+          "test_reference": "custom_wander_battlefield_cast",
+          "observable": "Actual battlefield-origin alternative casting costs, timing, LTB and ETB, reset incarnation state, current controller permission, live ability loss and origin receipt."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Wander",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell from the battlefield for {Cost} rather than pay its mana cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    }
+  ]
+}

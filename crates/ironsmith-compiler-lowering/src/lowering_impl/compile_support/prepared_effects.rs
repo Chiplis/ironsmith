@@ -2169,6 +2169,7 @@ fn materialize_trailing_self_replacement(
         return Ok(Some(LoweredEffects {
             effects: crate::resolution::ResolutionProgram::new(vec![
                 crate::resolution::ResolutionSegment {
+                    ability_designations: Default::default(),
                     default_effects,
                     self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                         condition,

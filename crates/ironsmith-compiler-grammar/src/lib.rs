@@ -27,9 +27,11 @@
 
 pub mod card_document;
 mod custom_status;
+mod activation_without_costs;
+mod custom_identity_filters;
 
 pub mod model {
-    pub use crate::card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
+    pub use crate::card_document::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch, OptionalTextVariantBranch, OptionalTextVariants};
     pub use ironsmith_compiler_semantic::model::{
         ActivationRestrictionNormalizationFact, AdditionalCostChoiceOptionAst, AnnotatedEffect,
         AnnotatedEffectSequence, Cardinality, CarriedFactAst, CarryKindAst, CastingConditionAst,
@@ -352,3 +354,5 @@ pub use oracle_grammar::{
 mod tests;
 
 pub use ironsmith_grammar_common::custom_subtypes::with_custom_subtypes;
+
+mod instruction_menu;

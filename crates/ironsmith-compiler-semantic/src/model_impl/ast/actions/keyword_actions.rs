@@ -4,6 +4,9 @@ use super::*;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum KeywordActionAst {
+    FirstResolutionEachTurn { label: String, program: Vec<EffectAst> },
+    TriggerAbilitiesByClass { class:String, sources:ObjectFilter, source_selector:Option<TargetAst>, maximum:u32, minimum:u32, chooser:Option<PlayerFilter>, action_name:Option<String> },
+    ActivateAbilityWithoutCosts { target: TargetAst, designation: Option<String>, invocation_action: Option<String> },
     Scry {
         count: Value,
     },
@@ -29,7 +32,9 @@ pub enum KeywordActionAst {
     PairUnpairedCreatures,
     ExileResolvedSpellForCombatCopies,
     CopiesAssignedToOpponents,
+    RecordSourceCollection { target: TargetAst, source_tag: Option<TagRef>, name: String, source_zone: Option<Zone>, member_zone: Zone },
     SetPermanentDesignation { target: TargetAst, designation: ironsmith_core::PermanentDesignation },
+    PerformNamedAction { program_completion: ironsmith_core::effect::NamedActionProgramCompletion, label: String, performer: Option<TargetAst>, program: Option<Vec<EffectAst>>, objects: Option<TargetAst>, prior_objects: Option<(crate::effect::EffectId, ironsmith_core::PriorEffectAction)> },
     EmitKeywordAction {
         action: crate::events::KeywordActionKind,
         amount: u32,
@@ -204,4 +209,8 @@ pub enum KeywordActionAst {
     RegenerateAll {
         filter: ObjectFilter,
     },
+    GrantExileControllerInspection { target: TargetAst, sources: TargetAst },
+    RememberOriginalMovementArrivals { from: crate::effect::EffectId, zone: Zone, tag: TagRef },
+    LinkPermanents { target: TargetAst, relation: String, require_creatures: bool },
+
 }

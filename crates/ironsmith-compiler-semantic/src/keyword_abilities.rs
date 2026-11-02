@@ -46,6 +46,7 @@ pub fn cumulative_upkeep_granted_ability(total_cost: TotalCost<CompilerCost>) ->
             intervening_if: None,
             presentation_label: None,
         }),
+        designations: Default::default(),
         functional_zones: vec![Zone::Battlefield],
     }
 }
@@ -66,6 +67,7 @@ pub fn assemble_parsed_triggered_ability(
     let reference_imports = reference_imports.into();
     ParsedAbility {
         ability: crate::model::CompilerAbilityCore {
+            designations: Default::default(),
             kind: crate::model::CompilerAbilityKindCore::Triggered(
                 crate::model::CompilerTriggeredAbilityCore {
                     trigger: trigger.clone(),
@@ -138,6 +140,7 @@ pub fn vanishing_granted_abilities(amount: u32) -> Vec<Ability> {
                 intervening_if,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     }
@@ -164,10 +167,10 @@ pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAc
                     attack_target_player_only: false, half_power_toughness_round_up: false,
                     has_haste: false, haste_followup_reference_surface: None,
                     exile_at_end_of_combat: true, exile_at_end_of_combat_reference_surface: None,
-                    loses_soulbond: false, sacrifice_at_next_end_step: false,
+                    loses_soulbond: false, removed_ability_designations: Vec::new(), ability_loss_until: None, sacrifice_at_next_end_step: false,
                     sacrifice_at_next_end_step_reference_surface: None, sacrifice_at_next_end_step_ability_surface: None,
                     exile_at_next_end_step: false, exile_at_next_end_step_reference_surface: None,
-                    next_end_step_player: PlayerFilter::Any, set_colors: None, added_colors: crate::color::ColorSet::new(), set_card_types: None, set_subtypes: None,
+                    next_end_step_player: PlayerFilter::Any, set_colors: None, added_colors: crate::color::ColorSet::new(), set_card_types: None, set_subtypes: None, preserve_noncreature_subtypes: false,
                     added_card_types: Vec::new(), added_subtypes: Vec::new(), removed_supertypes: Vec::new(),
                     set_base_power_toughness: None, set_base_power_toughness_to_source_totals: false,
                     starting_loyalty: None, granted_abilities: Vec::new(),
@@ -183,5 +186,6 @@ pub fn attack_keyword_granted_ability(action: &crate::cards::builders::KeywordAc
     Some(Ability {kind: AbilityKind::Triggered(TriggeredAbility {
         trigger, effects: ironsmith_core::ResolutionProgram::from_effects(effects), choices: Vec::new(),
         intervening_if: None, presentation_label: None,
-    }), functional_zones: vec![Zone::Battlefield]})
+    }), designations: Default::default(),
+    functional_zones: vec![Zone::Battlefield]})
 }

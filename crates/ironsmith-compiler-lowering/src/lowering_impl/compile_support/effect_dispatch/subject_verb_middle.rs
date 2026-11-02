@@ -47,7 +47,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 CharacteristicActionAst::BecomeBasicLandTypeChoice { .. }
             )
             | SubjectVerbActionAst::Characteristics(
-                CharacteristicActionAst::ChangeText { .. }
+                CharacteristicActionAst::ChangeText { .. } | CharacteristicActionAst::RemoveOptionalTextFragment { .. }
             ) | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeColorChoice { .. }
             )
@@ -170,18 +170,80 @@ fn apply_token_combat_entry(
 
 /// "It gains 'When this token ..., return the exiled card'": the token's own
 /// ability names the cards its creating resolution exiled with the source.
+fn token_has_internal_exile_producer(token:&crate::cards::CardDefinition)->bool {
+    fn produces(effect:&crate::effect::Effect)->bool {
+        let own=effect.downcast_ref::<crate::effects::ExileEffect>().is_some()
+            || effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>().is_some()
+            || effect.downcast_ref::<crate::effects::ExileUntilEffect>().is_some()
+            || effect.downcast_ref::<crate::effects::ExileTaggedWhenSourceLeavesEffect>().is_some()
+            || effect.downcast_ref::<crate::effects::MoveToZoneEffect>().is_some_and(|effect|effect.zone==crate::zone::Zone::Exile);
+        let mut nested=false;effect.visit_child_effects(&mut |child|nested|=produces(child));own||nested
+    }
+    fn static_produces(ability:&crate::static_abilities::StaticAbility)->bool {
+        match &ability.payload {
+            ironsmith_core::StaticAbilityPayload::EventReplacementWithEffects{replacement_effects,..}=>replacement_effects.iter().any(produces),
+            ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>static_produces(ability),
+            _=>false,
+        }
+    }
+    token.spell_effect.as_ref().is_some_and(|program|program.all_effects().into_iter().any(produces))
+        || token.abilities.iter().any(|ability|match &ability.kind {
+            crate::ability::AbilityKind::Activated(ability)=>ability.effects.linked_exile_pair.is_some()||ability.effects.all_effects().into_iter().any(produces),
+            crate::ability::AbilityKind::Triggered(ability)=>ability.effects.linked_exile_pair.is_some()||ability.effects.all_effects().into_iter().any(produces),
+            crate::ability::AbilityKind::Static(ability)=>ability.source_exiled_inspection_pair().is_some_and(|pair|pair.is_some())||static_produces(ability),
+            _=>false,
+        })
+}
+
 fn token_text_names_source_exiled(
     definition: &crate::model::token_definition::TokenDefinitionSpec,
     granted_abilities: &[GrantedAbilityAst],
+    resolved: &crate::cards::CardDefinition,
 ) -> bool {
     use ironsmith_core::tag::TagKeyWalk;
+    if token_has_internal_exile_producer(resolved){return false;}
     let source_exiled = crate::tag::CompilerReferenceTag::SourceExiled.as_str();
     let mut names = false;
     definition.for_each_tag_key(&mut |tag| names |= tag.as_str() == source_exiled);
+    resolved.for_each_tag_key(&mut |tag| names |= tag.as_str() == source_exiled);
     for ability in granted_abilities {
         ability.for_each_tag_key(&mut |tag| names |= tag.as_str() == source_exiled);
     }
     names
+}
+
+/// The creating effect is the typed producer for a token's creator-linked
+/// readers. Bind one definition-local acquisition without guessing a source
+/// name or borrowing an unrelated permanent's source-wide exile history.
+fn bind_creation_owned_token_exile_readers(token:&mut crate::cards::CardDefinition) {
+    use ironsmith_core::tag::TagKeyWalk;
+    use sha2::{Digest,Sha256};
+    let has_inspector=token.abilities.iter().any(|ability|matches!(&ability.kind,
+        crate::ability::AbilityKind::Static(ability) if ability.source_exiled_inspection_pair().is_some()));
+    if !has_inspector{return;}
+    let Ok(bytes)=serde_json::to_vec(&token.abilities) else{return;};
+    let pair=ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition(Sha256::digest(bytes).into()),pair:0};
+    fn inspector(ability:&mut crate::static_abilities::StaticAbility,pair:ironsmith_core::LinkedExilePair){
+        match &mut ability.payload {
+            ironsmith_core::StaticAbilityPayload::LookAtSourceExiledCards{pair:slot,..}=>*slot=Some(pair),
+            ironsmith_core::StaticAbilityPayload::Conditional{ability,..}=>inspector(ability,pair),
+            _=>{},
+        }
+    }
+    for ability in &mut token.abilities {
+        match &mut ability.kind {
+            crate::ability::AbilityKind::Static(ability)=>inspector(ability,pair),
+            crate::ability::AbilityKind::Activated(ability)=>{
+                let mut reads=false;ability.effects.for_each_tag_key(&mut |tag|reads|=tag.as_str()==ironsmith_core::SOURCE_EXILED_TAG);
+                if reads{ability.effects.linked_exile_pair=Some(pair);}
+            },
+            crate::ability::AbilityKind::Triggered(ability)=>{
+                let mut reads=false;ability.effects.for_each_tag_key(&mut |tag|reads|=tag.as_str()==ironsmith_core::SOURCE_EXILED_TAG);
+                if reads{ability.effects.linked_exile_pair=Some(pair);}
+            },
+            _=>{},
+        }
+    }
 }
 
 pub(super) fn retain_token_description_roles(
@@ -317,8 +379,10 @@ pub(super) fn compile_create_token_with_mods_action(
     if *actor_surface_explicit {
         effect = effect.with_explicit_actor_surface();
     }
-    if token_text_names_source_exiled(definition, granted_abilities) {
+    if token_text_names_source_exiled(definition, granted_abilities, &effect.token) {
         effect = effect.linking_source_exiled_this_resolution();
+        bind_creation_owned_token_exile_readers(&mut effect.token);
+        effect.link_only_last_source_exiled = !ctx.last_exiled_collection_is_plural;
     }
     if let Some(presentation) = ability_presentation {
         effect = effect.with_ability_presentation(*presentation);
@@ -1004,6 +1068,9 @@ pub(super) fn compile_become_base_pt_creature_action(
         add_supertypes,
         remove_all_abilities,
         remove_other_abilities,
+        remove_other_supertypes,
+        remove_other_card_types,
+        remove_other_subtypes,
         base_power_toughness,
         target,
         card_types,
@@ -1057,14 +1124,15 @@ pub(super) fn compile_become_base_pt_creature_action(
         // exception even without an "in addition" clause.
         let implicitly_preserves_card_types = card_types.contains(&CardType::Artifact)
             && card_types.contains(&CardType::Creature)
-            && !remove_other_abilities;
+            && !remove_other_abilities
+            && !remove_other_card_types;
         // No authored card type ("becomes a green Wurm with base power and
         // toughness 6/4", Scale Up): only the creature subtype is set, so the
         // object keeps its card types. Color/supertype/size-only templates
         // likewise must not invent Creature on an existing noncreature.
-        let type_modification = if card_types.is_empty() {
+        let type_modification = if card_types.is_empty() && !remove_other_card_types {
             crate::continuous::Modification::AddCardTypes(Vec::new())
-        } else if *preserve_other_types || implicitly_preserves_card_types {
+        } else if !remove_other_card_types && (*preserve_other_types || implicitly_preserves_card_types) {
             crate::continuous::Modification::AddCardTypes(card_types.clone())
         } else {
             crate::continuous::Modification::SetCardTypes(card_types.clone())
@@ -1092,6 +1160,32 @@ pub(super) fn compile_become_base_pt_creature_action(
                 name.clone(),
             ));
         }
+        if *remove_other_supertypes {
+            apply = apply.with_additional_modification(
+                crate::continuous::Modification::RemoveSupertypes(vec![
+                    crate::types::Supertype::Basic,
+                    crate::types::Supertype::Legendary,
+                    crate::types::Supertype::Ongoing,
+                    crate::types::Supertype::Snow,
+                    crate::types::Supertype::World,
+                ]),
+            );
+        }
+        if *remove_other_subtypes {
+            for family in [
+                crate::types::SubtypeFamily::Creature,
+                crate::types::SubtypeFamily::Artifact,
+                crate::types::SubtypeFamily::Enchantment,
+                crate::types::SubtypeFamily::Land,
+                crate::types::SubtypeFamily::Planeswalker,
+                crate::types::SubtypeFamily::Spell,
+                crate::types::SubtypeFamily::Battle,
+            ] {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::RemoveAllSubtypesOfFamily(family),
+                );
+            }
+        }
         if !add_supertypes.is_empty() {
             apply = apply.with_additional_modification(
                 crate::continuous::Modification::AddSupertypes(add_supertypes.clone()),
@@ -1110,7 +1204,7 @@ pub(super) fn compile_become_base_pt_creature_action(
             });
         }
         if !subtypes.is_empty() {
-            if !preserve_other_types {
+            if !preserve_other_types && !remove_other_subtypes {
                 for family in [
                     crate::types::SubtypeFamily::Creature,
                     crate::types::SubtypeFamily::Artifact,
@@ -2070,6 +2164,9 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+            starts_after_current_turn,
+            control_duration,
+            alternative_cost,
             permission_bound_mana,
             tag,
             player,
@@ -2103,10 +2200,19 @@ pub(super) fn compile_subject_verb_middle(
             let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter.clone(),
-                crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+                if *starts_after_current_turn { crate::effects::GrantPlayTaggedDuration::AfterCurrentTurnForAsLongAsExiled } else { crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled },
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if *starts_after_current_turn { grant_play.exact_tagged_objects = true; }
+            grant_play.control_duration = control_duration.clone();
+            grant_play.alternative_cost = alternative_cost.as_ref().map(|cost| {
+                let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+            }).transpose()?;
+            if *without_paying_mana_cost && alternative_cost.is_some() {
+                return Err(CardTextError::ParseError("two alternative casting prices on one permission".into()));
+            }
             if *permission_bound_mana {
                 if resolved_tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
                     || ctx.last_exiled_collection_tag.as_ref() != Some(&resolved_tag)
@@ -2552,7 +2658,7 @@ pub(super) fn compile_subject_verb_middle(
                     Effect::new(crate::effects::TaggedEffect {
                         effect: Box::new(effect),
                         tag,
-                        outcome_only: true,
+                        outcome_only: true, action:None,
                     })
                 } else if choose_spec_may_hold_multiple_objects(&resolved_spec) {
                     effect.tag_all(tag)
@@ -3234,7 +3340,10 @@ pub(super) fn compile_subject_verb_middle(
             source_tags,
             filter_source_snapshots,
         } => {
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let capture_subject=if player!=PlayerAst::Implicit {Some(LoweredSubject::resolve_actor(player,ctx,true,true,true)?)}else{None};
+            let resolved_filter=if let Some(subject)=&capture_subject {
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter,ctx)?
+            }else{resolve_it_tag(filter,&current_reference_env(ctx))?};
             // Reference resolution can relocate the pool (a looked-at hand
             // rather than the default exiled pool); search where it now is.
             let zones = match resolved_filter.zone {
@@ -3256,7 +3365,11 @@ pub(super) fn compile_subject_verb_middle(
             }
             effect.filter_source_snapshots = *filter_source_snapshots;
             ctx.last_object_tag = Some(tag.clone().into());
-            Ok((vec![Effect::new(effect)], Vec::new()))
+            if let Some(subject)=capture_subject {
+                ctx.last_player_filter=Some(subject.clone_player_filter());
+                let effects=subject.prepend_target_prelude_if_needed(Effect::new(effect));
+                Ok((effects,subject.into_choices()))
+            }else{Ok((vec![Effect::new(effect)],Vec::new()))}
         }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePowerToughness {
             power,
@@ -3558,10 +3671,18 @@ pub(super) fn compile_subject_verb_middle(
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
             target,
             attachment_filter,
+            attachment_player_filter,
+            additional_subtypes,
             granted_abilities,
             duration,
         }) => {
             let grant_modifications = lower_granted_ability_grant_modifications(granted_abilities)?;
+            let mut aura_subtypes = vec![Subtype::Aura];
+            aura_subtypes.extend(additional_subtypes.iter().copied().filter(|subtype| *subtype != Subtype::Aura));
+            let aura_filter: crate::object::AuraAttachmentFilter = match attachment_player_filter {
+                Some(player) => player.clone().into(),
+                None => attachment_filter.clone().into(),
+            };
             compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
@@ -3578,12 +3699,10 @@ pub(super) fn compile_subject_verb_middle(
                         CardType::Planeswalker,
                     ],
                 ))
-                .with_additional_modification(crate::continuous::Modification::AddSubtypes(vec![
-                    Subtype::Aura,
-                ]))
+                .with_additional_modification(crate::continuous::Modification::AddSubtypes(aura_subtypes.clone()))
                 .with_additional_runtime_modification(
                     crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(
-                        attachment_filter.clone().into(),
+                        aura_filter.clone(),
                     ),
                 );
                 for modification in grant_modifications {
@@ -3639,21 +3758,30 @@ pub(super) fn compile_subject_verb_middle(
         }),
         SubjectVerbActionAst::Characteristics(
             CharacteristicActionAst::BecomeCreatureTypeChoice {
+                use_source_chosen_type,
+                use_source_chosen_card_type,
+                source_type_is_unspecified: _,
                 target,
                 duration,
                 excluded_subtypes,
                 in_addition_to_other_types,
             },
         ) => compile_tagged_effect_for_target(target, ctx, "become_creature_type_choice", |spec| {
-            Effect::new(
-                crate::effects::BecomeCreatureTypeChoiceEffect::new(
+            Effect::new({
+                let mut effect = crate::effects::BecomeCreatureTypeChoiceEffect::new(
                     spec,
                     duration.clone(),
                     excluded_subtypes.clone(),
                 )
-                .in_addition_to_other_types(*in_addition_to_other_types),
-            )
+                .in_addition_to_other_types(*in_addition_to_other_types);
+                effect.use_source_chosen_type = *use_source_chosen_type;
+                effect.use_source_chosen_card_type = *use_source_chosen_card_type;
+                effect
+            })
         }),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::RemoveOptionalTextFragment { target, duration }) =>
+            compile_tagged_effect_for_target(target, ctx, "text_fragment_removed", |target|
+                Effect::new(ironsmith_core::RemoveOptionalTextFragmentEffect { target, until: duration.clone() })),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }) =>
             compile_tagged_effect_for_target(target, ctx, "text_changed", |spec|
                 Effect::new(crate::effects::ChangeTextEffect::new(spec, selection.clone(), duration.clone()))),
@@ -3737,7 +3865,7 @@ pub(super) fn compile_subject_verb_middle(
             abilities,
             duration,
         }) => {
-            let modifications = lower_granted_ability_grant_modifications(abilities)?;
+            let modifications=abilities.iter().map(|ability|lower_granted_ability_grant_modifications(std::slice::from_ref(ability))).collect::<Result<Vec<_>,_>>()?;
             if modifications.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "normalize_effects_ast should remove GrantAbilitiesChoiceAll with no abilities"
@@ -3745,23 +3873,28 @@ pub(super) fn compile_subject_verb_middle(
                 ));
             }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let fixed_recipients=modifications.iter().any(|members|members.len()>1).then(||ctx.next_tag("grant_choice_set"));
             let modes = modifications
                 .iter()
                 .zip(abilities.iter())
-                .map(|(modification, ability)| EffectMode {
-                    source_text: granted_ability_mode_description(ability, &ChooseSpec::Source)
-                        .unwrap_or_default(),
-                    effects: vec![Effect::new(
-                        crate::effects::ApplyContinuousEffect::new(
-                            crate::continuous::EffectTarget::Filter(resolved_filter.clone()),
-                            modification.clone(),
-                            duration.clone(),
-                        )
-                        .lock_filter_at_resolution(),
-                    )],
+                .map(|(modifications, _ability)| EffectMode {
+                    source_text: String::new(),
+                    effects: modifications.iter().map(|modification| {
+                        let apply=if let Some(tag)=&fixed_recipients {
+                            crate::effects::ApplyContinuousEffect::with_spec(ChooseSpec::Tagged(tag.clone().into()),modification.clone(),duration.clone())
+                        } else {
+                            crate::effects::ApplyContinuousEffect::new(crate::continuous::EffectTarget::Filter(resolved_filter.clone()),modification.clone(),duration.clone()).lock_filter_at_resolution()
+                        };
+                        Effect::new(apply)
+                    }).collect(),
                 })
                 .collect::<Vec<_>>();
-            Ok((vec![Effect::choose_one(modes)], Vec::new()))
+            let mut effects=Vec::new();
+            if let Some(tag)=fixed_recipients {effects.push(Effect::new(crate::effects::TagMatchingObjectsEffect::new(resolved_filter,tag)));}
+            let mut choice=crate::effects::ChooseModeEffect::choose_one(modes);
+            choice.decision_labels=abilities.iter().map(|ability|granted_ability_choice_label(ability,&ChooseSpec::Source)).collect::<Result<Vec<_>,_>>()?;
+            effects.push(Effect::new(choice));
+            Ok((effects,Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget {
             target,
@@ -3854,7 +3987,7 @@ pub(super) fn compile_subject_verb_middle(
             abilities,
             duration,
         }) => {
-            let modifications = lower_granted_ability_grant_modifications(abilities)?;
+            let modifications=abilities.iter().map(|ability|lower_granted_ability_grant_modifications(std::slice::from_ref(ability))).collect::<Result<Vec<_>,_>>()?;
             if modifications.is_empty() {
                 return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
                     Effect::new(crate::effects::TargetOnlyEffect::new(spec))
@@ -3866,22 +3999,17 @@ pub(super) fn compile_subject_verb_middle(
                 let modes = abilities
                     .iter()
                     .zip(modifications.iter())
-                    .map(|(ability, modification)| EffectMode {
-                        source_text: granted_ability_mode_description(ability, &spec)
-                            .unwrap_or_default(),
-                        effects: vec![Effect::new(
-                            crate::effects::ApplyContinuousEffect::with_spec(
-                                spec.clone(),
-                                modification.clone(),
-                                duration.clone(),
-                            ),
-                        )],
+                    .map(|(_ability, modifications)| EffectMode {
+                        source_text: String::new(),
+                        effects: modifications.iter().map(|modification|Effect::new(
+                            crate::effects::ApplyContinuousEffect::with_spec(spec.clone(),modification.clone(),duration.clone()),
+                        )).collect(),
                     })
                     .collect::<Vec<_>>();
-                Effect::new(
-                    crate::effects::ChooseModeEffect::choose_one(modes)
-                        .with_chooser(crate::target::PlayerFilter::You),
-                )
+                let mut choice=crate::effects::ChooseModeEffect::choose_one(modes)
+                    .with_chooser(crate::target::PlayerFilter::You);
+                choice.decision_labels=abilities.iter().map(|ability|granted_ability_choice_label(ability,&spec).unwrap_or_default()).collect();
+                Effect::new(choice)
             })
         }
         SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
@@ -4220,8 +4348,10 @@ pub(super) fn compile_subject_verb_middle(
             if *actor_surface_explicit {
                 effect = effect.with_explicit_actor_surface();
             }
-            if token_text_names_source_exiled(definition, granted_abilities) {
+            if token_text_names_source_exiled(definition, granted_abilities, &effect.token) {
                 effect = effect.linking_source_exiled_this_resolution();
+        bind_creation_owned_token_exile_readers(&mut effect.token);
+        effect.link_only_last_source_exiled = !ctx.last_exiled_collection_is_plural;
             }
             if let Some(presentation) = ability_presentation {
                 effect = effect.with_ability_presentation(*presentation);
@@ -4317,6 +4447,8 @@ pub(super) fn compile_subject_verb_middle(
             exile_at_end_of_combat,
             exile_at_end_of_combat_reference_surface,
             loses_soulbond,
+            removed_ability_designations,
+            ability_loss_until,
             sacrifice_at_next_end_step,
             sacrifice_at_next_end_step_reference_surface,
             sacrifice_at_next_end_step_ability_surface,
@@ -4327,6 +4459,7 @@ pub(super) fn compile_subject_verb_middle(
             added_colors,
             set_card_types,
             set_subtypes,
+            preserve_noncreature_subtypes,
             added_card_types,
             added_subtypes,
             removed_supertypes,
@@ -4403,6 +4536,8 @@ pub(super) fn compile_subject_verb_middle(
             if *loses_soulbond {
                 effect = effect.loses_soulbond(true);
             }
+            effect.removed_ability_designations = removed_ability_designations.clone();
+            effect.ability_loss_until = ability_loss_until.clone();
             if *sacrifice_at_next_end_step {
                 effect = effect.sacrifice_at_next_end_step(true);
             }
@@ -4429,7 +4564,11 @@ pub(super) fn compile_subject_verb_middle(
                 effect = effect.set_card_types(card_types.clone());
             }
             if let Some(subtypes) = set_subtypes {
-                effect = effect.set_subtypes(subtypes.clone());
+                effect = if *preserve_noncreature_subtypes {
+                    effect.set_creature_subtypes(subtypes.clone())
+                } else {
+                    effect.set_subtypes(subtypes.clone())
+                };
             }
             for card_type in added_card_types {
                 effect = effect.added_card_type(*card_type);
@@ -4511,6 +4650,8 @@ pub(super) fn compile_subject_verb_middle(
             exile_at_end_of_combat,
             exile_at_end_of_combat_reference_surface,
             loses_soulbond,
+            removed_ability_designations,
+            ability_loss_until,
             sacrifice_at_next_end_step,
             sacrifice_at_next_end_step_reference_surface,
             sacrifice_at_next_end_step_ability_surface,
@@ -4521,6 +4662,7 @@ pub(super) fn compile_subject_verb_middle(
             added_colors,
             set_card_types,
             set_subtypes,
+            preserve_noncreature_subtypes,
             added_card_types,
             added_subtypes,
             removed_supertypes,
@@ -4643,6 +4785,8 @@ pub(super) fn compile_subject_verb_middle(
             if *loses_soulbond {
                 effect = effect.loses_soulbond(true);
             }
+            effect.removed_ability_designations = removed_ability_designations.clone();
+            effect.ability_loss_until = ability_loss_until.clone();
             if *sacrifice_at_next_end_step {
                 effect = effect.sacrifice_at_next_end_step(true);
             }
@@ -4669,7 +4813,11 @@ pub(super) fn compile_subject_verb_middle(
                 effect = effect.set_card_types(card_types.clone());
             }
             if let Some(subtypes) = set_subtypes {
-                effect = effect.set_subtypes(subtypes.clone());
+                effect = if *preserve_noncreature_subtypes {
+                    effect.set_creature_subtypes(subtypes.clone())
+                } else {
+                    effect.set_subtypes(subtypes.clone())
+                };
             }
             for card_type in added_card_types {
                 effect = effect.added_card_type(*card_type);

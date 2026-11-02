@@ -574,79 +574,16 @@ fn parse_exile_top_library_then_play_bundle(
             }
             EffectAst::SubjectVerb(subject)
         }
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                    player,
-                    allow_land,
-                    without_paying_mana_cost,
-                    allow_any_color_for_cast,
-                    filter,
-                    during_turns_counter_put_on_source,
-                    spell_cost_increase,
-                    lands_enter_tapped,
-                    during_turns_attacked_with,
-                    during_turns_cast_another_spell,
-                    ..
-                }),
-            ..
-        }) => {
-            if during_turns_cast_another_spell {
-                // "As long as you've cast another spell this turn" keeps its
-                // turn gate when the bundle relinks the permission's tag.
-                let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                    permission_tag,
-                    player,
-                    allow_land,
-                    without_paying_mana_cost,
-                    allow_any_color_for_cast,
-                    filter,
-                );
-                if let EffectAst::SubjectVerb(subject) = &mut effect
-                    && let SubjectVerbActionAst::Grants(
-                        GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                            during_turns_cast_another_spell: gate,
-                            ..
-                        },
-                    ) = &mut subject.action
-                {
-                    *gate = true;
-                }
-                effect
-            } else if let Some(condition) = during_turns_attacked_with {
-                // "During any turn you attacked with ..." keeps its turn
-                // scope when the bundle relinks the permission's tag.
-                EffectAst::subject_verb_grant_play_tagged_during_turns_attacked_with(
-                    permission_tag,
-                    player,
-                    allow_land,
-                    allow_any_color_for_cast,
-                    condition,
-                )
-            } else if spell_cost_increase.is_some() || lands_enter_tapped {
-                EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
-                    permission_tag,
-                    player,
-                    spell_cost_increase,
-                    lands_enter_tapped,
-                )
-            } else if let Some(counter_type) = during_turns_counter_put_on_source {
-                EffectAst::subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
-                    permission_tag,
-                    player,
-                    allow_land,
-                    counter_type,
-                )
-            } else {
-                EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                    permission_tag,
-                    player,
-                    allow_land,
-                    without_paying_mana_cost,
-                    allow_any_color_for_cast,
-                    filter,
-                )
+        EffectAst::SubjectVerb(mut subject)
+            if matches!(&subject.action, SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })) =>
+        {
+            // Relinking an exact exile producer changes only its reference.
+            // Keep the complete authored lifetime, authority, price and mana
+            // rider on the same permission rather than reconstructing a subset.
+            if let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }) = &mut subject.action {
+                *tag = permission_tag;
             }
+            EffectAst::SubjectVerb(subject)
         }
         _ => return Ok(None),
     };
@@ -1155,7 +1092,7 @@ pub(super) fn parse_put_from_outside_game(
         }),
         EffectAst::subject_verb_move_to_zone(
             TargetAst::Tagged(tag, span_from_tokens(tokens)),
-            if shape.to_library_top { Zone::Library } else { Zone::Hand },
+            if shape.to_command { Zone::Command } else if shape.to_library_top { Zone::Library } else { Zone::Hand },
             shape.to_library_top,
             ReturnControllerAst::Preserve,
             false,

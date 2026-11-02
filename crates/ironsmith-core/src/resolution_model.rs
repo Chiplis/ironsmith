@@ -37,6 +37,15 @@ pub struct ResolutionProgram<E> {
     /// programs contain None; announced stack programs retain the exact sample.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub activation_values: Vec<(crate::Value, Option<i32>)>,
+    /// Exact object references sampled when this particular ability was
+    /// granted. Captures belong to the ability instance, never to a host-wide
+    /// tag table shared by independently granted abilities.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub captured_object_references: Vec<(crate::TagKey, Vec<crate::ObjectId>)>,
+    /// Compiler-identified free object references whose values belong to a
+    /// granting/scheduling parent, rather than local producers in this body.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub object_reference_imports: Vec<crate::TagKey>,
     /// Explicit provenance of this ability's linked exile producer/consumer.
     /// Absence does not authorize reading another ability's source-wide links.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -50,7 +59,7 @@ pub struct ResolutionProgram<E> {
     /// mistaken for an unowned accumulator and adopt another trigger's stamp.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
     unavailable_trigger_definition: bool,
-    /// A separately owned linked numeric entry/reselection/read relationship.
+    /// A separately owned linked noted-information relationship (numeric choices or noted names).
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub source_number_pair: Option<LinkedExilePair>,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -64,6 +73,15 @@ pub struct ResolutionProgram<E> {
     /// Kept separately from runtime acquisition and from an activation ordinal.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub activation_definition: Option<LinkedExileDefinition>,
+    /// Authored local activation relationship; never a permanent keyword marker.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_label: Option<String>,
+    /// Authored shared classifications; unlike relationship labels these may repeat.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub activation_designations: Vec<String>,
+    /// Actions explicitly exempted from the authored sorcery-only restriction.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub activation_sorcery_exceptions: Vec<String>,
     flattened_default_effects: Vec<E>,
     /// A legacy copied object lacked the definition evidence needed for its
     /// spell program. This is incomplete data, never an executable empty body.
@@ -74,6 +92,9 @@ pub struct ResolutionProgram<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
 pub struct ResolutionSegment<E> {
+    /// Source-ability designations survive composition and spell copies.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub ability_designations: Vec<String>,
     pub default_effects: Vec<E>,
     pub self_replacements: Vec<SelfReplacementBranch<E>>,
     /// This segment begins on a new authored Oracle line. Resolution semantics
@@ -122,6 +143,8 @@ impl<E> Default for ResolutionProgram<E> {
             segments: Vec::new(),
             ability_cant_be_countered: false,
             activation_values: Vec::new(),
+            captured_object_references: Vec::new(),
+            object_reference_imports: Vec::new(),
             linked_exile_pair: None,
             trigger_definition: None,
             unavailable_trigger_definition: false,
@@ -129,6 +152,9 @@ impl<E> Default for ResolutionProgram<E> {
             champion: None,
             keyword: None,
             activation_definition: None,
+            activation_label: None,
+            activation_designations: Vec::new(),
+            activation_sorcery_exceptions: Vec::new(),
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
         }
@@ -140,13 +166,18 @@ impl<E: Clone> ResolutionProgram<E> {
         let mut program = Self {
             segments,
             ability_cant_be_countered: false,
-            activation_values: Vec::new(),            linked_exile_pair: None,
+            activation_values: Vec::new(),
+            captured_object_references: Vec::new(),
+            object_reference_imports: Vec::new(),            linked_exile_pair: None,
             trigger_definition: None,
             unavailable_trigger_definition: false,
             source_number_pair: None,
             champion: None,
             keyword: None,
             activation_definition: None,
+            activation_label: None,
+            activation_designations: Vec::new(),
+            activation_sorcery_exceptions: Vec::new(),
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
         };
@@ -257,6 +288,9 @@ impl<E: Clone> ResolutionProgram<E> {
             self.champion = other.champion;
             self.keyword = other.keyword.clone();
             self.activation_definition = other.activation_definition;
+            self.activation_label = other.activation_label.clone();
+            self.activation_designations = other.activation_designations.clone();
+            self.activation_sorcery_exceptions = other.activation_sorcery_exceptions.clone();
         } else if !other.segments.is_empty()
             && self.linked_exile_pair != other.linked_exile_pair
         {
@@ -293,6 +327,23 @@ impl<E: Clone> ResolutionProgram<E> {
             && self.activation_definition != other.activation_definition
         {
             self.activation_definition = None;
+            self.activation_label = None;
+        }
+        if !self.segments.is_empty() && !other.segments.is_empty()
+            && self.activation_label != other.activation_label { self.activation_label = None; }
+        if !self.segments.is_empty() && !other.segments.is_empty() {
+            self.activation_designations.retain(|designation| other.activation_designations.contains(designation));
+            self.activation_sorcery_exceptions.retain(|action| other.activation_sorcery_exceptions.contains(action));
+        }
+        for tag in other.object_reference_imports {
+            if !self.object_reference_imports.contains(&tag) {self.object_reference_imports.push(tag);}
+        }
+        for (tag, objects) in other.captured_object_references {
+            if let Some((_, existing)) = self.captured_object_references.iter_mut().find(|(key, _)| key == &tag) {
+                // A composite cannot silently replace a captured exact
+                // referent with a different acquisition's object.
+                if *existing != objects {existing.clear();}
+            } else {self.captured_object_references.push((tag, objects));}
         }
         for sample in other.activation_values {
             if !self.activation_values.contains(&sample) { self.activation_values.push(sample); }
@@ -350,6 +401,8 @@ impl<E> ResolutionProgram<E> {
         let mut mapped = ResolutionProgram::new(segments);
         mapped.ability_cant_be_countered = self.ability_cant_be_countered;
         mapped.activation_values = self.activation_values;
+        mapped.captured_object_references = self.captured_object_references;
+        mapped.object_reference_imports = self.object_reference_imports;
         mapped.linked_exile_pair = self.linked_exile_pair;
         mapped.trigger_definition = self.trigger_definition;
         mapped.unavailable_trigger_definition = self.unavailable_trigger_definition;
@@ -357,6 +410,9 @@ impl<E> ResolutionProgram<E> {
         mapped.champion = self.champion;
         mapped.keyword = self.keyword;
         mapped.activation_definition = self.activation_definition;
+        mapped.activation_label = self.activation_label.clone();
+        mapped.activation_designations = self.activation_designations.clone();
+        mapped.activation_sorcery_exceptions = self.activation_sorcery_exceptions.clone();
         mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
     }
@@ -378,6 +434,7 @@ impl<E> ResolutionSegment<E> {
         }
 
         Ok(ResolutionSegment {
+            ability_designations: self.ability_designations.clone(),
             default_effects,
             self_replacements,
             starts_new_source_line: self.starts_new_source_line,
@@ -415,6 +472,7 @@ impl<E: Clone> From<Vec<E>> for ResolutionProgram<E> {
 impl<E> ResolutionSegment<E> {
     pub fn from_effects(effects: Vec<E>) -> Self {
         Self {
+            ability_designations: Default::default(),
             default_effects: effects,
             self_replacements: Vec::new(),
             starts_new_source_line: false,
@@ -484,7 +542,8 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
         let mut debug = f.debug_struct("ResolutionProgram");
         debug.field("segments", &self.segments)
             .field("linked_exile_pair", &self.linked_exile_pair)
-            .field("activation_definition", &self.activation_definition);
+            .field("activation_definition", &self.activation_definition)
+            .field("activation_label", &self.activation_label);
         if self.ability_cant_be_countered { debug.field("ability_cant_be_countered", &true); }
         // Historical runtime trigger identities still use Debug for unstamped
         // definitions. Omitted identity metadata must not change their input.
@@ -728,5 +787,38 @@ mod combined_owner_integration_tests {
         assert!(wire.get("trigger_definition").is_none());
         let decoded: ResolutionProgram<u8> = serde_json::from_value(wire).unwrap();
         assert_eq!(format!("{decoded:?}"), debug);
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod captured_object_reference_tests {
+    use super::*;
+    #[test]
+    fn captures_survive_effect_mapping_wire_roundtrip_and_legacy_defaults() {
+        let mut program=ResolutionProgram::from_effects(vec![7u32]);
+        program.object_reference_imports=vec![crate::TagKey::from("external")];
+        program.captured_object_references=vec![(crate::TagKey::from("external"),vec![crate::ObjectId(41)])];
+        let mapped=program.clone().try_map_effects(|effect|Ok::<_,()>(effect+1)).unwrap();
+        assert_eq!(mapped.captured_object_references,program.captured_object_references);
+        assert_eq!(mapped.object_reference_imports,program.object_reference_imports);
+        let mut wire=serde_json::to_value(&mapped).unwrap();
+        let decoded:ResolutionProgram<u32>=serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(decoded.captured_object_references,program.captured_object_references);
+        wire.as_object_mut().unwrap().remove("captured_object_references");
+        wire.as_object_mut().unwrap().remove("object_reference_imports");
+        let legacy:ResolutionProgram<u32>=serde_json::from_value(wire).unwrap();
+        assert!(legacy.captured_object_references.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod segment_designation_transport_tests {
+    use super::*;
+    #[test]
+    fn composed_spell_segments_keep_independent_designations_through_mapping() {
+        let mut first=ResolutionProgram::from_effects(vec![1u8]);first.segments[0].ability_designations=vec!["steady craft".into()];let mut second=ResolutionProgram::from_effects(vec![2u8]);second.segments[0].ability_designations=vec!["steady crafting".into()];first.extend(second);
+        let mapped=first.try_map_effects(|effect|Ok::<_,()>(u16::from(effect))).unwrap();assert_eq!(mapped.segments[0].ability_designations,["steady craft"]);assert_eq!(mapped.segments[1].ability_designations,["steady crafting"]);
+        #[cfg(feature="serde")]
+        {let restored:ResolutionProgram<u16>=serde_json::from_value(serde_json::to_value(&mapped).unwrap()).unwrap();assert_eq!(restored,mapped);}
     }
 }

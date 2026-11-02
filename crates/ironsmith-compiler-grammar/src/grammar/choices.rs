@@ -205,14 +205,22 @@ pub fn parse_choice_object_clause_tokens(
     if phrase_is_prefix(&refs, &["up", "to", "that", "many"]) {
         count = ChoiceCount::up_to_dynamic_x();
         count_source = Some(ChoiceObjectCountSource::ThatMany);
+        let end=TokenWordView::new(body_tokens).map_word_to_token_start(4).unwrap_or(body_tokens.len());
+        crate::word_claims::claim_tokens(&body_tokens[..end]);
         words.drain(..4);
     } else if phrase_is_prefix(&refs, &["that", "many"]) {
         count = ChoiceCount::dynamic_x();
         count_source = Some(ChoiceObjectCountSource::ThatMany);
+        let end=TokenWordView::new(body_tokens).map_word_to_token_start(2).unwrap_or(body_tokens.len());
+        crate::word_claims::claim_tokens(&body_tokens[..end]);
         words.drain(..2);
-    } else if let Some(parsed) = leaf::parse_leaf_choice_count_prefix_words(&refs) {
+    } else if let Some(parsed) = leaf::parse_leaf_choice_count_prefix_tokens(body_tokens) {
+        // Read the authored count operand, not detached word copies. Token
+        // primitives retain exact ownership of "up to", its amount and
+        // other supported cardinality syntax in every enclosing program.
         count = parsed.count;
-        words.drain(..parsed.consumed);
+        let count_words=TokenWordView::new(&body_tokens[..parsed.consumed]).word_refs().len();
+        words.drain(..count_words);
     } else if parse_leading_article(&refs) {
         words.drain(..1);
     }

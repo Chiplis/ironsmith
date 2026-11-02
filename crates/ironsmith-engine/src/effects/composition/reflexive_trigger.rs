@@ -154,6 +154,7 @@ fn choose_reflexive_targets(
                 aggregate_constraint,
                 min_targets: count.min,
                 max_targets: count.max,
+                additional_target_budget: 0,
                 distinct_player_group: None,
                 shared_player_group: None,
             }],

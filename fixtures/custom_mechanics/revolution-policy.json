@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "scope": "All10Policy full linked source cards, generic glyph reader pending integration"
+  },
+  "mechanics": [
+    {
+      "id": "rev-policy-conditions",
+      "source_variant_provenance": {
+        "kind": "additional_formal_category_source_cards_without_seed_inventory_row",
+        "formal_source_file": "reports/cards/lackey-audit-2026-11-01/rev-rules.json",
+        "formal_rule_reference": "741.",
+        "formal_rule_name": "Policy Cards",
+        "previous_candidate_label": "Policy conditions",
+        "previous_reference_summary": "741.2b-e",
+        "printed_card_reminder": "Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.",
+        "seed_inventory_note": "The category and its ten exact physical sources are formally sourced but have no extracted971 seed row. The printed reminder remains exact in source_faces/original_text and in this provenance field; empty original_reminder means no extracted seed-reminder identity is invented."
+      },
+      "keyword": "Policy Cards",
+      "scope": "revolution",
+      "rule_reference": "741.",
+      "rule_text": {
+        "name": "741.",
+        "rule": "Policy Cards",
+        "subrules": [
+          {
+            "name": "741.1.",
+            "rule": "Each Policy card is a double-faced card. The front face has a striated textbox containing a number of policy symbols. Its illustration is vertically oriented on the right side of the card, and its typeline is along the bottom of the card. The back face is a standard Magic card.",
+            "subrules": [],
+            "custom": true
+          },
+          {
+            "name": "741.2.",
+            "rule": "A policy symbol is a keyword ability that represents a static ability that allows a player to take a special action.",
+            "subrules": [
+              {
+                "name": "741.2a",
+                "rule": "A policy symbol includes a quill icon, indicated here as {ql}.",
+                "custom": true
+              },
+              {
+                "name": "741.2b",
+                "rule": "\"{ql}\u2014[Condition]\" means \"Any time you could cast a sorcery, you may mark this condition if [condition] and if no player has marked a policy symbol of this permanent this turn. When you do, if all of this permanent's policy abilities are marked, transform this permanent.\"",
+                "custom": true
+              },
+              {
+                "name": "741.2c",
+                "rule": "\"{ql}, {ql}\u2014[Condition]\" means the same as \"{ql}\u2014[Condition]\" and \"{ql}\u2014[Condition].\"",
+                "custom": true
+              },
+              {
+                "name": "741.2d",
+                "rule": "A policy symbol may be marked even if it is already marked.",
+                "custom": true
+              },
+              {
+                "name": "741.2e",
+                "rule": "A condition being marked has no rules meaning other than to act as a marker that spells and abilities can identify. Once a permanent's condition becomes marked, it stays marked until it leaves the battlefield or transforms as a result of its policy symbol (see rule R741.2b). The marked designation is neither an ability nor part of the permanent\u2019s copiable values.",
+                "custom": true
+              }
+            ],
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "741",
+        "matched_card_names": [
+          "Ascend to Power//Omnipotence",
+          "Distributive Justice//Equality",
+          "Free Market//Industrialism",
+          "Golden Age//Harmony",
+          "Meeting of the Elites//Aristocracy",
+          "Research Grant//Progress",
+          "Security Initiative//Surveillance State",
+          "Silence the Opposition//Authoritarianism",
+          "Sparks of a Revolution//Freedom",
+          "Together in Arms//Communitarianism"
+        ]
+      },
+      "original_reminder": "",
+      "executable_reminder": "Any time you could cast a sorcery, you may mark a condition of this permanent whose condition is true if no player has marked a condition of this permanent this turn. When all are marked, transform this permanent. Its marks remain until it leaves the battlefield or transforms because all conditions were marked.",
+      "support_status": "existing_operations_candidate",
+      "semantic_equivalence": {
+        "status": "pending_native_verification",
+        "evidence": "Source741.2b-e controller-only special action; repeated symbols independent; sourcewide once-turn budget persists across all faces/condition sets and control changes. Definition-scoped noncopiable marks survive ordinary transforms, clear on leaving or any successful condition-marking transform via shared status group, preserving unrelated groups."
+      },
+      "source_cards": [
+        "Ascend to Power",
+        "Distributive Justice",
+        "Free Market",
+        "Golden Age",
+        "Meeting of the Elites",
+        "Research Grant",
+        "Security Initiative",
+        "Silence the Opposition",
+        "Sparks of a Revolution",
+        "Together in Arms"
+      ],
+      "representative_cards": [
+        {
+          "id": "rev:Ascend to Power//Omnipotence_CNY",
+          "source_card_key": "rev:Ascend to Power//Omnipotence_CNY",
+          "name": "Ascend to Power",
+          "original_text": "Mana cost: {2}{B}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Ascend to Power enters, you may sacrifice a creature, discard a card, or pay 3 life. If you do, draw two cards.\n{ql} \u2014 You've sacrificed a nonland permanent this turn.\n{ql} \u2014 You've discarded a card this turn.\n{ql} \u2014 You've lost life this turn.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Ascend to Power",
+              "original_text": "Mana cost: {2}{B}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Ascend to Power enters, you may sacrifice a creature, discard a card, or pay 3 life. If you do, draw two cards.\n{ql} \u2014 You've sacrificed a nonland permanent this turn.\n{ql} \u2014 You've discarded a card this turn.\n{ql} \u2014 You've lost life this turn."
+            },
+            {
+              "name": "Omnipotence",
+              "original_text": "Type: Legendary Enchantment\nYour maximum hand size is zero.\nPay 1 life: Draw a card. Activate only as a sorcery."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Distributive Justice//Equality_CNY",
+          "source_card_key": "rev:Distributive Justice//Equality_CNY",
+          "name": "Distributive Justice",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Distributive Justice enters, distribute up to two +1/+1 counters among one or two target creatures you control.\n{ql} \u2014 You control two or more creatures with the same power.\n{ql} \u2014 You control two or more creatures with the same toughness.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Distributive Justice",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Distributive Justice enters, distribute up to two +1/+1 counters among one or two target creatures you control.\n{ql} \u2014 You control two or more creatures with the same power.\n{ql} \u2014 You control two or more creatures with the same toughness."
+            },
+            {
+              "name": "Equality",
+              "original_text": "Type: Legendary Enchantment\nWhenever you attack, draw a card if you control two or more attacking creatures with the same power or the same toughness."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Free Market//Industrialism_CNY",
+          "source_card_key": "rev:Free Market//Industrialism_CNY",
+          "name": "Free Market",
+          "original_text": "Mana cost: {1}{R}{G}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Free Market enters, target creature gets +2/+2 until end of turn.\n{ql} \u2014 You control a creature with power 4 or greater.\n{ql} \u2014 You control a creature with toughness 4 or greater.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Free Market",
+              "original_text": "Mana cost: {1}{R}{G}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Free Market enters, target creature gets +2/+2 until end of turn.\n{ql} \u2014 You control a creature with power 4 or greater.\n{ql} \u2014 You control a creature with toughness 4 or greater."
+            },
+            {
+              "name": "Industrialism",
+              "original_text": "Type: Legendary Enchantment\nWhenever you attack, double target attacking creature's power and toughness until end of turn."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Golden Age//Harmony_CNY",
+          "source_card_key": "rev:Golden Age//Harmony_CNY",
+          "name": "Golden Age",
+          "original_text": "Mana cost: {G}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Golden Age enters, you may search your library for a basic land card, reveal it, put it into your hand, then shuffle.\n{ql}, {ql}, {ql} \u2014 You've cast a multicolored spell this turn.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Golden Age",
+              "original_text": "Mana cost: {G}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Golden Age enters, you may search your library for a basic land card, reveal it, put it into your hand, then shuffle.\n{ql}, {ql}, {ql} \u2014 You've cast a multicolored spell this turn."
+            },
+            {
+              "name": "Harmony",
+              "original_text": "Type: Legendary Enchantment\nAt the beginning of your upkeep, you may exile target multicolored card from your graveyard. If you do, you may cast a copy of it this turn. *(You still pay its costs. A copy of a permanent spell becomes a token.)*"
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Meeting of the Elites//Aristocracy_CNY",
+          "source_card_key": "rev:Meeting of the Elites//Aristocracy_CNY",
+          "name": "Meeting of the Elites",
+          "original_text": "Mana cost: {B}{R}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Meeting of the Elites enters, create a tapped Treasure token. *(It's an artifact with \u201c{T}, Sacrifice this artifact: Add one mana of any color.\u201d)*\n{ql}, {ql} \u2014 You've sacrificed a nonland permanent this turn.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Meeting of the Elites",
+              "original_text": "Mana cost: {B}{R}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Meeting of the Elites enters, create a tapped Treasure token. *(It's an artifact with \u201c{T}, Sacrifice this artifact: Add one mana of any color.\u201d)*\n{ql}, {ql} \u2014 You've sacrificed a nonland permanent this turn."
+            },
+            {
+              "name": "Aristocracy",
+              "original_text": "Type: Legendary Enchantment\nAt the beginning of your upkeep, exile the top card of your library.\nYou may play cards exiled with Aristocracy as long as you've sacrificed a nonland permanent this turn."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Research Grant//Progress_CNY",
+          "source_card_key": "rev:Research Grant//Progress_CNY",
+          "name": "Research Grant",
+          "original_text": "Mana cost: {2}{U}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Research Grant enters, mill four cards. When you do, return target noncreature, nonland card from your graveyard to your hand.\n{ql} \u2014 You've cast two or more spells this turn.\n{ql} \u2014 You've drawn two or more cards this turn.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Research Grant",
+              "original_text": "Mana cost: {2}{U}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Research Grant enters, mill four cards. When you do, return target noncreature, nonland card from your graveyard to your hand.\n{ql} \u2014 You've cast two or more spells this turn.\n{ql} \u2014 You've drawn two or more cards this turn."
+            },
+            {
+              "name": "Progress",
+              "original_text": "Type: Legendary Enchantment\nWhenever you cast a spell, you may pay {X}, where X is that spell's mana value. If you do, copy it. You may choose new targets for the copy. Do this only once each turn. *(A copy of a permanent spell becomes a token.)*"
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Security Initiative//Surveillance State_CNY",
+          "source_card_key": "rev:Security Initiative//Surveillance State_CNY",
+          "name": "Security Initiative",
+          "original_text": "Mana cost: {W}{U}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nFlash\n{ql}, {ql} \u2014 When Security Initiative enters, you may tap or untap target nonland permanent. Then draw a card.\nAn opponent controls three or more tapped nonland permanents.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Security Initiative",
+              "original_text": "Mana cost: {W}{U}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nFlash\n{ql}, {ql} \u2014 When Security Initiative enters, you may tap or untap target nonland permanent. Then draw a card.\nAn opponent controls three or more tapped nonland permanents."
+            },
+            {
+              "name": "Surveillance State",
+              "original_text": "Type: Legendary Enchantment\nYou may cast spells as though they had flash.\nWhenever you cast a spell, you may tap or untap target nonland permanent."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Silence the Opposition//Authoritarianism_CNY",
+          "source_card_key": "rev:Silence the Opposition//Authoritarianism_CNY",
+          "name": "Silence the Opposition",
+          "original_text": "Mana cost: {1}{U}{B}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Silence the Opposition enters, draw two cards, then discard a card.\n{ql}, {ql}, {ql} \u2014 A creature card or creature token was put into your graveyard from anywhere this turn. ",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Silence the Opposition",
+              "original_text": "Mana cost: {1}{U}{B}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Silence the Opposition enters, draw two cards, then discard a card.\n{ql}, {ql}, {ql} \u2014 A creature card or creature token was put into your graveyard from anywhere this turn. "
+            },
+            {
+              "name": "Authoritarianism",
+              "original_text": "Type: Legendary Enchantment\nCreatures you control get +1/+0.\nCreatures you don't control get -1/-0."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Sparks of a Revolution//Freedom_CNY",
+          "source_card_key": "rev:Sparks of a Revolution//Freedom_CNY",
+          "name": "Sparks of a Revolution",
+          "original_text": "Mana cost: {R}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Sparks of a Revolution enters, create a 1/1 colorless Soldier creature token. It gains haste until end of turn.\n{ql} \u2014 Three or more sources you controlled dealt damage this turn.\n{ql} \u2014 A source you controlled dealt 3 or more damage this turn.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Sparks of a Revolution",
+              "original_text": "Mana cost: {R}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Sparks of a Revolution enters, create a 1/1 colorless Soldier creature token. It gains haste until end of turn.\n{ql} \u2014 Three or more sources you controlled dealt damage this turn.\n{ql} \u2014 A source you controlled dealt 3 or more damage this turn."
+            },
+            {
+              "name": "Freedom",
+              "original_text": "Type: Legendary Enchantment\nWhenever you attack, create a 1/1 colorless Soldier creature token that's tapped and attacking."
+            }
+          ],
+          "executable_text": null
+        },
+        {
+          "id": "rev:Together in Arms//Communitarianism_CNY",
+          "source_card_key": "rev:Together in Arms//Communitarianism_CNY",
+          "name": "Together in Arms",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Together in Arms enters, create two 1/1 colorless Soldier creature tokens.\n{ql} \u2014 You controlled a spell that targeted a creature you controlled this turn.\n{ql} \u2014 You controlled an ability that targeted a creature you controlled this turn.",
+          "source_layout": "doubleface",
+          "source_faces": [
+            {
+              "name": "Together in Arms",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Enchantment \u2014 Policy\n*(Once a turn, as a sorcery, mark a condition as complete. When all are complete, transform it.)*\nWhen Together in Arms enters, create two 1/1 colorless Soldier creature tokens.\n{ql} \u2014 You controlled a spell that targeted a creature you controlled this turn.\n{ql} \u2014 You controlled an ability that targeted a creature you controlled this turn."
+            },
+            {
+              "name": "Communitarianism",
+              "original_text": "Type: Legendary Enchantment\nWhenever a creature you control becomes the target of a spell or ability that targets only it, you may copy that spell or ability for each other creature you control that spell or ability could target. Each copy targets a different one of those creatures. Do this only once each turn."
+            }
+          ],
+          "executable_text": null
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "policy-state-and-quota",
+          "status": "pending",
+          "test_reference": "custom_policy_condition_actions",
+          "observable": "Controller and condition/timing guards, no stack, shared source quota across control change, re-mark allowed, distinct symbols required, exact mark clearing only on successful marking transform, ordinary transform preserves, copies/new incarnation unmarked."
+        }
+      ]
+    }
+  ]
+}

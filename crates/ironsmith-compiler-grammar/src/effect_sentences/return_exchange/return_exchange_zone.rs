@@ -160,6 +160,37 @@ fn parse_half_the_objects_return(
 }
 
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    // Return-as-Aura entry binds a declared attachment target before entry.
+    // The ordinary return executor applies all type changes within the entry.
+    let entry_tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let aura_tail = ["as", "an", "aura", "enchantment", "with", "enchant", "creature", "attached", "to"];
+    if let Some(split) = entry_tokens.windows(aura_tail.len()).position(|window|
+        window.iter().zip(aura_tail).all(|(token, word)| token.is_word(word)))
+    {
+        let attachment_tokens = &entry_tokens[split + aura_tail.len()..];
+        if attachment_tokens.first().is_some_and(|token| token.is_word("target")) {
+            let attachment = parse_target_phrase(attachment_tokens)?;
+            let tag = crate::util::helper_tag_for_tokens(attachment_tokens, "aura_entry_attachment");
+            let mut returned = parse_return(&entry_tokens[..split])?;
+            if let EffectAst::SubjectVerb(subject) = &mut returned
+                && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {as_aura, ..}) = &mut subject.action
+                && as_aura.is_none()
+            {
+                *as_aura = Some(crate::model::ast::ReturnAsAuraAst {
+                    attachment_filter: ObjectFilter::creature().match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject),
+                    remove_all_abilities: false,
+                    granted_abilities: Vec::new(),
+                });
+                return Ok(EffectAst::Sequence { effects: vec![
+                    EffectAst::TagAffected {
+                        effect: Box::new(EffectAst::subject_verb_explicit_target_only(attachment)),
+                        tag,
+                    },
+                    returned,
+                ]});
+            }
+        }
+    }
     // "return it to the battlefield flipped" (Homura, Human Ascendant): the
     // returned flip card is flipped as part of the same instruction.
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
@@ -388,6 +419,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         }
         crate::grammar::effects::ReturnTimingShape::NextUpkeep(player) => {
             DelayedReturnTimingAst::NextUpkeep(player)
+        }
+        crate::grammar::effects::ReturnTimingShape::NextMainPhase(player) => {
+            DelayedReturnTimingAst::NextMainPhase(player)
         }
         crate::grammar::effects::ReturnTimingShape::EndOfCombat => {
             DelayedReturnTimingAst::EndOfCombat

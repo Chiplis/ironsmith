@@ -5,6 +5,12 @@ mod r#card_origin_zone_change_triggers;
 #[path = "../case_static_conditions.rs"]
 mod r#case_static_conditions;
 
+#[path = "../custom_named_price_receipts_next.rs"]
+mod r#custom_named_price_receipts_next;
+
+#[path = "../custom_solidarity_type_operands.rs"]
+mod r#custom_solidarity_type_operands;
+
 #[path = "../delayed_duration_boundaries.rs"]
 mod r#delayed_duration_boundaries;
 
@@ -52,9 +58,6 @@ mod r#turned_face_up_replacement_programs;
 
 #[path = "../variable_suspend_bodies.rs"]
 mod r#variable_suspend_bodies;
-
-#[path = "../wymi_regressions.rs"]
-mod r#wymi_regressions;
 
 #[path = "../zone_shuffle_references.rs"]
 mod r#zone_shuffle_references;

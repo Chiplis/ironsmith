@@ -1,0 +1,1780 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Retinue exact32 physical whole-source proof",
+  "notes": [
+    "Exact inventory source faces preserved; full-source native and behavioral verification pending.",
+    "Original reminder with owner-obligation ambiguity retained; executable definition follows formal702.302c/d.",
+    "Fresh full-corpus equation32 =28 declared token-list producers +Djinn replacement modifier +Rally/Subdue consumers +Stories ownerless group generator. Four unrelated named Retinue cards retained as negative controls in audit proof.",
+    "Raw original body markup restored from authoritative corpus in new fixture; old canonical candidate originals left untouched. Derived execution outputs require root materialization."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-942",
+      "keyword": "Retinue",
+      "original_reminder": "When this enters, create the listed red Army tokens. They attack and block together and with this if able.",
+      "executable_reminder": "When this permanent enters, create {TokenSizes} red Army creature tokens. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.",
+      "source_cards": [
+        "Akvani Warbrute",
+        "Andazir, Destined Prince",
+        "Bearer of Fallen Tidings",
+        "Blossoming Elemental",
+        "Broken Wing Paragon",
+        "Child of Maaru",
+        "Choir of Trembling Hearts",
+        "General of Phantasms",
+        "Legion of Infinite Maws",
+        "Tombbound Creeper",
+        "Voice of Caravans",
+        "Choir of Steadfast Hearts",
+        "Cloaked Instigator",
+        "Devourer of Devotees",
+        "Div of Broken Teeth",
+        "Djinn of the Measured Road",
+        "Enduring Sandshaper",
+        "Garmrud Skyscout",
+        "Harborline Fishermen",
+        "Heist Captain",
+        "Host of the Honored",
+        "Nizev Conspirators",
+        "Phantomsteed Cavalier",
+        "Rally the Fallen",
+        "Regiment on Wings",
+        "Sahra, Hand of Ruin",
+        "Satrap of Empty Halls",
+        "Sepidgar Conscript",
+        "Shepherd of the Pride",
+        "Subdue Undeath",
+        "Withered Marshal"
+      ],
+      "rule_reference": "702.302.",
+      "rule_text": [
+        {
+          "name": "702.302a",
+          "rule": "Retinue is a triggered ability, and a designation given to a group of permanents, which usually are tokens created by a retinue ability.",
+          "custom": true
+        },
+        {
+          "name": "702.302b",
+          "rule": "\"Retinue — [list of P/Ts]\" means \"When this permanent enters, for each listed P/T, create a red Army creature token with that P/T. Put each token created this way in this permanent's retinue.\" This list may include entries in the form \"X [P/T]\". In that case, X tokens are created instead of just one.",
+          "custom": true
+        },
+        {
+          "name": "702.302c",
+          "rule": "As a player declares attacks, if a creature in a retinue or a creature with a retinue attacks, all creatures in that retinue also attack this combat if able. They may attack other players or permanents.",
+          "custom": true
+        },
+        {
+          "name": "702.302d",
+          "rule": "As a player declares blocks, if a creature in a retinue or a creature with a retinue block, all creatures in that retinue also block this combat if able. They may block other creatures.",
+          "custom": true
+        },
+        {
+          "name": "702.302e",
+          "rule": "A permanent can't have more than one retinue. If more permanents are added at a later time, they will be added to the previous retinue, and not a new one.",
+          "custom": true
+        },
+        {
+          "name": "702.302f",
+          "rule": "A permanent can't be in more than one retinue. If it is put into one, it is removed from any retinue it was already in. If it is put into multiple simultaneously, its controller chooses one.",
+          "custom": true
+        },
+        {
+          "name": "702.302g",
+          "rule": "If a permanent would be put into the retinue of a permanent that is itself in a retinue, they are instead put into the same retinue as that permanent.",
+          "custom": true
+        },
+        {
+          "name": "702.302h",
+          "rule": "A retinue will continue to exist even if the permanent that it belongs to is no longer on the battlefield. Certain effects may also create a retinue that belongs to no permanent.",
+          "custom": true
+        },
+        {
+          "name": "702.302i",
+          "rule": "A permanent can't be put into its own retinue.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Akvani Warbrute_G5L",
+          "name": "Akvani Warbrute",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Ogre Warrior\nPower/Toughness: 5/5\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nAttacking tokens you control have deathtouch.",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Ogre Warrior\nPower/Toughness: 5/5\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nAttacking tokens you control have deathtouch.",
+          "mana_cost": "{4}{G}",
+          "type_line": "Creature — Ogre Warrior",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Akvani Warbrute_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Akvani Warbrute",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Ogre Warrior\nPower/Toughness: 5/5\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nAttacking tokens you control have deathtouch."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1\nAttacking tokens you control have deathtouch.",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nAttacking tokens you control have deathtouch.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "11986878d250f807b23adebfd4baeeca09fbade511b496d95ebc50b5862bb74a",
+          "executable_faces": [
+            {
+              "name": "Akvani Warbrute",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Ogre Warrior\nPower/Toughness: 5/5\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nAttacking tokens you control have deathtouch.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1\nAttacking tokens you control have deathtouch.",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nAttacking tokens you control have deathtouch."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Andazir, Destined Prince_G5L",
+          "name": "Andazir, Destined Prince",
+          "original_text": "Mana cost: {U}{B}{R}{G}\nType: Legendary Creature — Mutant Warlock\nPower/Toughness: 5/5\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life.",
+          "executable_text": "Mana cost: {U}{B}{R}{G}\nType: Legendary Creature — Mutant Warlock\nPower/Toughness: 5/5\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life.",
+          "mana_cost": "{U}{B}{R}{G}",
+          "type_line": "Legendary Creature — Mutant Warlock",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Andazir, Destined Prince_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Andazir, Destined Prince",
+              "original_text": "Mana cost: {U}{B}{R}{G}\nType: Legendary Creature — Mutant Warlock\nPower/Toughness: 5/5\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "e1b315792f20b5bea737ca358ff408243c45911c53072c9444811b847d674f88",
+          "executable_faces": [
+            {
+              "name": "Andazir, Destined Prince",
+              "executable_text": "Mana cost: {U}{B}{R}{G}\nType: Legendary Creature — Mutant Warlock\nPower/Toughness: 5/5\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nSkip your draw step.\nWhenever you play a card, you may draw a card. If you do, discard a card, sacrifice a permanent, or pay 3 life."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Bearer of Fallen Tidings_G5L",
+          "name": "Bearer of Fallen Tidings",
+          "original_text": "Mana cost: {5}{W}\nType: Creature — Human Knight\nPower/Toughness: 2/3\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever a creature you control dies, scry 1.",
+          "executable_text": "Mana cost: {5}{W}\nType: Creature — Human Knight\nPower/Toughness: 2/3\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever a creature you control dies, scry 1.",
+          "mana_cost": "{5}{W}",
+          "type_line": "Creature — Human Knight",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Bearer of Fallen Tidings_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bearer of Fallen Tidings",
+              "original_text": "Mana cost: {5}{W}\nType: Creature — Human Knight\nPower/Toughness: 2/3\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever a creature you control dies, scry 1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 2/2, 2/2\nWhenever a creature you control dies, scry 1.",
+          "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever a creature you control dies, scry 1.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "4a61e9d5e2387d310513a04ea49f16d907518ccec865c4996f6aa19f6b51d02c",
+          "executable_faces": [
+            {
+              "name": "Bearer of Fallen Tidings",
+              "executable_text": "Mana cost: {5}{W}\nType: Creature — Human Knight\nPower/Toughness: 2/3\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever a creature you control dies, scry 1.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 2/2, 2/2\nWhenever a creature you control dies, scry 1.",
+              "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever a creature you control dies, scry 1."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Blossoming Elemental_G5L",
+          "name": "Blossoming Elemental",
+          "original_text": "Mana cost: {1}{G}{W}{U}\nType: Creature — Elemental\nPower/Toughness: 1/1\nRetinue — 3/3 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control.",
+          "executable_text": "Mana cost: {1}{G}{W}{U}\nType: Creature — Elemental\nPower/Toughness: 1/1\nWhen this permanent enters, create a 3/3 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control.",
+          "mana_cost": "{1}{G}{W}{U}",
+          "type_line": "Creature — Elemental",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Blossoming Elemental_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blossoming Elemental",
+              "original_text": "Mana cost: {1}{G}{W}{U}\nType: Creature — Elemental\nPower/Toughness: 1/1\nRetinue — 3/3 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 3/3\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control.",
+          "original_printed_rules_text": "Retinue — 3/3 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "b8233df9ee2e1e726d6726182219d98bedbcc1d37723702ce3db9990b569a57f",
+          "executable_faces": [
+            {
+              "name": "Blossoming Elemental",
+              "executable_text": "Mana cost: {1}{G}{W}{U}\nType: Creature — Elemental\nPower/Toughness: 1/1\nWhen this permanent enters, create a 3/3 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 3/3\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control.",
+              "original_printed_rules_text": "Retinue — 3/3 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nTrample\nBlossoming Elemental gets +1/+1 for each other creature and/or artifact you control."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Broken Wing Paragon_G5L",
+          "name": "Broken Wing Paragon",
+          "original_text": "Mana cost: {W}{W}{B}{B}\nType: Creature — Skeleton Soldier\nPower/Toughness: 2/3\nRetinue — 1/1, 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+          "executable_text": "Mana cost: {W}{W}{B}{B}\nType: Creature — Skeleton Soldier\nPower/Toughness: 2/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+          "mana_cost": "{W}{W}{B}{B}",
+          "type_line": "Creature — Skeleton Soldier",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Broken Wing Paragon_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Broken Wing Paragon",
+              "original_text": "Mana cost: {W}{W}{B}{B}\nType: Creature — Skeleton Soldier\nPower/Toughness: 2/3\nRetinue — 1/1, 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1, 1/1\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "614c339188d3b1068b80afcbf83458b37ccbbbf0ad8fbec8270cdd224a8a7ca9",
+          "executable_faces": [
+            {
+              "name": "Broken Wing Paragon",
+              "executable_text": "Mana cost: {W}{W}{B}{B}\nType: Creature — Skeleton Soldier\nPower/Toughness: 2/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1, 1/1\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Child of Maaru_G5L",
+          "name": "Child of Maaru",
+          "original_text": "Mana cost: {4}{B}{R}{G}\nType: Creature — Snake\nPower/Toughness: 5/5\nRetinue — X 1/1s, where X is the number of lands you control. *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life.",
+          "executable_text": "Mana cost: {4}{B}{R}{G}\nType: Creature — Snake\nPower/Toughness: 5/5\nWhen this permanent enters, create X 1/1 red Army creature tokens, where X is the number of lands you control. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life.",
+          "mana_cost": "{4}{B}{R}{G}",
+          "type_line": "Creature — Snake",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Child of Maaru_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Child of Maaru",
+              "original_text": "Mana cost: {4}{B}{R}{G}\nType: Creature — Snake\nPower/Toughness: 5/5\nRetinue — X 1/1s, where X is the number of lands you control. *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — X 1/1s, where X is the number of lands you control.\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life.",
+          "original_printed_rules_text": "Retinue — X 1/1s, where X is the number of lands you control. (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "49a67b060696cea1f90faa383ecdea8d73f82b87cf2f635a7b71e60ff6e7ba40",
+          "executable_faces": [
+            {
+              "name": "Child of Maaru",
+              "executable_text": "Mana cost: {4}{B}{R}{G}\nType: Creature — Snake\nPower/Toughness: 5/5\nWhen this permanent enters, create X 1/1 red Army creature tokens, where X is the number of lands you control. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — X 1/1s, where X is the number of lands you control.\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life.",
+              "original_printed_rules_text": "Retinue — X 1/1s, where X is the number of lands you control. (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\n{1}, Sacrifice another creature: Child of Maaru gains indestructible until end of turn. Tap it. If Child of Maaru was already tapped, you gain 1 life."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Choir of Steadfast Hearts_G5L",
+          "name": "Choir of Steadfast Hearts",
+          "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts.",
+          "executable_text": "Mana cost: {4}{W}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts.",
+          "mana_cost": "{4}{W}{W}",
+          "type_line": "Creature — Horror",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Choir of Steadfast Hearts_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Choir of Steadfast Hearts",
+              "original_text": "Mana cost: {4}{W}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1, 1/1\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "161aa54593de25cc6c1278f191b926467b8a71264554623b17696fbf49657e2e",
+          "executable_faces": [
+            {
+              "name": "Choir of Steadfast Hearts",
+              "executable_text": "Mana cost: {4}{W}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1, 1/1\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nVigilance\nArmies you control get +1/+1 and have vigilance.\nAs long as you control an Army, prevent all damage that would be dealt to Choir of Steadfast Hearts."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Choir of Trembling Hearts_G5L",
+          "name": "Choir of Trembling Hearts",
+          "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 6/6\nRetinue — 3/3, 3/3, 3/3 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying\nAt the beginning of your upkeep, sacrifice two creatures.",
+          "executable_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 6/6\nWhen this permanent enters, create a 3/3 red Army creature token and a 3/3 red Army creature token and a 3/3 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying\nAt the beginning of your upkeep, sacrifice two creatures.",
+          "mana_cost": "{4}{B}{B}",
+          "type_line": "Creature — Horror",
+          "power": "6",
+          "toughness": "6",
+          "source_card_key": "Choir of Trembling Hearts_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Choir of Trembling Hearts",
+              "original_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 6/6\nRetinue — 3/3, 3/3, 3/3 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying\nAt the beginning of your upkeep, sacrifice two creatures."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 3/3, 3/3, 3/3\nFlying\nAt the beginning of your upkeep, sacrifice two creatures.",
+          "original_printed_rules_text": "Retinue — 3/3, 3/3, 3/3 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying\nAt the beginning of your upkeep, sacrifice two creatures.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "ad610359079542cd78c2cc88298ca7d4873c16147fea7b549b6505398d9966b6",
+          "executable_faces": [
+            {
+              "name": "Choir of Trembling Hearts",
+              "executable_text": "Mana cost: {4}{B}{B}\nType: Creature — Horror\nPower/Toughness: 6/6\nWhen this permanent enters, create a 3/3 red Army creature token and a 3/3 red Army creature token and a 3/3 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying\nAt the beginning of your upkeep, sacrifice two creatures.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 3/3, 3/3, 3/3\nFlying\nAt the beginning of your upkeep, sacrifice two creatures.",
+              "original_printed_rules_text": "Retinue — 3/3, 3/3, 3/3 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying\nAt the beginning of your upkeep, sacrifice two creatures."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Cloaked Instigator_G5L",
+          "name": "Cloaked Instigator",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin Warrior\nPower/Toughness: 2/2\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin Warrior\nPower/Toughness: 2/2\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Assassin Warrior",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Cloaked Instigator_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cloaked Instigator",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin Warrior\nPower/Toughness: 2/2\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator.",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "1ad20f441bce2931706f29255fc5a46e53522729b03e3558ca022f6525772052",
+          "executable_faces": [
+            {
+              "name": "Cloaked Instigator",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Assassin Warrior\nPower/Toughness: 2/2\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator.",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever another creature you control dies, put a +1/+1 counter on Cloaked Instigator."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Devourer of Devotees_G5L",
+          "name": "Devourer of Devotees",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Ogre Shaman\nPower/Toughness: 4/4\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery.",
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Ogre Shaman\nPower/Toughness: 4/4\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery.",
+          "mana_cost": "{4}{B}",
+          "type_line": "Creature — Ogre Shaman",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Devourer of Devotees_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Devourer of Devotees",
+              "original_text": "Mana cost: {4}{B}\nType: Creature — Ogre Shaman\nPower/Toughness: 4/4\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "50496c82084748d8a30b0399fd915166a72e62e1706533e96d18fde3e7b6b3f6",
+          "executable_faces": [
+            {
+              "name": "Devourer of Devotees",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Ogre Shaman\nPower/Toughness: 4/4\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying\nSacrifice a creature: Target player discards a card. Activate only as a sorcery."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Div of Broken Teeth_G5L",
+          "name": "Div of Broken Teeth",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Horror",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Div of Broken Teeth_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Div of Broken Teeth",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "409f7bc3111b493a7aa389e3349383007cb6395cef19cbc93b6c1b2766bf5055",
+          "executable_faces": [
+            {
+              "name": "Div of Broken Teeth",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Horror\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Djinn of the Measured Road_G5L",
+          "name": "Djinn of the Measured Road",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Djinn Scout\nPower/Toughness: 1/3\nIf one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead. *(If the other tokens were in a retinue, so is the Soldier.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Djinn Scout\nPower/Toughness: 1/3\nIf one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead. (If the other tokens were in a retinue, so is the Soldier.)",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Djinn Scout",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Djinn of the Measured Road_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Djinn of the Measured Road",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Djinn Scout\nPower/Toughness: 1/3\nIf one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead. *(If the other tokens were in a retinue, so is the Soldier.)*"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "If one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead.",
+          "original_printed_rules_text": "If one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead. (If the other tokens were in a retinue, so is the Soldier.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "cc08fe72b4010025d964dae0ca5e02bea133a18aa5c873d530ed552b987ca0a3",
+          "executable_faces": [
+            {
+              "name": "Djinn of the Measured Road",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Djinn Scout\nPower/Toughness: 1/3\nIf one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead. (If the other tokens were in a retinue, so is the Soldier.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "If one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead.",
+              "original_printed_rules_text": "If one or more creature tokens would be created under your control for the first time each turn, those tokens plus a 1/1 white Soldier creature token are created instead. (If the other tokens were in a retinue, so is the Soldier.)"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Enduring Sandshaper_G5L",
+          "name": "Enduring Sandshaper",
+          "original_text": "Mana cost: {W}\nType: Creature — Human Wizard\nPower/Toughness: 0/1\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*",
+          "executable_text": "Mana cost: {W}\nType: Creature — Human Wizard\nPower/Toughness: 0/1\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.",
+          "mana_cost": "{W}",
+          "type_line": "Creature — Human Wizard",
+          "power": "0",
+          "toughness": "1",
+          "source_card_key": "Enduring Sandshaper_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Enduring Sandshaper",
+              "original_text": "Mana cost: {W}\nType: Creature — Human Wizard\nPower/Toughness: 0/1\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "7e1c105aa9a6f095c5ab24f40859813adaf3d7e07abd629b11971767f639284d",
+          "executable_faces": [
+            {
+              "name": "Enduring Sandshaper",
+              "executable_text": "Mana cost: {W}\nType: Creature — Human Wizard\nPower/Toughness: 0/1\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Garmrud Skyscout_G5L",
+          "name": "Garmrud Skyscout",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Bird Scout\nPower/Toughness: 2/2\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Bird Scout\nPower/Toughness: 2/2\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Bird Scout",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Garmrud Skyscout_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Garmrud Skyscout",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Bird Scout\nPower/Toughness: 2/2\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1\nFlying",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "aa1d32eccc7c036f08070c12ed08c0546e5f4a4da93931b9c99e34e9ed06b8ff",
+          "executable_faces": [
+            {
+              "name": "Garmrud Skyscout",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Bird Scout\nPower/Toughness: 2/2\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1\nFlying",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "General of Phantasms_G5L",
+          "name": "General of Phantasms",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Djinn Wizard\nPower/Toughness: 5/4\nFlash\nRetinue — 0/2, 0/2, 0/2, 0/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out.",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Djinn Wizard\nPower/Toughness: 5/4\nFlash\nWhen this permanent enters, create a 0/2 red Army creature token and a 0/2 red Army creature token and a 0/2 red Army creature token and a 0/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out.",
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Creature — Djinn Wizard",
+          "power": "5",
+          "toughness": "4",
+          "source_card_key": "General of Phantasms_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "General of Phantasms",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Djinn Wizard\nPower/Toughness: 5/4\nFlash\nRetinue — 0/2, 0/2, 0/2, 0/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\nRetinue — 0/2, 0/2, 0/2, 0/2\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out.",
+          "original_printed_rules_text": "Flash\nRetinue — 0/2, 0/2, 0/2, 0/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "e4b6652f3991a631a28e931446820c402026ec1ed942ad178e1c3ea8bd7f8adc",
+          "executable_faces": [
+            {
+              "name": "General of Phantasms",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Djinn Wizard\nPower/Toughness: 5/4\nFlash\nWhen this permanent enters, create a 0/2 red Army creature token and a 0/2 red Army creature token and a 0/2 red Army creature token and a 0/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\nRetinue — 0/2, 0/2, 0/2, 0/2\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out.",
+              "original_printed_rules_text": "Flash\nRetinue — 0/2, 0/2, 0/2, 0/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nSacrifice an Army: General of Phantasms and up to one target nonland permanent phase out."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Harborline Fishermen_G5L",
+          "name": "Harborline Fishermen",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Human Citizen\nPower/Toughness: 2/2\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever a token you control enters, you gain 1 life.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Human Citizen\nPower/Toughness: 2/2\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever a token you control enters, you gain 1 life.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Human Citizen",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Harborline Fishermen_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Harborline Fishermen",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Human Citizen\nPower/Toughness: 2/2\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever a token you control enters, you gain 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1\nWhenever a token you control enters, you gain 1 life.",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever a token you control enters, you gain 1 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "4e359313c3f1016edbeaad2b7ebf6601ab4468f6e7d251e5abe7e65a93aec496",
+          "executable_faces": [
+            {
+              "name": "Harborline Fishermen",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Human Citizen\nPower/Toughness: 2/2\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever a token you control enters, you gain 1 life.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1\nWhenever a token you control enters, you gain 1 life.",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever a token you control enters, you gain 1 life."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Heist Captain_G5L",
+          "name": "Heist Captain",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Human Rogue\nPower/Toughness: 3/3\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nHeist Captain can't attack or block alone.",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Rogue\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nHeist Captain can't attack or block alone.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Human Rogue",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Heist Captain_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Heist Captain",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Human Rogue\nPower/Toughness: 3/3\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nHeist Captain can't attack or block alone."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1\nHeist Captain can't attack or block alone.",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nHeist Captain can't attack or block alone.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "1742905eb2c3ba6ce99e5699814f954994882ad65ebc7e9c6a2cd43390685b66",
+          "executable_faces": [
+            {
+              "name": "Heist Captain",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Human Rogue\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nHeist Captain can't attack or block alone.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1\nHeist Captain can't attack or block alone.",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nHeist Captain can't attack or block alone."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Host of the Honored_G5L",
+          "name": "Host of the Honored",
+          "original_text": "Mana cost: {4}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nReach\nCreatures in Host of the Honored's retinue have reach.",
+          "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nReach\nCreatures in group owned by Host of the Honored have reach.",
+          "mana_cost": "{4}{R}",
+          "type_line": "Creature — Human Shaman",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Host of the Honored_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Host of the Honored",
+              "original_text": "Mana cost: {4}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nReach\nCreatures in Host of the Honored's retinue have reach."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1\nReach\nCreatures in Host of the Honored's retinue have reach.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nReach\nCreatures in Host of the Honored's retinue have reach.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "f6817f25ff0aa37bbacf3b3ca4bb6d8103430cd7f678008946e33dc139dd1fd7",
+          "executable_faces": [
+            {
+              "name": "Host of the Honored",
+              "executable_text": "Mana cost: {4}{R}\nType: Creature — Human Shaman\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nReach\nCreatures in group owned by Host of the Honored have reach.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1\nReach\nCreatures in Host of the Honored's retinue have reach.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nReach\nCreatures in Host of the Honored's retinue have reach."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Legion of Infinite Maws_G5L",
+          "name": "Legion of Infinite Maws",
+          "original_text": "Mana cost: {X}{G}{G}\nType: Creature — Hydra\nPower/Toughness: 0/4\nRetinue — X 1/1s *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nCreatures in Legion of Infinite Maws's retinue are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it and put them in the same retinue.”",
+          "executable_text": "Mana cost: {X}{G}{G}\nType: Creature — Hydra\nPower/Toughness: 0/4\nWhen this permanent enters, create X 1/1 red Army creature tokens. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nCreatures in group owned by Legion of Infinite Maws are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it . Group them under this creature so all members attack and block if any member or the owner does, if able.”",
+          "mana_cost": "{X}{G}{G}",
+          "type_line": "Creature — Hydra",
+          "power": "0",
+          "toughness": "4",
+          "source_card_key": "Legion of Infinite Maws_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Legion of Infinite Maws",
+              "original_text": "Mana cost: {X}{G}{G}\nType: Creature — Hydra\nPower/Toughness: 0/4\nRetinue — X 1/1s *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nCreatures in Legion of Infinite Maws's retinue are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it and put them in the same retinue.”"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — X 1/1s\nCreatures in Legion of Infinite Maws's retinue are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it and put them in the same retinue.”",
+          "original_printed_rules_text": "Retinue — X 1/1s (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nCreatures in Legion of Infinite Maws's retinue are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it and put them in the same retinue.”",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "624de6fdf9f4c7a7f8341f99521c334aec423a7c4217348a2415b335c6939d8e",
+          "executable_faces": [
+            {
+              "name": "Legion of Infinite Maws",
+              "executable_text": "Mana cost: {X}{G}{G}\nType: Creature — Hydra\nPower/Toughness: 0/4\nWhen this permanent enters, create X 1/1 red Army creature tokens. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nCreatures in group owned by Legion of Infinite Maws are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it . Group them under this creature so all members attack and block if any member or the owner does, if able.”",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — X 1/1s\nCreatures in Legion of Infinite Maws's retinue are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it and put them in the same retinue.”",
+              "original_printed_rules_text": "Retinue — X 1/1s (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nCreatures in Legion of Infinite Maws's retinue are Hydra Armies and have “Whenever this creature is dealt damage, sacrifice it. Create two tokens that are copies of it and put them in the same retinue.”"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Nizev Conspirators_G5L",
+          "name": "Nizev Conspirators",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue\nPower/Toughness: 1/1\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nNizev Conspirators gets +1/+0 as long as you control a token.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue\nPower/Toughness: 1/1\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nNizev Conspirators gets +1/+0 as long as you control a token.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Rogue",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Nizev Conspirators_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nizev Conspirators",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue\nPower/Toughness: 1/1\nRetinue — 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nNizev Conspirators gets +1/+0 as long as you control a token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1\nNizev Conspirators gets +1/+0 as long as you control a token.",
+          "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nNizev Conspirators gets +1/+0 as long as you control a token.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "704d9aba5c453fdd3fbaed5d6746b8139be18dd05a455f85571ae680ba16a277",
+          "executable_faces": [
+            {
+              "name": "Nizev Conspirators",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Rogue\nPower/Toughness: 1/1\nWhen this permanent enters, create a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nNizev Conspirators gets +1/+0 as long as you control a token.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1\nNizev Conspirators gets +1/+0 as long as you control a token.",
+              "original_printed_rules_text": "Retinue — 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nNizev Conspirators gets +1/+0 as long as you control a token."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Phantomsteed Cavalier_G5L",
+          "name": "Phantomsteed Cavalier",
+          "original_text": "Mana cost: {4}{U}\nType: Creature — Djinn Knight\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nTap two untapped tokens you control: Target creature and each token in that creature's retinue can't be blocked this turn.",
+          "executable_text": "Mana cost: {4}{U}\nType: Creature — Djinn Knight\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nTap two untapped tokens you control: Target creature and each token in group owned by that creature can't be blocked this turn.",
+          "mana_cost": "{4}{U}",
+          "type_line": "Creature — Djinn Knight",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Phantomsteed Cavalier_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Phantomsteed Cavalier",
+              "original_text": "Mana cost: {4}{U}\nType: Creature — Djinn Knight\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nTap two untapped tokens you control: Target creature and each token in that creature's retinue can't be blocked this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1\nTap two untapped tokens you control: Target creature and each token in that creature's retinue can't be blocked this turn.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nTap two untapped tokens you control: Target creature and each token in that creature's retinue can't be blocked this turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "30dad7b4b3a4116a8c6c7f26843a5441ec9fd13b9ebc13f8967a84c476e52d82",
+          "executable_faces": [
+            {
+              "name": "Phantomsteed Cavalier",
+              "executable_text": "Mana cost: {4}{U}\nType: Creature — Djinn Knight\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nTap two untapped tokens you control: Target creature and each token in group owned by that creature can't be blocked this turn.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1\nTap two untapped tokens you control: Target creature and each token in that creature's retinue can't be blocked this turn.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nTap two untapped tokens you control: Target creature and each token in that creature's retinue can't be blocked this turn."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Rally the Fallen_G5L",
+          "name": "Rally the Fallen",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn. Each creature in that creature's retinue gets +1/+1 until end of turn.",
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn. Each creature in group owned by that creature gets +1/+1 until end of turn.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Rally the Fallen_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rally the Fallen",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn. Each creature in that creature's retinue gets +1/+1 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control gets +2/+2 until end of turn. Each creature in that creature's retinue gets +1/+1 until end of turn.",
+          "original_printed_rules_text": "Target creature you control gets +2/+2 until end of turn. Each creature in that creature's retinue gets +1/+1 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "b9ce1bdc652d67dc37e5d3e52714811dfced35a1ed2303c99b478979a7af0b60",
+          "executable_faces": [
+            {
+              "name": "Rally the Fallen",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gets +2/+2 until end of turn. Each creature in group owned by that creature gets +1/+1 until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control gets +2/+2 until end of turn. Each creature in that creature's retinue gets +1/+1 until end of turn.",
+              "original_printed_rules_text": "Target creature you control gets +2/+2 until end of turn. Each creature in that creature's retinue gets +1/+1 until end of turn."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Regiment on Wings_G5L",
+          "name": "Regiment on Wings",
+          "original_text": "Mana cost: {2}{G}{W}{U}\nType: Creature — Sphinx\nPower/Toughness: 5/5\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying and put it in Regiment on Wings's retinue.",
+          "executable_text": "Mana cost: {2}{G}{W}{U}\nType: Creature — Sphinx\nPower/Toughness: 5/5\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying . Group it under Regiment on Wings so all members attack and block if any member or the owner does, if able.",
+          "mana_cost": "{2}{G}{W}{U}",
+          "type_line": "Creature — Sphinx",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Regiment on Wings_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Regiment on Wings",
+              "original_text": "Mana cost: {2}{G}{W}{U}\nType: Creature — Sphinx\nPower/Toughness: 5/5\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying and put it in Regiment on Wings's retinue."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying and put it in Regiment on Wings's retinue.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying and put it in Regiment on Wings's retinue.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "c319be0d6eb6e7eb681a9559f073e2ebadabf4b7984bf30862816a6dc646e5cd",
+          "executable_faces": [
+            {
+              "name": "Regiment on Wings",
+              "executable_text": "Mana cost: {2}{G}{W}{U}\nType: Creature — Sphinx\nPower/Toughness: 5/5\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying . Group it under Regiment on Wings so all members attack and block if any member or the owner does, if able.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying and put it in Regiment on Wings's retinue.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nFlying, ward {2}\nWhenever a token you control deals combat damage to a player or planeswalker, create a 1/1 white Bird creature token with flying and put it in Regiment on Wings's retinue."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Sahra, Hand of Ruin_G5L",
+          "name": "Sahra, Hand of Ruin",
+          "original_text": "Mana cost: {2}{R}{R}{G}{G}\nType: Legendary Creature — Ogre Warrior\nPower/Toughness: 4/4\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature. *(They will still follow their retinue's orders.)*",
+          "executable_text": "Mana cost: {2}{R}{R}{G}{G}\nType: Legendary Creature — Ogre Warrior\nPower/Toughness: 4/4\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature.",
+          "mana_cost": "{2}{R}{R}{G}{G}",
+          "type_line": "Legendary Creature — Ogre Warrior",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Sahra, Hand of Ruin_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sahra, Hand of Ruin",
+              "original_text": "Mana cost: {2}{R}{R}{G}{G}\nType: Legendary Creature — Ogre Warrior\nPower/Toughness: 4/4\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature. *(They will still follow their retinue's orders.)*"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 2/2, 2/2\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature.",
+          "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature. (They will still follow their retinue's orders.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "3947e2a788c62fc54220d394961dfa3ce6a1cc69139c5d8cc5fc68c1d6338edf",
+          "executable_faces": [
+            {
+              "name": "Sahra, Hand of Ruin",
+              "executable_text": "Mana cost: {2}{R}{R}{G}{G}\nType: Legendary Creature — Ogre Warrior\nPower/Toughness: 4/4\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 2/2, 2/2\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature.",
+              "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nAt the beginning of combat on your turn, you may choose a nonlegendary creature you control. Any number of tokens you control become a copy of that creature. (They will still follow their retinue's orders.)"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Satrap of Empty Halls_G5L",
+          "name": "Satrap of Empty Halls",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Human Noble\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls.",
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Human Noble\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls.",
+          "mana_cost": "{4}{W}",
+          "type_line": "Creature — Human Noble",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Satrap of Empty Halls_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Satrap of Empty Halls",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Human Noble\nPower/Toughness: 3/3\nRetinue — 1/1, 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1, 1/1\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "045a16cf6f4462e79fb5d4f1ea591082a8bcbc61c11b0b530e7f20bec5dfd2d1",
+          "executable_faces": [
+            {
+              "name": "Satrap of Empty Halls",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Human Noble\nPower/Toughness: 3/3\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1, 1/1\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nLifelink\nWhenever a creature you control dies, put a +1/+1 counter on Satrap of Empty Halls."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Sepidgar Conscript_G5L",
+          "name": "Sepidgar Conscript",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nPrevent all damage that would be dealt to creatures in Sepidgar Conscript's retinue.",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nPrevent all damage that would be dealt to creatures in group owned by Sepidgar Conscript.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Human Warrior",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Sepidgar Conscript_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sepidgar Conscript",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nRetinue — 1/1, 1/1 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nPrevent all damage that would be dealt to creatures in Sepidgar Conscript's retinue."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 1/1, 1/1\nPrevent all damage that would be dealt to creatures in Sepidgar Conscript's retinue.",
+          "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nPrevent all damage that would be dealt to creatures in Sepidgar Conscript's retinue.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "9d66c2c8432418a03e1d5cdabf54a67274921a275575fddc31326fe7c068434e",
+          "executable_faces": [
+            {
+              "name": "Sepidgar Conscript",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhen this permanent enters, create a 1/1 red Army creature token and a 1/1 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nPrevent all damage that would be dealt to creatures in group owned by Sepidgar Conscript.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 1/1, 1/1\nPrevent all damage that would be dealt to creatures in Sepidgar Conscript's retinue.",
+              "original_printed_rules_text": "Retinue — 1/1, 1/1 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nPrevent all damage that would be dealt to creatures in Sepidgar Conscript's retinue."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Shepherd of the Pride_G5L",
+          "name": "Shepherd of the Pride",
+          "original_text": "Mana cost: {G}{G}{W}{W}\nType: Creature — Human Druid\nPower/Toughness: 2/3\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nVigilance\nCreature tokens you control have vigilance.",
+          "executable_text": "Mana cost: {G}{G}{W}{W}\nType: Creature — Human Druid\nPower/Toughness: 2/3\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nVigilance\nCreature tokens you control have vigilance.",
+          "mana_cost": "{G}{G}{W}{W}",
+          "type_line": "Creature — Human Druid",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Shepherd of the Pride_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shepherd of the Pride",
+              "original_text": "Mana cost: {G}{G}{W}{W}\nType: Creature — Human Druid\nPower/Toughness: 2/3\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nVigilance\nCreature tokens you control have vigilance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 2/2, 2/2\nVigilance\nCreature tokens you control have vigilance.",
+          "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nVigilance\nCreature tokens you control have vigilance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "9de4ce1d8da20a88f1eb8df41aada8de07f622ce241af997e04a9934956f4370",
+          "executable_faces": [
+            {
+              "name": "Shepherd of the Pride",
+              "executable_text": "Mana cost: {G}{G}{W}{W}\nType: Creature — Human Druid\nPower/Toughness: 2/3\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nVigilance\nCreature tokens you control have vigilance.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 2/2, 2/2\nVigilance\nCreature tokens you control have vigilance.",
+              "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nVigilance\nCreature tokens you control have vigilance."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Subdue Undeath_G5L",
+          "name": "Subdue Undeath",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Instant\nExile up to one target creature or planeswalker and all tokens in its retinue.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Instant\nExile up to one target creature or planeswalker and all tokens in group owned by it.",
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Subdue Undeath_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Subdue Undeath",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Instant\nExile up to one target creature or planeswalker and all tokens in its retinue."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile up to one target creature or planeswalker and all tokens in its retinue.",
+          "original_printed_rules_text": "Exile up to one target creature or planeswalker and all tokens in its retinue.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "6c07b289a5d02663f42af709acdf05d549b3fa509ef98a3731732af13d25de47",
+          "executable_faces": [
+            {
+              "name": "Subdue Undeath",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Instant\nExile up to one target creature or planeswalker and all tokens in group owned by it.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile up to one target creature or planeswalker and all tokens in its retinue.",
+              "original_printed_rules_text": "Exile up to one target creature or planeswalker and all tokens in its retinue."
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Tombbound Creeper_G5L",
+          "name": "Tombbound Creeper",
+          "original_text": "Mana cost: {5}{G}\nType: Creature — Insect Beast\nPower/Toughness: 5/5\nRetinue — 4/4 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nTrample",
+          "executable_text": "Mana cost: {5}{G}\nType: Creature — Insect Beast\nPower/Toughness: 5/5\nWhen this permanent enters, create a 4/4 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nTrample",
+          "mana_cost": "{5}{G}",
+          "type_line": "Creature — Insect Beast",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Tombbound Creeper_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tombbound Creeper",
+              "original_text": "Mana cost: {5}{G}\nType: Creature — Insect Beast\nPower/Toughness: 5/5\nRetinue — 4/4 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nTrample"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 4/4\nTrample",
+          "original_printed_rules_text": "Retinue — 4/4 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nTrample",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "00f9636050edbe4a2431cf58554f7aa2f5e192dec9e7154a665a6f0d5d1b17f5",
+          "executable_faces": [
+            {
+              "name": "Tombbound Creeper",
+              "executable_text": "Mana cost: {5}{G}\nType: Creature — Insect Beast\nPower/Toughness: 5/5\nWhen this permanent enters, create a 4/4 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nTrample",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 4/4\nTrample",
+              "original_printed_rules_text": "Retinue — 4/4 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nTrample"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Voice of Caravans_G5L",
+          "name": "Voice of Caravans",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Merchant\nPower/Toughness: 1/1\nRetinue — 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nCreature tokens you control have “{T}: Add one mana of any color.”",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Merchant\nPower/Toughness: 1/1\nWhen this permanent enters, create a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nCreature tokens you control have “{T}: Add one mana of any color.”",
+          "mana_cost": "{1}{G}{G}",
+          "type_line": "Creature — Human Merchant",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Voice of Caravans_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Voice of Caravans",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Merchant\nPower/Toughness: 1/1\nRetinue — 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nCreature tokens you control have “{T}: Add one mana of any color.”"
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "merchant",
+              "plural": "merchants",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 2/2\nCreature tokens you control have “{T}: Add one mana of any color.”",
+          "original_printed_rules_text": "Retinue — 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nCreature tokens you control have “{T}: Add one mana of any color.”",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "d58e83b3e4ce3de5fc172c9e15277a67e8a1d122f433b31173e1d9aedf6e8e66",
+          "executable_faces": [
+            {
+              "name": "Voice of Caravans",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Merchant\nPower/Toughness: 1/1\nWhen this permanent enters, create a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nCreature tokens you control have “{T}: Add one mana of any color.”",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "merchant",
+                  "plural": "merchants",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 2/2\nCreature tokens you control have “{T}: Add one mana of any color.”",
+              "original_printed_rules_text": "Retinue — 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nCreature tokens you control have “{T}: Add one mana of any color.”"
+            }
+          ],
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Withered Marshal_G5L",
+          "name": "Withered Marshal",
+          "original_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Zombie Wizard\nPower/Toughness: 3/4\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever a token you control dies, you gain 1 life.",
+          "executable_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Zombie Wizard\nPower/Toughness: 3/4\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever a token you control dies, you gain 1 life.",
+          "mana_cost": "{2}{W}{B}{G}",
+          "type_line": "Creature — Zombie Wizard",
+          "power": "3",
+          "toughness": "4",
+          "source_card_key": "Withered Marshal_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Withered Marshal",
+              "original_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Zombie Wizard\nPower/Toughness: 3/4\nRetinue — 2/2, 2/2 *(When this enters, create the listed red Army tokens. They attack and block together and with this if able.)*\nWhenever a token you control dies, you gain 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "retinue"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Retinue — 2/2, 2/2\nWhenever a token you control dies, you gain 1 life.",
+          "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever a token you control dies, you gain 1 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "068f725c31ca817c84988ae5207babaeaf4e870e77926a53df5f15d556c48da8",
+          "executable_faces": [
+            {
+              "name": "Withered Marshal",
+              "executable_text": "Mana cost: {2}{W}{B}{G}\nType: Creature — Zombie Wizard\nPower/Toughness: 3/4\nWhen this permanent enters, create a 2/2 red Army creature token and a 2/2 red Army creature token. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able.\nWhenever a token you control dies, you gain 1 life.",
+              "custom_keyword_identities": [
+                "retinue"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Retinue — 2/2, 2/2\nWhenever a token you control dies, you gain 1 life.",
+              "original_printed_rules_text": "Retinue — 2/2, 2/2 (When this enters, create the listed red Army tokens. They attack and block together and with this if able.)\nWhenever a token you control dies, you gain 1 life."
+            }
+          ],
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Retinue — {TokenSizes}",
+          "reminder": "When this permanent enters, create {TokenSizes} red Army creature tokens. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able."
+        }
+      ],
+      "executable_keyword": "Retinue — {TokenSizes}",
+      "scope_notes": "Original reminder preserved. Formal702.302c/d: owner or member participation requires able members; owner is not obligated merely because a member participates.",
+      "implementation_status": "whole_raw_source_input_strict_independent_collector_pending_root"
+    },
+    {
+      "id": "msem-943",
+      "keyword": "Retinue",
+      "original_reminder": "They all attack and block together if able.",
+      "executable_reminder": null,
+      "source_cards": [
+        "Stories in Shifting Sand"
+      ],
+      "rule_reference": "702.302.",
+      "rule_text": [
+        {
+          "name": "702.302a",
+          "rule": "Retinue is a triggered ability, and a designation given to a group of permanents, which usually are tokens created by a retinue ability.",
+          "custom": true
+        },
+        {
+          "name": "702.302b",
+          "rule": "\"Retinue — [list of P/Ts]\" means \"When this permanent enters, for each listed P/T, create a red Army creature token with that P/T. Put each token created this way in this permanent's retinue.\" This list may include entries in the form \"X [P/T]\". In that case, X tokens are created instead of just one.",
+          "custom": true
+        },
+        {
+          "name": "702.302c",
+          "rule": "As a player declares attacks, if a creature in a retinue or a creature with a retinue attacks, all creatures in that retinue also attack this combat if able. They may attack other players or permanents.",
+          "custom": true
+        },
+        {
+          "name": "702.302d",
+          "rule": "As a player declares blocks, if a creature in a retinue or a creature with a retinue block, all creatures in that retinue also block this combat if able. They may block other creatures.",
+          "custom": true
+        },
+        {
+          "name": "702.302e",
+          "rule": "A permanent can't have more than one retinue. If more permanents are added at a later time, they will be added to the previous retinue, and not a new one.",
+          "custom": true
+        },
+        {
+          "name": "702.302f",
+          "rule": "A permanent can't be in more than one retinue. If it is put into one, it is removed from any retinue it was already in. If it is put into multiple simultaneously, its controller chooses one.",
+          "custom": true
+        },
+        {
+          "name": "702.302g",
+          "rule": "If a permanent would be put into the retinue of a permanent that is itself in a retinue, they are instead put into the same retinue as that permanent.",
+          "custom": true
+        },
+        {
+          "name": "702.302h",
+          "rule": "A retinue will continue to exist even if the permanent that it belongs to is no longer on the battlefield. Certain effects may also create a retinue that belongs to no permanent.",
+          "custom": true
+        },
+        {
+          "name": "702.302i",
+          "rule": "A permanent can't be put into its own retinue.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Stories in Shifting Sand_G5L",
+          "name": "Stories in Shifting Sand",
+          "original_text": "Mana cost: {X}{W}{W}\nType: Sorcery\nExile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Put each token created this way into a retinue. *(They all attack and block together if able.)* ",
+          "executable_text": "Mana cost: {X}{W}{W}\nType: Sorcery\nExile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Group each token created this way so all members attack and block if any member does, if able.",
+          "mana_cost": "{X}{W}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Stories in Shifting Sand_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Stories in Shifting Sand",
+              "original_text": "Mana cost: {X}{W}{W}\nType: Sorcery\nExile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Put each token created this way into a retinue. *(They all attack and block together if able.)* "
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Put each token created this way into a retinue.",
+          "original_printed_rules_text": "Exile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Put each token created this way into a retinue. (They all attack and block together if able.) ",
+          "rewrite_status": "frontend_materialized_unverified",
+          "prior_candidate_original_text_sha256": "7f7ac1d115ff13a2743722cc38d76e5cb74aa31feb01b002d247b38690401b99",
+          "executable_faces": [
+            {
+              "name": "Stories in Shifting Sand",
+              "executable_text": "Mana cost: {X}{W}{W}\nType: Sorcery\nExile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Group each token created this way so all members attack and block if any member does, if able.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Put each token created this way into a retinue.",
+              "original_printed_rules_text": "Exile any number of target creature cards with total mana value twice X or less from your graveyard. For each card exiled this way, create a token that's a copy of it. Put each token created this way into a retinue. (They all attack and block together if able.) "
+            }
+          ],
+          "supplied_card_definitions": []
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "executable_definitions": [
+        {
+          "keyword": "Retinue — {TokenSizes}",
+          "reminder": "When this permanent enters, create {TokenSizes} red Army creature tokens. Group the tokens created this way under this permanent so all members attack and block if any member or the owner does, if able."
+        }
+      ],
+      "scope_notes": "Original reminder preserved. Formal702.302c/d: owner or member participation requires able members; owner is not obligated merely because a member participates.",
+      "implementation_status": "whole_raw_source_input_strict_independent_collector_pending_root"
+    }
+  ]
+}

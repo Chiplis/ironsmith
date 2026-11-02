@@ -104,6 +104,7 @@ pub enum StackActionAst {
     ReduceNextSpellCostThisTurn {
         filter: ObjectFilter,
         reduction: ManaCost,
+        starts_during_next_turn: bool,
     },
     /// "The next <filter> spell you cast this turn can be cast without paying
     /// its mana cost."

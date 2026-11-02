@@ -35,8 +35,9 @@ test('aliases and definitions cannot conflict; plural suggestions remain overrid
   assert.equal(suggestSubtypePlural('Emberfox'), 'Emberfoxes');
   assert.deepEqual(mergeSubtypes([sky], [sky]), [sky]);
   assert.throws(() => mergeSubtypes([sky, { ...moon, plural: 'skychildren' }]), /Ambiguous/);
-  assert.throws(() => mergeSubtypes([sky, { ...sky, family: 'Land' }]), /Conflicting/);
-  assert.throws(() => mergeSubtypes([{ ...sky, singular: 'bad name' }]), /letters/);
+  assert.deepEqual(mergeSubtypes([sky, { ...sky, family: 'Land' }]), [sky, { ...sky, family: 'Land' }]);
+  assert.throws(() => mergeSubtypes([sky, { ...sky, plural: 'skyoffspring', family: 'Land' }]), /Conflicting/);
+  assert.throws(() => mergeSubtypes([{ ...sky, singular: 'bad/name' }]), /letters|subtype form/);
 });
 test('library changes persist and do not mutate definitions already carried by a card', () => {
   const values = new Map(); const storage = { getItem: k => values.get(k), setItem: (k,v) => values.set(k,v) };
@@ -56,4 +57,18 @@ test('mechanic-expanded subtype dependencies survive export and recompilation', 
     return { canCreate: true };
   }, { knownSubtypes: [] });
   assert.deepEqual(prepared.draft.customSubtypes, [sky]);
+});
+
+test('explicit vocabulary preserves multiword, Unicode and digit subtype operands', () => {
+  const definitions = [
+    {singular: 'cloud court', plural: 'cloud courts', family: 'Creature'},
+    {singular: 'éloi', plural: 'élois', family: 'Planeswalker'},
+    {singular: 'xc037', plural: 'xc037s', family: 'Planeswalker'},
+  ];
+  assert.deepEqual(mergeSubtypes(definitions), definitions);
+  for (const definition of definitions) {
+    assert.deepEqual(referencedSubtypes({faces: [{subtypes: [definition.singular], oracleText: ''}]}, definitions), [definition]);
+  }
+  assert.throws(() => mergeSubtypes([{singular: 'bad/name', plural: 'bad/names', family: 'Creature'}]), /letters|subtype form/);
+  assert.throws(() => mergeSubtypes([{singular: 'a'.repeat(33), plural: 'a'.repeat(33), family: 'Creature'}]), /32/);
 });

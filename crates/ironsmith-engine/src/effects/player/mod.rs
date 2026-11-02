@@ -69,6 +69,7 @@ mod roll_die;
 pub(crate) mod roll_planar_die;
 pub(crate) mod roll_to_visit_attractions;
 mod runtime_helpers;
+pub(crate) use runtime_helpers::complete_native_cast_with_outputs;
 mod skip_combat_phases;
 mod skip_combat_phases_this_turn;
 mod skip_draw_step;
@@ -187,3 +188,8 @@ pub use register_extra_die_replacement::RegisterExtraDieReplacementEffect;
 
 mod cast_face_down_using_activation_mana;
 pub use cast_face_down_using_activation_mana::CastFaceDownUsingActivationManaEffect;
+
+mod activate_ability_without_costs;
+pub use activate_ability_without_costs::ActivateAbilityWithoutCostsEffect;
+mod hand_event_reveals;
+pub(crate) use hand_event_reveals::{HandRevealWindow,HandRevealFrame,freeze_hand_reveal_frame,capture_hand_reveal_window,regroup_hand_reveal_windows,answer_hand_reveal_windows};

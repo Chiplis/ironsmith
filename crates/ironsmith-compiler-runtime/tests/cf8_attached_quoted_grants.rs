@@ -220,3 +220,43 @@ fn keyword_sharing_keeps_the_full_graveyard_condition() {
         assert!(!has_flying(&game));
     }
 }
+
+#[test]
+fn complete_otherwise_attached_statics_follow_host_subtype_and_aura_controller() {
+    use ironsmith::{GameState,PlayerId,Zone};
+    use ironsmith::object::AttachmentTarget;
+    let a=PlayerId(0);let b=PlayerId(1);
+    let rows:Vec<serde_json::Value>=serde_json::from_str(include_str!("../../../fixtures/cf8_attached_quoted_grants.json.fixture")).unwrap();
+    let row=rows.iter().find(|row|row["name"]=="Burden of Proof").unwrap();
+    for definition in support::definitions_for_text(row["name"].as_str().unwrap(),row["text"].as_str().unwrap()) {
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let detective=ironsmith_compiler_runtime::compile_to_runtime_definition("Detective witness","Type: Creature — Detective\nPower/Toughness: 3/4",false).unwrap();
+        let human=ironsmith_compiler_runtime::compile_to_runtime_definition("Human witness","Type: Creature — Human\nPower/Toughness: 3/4",false).unwrap();
+        let own_detective=game.create_object_from_definition(&detective,a,Zone::Battlefield);
+        let own_human=game.create_object_from_definition(&human,a,Zone::Battlefield);
+        let foreign_detective=game.create_object_from_definition(&detective,b,Zone::Battlefield);
+        let attacking_detective=game.create_object_from_definition(&detective,b,Zone::Battlefield);
+        let attacking_human=game.create_object_from_definition(&human,b,Zone::Battlefield);
+        let aura=game.create_object_from_definition(&definition,a,Zone::Battlefield);
+        assert!(game.attach_object_to_target(aura,AttachmentTarget::Object(own_detective)));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!((game.current_power(own_detective),game.current_toughness(own_detective)),(Some(5),Some(6)));
+        assert!(ironsmith::rules::combat::can_block(game.object(attacking_detective).unwrap(),game.object(own_detective).unwrap(),&game));
+        assert!(game.attach_object_to_target(aura,AttachmentTarget::Object(own_human)));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!((game.current_power(own_detective),game.current_toughness(own_detective)),(Some(3),Some(4)));
+        assert_eq!((game.current_power(own_human),game.current_toughness(own_human)),(Some(1),Some(1)));
+        assert!(!ironsmith::rules::combat::can_block(game.object(attacking_detective).unwrap(),game.object(own_human).unwrap(),&game));
+        assert!(ironsmith::rules::combat::can_block(game.object(attacking_human).unwrap(),game.object(own_human).unwrap(),&game));
+        assert!(game.attach_object_to_target(aura,AttachmentTarget::Object(foreign_detective)));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!((game.current_power(own_human),game.current_toughness(own_human)),(Some(3),Some(4)));
+        assert_eq!((game.current_power(foreign_detective),game.current_toughness(foreign_detective)),(Some(1),Some(1)),"a Detective outside the Aura controller's control takes the otherwise branch");
+        assert!(!ironsmith::rules::combat::can_block(game.object(own_detective).unwrap(),game.object(foreign_detective).unwrap(),&game));
+        game.set_current_controller(aura,b).unwrap();game.refresh_continuous_state().unwrap();
+        assert_eq!((game.current_power(foreign_detective),game.current_toughness(foreign_detective)),(Some(5),Some(6)));
+        assert!(ironsmith::rules::combat::can_block(game.object(own_detective).unwrap(),game.object(foreign_detective).unwrap(),&game));
+        game.move_object_by_game_rule(aura,Zone::Graveyard).unwrap();
+        assert_eq!((game.current_power(foreign_detective),game.current_toughness(foreign_detective)),(Some(3),Some(4)));
+    }
+}

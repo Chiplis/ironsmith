@@ -153,6 +153,8 @@ impl GameState {
                 held.remove(id);
             }
             flags.phase_out_holds_until_visit_roll.remove(id);
+            flags.phase_out_holds_until_nth_spell.remove(id);
+            flags.phase_out_holds_until_end_of_turn.remove(id);
             flags.tap_on_held_phase_in.remove(id);
             for pending in self.auxiliary_tracking_mut().pending_phase_duration_returns.values_mut() { pending.remove(id); }
         }
@@ -211,6 +213,7 @@ impl GameState {
                     batch,
                 )
                 .with_simultaneous_batch(batch);
+                self.expire_custom_status_event(id, ironsmith_core::CustomStatusExpiryEvent::PhasesIn);
                 self.queue_trigger_event(batch, event);
             }
         }

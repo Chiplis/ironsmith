@@ -14,6 +14,18 @@ mod r#attacked_player_activation;
 #[path = "../blinding_powder_body.rs"]
 mod r#blinding_powder_body;
 
+#[path = "../custom_exact_source_zone.rs"]
+mod r#custom_exact_source_zone;
+
+#[path = "../custom_source_subtypes.rs"]
+mod r#custom_source_subtypes;
+
+#[path = "../custom_tithe_permanent.rs"]
+mod r#custom_tithe_permanent;
+
+#[path = "../custom_unveil_source_events.rs"]
+mod r#custom_unveil_source_events;
+
 #[path = "../damage_numeric_representation.rs"]
 mod r#damage_numeric_representation;
 

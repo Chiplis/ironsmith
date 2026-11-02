@@ -14,6 +14,8 @@ use crate::util::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForEachParticipantScope {
     Opponent,
+    CursedOpponent,
+    CursedPlayer,
     OpponentExceptDefending,
     /// "each of that player's opponents" / "each opponent of that player"
     OpponentOfThatPlayer,
@@ -223,6 +225,13 @@ pub fn parse_participant_clause_shape(
         .unwrap_or(tokens);
     let participant_is_actor =
         primitives::parse_prefix(tokens, primitives::kw("each").void()).is_some();
+    if let Some((_, after_prefix))=primitives::parse_prefix(tokens,primitives::phrase(&["each","cursed"])) {
+        for (noun, scope) in [("opponent", ForEachParticipantScope::CursedOpponent), ("player", ForEachParticipantScope::CursedPlayer)] {
+            if let Some((_, rest)) = primitives::parse_prefix(after_prefix, primitives::kw(noun)) {
+                return Some(ForEachParticipantClauseShape { scope, participant_is_actor: true, inner_tokens: trim(rest) });
+            }
+        }
+    }
     if let Some((_, rest)) = primitives::parse_prefix(
         tokens,
         alt((

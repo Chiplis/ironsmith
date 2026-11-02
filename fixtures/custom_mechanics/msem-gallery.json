@@ -1,0 +1,850 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "scope": "msem",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "source_section": "747.",
+    "policy": "Exact originals and complete source variants retained. Staged reader expansion is not native gameplay certification."
+  },
+  "mechanics": [
+    {
+      "id": "msem:sections:7:747.:Gallery Cards",
+      "keyword": "Gallery Cards",
+      "original_reminder": null,
+      "scope": "msem",
+      "source_rule_kind": "sections",
+      "rule_reference": "747.",
+      "rule_text": [
+        {
+          "reference": "747.",
+          "obligation": "Gallery Cards"
+        },
+        {
+          "reference": "747.1.",
+          "obligation": "Each Gallery card has a striated text box containing two gallery level bars. Its illustration is vertically oriented on the left side of the card, and its type line is along the bottom of the card."
+        },
+        {
+          "reference": "747.2.",
+          "obligation": "A gallery level bar is a keyword ability that represents both an activated ability and a static ability. A gallery level bar includes the activation cost of its activated ability and a flavor word. Any abilities printed within the same text box section as the gallery level bar are part of its static ability."
+        },
+        {
+          "reference": "747.2a",
+          "obligation": "“[Cost]: [Flavor word] — [Abilities]” means “[Cost]: Unlock the work [Flavor word]. Activate only if none of this Gallery's works have been unlocked and only as a sorcery” and “As long as this Gallery has unlocked [Flavor word], it has [abilities].”"
+        },
+        {
+          "reference": "747.2b",
+          "obligation": "An unlocked work is a designation that any permanent can have. A Gallery retains its unlocked works even if it stops being a Gallery. Unlocked works are not a copiable characteristic."
+        },
+        {
+          "reference": "747.3.",
+          "obligation": "Any ability printed on a Gallery card that isn’t preceded by a gallery level bar is treated normally. In particular, the Gallery has the ability printed in its top text box section at all times. That ability may affect the game if it’s a static ability, it may trigger if it’s a triggered ability, and it can be activated if it’s an activated ability."
+        }
+      ],
+      "source_cards": [
+        "Altar of Twisted Piety",
+        "Celebrations of Ferocity",
+        "Chronicles of the Kitsune",
+        "Fables of the Ill-Fated",
+        "Juyu Offering Pool",
+        "Kanghyae Forum",
+        "Memorial Plaza",
+        "Path of the Outsider",
+        "Peacetime Murals",
+        "Seto's Private Collection",
+        "The Art of War",
+        "The Royal Vignettes",
+        "Those Lost to the Waves",
+        "Wildlife Sketches",
+        "Xie'e Amphitheatre",
+        "Make Art Not Friends"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Gallery",
+          "appliesToSubtype": "Gallery",
+          "reminder": "Flavor-word bars name works. This layout has two work bars. Each bar is an activated ability with its printed cost. Resolving a bar unlocks its named work. Activate a bar only while no work has been unlocked. Activate bars only as a sorcery. An unlocked work grants the abilities printed in its section. Unlocked works are noncopiable designations retained across type and control changes."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "semantic_gate": "requires_native_behavior_and_full_source_validation",
+      "representative_cards": [
+        {
+          "source_card_key": "Altar of Twisted Piety_NJB",
+          "name": "Altar of Twisted Piety",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Altar of Twisted Piety",
+              "original_text": "Mana cost: {1}{B}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Altar of Twisted Piety enters, return target creature card with mana value 3 or less from your graveyard to the battlefield.\n{2}{B}: Shadows Bind Us\n{B}, Sacrifice three creatures: Create a 5/5 black Demon creature token. Put your choice of a flying counter or a lifelink counter on it. It can't block this turn.\n{2}{R}: Hellfire Fills Us\n{R}, Sacrifice a creature: Altar of Twisted Piety deals 2 damage to any target."
+            }
+          ],
+          "id": "Altar of Twisted Piety_NJB",
+          "original_text": "Mana cost: {1}{B}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Altar of Twisted Piety enters, return target creature card with mana value 3 or less from your graveyard to the battlefield.\n{2}{B}: Shadows Bind Us\n{B}, Sacrifice three creatures: Create a 5/5 black Demon creature token. Put your choice of a flying counter or a lifelink counter on it. It can't block this turn.\n{2}{R}: Hellfire Fills Us\n{R}, Sacrifice a creature: Altar of Twisted Piety deals 2 damage to any target.",
+          "executable_text": "Mana cost: {1}{B}{R}\nType: Enchantment — Gallery\nWhen Altar of Twisted Piety enters, return target creature card with mana value 3 or less from your graveyard to the battlefield.\n{2}{B}: Give this permanent the \"unlocked work named Shadows Bind Us\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Shadows Bind Us\" status, this permanent has \"{B}, Sacrifice three creatures: Create a 5/5 black Demon creature token. Put your choice of a flying counter or a lifelink counter on it. It can't block this turn.\".\n{2}{R}: Give this permanent the \"unlocked work named Hellfire Fills Us\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Hellfire Fills Us\" status, this permanent has \"{R}, Sacrifice a creature: Altar of Twisted Piety deals 2 damage to any target.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Altar of Twisted Piety",
+              "executable_text": "Mana cost: {1}{B}{R}\nType: Enchantment — Gallery\nWhen Altar of Twisted Piety enters, return target creature card with mana value 3 or less from your graveyard to the battlefield.\n{2}{B}: Give this permanent the \"unlocked work named Shadows Bind Us\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Shadows Bind Us\" status, this permanent has \"{B}, Sacrifice three creatures: Create a 5/5 black Demon creature token. Put your choice of a flying counter or a lifelink counter on it. It can't block this turn.\".\n{2}{R}: Give this permanent the \"unlocked work named Hellfire Fills Us\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Hellfire Fills Us\" status, this permanent has \"{R}, Sacrifice a creature: Altar of Twisted Piety deals 2 damage to any target.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Altar of Twisted Piety enters, return target creature card with mana value 3 or less from your graveyard to the battlefield.\n{2}{B}: Shadows Bind Us\n{B}, Sacrifice three creatures: Create a 5/5 black Demon creature token. Put your choice of a flying counter or a lifelink counter on it. It can't block this turn.\n{2}{R}: Hellfire Fills Us\n{R}, Sacrifice a creature: Altar of Twisted Piety deals 2 damage to any target."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Altar of Twisted Piety enters, return target creature card with mana value 3 or less from your graveyard to the battlefield.\n{2}{B}: Shadows Bind Us\n{B}, Sacrifice three creatures: Create a 5/5 black Demon creature token. Put your choice of a flying counter or a lifelink counter on it. It can't block this turn.\n{2}{R}: Hellfire Fills Us\n{R}, Sacrifice a creature: Altar of Twisted Piety deals 2 damage to any target.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Celebrations of Ferocity_NJB",
+          "name": "Celebrations of Ferocity",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Celebrations of Ferocity",
+              "original_text": "Mana cost: {R}{G}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Celebrations of Ferocity enters, add {R}{G}. Spend this mana only to cast creature spells.\n{4}{R}{R}: Hao'Tai's Wake\nAt the beginning of combat on your turn, target creature you control becomes a 4/4 red Dragon with flying until end of turn.\n{1}{G}: Portrait of Qiyan\nCreatures you control enter with an additional +1/+1 counter on them."
+            }
+          ],
+          "id": "Celebrations of Ferocity_NJB",
+          "original_text": "Mana cost: {R}{G}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Celebrations of Ferocity enters, add {R}{G}. Spend this mana only to cast creature spells.\n{4}{R}{R}: Hao'Tai's Wake\nAt the beginning of combat on your turn, target creature you control becomes a 4/4 red Dragon with flying until end of turn.\n{1}{G}: Portrait of Qiyan\nCreatures you control enter with an additional +1/+1 counter on them.",
+          "executable_text": "Mana cost: {R}{G}\nType: Enchantment — Gallery\nWhen Celebrations of Ferocity enters, add {R}{G}. Spend this mana only to cast creature spells.\n{4}{R}{R}: Give this permanent the \"unlocked work named Hao'Tai's Wake\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Hao'Tai's Wake\" status, this permanent has \"At the beginning of combat on your turn, target creature you control becomes a 4/4 red Dragon with flying until end of turn.\".\n{1}{G}: Give this permanent the \"unlocked work named Portrait of Qiyan\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Portrait of Qiyan\" status, this permanent has \"Creatures you control enter with an additional +1/+1 counter on them.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Celebrations of Ferocity",
+              "executable_text": "Mana cost: {R}{G}\nType: Enchantment — Gallery\nWhen Celebrations of Ferocity enters, add {R}{G}. Spend this mana only to cast creature spells.\n{4}{R}{R}: Give this permanent the \"unlocked work named Hao'Tai's Wake\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Hao'Tai's Wake\" status, this permanent has \"At the beginning of combat on your turn, target creature you control becomes a 4/4 red Dragon with flying until end of turn.\".\n{1}{G}: Give this permanent the \"unlocked work named Portrait of Qiyan\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Portrait of Qiyan\" status, this permanent has \"Creatures you control enter with an additional +1/+1 counter on them.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Celebrations of Ferocity enters, add {R}{G}. Spend this mana only to cast creature spells.\n{4}{R}{R}: Hao'Tai's Wake\nAt the beginning of combat on your turn, target creature you control becomes a 4/4 red Dragon with flying until end of turn.\n{1}{G}: Portrait of Qiyan\nCreatures you control enter with an additional +1/+1 counter on them."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Celebrations of Ferocity enters, add {R}{G}. Spend this mana only to cast creature spells.\n{4}{R}{R}: Hao'Tai's Wake\nAt the beginning of combat on your turn, target creature you control becomes a 4/4 red Dragon with flying until end of turn.\n{1}{G}: Portrait of Qiyan\nCreatures you control enter with an additional +1/+1 counter on them.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Chronicles of the Kitsune_NJB",
+          "name": "Chronicles of the Kitsune",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chronicles of the Kitsune",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Chronicles of the Kitsune enters, create a 2/1 red and white Fox creature token.\n{2}{W}{W}: Act I: Ascent\nCreature tokens you control get +1/+1 and have flying.\n{3}{W}{W}: Act II: Descent\nAt the beginning of your end step, if you control no creatures, create Hu Li, a legendary 4/4 white Fox Spirit creature token with flying and lifelink."
+            }
+          ],
+          "id": "Chronicles of the Kitsune_NJB",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Chronicles of the Kitsune enters, create a 2/1 red and white Fox creature token.\n{2}{W}{W}: Act I: Ascent\nCreature tokens you control get +1/+1 and have flying.\n{3}{W}{W}: Act II: Descent\nAt the beginning of your end step, if you control no creatures, create Hu Li, a legendary 4/4 white Fox Spirit creature token with flying and lifelink.",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Gallery\nWhen Chronicles of the Kitsune enters, create a 2/1 red and white Fox creature token.\n{2}{W}{W}: Give this permanent the \"unlocked work named Act I: Ascent\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Act I: Ascent\" status, this permanent has \"Creature tokens you control get +1/+1 and have flying.\".\n{3}{W}{W}: Give this permanent the \"unlocked work named Act II: Descent\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Act II: Descent\" status, this permanent has \"At the beginning of your end step, if you control no creatures, create Hu Li, a legendary 4/4 white Fox Spirit creature token with flying and lifelink.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Chronicles of the Kitsune",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment — Gallery\nWhen Chronicles of the Kitsune enters, create a 2/1 red and white Fox creature token.\n{2}{W}{W}: Give this permanent the \"unlocked work named Act I: Ascent\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Act I: Ascent\" status, this permanent has \"Creature tokens you control get +1/+1 and have flying.\".\n{3}{W}{W}: Give this permanent the \"unlocked work named Act II: Descent\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Act II: Descent\" status, this permanent has \"At the beginning of your end step, if you control no creatures, create Hu Li, a legendary 4/4 white Fox Spirit creature token with flying and lifelink.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Chronicles of the Kitsune enters, create a 2/1 red and white Fox creature token.\n{2}{W}{W}: Act I: Ascent\nCreature tokens you control get +1/+1 and have flying.\n{3}{W}{W}: Act II: Descent\nAt the beginning of your end step, if you control no creatures, create Hu Li, a legendary 4/4 white Fox Spirit creature token with flying and lifelink."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Chronicles of the Kitsune enters, create a 2/1 red and white Fox creature token.\n{2}{W}{W}: Act I: Ascent\nCreature tokens you control get +1/+1 and have flying.\n{3}{W}{W}: Act II: Descent\nAt the beginning of your end step, if you control no creatures, create Hu Li, a legendary 4/4 white Fox Spirit creature token with flying and lifelink.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Fables of the Ill-Fated_NJB",
+          "name": "Fables of the Ill-Fated",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fables of the Ill-Fated",
+              "original_text": "Mana cost: {2}{B}{G}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Fables of the Ill-Fated enters, destroy target nonland permanent.\n{B}: The Witch's Temple\nWhenever a nonland permanent you control dies, each opponent loses 1 life.\n{3}{G}: Enter the Nest\n{3}{G}, Sacrifice two lands: Create a 0/0 green Wurm creature token with “This creature gets +1/+1 for each permanent card in your graveyard.” Activate only as a sorcery."
+            }
+          ],
+          "id": "Fables of the Ill-Fated_NJB",
+          "original_text": "Mana cost: {2}{B}{G}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Fables of the Ill-Fated enters, destroy target nonland permanent.\n{B}: The Witch's Temple\nWhenever a nonland permanent you control dies, each opponent loses 1 life.\n{3}{G}: Enter the Nest\n{3}{G}, Sacrifice two lands: Create a 0/0 green Wurm creature token with “This creature gets +1/+1 for each permanent card in your graveyard.” Activate only as a sorcery.",
+          "executable_text": "Mana cost: {2}{B}{G}\nType: Enchantment — Gallery\nWhen Fables of the Ill-Fated enters, destroy target nonland permanent.\n{B}: Give this permanent the \"unlocked work named The Witch's Temple\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named The Witch's Temple\" status, this permanent has \"Whenever a nonland permanent you control dies, each opponent loses 1 life.\".\n{3}{G}: Give this permanent the \"unlocked work named Enter the Nest\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Enter the Nest\" status, this permanent has \"{3}{G}, Sacrifice two lands: Create a 0/0 green Wurm creature token with 'This creature gets +1/+1 for each permanent card in your graveyard.' Activate only as a sorcery.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Fables of the Ill-Fated",
+              "executable_text": "Mana cost: {2}{B}{G}\nType: Enchantment — Gallery\nWhen Fables of the Ill-Fated enters, destroy target nonland permanent.\n{B}: Give this permanent the \"unlocked work named The Witch's Temple\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named The Witch's Temple\" status, this permanent has \"Whenever a nonland permanent you control dies, each opponent loses 1 life.\".\n{3}{G}: Give this permanent the \"unlocked work named Enter the Nest\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Enter the Nest\" status, this permanent has \"{3}{G}, Sacrifice two lands: Create a 0/0 green Wurm creature token with 'This creature gets +1/+1 for each permanent card in your graveyard.' Activate only as a sorcery.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Fables of the Ill-Fated enters, destroy target nonland permanent.\n{B}: The Witch's Temple\nWhenever a nonland permanent you control dies, each opponent loses 1 life.\n{3}{G}: Enter the Nest\n{3}{G}, Sacrifice two lands: Create a 0/0 green Wurm creature token with “This creature gets +1/+1 for each permanent card in your graveyard.” Activate only as a sorcery."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Fables of the Ill-Fated enters, destroy target nonland permanent.\n{B}: The Witch's Temple\nWhenever a nonland permanent you control dies, each opponent loses 1 life.\n{3}{G}: Enter the Nest\n{3}{G}, Sacrifice two lands: Create a 0/0 green Wurm creature token with “This creature gets +1/+1 for each permanent card in your graveyard.” Activate only as a sorcery.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Juyu Offering Pool_NJB",
+          "name": "Juyu Offering Pool",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Juyu Offering Pool",
+              "original_text": "Mana cost: {1}{U}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Juyu Offering Pool enters, reveal the top five cards of your library. You may put a noncreature card from among them into your hand. Put the rest on the bottom of your library in any order.\n{1}{U}: Scales of Shara\nWhenever you cast a noncreature spell, put a +1/+1 counter on target creature you control.\n{6}{U}{U}: Eye of Shojiro\nWhenever you cast a noncreature spell, create an 8/8 blue Kraken creature token."
+            }
+          ],
+          "id": "Juyu Offering Pool_NJB",
+          "original_text": "Mana cost: {1}{U}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Juyu Offering Pool enters, reveal the top five cards of your library. You may put a noncreature card from among them into your hand. Put the rest on the bottom of your library in any order.\n{1}{U}: Scales of Shara\nWhenever you cast a noncreature spell, put a +1/+1 counter on target creature you control.\n{6}{U}{U}: Eye of Shojiro\nWhenever you cast a noncreature spell, create an 8/8 blue Kraken creature token.",
+          "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Gallery\nWhen Juyu Offering Pool enters, reveal the top five cards of your library. You may put a noncreature card from among them into your hand. Put the rest on the bottom of your library in any order.\n{1}{U}: Give this permanent the \"unlocked work named Scales of Shara\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Scales of Shara\" status, this permanent has \"Whenever you cast a noncreature spell, put a +1/+1 counter on target creature you control.\".\n{6}{U}{U}: Give this permanent the \"unlocked work named Eye of Shojiro\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Eye of Shojiro\" status, this permanent has \"Whenever you cast a noncreature spell, create an 8/8 blue Kraken creature token.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Juyu Offering Pool",
+              "executable_text": "Mana cost: {1}{U}\nType: Enchantment — Gallery\nWhen Juyu Offering Pool enters, reveal the top five cards of your library. You may put a noncreature card from among them into your hand. Put the rest on the bottom of your library in any order.\n{1}{U}: Give this permanent the \"unlocked work named Scales of Shara\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Scales of Shara\" status, this permanent has \"Whenever you cast a noncreature spell, put a +1/+1 counter on target creature you control.\".\n{6}{U}{U}: Give this permanent the \"unlocked work named Eye of Shojiro\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Eye of Shojiro\" status, this permanent has \"Whenever you cast a noncreature spell, create an 8/8 blue Kraken creature token.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Juyu Offering Pool enters, reveal the top five cards of your library. You may put a noncreature card from among them into your hand. Put the rest on the bottom of your library in any order.\n{1}{U}: Scales of Shara\nWhenever you cast a noncreature spell, put a +1/+1 counter on target creature you control.\n{6}{U}{U}: Eye of Shojiro\nWhenever you cast a noncreature spell, create an 8/8 blue Kraken creature token."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Juyu Offering Pool enters, reveal the top five cards of your library. You may put a noncreature card from among them into your hand. Put the rest on the bottom of your library in any order.\n{1}{U}: Scales of Shara\nWhenever you cast a noncreature spell, put a +1/+1 counter on target creature you control.\n{6}{U}{U}: Eye of Shojiro\nWhenever you cast a noncreature spell, create an 8/8 blue Kraken creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Kanghyae Forum_NJB",
+          "name": "Kanghyae Forum",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kanghyae Forum",
+              "original_text": "Mana cost: {G}{W}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Kanghyae Forum enters, you may return another permanent you control to its owner's hand. If you don't, draw a card.\n{2}{G}: A Common Good\nIf an effect would create one or more tokens under your control, it creates that many of those tokens plus one instead.\n{2}{W}: Rebuilding Trust\nIf an effect would put one or more counters on a permanent you control, it puts that many of those counters plus one on that permanent instead."
+            }
+          ],
+          "id": "Kanghyae Forum_NJB",
+          "original_text": "Mana cost: {G}{W}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Kanghyae Forum enters, you may return another permanent you control to its owner's hand. If you don't, draw a card.\n{2}{G}: A Common Good\nIf an effect would create one or more tokens under your control, it creates that many of those tokens plus one instead.\n{2}{W}: Rebuilding Trust\nIf an effect would put one or more counters on a permanent you control, it puts that many of those counters plus one on that permanent instead.",
+          "executable_text": "Mana cost: {G}{W}\nType: Enchantment — Gallery\nWhen Kanghyae Forum enters, you may return another permanent you control to its owner's hand. If you don't, draw a card.\n{2}{G}: Give this permanent the \"unlocked work named A Common Good\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named A Common Good\" status, this permanent has \"If an effect would create one or more tokens under your control, it creates that many of those tokens plus one instead.\".\n{2}{W}: Give this permanent the \"unlocked work named Rebuilding Trust\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Rebuilding Trust\" status, this permanent has \"If an effect would put one or more counters on a permanent you control, it puts that many of those counters plus one on that permanent instead.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Kanghyae Forum",
+              "executable_text": "Mana cost: {G}{W}\nType: Enchantment — Gallery\nWhen Kanghyae Forum enters, you may return another permanent you control to its owner's hand. If you don't, draw a card.\n{2}{G}: Give this permanent the \"unlocked work named A Common Good\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named A Common Good\" status, this permanent has \"If an effect would create one or more tokens under your control, it creates that many of those tokens plus one instead.\".\n{2}{W}: Give this permanent the \"unlocked work named Rebuilding Trust\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Rebuilding Trust\" status, this permanent has \"If an effect would put one or more counters on a permanent you control, it puts that many of those counters plus one on that permanent instead.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Kanghyae Forum enters, you may return another permanent you control to its owner's hand. If you don't, draw a card.\n{2}{G}: A Common Good\nIf an effect would create one or more tokens under your control, it creates that many of those tokens plus one instead.\n{2}{W}: Rebuilding Trust\nIf an effect would put one or more counters on a permanent you control, it puts that many of those counters plus one on that permanent instead."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Kanghyae Forum enters, you may return another permanent you control to its owner's hand. If you don't, draw a card.\n{2}{G}: A Common Good\nIf an effect would create one or more tokens under your control, it creates that many of those tokens plus one instead.\n{2}{W}: Rebuilding Trust\nIf an effect would put one or more counters on a permanent you control, it puts that many of those counters plus one on that permanent instead.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Memorial Plaza_NJB",
+          "name": "Memorial Plaza",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Memorial Plaza",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Memorial Plaza enters, create two 1/1 colorless Spirit creature tokens with flying.\n{2}{W}: The Warrior\nAt the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\n{1}{B}: Rhapsody in Black\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card."
+            }
+          ],
+          "id": "Memorial Plaza_NJB",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Memorial Plaza enters, create two 1/1 colorless Spirit creature tokens with flying.\n{2}{W}: The Warrior\nAt the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\n{1}{B}: Rhapsody in Black\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Gallery\nWhen Memorial Plaza enters, create two 1/1 colorless Spirit creature tokens with flying.\n{2}{W}: Give this permanent the \"unlocked work named The Warrior\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named The Warrior\" status, this permanent has \"At the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\".\n{1}{B}: Give this permanent the \"unlocked work named Rhapsody in Black\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Rhapsody in Black\" status, this permanent has \"At the beginning of your end step, you may sacrifice a creature. If you do, draw a card.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Memorial Plaza",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Enchantment — Gallery\nWhen Memorial Plaza enters, create two 1/1 colorless Spirit creature tokens with flying.\n{2}{W}: Give this permanent the \"unlocked work named The Warrior\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named The Warrior\" status, this permanent has \"At the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\".\n{1}{B}: Give this permanent the \"unlocked work named Rhapsody in Black\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Rhapsody in Black\" status, this permanent has \"At the beginning of your end step, you may sacrifice a creature. If you do, draw a card.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Memorial Plaza enters, create two 1/1 colorless Spirit creature tokens with flying.\n{2}{W}: The Warrior\nAt the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\n{1}{B}: Rhapsody in Black\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Memorial Plaza enters, create two 1/1 colorless Spirit creature tokens with flying.\n{2}{W}: The Warrior\nAt the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\n{1}{B}: Rhapsody in Black\nAt the beginning of your end step, you may sacrifice a creature. If you do, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Path of the Outsider_NJB",
+          "name": "Path of the Outsider",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Path of the Outsider",
+              "original_text": "Mana cost: {3}{U}{B}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Path of the Outsider enters, return target creature to its owner's hand, then each opponent sacrifices a creature.\n{2}{U}: Evanescence\n{0}: Target creature phases out. Activate only during your turn and only once each turn.\n{2}{B}: Anguish\nWhenever a creature attacks you, it gets -1/-1 until end of turn."
+            }
+          ],
+          "id": "Path of the Outsider_NJB",
+          "original_text": "Mana cost: {3}{U}{B}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Path of the Outsider enters, return target creature to its owner's hand, then each opponent sacrifices a creature.\n{2}{U}: Evanescence\n{0}: Target creature phases out. Activate only during your turn and only once each turn.\n{2}{B}: Anguish\nWhenever a creature attacks you, it gets -1/-1 until end of turn.",
+          "executable_text": "Mana cost: {3}{U}{B}\nType: Enchantment — Gallery\nWhen Path of the Outsider enters, return target creature to its owner's hand, then each opponent sacrifices a creature.\n{2}{U}: Give this permanent the \"unlocked work named Evanescence\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Evanescence\" status, this permanent has \"{0}: Target creature phases out. Activate only during your turn and only once each turn.\".\n{2}{B}: Give this permanent the \"unlocked work named Anguish\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Anguish\" status, this permanent has \"Whenever a creature attacks you, it gets -1/-1 until end of turn.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Path of the Outsider",
+              "executable_text": "Mana cost: {3}{U}{B}\nType: Enchantment — Gallery\nWhen Path of the Outsider enters, return target creature to its owner's hand, then each opponent sacrifices a creature.\n{2}{U}: Give this permanent the \"unlocked work named Evanescence\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Evanescence\" status, this permanent has \"{0}: Target creature phases out. Activate only during your turn and only once each turn.\".\n{2}{B}: Give this permanent the \"unlocked work named Anguish\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Anguish\" status, this permanent has \"Whenever a creature attacks you, it gets -1/-1 until end of turn.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Path of the Outsider enters, return target creature to its owner's hand, then each opponent sacrifices a creature.\n{2}{U}: Evanescence\n{0}: Target creature phases out. Activate only during your turn and only once each turn.\n{2}{B}: Anguish\nWhenever a creature attacks you, it gets -1/-1 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Path of the Outsider enters, return target creature to its owner's hand, then each opponent sacrifices a creature.\n{2}{U}: Evanescence\n{0}: Target creature phases out. Activate only during your turn and only once each turn.\n{2}{B}: Anguish\nWhenever a creature attacks you, it gets -1/-1 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Peacetime Murals_NJB",
+          "name": "Peacetime Murals",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Peacetime Murals",
+              "original_text": "Mana cost: {3}{G}{U}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Peacetime Murals enters, draw three cards and you gain 3 life.\n{2}{G}: Grow as Two\nWhenever you activate an ability of a creature you control, create a token that's a copy of that creature except it isn't legendary. This ability triggers only once each turn.\n{2}{U}: A Better Mankind\nWhenever a creature you control enters, you may activate one of its abilities without paying its costs. This ability triggers only once each turn."
+            }
+          ],
+          "id": "Peacetime Murals_NJB",
+          "original_text": "Mana cost: {3}{G}{U}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Peacetime Murals enters, draw three cards and you gain 3 life.\n{2}{G}: Grow as Two\nWhenever you activate an ability of a creature you control, create a token that's a copy of that creature except it isn't legendary. This ability triggers only once each turn.\n{2}{U}: A Better Mankind\nWhenever a creature you control enters, you may activate one of its abilities without paying its costs. This ability triggers only once each turn.",
+          "executable_text": "Mana cost: {3}{G}{U}\nType: Enchantment — Gallery\nWhen Peacetime Murals enters, draw three cards and you gain 3 life.\n{2}{G}: Give this permanent the \"unlocked work named Grow as Two\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Grow as Two\" status, this permanent has \"Whenever you activate an ability of a creature you control, create a token that's a copy of that creature except it isn't legendary. This ability triggers only once each turn.\".\n{2}{U}: Give this permanent the \"unlocked work named A Better Mankind\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named A Better Mankind\" status, this permanent has \"Whenever a creature you control enters, you may activate one of its abilities without paying its costs. This ability triggers only once each turn.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Peacetime Murals",
+              "executable_text": "Mana cost: {3}{G}{U}\nType: Enchantment — Gallery\nWhen Peacetime Murals enters, draw three cards and you gain 3 life.\n{2}{G}: Give this permanent the \"unlocked work named Grow as Two\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Grow as Two\" status, this permanent has \"Whenever you activate an ability of a creature you control, create a token that's a copy of that creature except it isn't legendary. This ability triggers only once each turn.\".\n{2}{U}: Give this permanent the \"unlocked work named A Better Mankind\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named A Better Mankind\" status, this permanent has \"Whenever a creature you control enters, you may activate one of its abilities without paying its costs. This ability triggers only once each turn.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Peacetime Murals enters, draw three cards and you gain 3 life.\n{2}{G}: Grow as Two\nWhenever you activate an ability of a creature you control, create a token that's a copy of that creature except it isn't legendary. This ability triggers only once each turn.\n{2}{U}: A Better Mankind\nWhenever a creature you control enters, you may activate one of its abilities without paying its costs. This ability triggers only once each turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Peacetime Murals enters, draw three cards and you gain 3 life.\n{2}{G}: Grow as Two\nWhenever you activate an ability of a creature you control, create a token that's a copy of that creature except it isn't legendary. This ability triggers only once each turn.\n{2}{U}: A Better Mankind\nWhenever a creature you control enters, you may activate one of its abilities without paying its costs. This ability triggers only once each turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Seto's Private Collection_NJB",
+          "name": "Seto's Private Collection",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seto's Private Collection",
+              "original_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Seto's Private Collection enters, creatures you control get +2/+1 until end of turn.     \n{1}{R}: Bloodline\nAttacking creatures you control have first strike.\n{2}{W}: Hope's Savior\nAttacking creatures you control have lifelink."
+            }
+          ],
+          "id": "Seto's Private Collection_NJB",
+          "original_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Seto's Private Collection enters, creatures you control get +2/+1 until end of turn.     \n{1}{R}: Bloodline\nAttacking creatures you control have first strike.\n{2}{W}: Hope's Savior\nAttacking creatures you control have lifelink.",
+          "executable_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Gallery\nWhen Seto's Private Collection enters, creatures you control get +2/+1 until end of turn.\n{1}{R}: Give this permanent the \"unlocked work named Bloodline\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Bloodline\" status, this permanent has \"Attacking creatures you control have first strike.\".\n{2}{W}: Give this permanent the \"unlocked work named Hope's Savior\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Hope's Savior\" status, this permanent has \"Attacking creatures you control have lifelink.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Seto's Private Collection",
+              "executable_text": "Mana cost: {2}{R}{W}\nType: Enchantment — Gallery\nWhen Seto's Private Collection enters, creatures you control get +2/+1 until end of turn.\n{1}{R}: Give this permanent the \"unlocked work named Bloodline\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Bloodline\" status, this permanent has \"Attacking creatures you control have first strike.\".\n{2}{W}: Give this permanent the \"unlocked work named Hope's Savior\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Hope's Savior\" status, this permanent has \"Attacking creatures you control have lifelink.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Seto's Private Collection enters, creatures you control get +2/+1 until end of turn.\n{1}{R}: Bloodline\nAttacking creatures you control have first strike.\n{2}{W}: Hope's Savior\nAttacking creatures you control have lifelink."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Seto's Private Collection enters, creatures you control get +2/+1 until end of turn.\n{1}{R}: Bloodline\nAttacking creatures you control have first strike.\n{2}{W}: Hope's Savior\nAttacking creatures you control have lifelink.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "The Art of War_NJB",
+          "name": "The Art of War",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Art of War",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen The Art of War enters, if a source you control would deal damage this turn, it deals double that damage instead.\n{2}{R}{R}: Laying Plans\nWhenever you attack for the first time each turn, untap each creature you control. After this phase, there is an additional combat phase.\n{2}{R}{R}: Waging War\nWhenever a creature you control attacks, create a token that's a copy of it that's tapped and attacking, except the token isn't legendary. Exile those tokens at end of combat."
+            }
+          ],
+          "id": "The Art of War_NJB",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen The Art of War enters, if a source you control would deal damage this turn, it deals double that damage instead.\n{2}{R}{R}: Laying Plans\nWhenever you attack for the first time each turn, untap each creature you control. After this phase, there is an additional combat phase.\n{2}{R}{R}: Waging War\nWhenever a creature you control attacks, create a token that's a copy of it that's tapped and attacking, except the token isn't legendary. Exile those tokens at end of combat.",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Enchantment — Gallery\nWhen The Art of War enters, if a source you control would deal damage this turn, it deals double that damage instead.\n{2}{R}{R}: Give this permanent the \"unlocked work named Laying Plans\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Laying Plans\" status, this permanent has \"Whenever you attack for the first time each turn, untap each creature you control. After this phase, there is an additional combat phase.\".\n{2}{R}{R}: Give this permanent the \"unlocked work named Waging War\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Waging War\" status, this permanent has \"Whenever a creature you control attacks, create a token that's a copy of it that's tapped and attacking, except the token isn't legendary. Exile those tokens at end of combat.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "The Art of War",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Enchantment — Gallery\nWhen The Art of War enters, if a source you control would deal damage this turn, it deals double that damage instead.\n{2}{R}{R}: Give this permanent the \"unlocked work named Laying Plans\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Laying Plans\" status, this permanent has \"Whenever you attack for the first time each turn, untap each creature you control. After this phase, there is an additional combat phase.\".\n{2}{R}{R}: Give this permanent the \"unlocked work named Waging War\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Waging War\" status, this permanent has \"Whenever a creature you control attacks, create a token that's a copy of it that's tapped and attacking, except the token isn't legendary. Exile those tokens at end of combat.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When The Art of War enters, if a source you control would deal damage this turn, it deals double that damage instead.\n{2}{R}{R}: Laying Plans\nWhenever you attack for the first time each turn, untap each creature you control. After this phase, there is an additional combat phase.\n{2}{R}{R}: Waging War\nWhenever a creature you control attacks, create a token that's a copy of it that's tapped and attacking, except the token isn't legendary. Exile those tokens at end of combat."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When The Art of War enters, if a source you control would deal damage this turn, it deals double that damage instead.\n{2}{R}{R}: Laying Plans\nWhenever you attack for the first time each turn, untap each creature you control. After this phase, there is an additional combat phase.\n{2}{R}{R}: Waging War\nWhenever a creature you control attacks, create a token that's a copy of it that's tapped and attacking, except the token isn't legendary. Exile those tokens at end of combat.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "The Royal Vignettes_NJB",
+          "name": "The Royal Vignettes",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Royal Vignettes",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen The Royal Vignettes enters, exile target instant or sorcery card from your graveyard. Until your next turn, you may cast that card.\n{1}{U}: Ju, the Artisan\nWhenever you cast an instant spell, draw a card, then discard a card.\n{1}{R}: Lan, the Poet\nWhenever you cast a sorcery spell, create a 1/1 red Bard creature token with “This creature can't block.”"
+            }
+          ],
+          "id": "The Royal Vignettes_NJB",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen The Royal Vignettes enters, exile target instant or sorcery card from your graveyard. Until your next turn, you may cast that card.\n{1}{U}: Ju, the Artisan\nWhenever you cast an instant spell, draw a card, then discard a card.\n{1}{R}: Lan, the Poet\nWhenever you cast a sorcery spell, create a 1/1 red Bard creature token with “This creature can't block.”",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Enchantment — Gallery\nWhen The Royal Vignettes enters, exile target instant or sorcery card from your graveyard. Until your next turn, you may cast that card.\n{1}{U}: Give this permanent the \"unlocked work named Ju, the Artisan\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Ju, the Artisan\" status, this permanent has \"Whenever you cast an instant spell, draw a card, then discard a card.\".\n{1}{R}: Give this permanent the \"unlocked work named Lan, the Poet\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Lan, the Poet\" status, this permanent has \"Whenever you cast a sorcery spell, create a 1/1 red Bard creature token with 'This creature can't block.'\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "The Royal Vignettes",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Enchantment — Gallery\nWhen The Royal Vignettes enters, exile target instant or sorcery card from your graveyard. Until your next turn, you may cast that card.\n{1}{U}: Give this permanent the \"unlocked work named Ju, the Artisan\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Ju, the Artisan\" status, this permanent has \"Whenever you cast an instant spell, draw a card, then discard a card.\".\n{1}{R}: Give this permanent the \"unlocked work named Lan, the Poet\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Lan, the Poet\" status, this permanent has \"Whenever you cast a sorcery spell, create a 1/1 red Bard creature token with 'This creature can't block.'\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When The Royal Vignettes enters, exile target instant or sorcery card from your graveyard. Until your next turn, you may cast that card.\n{1}{U}: Ju, the Artisan\nWhenever you cast an instant spell, draw a card, then discard a card.\n{1}{R}: Lan, the Poet\nWhenever you cast a sorcery spell, create a 1/1 red Bard creature token with “This creature can't block.”"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When The Royal Vignettes enters, exile target instant or sorcery card from your graveyard. Until your next turn, you may cast that card.\n{1}{U}: Ju, the Artisan\nWhenever you cast an instant spell, draw a card, then discard a card.\n{1}{R}: Lan, the Poet\nWhenever you cast a sorcery spell, create a 1/1 red Bard creature token with “This creature can't block.”",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Those Lost to the Waves_NJB",
+          "name": "Those Lost to the Waves",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Those Lost to the Waves",
+              "original_text": "Mana cost: {W}{U}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Those Lost to the Waves enters, search your library for an artifact card with mana value 3 or less, reveal it, put it into your hand, then shuffle.\n{1}{W}: Fight the Current\nEquipped creatures you control get +1/+1.\n{3}{U}: Soul of the Sea\nAt the beginning of combat on your turn, you may have target noncreature artifact become a 3/3 artifact creature until end of turn."
+            }
+          ],
+          "id": "Those Lost to the Waves_NJB",
+          "original_text": "Mana cost: {W}{U}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Those Lost to the Waves enters, search your library for an artifact card with mana value 3 or less, reveal it, put it into your hand, then shuffle.\n{1}{W}: Fight the Current\nEquipped creatures you control get +1/+1.\n{3}{U}: Soul of the Sea\nAt the beginning of combat on your turn, you may have target noncreature artifact become a 3/3 artifact creature until end of turn.",
+          "executable_text": "Mana cost: {W}{U}\nType: Enchantment — Gallery\nWhen Those Lost to the Waves enters, search your library for an artifact card with mana value 3 or less, reveal it, put it into your hand, then shuffle.\n{1}{W}: Give this permanent the \"unlocked work named Fight the Current\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Fight the Current\" status, this permanent has \"Equipped creatures you control get +1/+1.\".\n{3}{U}: Give this permanent the \"unlocked work named Soul of the Sea\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Soul of the Sea\" status, this permanent has \"At the beginning of combat on your turn, you may have target noncreature artifact become a 3/3 artifact creature until end of turn.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Those Lost to the Waves",
+              "executable_text": "Mana cost: {W}{U}\nType: Enchantment — Gallery\nWhen Those Lost to the Waves enters, search your library for an artifact card with mana value 3 or less, reveal it, put it into your hand, then shuffle.\n{1}{W}: Give this permanent the \"unlocked work named Fight the Current\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Fight the Current\" status, this permanent has \"Equipped creatures you control get +1/+1.\".\n{3}{U}: Give this permanent the \"unlocked work named Soul of the Sea\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Soul of the Sea\" status, this permanent has \"At the beginning of combat on your turn, you may have target noncreature artifact become a 3/3 artifact creature until end of turn.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Those Lost to the Waves enters, search your library for an artifact card with mana value 3 or less, reveal it, put it into your hand, then shuffle.\n{1}{W}: Fight the Current\nEquipped creatures you control get +1/+1.\n{3}{U}: Soul of the Sea\nAt the beginning of combat on your turn, you may have target noncreature artifact become a 3/3 artifact creature until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Those Lost to the Waves enters, search your library for an artifact card with mana value 3 or less, reveal it, put it into your hand, then shuffle.\n{1}{W}: Fight the Current\nEquipped creatures you control get +1/+1.\n{3}{U}: Soul of the Sea\nAt the beginning of combat on your turn, you may have target noncreature artifact become a 3/3 artifact creature until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Wildlife Sketches_NJB",
+          "name": "Wildlife Sketches",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wildlife Sketches",
+              "original_text": "Mana cost: {G}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Wildlife Sketches enters, reveal the top five cards of your library. Put a creature card from among them into your hand and the rest on the bottom in any order.\n{1}{G}: Carnation Petals\nYou may cast creature spells as though they had flash.\n{3}{G}: Pecking Order\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "id": "Wildlife Sketches_NJB",
+          "original_text": "Mana cost: {G}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Wildlife Sketches enters, reveal the top five cards of your library. Put a creature card from among them into your hand and the rest on the bottom in any order.\n{1}{G}: Carnation Petals\nYou may cast creature spells as though they had flash.\n{3}{G}: Pecking Order\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.",
+          "executable_text": "Mana cost: {G}\nType: Enchantment — Gallery\nWhen Wildlife Sketches enters, reveal the top five cards of your library. Put a creature card from among them into your hand and the rest on the bottom in any order.\n{1}{G}: Give this permanent the \"unlocked work named Carnation Petals\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Carnation Petals\" status, this permanent has \"You may cast creature spells as though they had flash.\".\n{3}{G}: Give this permanent the \"unlocked work named Pecking Order\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Pecking Order\" status, this permanent has \"At the beginning of your upkeep, you may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Wildlife Sketches",
+              "executable_text": "Mana cost: {G}\nType: Enchantment — Gallery\nWhen Wildlife Sketches enters, reveal the top five cards of your library. Put a creature card from among them into your hand and the rest on the bottom in any order.\n{1}{G}: Give this permanent the \"unlocked work named Carnation Petals\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Carnation Petals\" status, this permanent has \"You may cast creature spells as though they had flash.\".\n{3}{G}: Give this permanent the \"unlocked work named Pecking Order\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Pecking Order\" status, this permanent has \"At the beginning of your upkeep, you may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Wildlife Sketches enters, reveal the top five cards of your library. Put a creature card from among them into your hand and the rest on the bottom in any order.\n{1}{G}: Carnation Petals\nYou may cast creature spells as though they had flash.\n{3}{G}: Pecking Order\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Wildlife Sketches enters, reveal the top five cards of your library. Put a creature card from among them into your hand and the rest on the bottom in any order.\n{1}{G}: Carnation Petals\nYou may cast creature spells as though they had flash.\n{3}{G}: Pecking Order\nAt the beginning of your upkeep, you may sacrifice a creature. If you do, search your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put it onto the battlefield, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Xie'e Amphitheatre_NJB",
+          "name": "Xie'e Amphitheatre",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Xie'e Amphitheatre",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Xie'e Amphitheatre enters, search your library for a card and exile it face down, then shuffle. You may cast that card on any turn you sacrificed a permanent.\n{B}: Intro: Together\nAt the beginning of your upkeep, you lose 1 life and create a 0/1 black Cultist creature token with “{1}{B}{B}, Sacrifice three Cultists: Create a 5/5 black Demon creature token.”\n{2}{B}: Finale: Alone\nWhenever a Demon you control enters, each opponent loses life equal to its power and you gain that much life."
+            }
+          ],
+          "id": "Xie'e Amphitheatre_NJB",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its ability.)*\nWhen Xie'e Amphitheatre enters, search your library for a card and exile it face down, then shuffle. You may cast that card on any turn you sacrificed a permanent.\n{B}: Intro: Together\nAt the beginning of your upkeep, you lose 1 life and create a 0/1 black Cultist creature token with “{1}{B}{B}, Sacrifice three Cultists: Create a 5/5 black Demon creature token.”\n{2}{B}: Finale: Alone\nWhenever a Demon you control enters, each opponent loses life equal to its power and you gain that much life.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Enchantment — Gallery\nWhen Xie'e Amphitheatre enters, search your library for a card and exile it face down, then shuffle. You may cast that card on any turn you sacrificed a permanent.\n{B}: Give this permanent the \"unlocked work named Intro: Together\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Intro: Together\" status, this permanent has \"At the beginning of your upkeep, you lose 1 life and create a 0/1 black Cultist creature token with '{1}{B}{B}, Sacrifice three Cultists: Create a 5/5 black Demon creature token.'\".\n{2}{B}: Give this permanent the \"unlocked work named Finale: Alone\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Finale: Alone\" status, this permanent has \"Whenever a Demon you control enters, each opponent loses life equal to its power and you gain that much life.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Xie'e Amphitheatre",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Enchantment — Gallery\nWhen Xie'e Amphitheatre enters, search your library for a card and exile it face down, then shuffle. You may cast that card on any turn you sacrificed a permanent.\n{B}: Give this permanent the \"unlocked work named Intro: Together\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Intro: Together\" status, this permanent has \"At the beginning of your upkeep, you lose 1 life and create a 0/1 black Cultist creature token with '{1}{B}{B}, Sacrifice three Cultists: Create a 5/5 black Demon creature token.'\".\n{2}{B}: Give this permanent the \"unlocked work named Finale: Alone\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Finale: Alone\" status, this permanent has \"Whenever a Demon you control enters, each opponent loses life equal to its power and you gain that much life.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "cultist",
+                  "plural": "cultists",
+                  "family": "Creature"
+                },
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Xie'e Amphitheatre enters, search your library for a card and exile it face down, then shuffle. You may cast that card on any turn you sacrificed a permanent.\n{B}: Intro: Together\nAt the beginning of your upkeep, you lose 1 life and create a 0/1 black Cultist creature token with “{1}{B}{B}, Sacrifice three Cultists: Create a 5/5 black Demon creature token.”\n{2}{B}: Finale: Alone\nWhenever a Demon you control enters, each opponent loses life equal to its power and you gain that much life."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "cultist",
+              "plural": "cultists",
+              "family": "Creature"
+            },
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Xie'e Amphitheatre enters, search your library for a card and exile it face down, then shuffle. You may cast that card on any turn you sacrificed a permanent.\n{B}: Intro: Together\nAt the beginning of your upkeep, you lose 1 life and create a 0/1 black Cultist creature token with “{1}{B}{B}, Sacrifice three Cultists: Create a 5/5 black Demon creature token.”\n{2}{B}: Finale: Alone\nWhenever a Demon you control enters, each opponent loses life equal to its power and you gain that much life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "source_card_key": "Make Art Not Friends_MSJ",
+          "name": "Make Art Not Friends",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Make Art Not Friends",
+              "original_text": "Mana cost: {1}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its abilities.)*\nWhen Make Art Not Friends enters, create a Treasure token.\n{1}{R}: Never Again\nWhenever you sacrifice an artifact, that artifact deals 1 damage to each opponent.\n{4}{R}{R}: Over It All\nAt the beginning of combat on your turn, you may have an artifact you control become a 6/6 Golem artifact creature until end of turn."
+            }
+          ],
+          "id": "Make Art Not Friends_MSJ",
+          "original_text": "Mana cost: {1}{R}\nType: Enchantment — Gallery\n*(Choose only one work as a sorcery to add its abilities.)*\nWhen Make Art Not Friends enters, create a Treasure token.\n{1}{R}: Never Again\nWhenever you sacrifice an artifact, that artifact deals 1 damage to each opponent.\n{4}{R}{R}: Over It All\nAt the beginning of combat on your turn, you may have an artifact you control become a 6/6 Golem artifact creature until end of turn.",
+          "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Gallery\nWhen Make Art Not Friends enters, create a Treasure token.\n{1}{R}: Give this permanent the \"unlocked work named Never Again\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Never Again\" status, this permanent has \"Whenever you sacrifice an artifact, that artifact deals 1 damage to each opponent.\".\n{4}{R}{R}: Give this permanent the \"unlocked work named Over It All\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Over It All\" status, this permanent has \"At the beginning of combat on your turn, you may have an artifact you control become a 6/6 Golem artifact creature until end of turn.\".",
+          "source_face": "front",
+          "executable_faces": [
+            {
+              "name": "Make Art Not Friends",
+              "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Gallery\nWhen Make Art Not Friends enters, create a Treasure token.\n{1}{R}: Give this permanent the \"unlocked work named Never Again\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Never Again\" status, this permanent has \"Whenever you sacrifice an artifact, that artifact deals 1 damage to each opponent.\".\n{4}{R}{R}: Give this permanent the \"unlocked work named Over It All\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Over It All\" status, this permanent has \"At the beginning of combat on your turn, you may have an artifact you control become a 6/6 Golem artifact creature until end of turn.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "gallery",
+                  "plural": "galleries",
+                  "family": "Enchantment"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Make Art Not Friends enters, create a Treasure token.\n{1}{R}: Never Again\nWhenever you sacrifice an artifact, that artifact deals 1 damage to each opponent.\n{4}{R}{R}: Over It All\nAt the beginning of combat on your turn, you may have an artifact you control become a 6/6 Golem artifact creature until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Make Art Not Friends enters, create a Treasure token.\n{1}{R}: Never Again\nWhenever you sacrifice an artifact, that artifact deals 1 damage to each opponent.\n{4}{R}{R}: Over It All\nAt the beginning of combat on your turn, you may have an artifact you control become a 6/6 Golem artifact creature until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    }
+  ],
+  "behavioral_controls": [
+    {
+      "name": "Work selection control",
+      "id": "gallery-work-behavior",
+      "source_card_key": "gallery-work-behavior",
+      "original_text": "Type: Enchantment — Gallery\n{0}: You gain 3 life.\n{0}: Portrait: Dawn\n{0}: Target creature gets +2/+2 until end of turn.\n{0}: Canvas, Dusk\nCreatures you control get +1/+1.",
+      "source_faces": [
+        {
+          "name": "Work selection control",
+          "original_text": "Type: Enchantment — Gallery\n{0}: You gain 3 life.\n{0}: Portrait: Dawn\n{0}: Target creature gets +2/+2 until end of turn.\n{0}: Canvas, Dusk\nCreatures you control get +1/+1."
+        }
+      ],
+      "source_shape": "normal",
+      "source_face": "front",
+      "executable_text": "Type: Enchantment — Gallery\n{0}: You gain 3 life.\n{0}: Give this permanent the \"unlocked work named Portrait: Dawn\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Portrait: Dawn\" status, this permanent has \"{0}: Target creature gets +2/+2 until end of turn.\".\n{0}: Give this permanent the \"unlocked work named Canvas, Dusk\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Canvas, Dusk\" status, this permanent has \"Creatures you control get +1/+1.\".",
+      "custom_keyword_identities": [],
+      "custom_keyword_payments": [],
+      "custom_subtypes": [
+        {
+          "singular": "gallery",
+          "plural": "galleries",
+          "family": "Enchantment"
+        }
+      ],
+      "custom_keyword_counter_definitions": [],
+      "original_display_text": "{0}: You gain 3 life.\n{0}: Portrait: Dawn\n{0}: Target creature gets +2/+2 until end of turn.\n{0}: Canvas, Dusk\nCreatures you control get +1/+1.",
+      "executable_faces": [
+        {
+          "name": "Work selection control",
+          "executable_text": "Type: Enchantment — Gallery\n{0}: You gain 3 life.\n{0}: Give this permanent the \"unlocked work named Portrait: Dawn\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Portrait: Dawn\" status, this permanent has \"{0}: Target creature gets +2/+2 until end of turn.\".\n{0}: Give this permanent the \"unlocked work named Canvas, Dusk\" status. Give this permanent the unlocked work status. Activate only if this permanent does not have the unlocked work status. Activate only as a sorcery.\nAs long as this permanent has the \"unlocked work named Canvas, Dusk\" status, this permanent has \"Creatures you control get +1/+1.\".",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "gallery",
+              "plural": "galleries",
+              "family": "Enchantment"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{0}: You gain 3 life.\n{0}: Portrait: Dawn\n{0}: Target creature gets +2/+2 until end of turn.\n{0}: Canvas, Dusk\nCreatures you control get +1/+1."
+        }
+      ],
+      "synthetic_control": true
+    }
+  ]
+}

@@ -129,6 +129,15 @@ pub(crate) fn active_conditional_attack_requirements(
             }
         }
     }
+    for (actors,members) in game.coordinated_combat_groups(){
+        if members.is_empty(){continue}
+        if !declarations.iter().any(|declaration|actors.contains(&declaration.creature)){continue}
+        let Some(source)=actors.first().copied() else{continue};
+        let Some(object)=game.object(source) else{continue};
+        let mut required=crate::target::ObjectFilter::default();
+        required.any_of=members.into_iter().map(|id|{let mut filter=crate::target::ObjectFilter::default();filter.specific=Some(id);filter}).collect();
+        active.push(ActiveConditionalAttackRequirement{source,controller:game.controller_of(object),required});
+    }
     active
 }
 

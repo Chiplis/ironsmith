@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'custom_status::literal_status_operand_tests::status_operand_uses_authored_literal_surface_not_source_alias_spelling' panicked at crates/ironsmith-compiler-grammar/src/custom_status.rs:293:9:
+assertion `left == right` failed
+  left: Some("unlocked source named canvas")
+ right: Some("unlocked work named canvas")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test custom_status::literal_status_operand_tests::status_operand_uses_authored_literal_surface_not_source_alias_spelling ... FAILED
+
+failures:
+
+failures:
+    custom_status::literal_status_operand_tests::status_operand_uses_authored_literal_surface_not_source_alias_spelling
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.02s
+

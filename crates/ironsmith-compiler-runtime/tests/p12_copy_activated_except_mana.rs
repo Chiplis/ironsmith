@@ -6,7 +6,7 @@ use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 
-const SHARKEY: &str = "Mana cost: {2}{B}{R}\nType: Legendary Creature — Half-Elf Human Rogue\nPower/Toughness: 3/4\nActivated abilities of lands your opponents control can't be activated unless they're mana abilities.\nSharkey has all activated abilities of lands your opponents control except mana abilities.\nMana of any type can be spent to activate Sharkey's abilities.";
+const SHARKEY: &str = "Mana cost: {2}{U}{B}\nType: Legendary Creature — Avatar Rogue\nPower/Toughness: 2/4\nActivated abilities of lands your opponents control can't be activated unless they're mana abilities.\nSharkey has all activated abilities of lands your opponents control except mana abilities.\nMana of any type can be spent to activate Sharkey's abilities.";
 
 fn definitions(name: &str, text: &str) -> [CardDefinition; 2] {
     let (direct, loss) = parse_loss::capture(|| compile_to_runtime_definition(name, text, false));

@@ -1,0 +1,8 @@
+{
+  "exact_two_file_replay": true,
+  "all_unique_bindings": 4612,
+  "all_current_bytes_match": true,
+  "descriptor_bytes_no_final_newline": true,
+  "schema_constant_matches": true,
+  "aggregate_trees_recomputed": true
+}

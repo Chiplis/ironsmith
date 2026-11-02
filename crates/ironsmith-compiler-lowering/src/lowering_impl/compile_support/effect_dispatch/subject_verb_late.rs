@@ -438,6 +438,17 @@ pub(super) fn compile_put_counters_action(
     };
     let (base_spec, _) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
     let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+    // Player counter placement uses the same authored PutCounters operation,
+    // but executes through the existing player-marker owner rather than the
+    // permanent-only PutCounters executor. Preserve target announcement.
+    if let ChooseSpec::Player(player) = base_spec.base()
+        && maximum_total.is_none() && target_count.is_none()
+        && !*distributed && required_recipient.is_none()
+    {
+        let effect = Effect::player_counters(*counter_type, resolved_count, player.clone());
+        let choices = if base_spec.is_target() { vec![base_spec] } else { Vec::new() };
+        return Ok((vec![effect], choices));
+    }
     let mut spec = base_spec;
     if let Some(target_count) = target_count {
         spec = with_target_count_preserving_value(spec, *target_count);
@@ -991,7 +1002,7 @@ pub(super) fn compile_subject_verb_late(
             };
 
             let mut effects = Vec::new();
-            let mut damage_source_spec = source_spec.clone();
+            let damage_source_spec = source_spec.clone();
             // `this creature` still names the resolving ability's source
             // when another object deals damage. Capture it before the
             // execution wrapper temporarily changes the damage source.
@@ -1037,7 +1048,10 @@ pub(super) fn compile_subject_verb_late(
                         .tag(source_tag.clone()),
                 );
                 ctx.last_object_tag = Some(source_tag.clone());
-                damage_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
+                // Keep the explicit target contract on the acting source.
+                // The tag remains available for its controller/owner and
+                // later references, but must not turn an illegal target into
+                // a non-target source eligible for LKI (CR 608.2b, 608.2h).
                 if source == target {
                     damage_target_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 }
@@ -1679,7 +1693,7 @@ pub(super) fn compile_subject_verb_late(
             );
             let mut effect = if spec.count().is_single()
                 && !*face_down
-                && (has_explicit_actor || *target_plural_surface)
+                && *target_plural_surface
             {
                 let mut move_effect =
                     crate::effects::MoveToZoneEffect::new(spec.clone(), Zone::Exile, true);
@@ -1697,9 +1711,11 @@ pub(super) fn compile_subject_verb_late(
                 }
                 Effect::new(move_effect)
             } else {
-                Effect::new(
-                    crate::effects::ExileEffect::with_spec(spec.clone()).with_face_down(*face_down),
-                )
+                let mut exile=crate::effects::ExileEffect::with_spec(spec.clone()).with_face_down(*face_down);
+                if has_explicit_actor {
+                    exile=exile.with_actor(resolve_non_target_player_filter(player,&current_reference_env(ctx))?);
+                }
+                Effect::new(exile)
             };
             if ctx.auto_tag_object_targets {
                 if let ChooseSpec::Tagged(tag) = spec.base()
@@ -2248,20 +2264,21 @@ pub(super) fn compile_subject_verb_late(
             ))
         }
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind {
+            player_choice,
             kinds,
             target,
             only_absent_kinds,
         }) => {
-            let (spec, choices) =
+            let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            Ok((
-                vec![Effect::new(crate::effects::PutCounterOfRandomKindEffect::new(
-                    kinds.clone(),
-                    spec,
-                    *only_absent_kinds,
-                ))],
-                choices,
-            ))
+            let mut effect = crate::effects::PutCounterOfRandomKindEffect::new(
+                kinds.clone(), spec, *only_absent_kinds).with_player_choice(*player_choice);
+            if *player_choice && !matches!(player, PlayerAst::Implicit) {
+                let actor = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
+                effect = effect.with_chooser(actor.clone_player_filter());
+                for choice in actor.into_choices() { push_choice(&mut choices, choice); }
+            }
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }) => {
             compile_return_to_hand(subject_verb, ctx)
@@ -3061,6 +3078,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
             filter,
             reduction,
+            starts_during_next_turn,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let mut player_filter = subject.into_player_filter();
@@ -3072,16 +3090,13 @@ pub(super) fn compile_subject_verb_late(
                     &last_player_filter,
                 );
             }
-            Ok((
-                vec![Effect::new(
-                    crate::effects::GrantNextSpellCostReductionEffect::new(
+            let mut modifier = crate::effects::GrantNextSpellCostReductionEffect::new(
                         player_filter,
                         resolved_filter,
                         reduction.clone(),
-                    ),
-                )],
-                Vec::new(),
-            ))
+                    );
+            modifier.starts_during_next_turn = *starts_during_next_turn;
+            Ok((vec![Effect::new(modifier)], Vec::new()))
         }
         SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
             filter,
@@ -3120,6 +3135,7 @@ pub(super) fn compile_subject_verb_late(
             Ok((vec![Effect::new(reduction_effect)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
+            repeat_for_turn,
             filter,
             ability,
             mode,
@@ -3150,7 +3166,7 @@ pub(super) fn compile_subject_verb_late(
                             player_filter.clone(),
                             resolved_filter.clone(),
                             ability,
-                        ).with_mode(*mode))
+                        ).with_mode(*mode).with_repeat_for_turn(*repeat_for_turn))
                     })
                     .collect(),
                 subject.into_choices(),

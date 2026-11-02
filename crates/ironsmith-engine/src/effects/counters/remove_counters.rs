@@ -27,6 +27,10 @@ pub use ironsmith_core::RemoveCountersEffect;
 /// );
 /// ```
 impl EffectExecutor for RemoveCountersEffect {
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        self.target.is_target().then(|| self.target.clone()).into_iter().collect()
+    }
+
     fn supports_replacement_draw_continuation(&self) -> bool {
         true
     }
@@ -1672,4 +1676,32 @@ pub(super) fn execute_selected_removal_transaction<'a>(
     game.clear_pending_decision_controllers();
     let result = crate::effects::composition::execute_transaction(game, ctx, neutral, body);
     if ctx.decision_maker.awaiting_choice() { Ok(neutral()) } else { result }
+
+}
+
+#[cfg(test)]
+mod widened_counter_recipient_tests {
+    use super::*;
+    use crate::{CounterType,PlayerId,ResolvedTarget};
+    fn setup_game()->GameState {crate::tests::test_helpers::setup_two_player_game()}
+    fn create_creature_with_counters(game:&mut GameState,name:&str,owner:PlayerId,kind:CounterType,amount:u32)->crate::ObjectId {
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),name)
+            .card_types(vec![crate::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let id=game.create_object_from_card(&card,owner,crate::Zone::Battlefield);
+        game.add_counters(id,kind,amount);id
+    }
+    #[test]
+    fn widened_scalar_counter_roles_keep_each_prepared_recipient() {
+        let mut game = setup_game(); let alice = PlayerId::from_index(0);
+        let left = create_creature_with_counters(&mut game, "Left", alice, CounterType::PlusOnePlusOne, 3);
+        let right = create_creature_with_counters(&mut game, "Right", alice, CounterType::PlusOnePlusOne, 4);
+        let spec = ChooseSpec::target_creature(); let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![ResolvedTarget::Object(left), ResolvedTarget::Object(right)]);
+        ctx.target_assignments = vec![crate::game_state::TargetAssignment {spec:spec.clone(),range:0..2}];
+        crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(RemoveCountersEffect::new(CounterType::PlusOnePlusOne, 2, spec)), &mut ctx).unwrap();
+        assert_eq!(game.counter_count(left, CounterType::PlusOnePlusOne), 1);
+        assert_eq!(game.counter_count(right, CounterType::PlusOnePlusOne), 2);
+        assert_eq!(ctx.target_assignments[0].range, 0..2);
+    }
 }

@@ -36,6 +36,8 @@ pub enum CastStage {
     ChoosingSplices,
     /// Need to choose optional costs (kicker, buyback, etc.).
     ChoosingOptionalCosts,
+    /// Additional payments choose removed text groups before target announcement.
+    ChoosingTextFragments,
     /// Need to choose X value (for spells with X in cost).
     ChoosingX,
     ChoosingCostResource,
@@ -71,6 +73,8 @@ pub enum CastStage {
     ReadyToFinalize,
     /// A public cost identity needed to announce targets or a division.
     ChoosingCostReferences,
+    /// Whole total-cost alternatives locked at CR 601.2f, before payments.
+    ChoosingTotalManaCost(Vec<crate::mana::ManaCost>),
 }
 
 impl CastStage {
@@ -82,8 +86,10 @@ impl CastStage {
             CastStage::ChoosingSplices => "choosing splices",
             CastStage::ChoosingX => "choosing X",
             CastStage::ChoosingCostReferences => "choosing cost references",
+            CastStage::ChoosingTotalManaCost(_) => "choosing total mana cost",
             CastStage::ChoosingCostResource => "choosing cost resource",
             CastStage::ChoosingOptionalCosts => "choosing optional costs",
+            CastStage::ChoosingTextFragments => "choosing optional text fragments",
             CastStage::AnnouncingCost => "announcing costs",
             CastStage::ChoosingCreatureType => "choosing creature type",
             CastStage::ChoosingTargets => "choosing targets",
@@ -162,6 +168,8 @@ pub struct PendingCast {
     pub x_value: Option<u32>,
     /// Targets that have been chosen so far.
     pub chosen_targets: Vec<Target>,
+    /// Immediate authored post-target programs completed in this transaction.
+    pub announcement_programs_completed: bool,
     /// Already-matched CR 601.2c/602.2b target triggers, withheld until this
     /// action succeeds. Native savepoints clone the entire queue and history;
     /// cancellation drops it with the pending transaction.
@@ -176,6 +184,11 @@ pub struct PendingCast {
     pub remaining_requirements: Vec<TargetRequirement>,
     /// Number of leading target requirements represented by the active prompt.
     pub active_target_requirement_count: usize,
+    pub additional_target_budgets: std::collections::HashMap<PlayerId,usize>,
+    pub active_target_chooser: Option<PlayerId>,
+    pub target_count_choice_choosers: std::collections::HashSet<PlayerId>,
+    pub announced_target_counts: std::collections::BTreeMap<usize,usize>,
+    pub pending_target_count: Option<(usize,Option<usize>,usize)>,
     /// Candidate players for an unresolved delegated target choice.
     pub pending_target_chooser_candidates: Vec<PlayerId>,
     /// The player who chooses this spell's modes when someone other than the
@@ -199,6 +212,10 @@ pub struct PendingCast {
     /// A resolving instruction's selected alternative price. The effect cast
     /// is replayed atomically if input is pending; this never grants priority.
     pub effect_alternative_cost: Option<crate::cost::TotalCost>,
+    /// Immutable authored name and complete selected price from a resolving
+    /// instruction. This is payment intent until the native cast completes;
+    /// it never borrows a later Object.cast_alternative_method value.
+    pub effect_selected_price: Option<crate::alternative_cast::AlternativeCastingMethod>,
     /// A captured keyword-cost recipe reduces its own base after X is
     /// announced, before adding mandatory/optional costs and ordinary taxes.
     pub effect_alternative_base_generic_reduction: u32,
@@ -230,6 +247,8 @@ pub struct PendingCast {
     pub(crate) cost_references: super::spell_cost_references::SpellCostReferences,
     /// Which optional costs will be paid (kicker, buyback, etc.).
     pub optional_costs_paid: OptionalCostsPaid,
+    /// Acquired receipt/program before payment side effects; survives ability loss.
+    pub(crate) optional_cost_casting_programs: Option<Vec<(crate::cost::OptionalCostRef, crate::resolution::ResolutionProgram)>>,
     /// Later optional-cost choices required by an earlier CR 601.4 mode choice.
     pub required_optional_cost_indices: Vec<usize>,
     /// Ordered trace of cost payments performed so far.
@@ -275,8 +294,14 @@ pub struct PendingCast {
     pub chosen_modes: Option<Vec<usize>>,
     /// Stable identities of cards revealed and spliced, in resolution order.
     pub spliced_cards: Vec<crate::ids::StableId>,
+    /// A frozen splice announcement waiting for source-local reveal offers.
+    pub(crate) splice_reveal: Option<super::splice_reveal::PendingSpliceReveal>,
     /// Additional costs contributed by the selected splice abilities.
     pub splice_costs: Vec<crate::cost::TotalCost>,
+    /// Concrete selected donor prices, frozen before any source movement.
+    pub(crate) splice_prices: std::collections::HashMap<ObjectId, crate::cost::TotalCost>,
+    /// Existing splice announcement subchoice: selected donors, current donor, concrete prices.
+    pub(crate) splice_price_offer: Option<(Vec<ObjectId>, ObjectId, Vec<crate::cost::TotalCost>)>,
     /// Hybrid/Phyrexian mana payment choices made during cost announcement (601.2b).
     /// Maps pip index to the chosen mana symbol for that pip.
     pub hybrid_choices: Vec<(usize, crate::mana::ManaSymbol)>,
@@ -317,12 +342,18 @@ impl PendingCast {
             stage,
             x_value,
             chosen_targets: Vec::new(),
+            announcement_programs_completed: false,
             targeting_announcement: None,
             chosen_target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             pending_target_distributions: std::collections::VecDeque::new(),
             remaining_requirements,
             active_target_requirement_count: 0,
+            additional_target_budgets: std::collections::HashMap::new(),
+            active_target_chooser: None,
+            target_count_choice_choosers: std::collections::HashSet::new(),
+            announced_target_counts: std::collections::BTreeMap::new(),
+            pending_target_count: None,
             pending_target_chooser_candidates: Vec::new(),
             mode_chooser: None,
             pending_mode_chooser_candidates: Vec::new(),
@@ -331,6 +362,7 @@ impl PendingCast {
             effect_mana_cost_reduction: None,
             effect_additional_mana_cost: None,
             effect_alternative_cost: None,
+            effect_selected_price: None,
             effect_alternative_base_generic_reduction: 0,
             effect_miracle_cast: false,
             effect_descriptive_first_draw: false,
@@ -347,6 +379,7 @@ impl PendingCast {
             effect_spell_requirement: None,
             cost_references: Default::default(),
             optional_costs_paid,
+            optional_cost_casting_programs: None,
             required_optional_cost_indices: Vec::new(),
             payment_trace: Vec::new(),
             undo_locked_by_mana: false,
@@ -367,7 +400,10 @@ impl PendingCast {
             next_sacrifice_cost_tag_index: 0,
             chosen_modes,
             spliced_cards: Vec::new(),
+            splice_reveal: None,
             splice_costs: Vec::new(),
+            splice_prices: std::collections::HashMap::new(),
+            splice_price_offer: None,
             hybrid_choices: Vec::new(),
             pending_hybrid_pips: Vec::new(),
             stack_id,
@@ -945,6 +981,8 @@ pub struct AnnouncedActivationCost {
 /// An activated ability being activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingActivation {
+    /// A resolving effect owns this announcement; completing it gives no priority.
+    pub(crate) effect_driven: bool,
     /// The actual pre-cost acquisition. Mutable source observations and chosen
     /// branch flags remain separate native inputs to notification completion.
     pub(crate) activation_declaration: crate::events::spells::ActivationDeclaration,
@@ -1108,6 +1146,7 @@ impl PendingActivation {
         );
         Self {
             activation_declaration,
+            effect_driven: false,
             announced_cost: None,
             optional_reduction_ready: false,
             optional_reduction_max: None,
@@ -1292,6 +1331,8 @@ impl NativeCastOutputReceiver {
 #[derive(Debug, Clone)]
 pub struct PriorityLoopState {
     pub(crate) cast_output_receiver: Option<NativeCastOutputReceiver>,
+    /// Same validated native packet channel, keyed to an effect-driven activation.
+    pub(crate) activation_output_receiver: Option<NativeCastOutputReceiver>,
     pub(super) tracker: PriorityTracker,
     pub(super) mandatory_loop: super::mandatory_loop::MandatoryLoopTracker,
     /// A pending spell cast waiting for target selection.
@@ -1330,6 +1371,7 @@ impl PriorityLoopState {
     pub fn new(num_players: usize) -> Self {
         Self {
             cast_output_receiver: None,
+            activation_output_receiver: None,
             tracker: PriorityTracker::new(num_players),
             mandatory_loop: super::mandatory_loop::MandatoryLoopTracker::default(),
             pending_cast: None,
@@ -1375,6 +1417,7 @@ impl PriorityLoopState {
         *game = checkpoint;
         self.irreversible_payment_mana.clear();
         self.cast_output_receiver = None;
+        self.activation_output_receiver = None;
         self.pending_cast = None;
         self.pending_activation = None;
         self.pending_method_selection = None;
@@ -1461,5 +1504,13 @@ impl PriorityLoopState {
         self.tracker.set_players_in_game(game.teams_in_game());
         self.tracker.reset();
         self.mandatory_loop.reset();
+    }
+}
+
+impl PriorityLoopState {
+    /// The ordinary player-action priority update, for atomic action owners
+    /// which have already completed their authenticated payment and program.
+    pub fn record_completed_player_action(&mut self, game: &mut GameState, actor: PlayerId) {
+        crate::turn::priority_after_player_action(game, &mut self.tracker, actor);
     }
 }

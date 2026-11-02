@@ -34,6 +34,7 @@ pub use ability_origins::{
 };
 mod layer_resolution;
 pub mod text_changes;
+pub(crate) mod optional_text_fragments;
 pub(crate) mod text_change_predicates;
 pub mod text_change_programs;
 pub(crate) mod text_change_modifications;
@@ -255,6 +256,10 @@ pub struct ContinuousEffect {
 
     /// The modification this effect makes
     pub modification: Modification,
+
+    /// Static copy programs read this donor in their current layer-1 frame.
+    /// None retains the frozen values of ordinary resolved copy effects.
+    pub live_copy_source: Option<ObjectId>,
 
     /// When this effect was created (for timestamp ordering)
     pub timestamp: u64,
@@ -584,6 +589,10 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     CopyOf {
         #[cfg_attr(feature = "serialization", serde(default))]
         retain_original_name: bool,
+        /// Copy exception retaining the recipient's card types, supertypes
+        /// and subtypes at the point this layer-1 effect applies.
+        #[cfg_attr(feature = "serialization", serde(default))]
+        retain_original_types: bool,
         target_id: ObjectId,
         /// Copiable values are determined once, when the copy effect begins.
         /// Later changes to the source do not change the copy (CR 707.2).
@@ -607,6 +616,8 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     ChangeText { from: String, to: String },
     /// Replace an object's text box and the rules-text-derived abilities that go with it.
     SetTextBox(T),
+    /// Delete selected optional source groups in layer3; this is not copiable.
+    RemoveOptionalTextFragments(u64),
     /// Set a permanent's name.
     SetName(String),
     /// A name sticker inserts words at the remembered position in layer 3.
@@ -685,6 +696,8 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     /// Copy activated abilities from objects matching a filter.
     CopyActivatedAbilities {
         filter: ObjectFilter,
+        #[cfg_attr(feature = "serialization", serde(default))]
+        excluded_ability_designations: Vec<String>,
         counter: Option<crate::object::CounterType>,
         include_mana: bool,
         only_loyalty: bool,
@@ -699,6 +712,10 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     /// Copy selected complete static-ability instances from matching objects.
     CopyStaticAbilityVariants {
         filter: ObjectFilter,
+        #[cfg_attr(feature = "serialization", serde(default))]
+        excluded_ability_designations: Vec<String>,
+        #[cfg_attr(feature = "serialization", serde(default))]
+        copy_all: bool,
         selectors: Vec<ironsmith_core::StaticAbilityVariantSelector>,
         exclude_source_id: bool,
     },
@@ -706,6 +723,8 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     /// Copy triggered abilities from objects matching a filter.
     CopyTriggeredAbilities {
         filter: ObjectFilter,
+        #[cfg_attr(feature = "serialization", serde(default))]
+        excluded_ability_designations: Vec<String>,
         exclude_source_name: bool,
         exclude_source_id: bool,
     },
@@ -799,6 +818,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
     ) -> Result<ContinuousModification<S2, A2, C2, T2, R2, H2>, Error> {
         Ok(match self {
             Self::CopyOf {
+retain_original_types,
                 target_id,
                 copiable_values,
                 preserve_source_abilities,
@@ -807,6 +827,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 name_override_surface,
                 add_supertypes,
             } => ContinuousModification::CopyOf {
+retain_original_types,
                 target_id,
                 copiable_values: Box::new(copy(*copiable_values)?),
                 preserve_source_abilities,
@@ -823,6 +844,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
             Self::ChangeText { from, to } => ContinuousModification::ChangeText { from, to },
             Self::RewriteText(change) => ContinuousModification::RewriteText(change),
             Self::SetTextBox(value) => ContinuousModification::SetTextBox(text(value)?),
+            Self::RemoveOptionalTextFragments(mask) => ContinuousModification::RemoveOptionalTextFragments(mask),
             Self::SetName(value) => ContinuousModification::SetName(value),
             Self::InsertNameWords {
                 words,
@@ -864,6 +886,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                     .collect::<Result<Vec<_>, Error>>()?,
             ),
             Self::CopyActivatedAbilities {
+                excluded_ability_designations,
                 filter,
                 counter,
                 include_mana,
@@ -873,6 +896,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 force_once_each_turn,
                 exclude_loyalty,
             } => ContinuousModification::CopyActivatedAbilities {
+                excluded_ability_designations,
                 filter,
                 counter,
                 include_mana,
@@ -883,19 +907,25 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 exclude_loyalty,
             },
             Self::CopyStaticAbilityVariants {
+                excluded_ability_designations,
+                copy_all,
                 filter,
                 selectors,
                 exclude_source_id,
             } => ContinuousModification::CopyStaticAbilityVariants {
+                excluded_ability_designations,
+                copy_all,
                 filter,
                 selectors,
                 exclude_source_id,
             },
             Self::CopyTriggeredAbilities {
+                excluded_ability_designations,
                 filter,
                 exclude_source_name,
                 exclude_source_id,
             } => ContinuousModification::CopyTriggeredAbilities {
+                excluded_ability_designations,
                 filter,
                 exclude_source_name,
                 exclude_source_id,
@@ -1068,6 +1098,7 @@ impl Modification {
             Modification::ChangeText { .. }
             | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
+            | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. } => Layer::Text,
 
@@ -2106,6 +2137,7 @@ impl ContinuousEffect {
             controller,
             applies_to,
             modification,
+            live_copy_source: None,
             timestamp: 0, // Will be set when added to manager
             group: None,
             duration: Until::Forever,
@@ -2372,6 +2404,23 @@ fn add_pt_checked(
     }
 }
 
+/// Normalize metadata without changing subtype identity or order. A shared
+/// identity learned from a newer artifact applies to every derived view.
+pub(crate) fn canonicalize_subtype_associations(subtypes:&mut SharedVec<Subtype>,game:&crate::game_state::GameState) {
+    let changed=subtypes.iter().any(|subtype|match (*subtype,game.admitted_subtype(*subtype)) {
+        (Subtype::Custom(a),Subtype::Custom(b))=>!a.families().eq(b.families()),_=>false,
+    });
+    if changed {for subtype in subtypes.iter_mut() {*subtype=game.admitted_subtype(*subtype);}}
+}
+pub(crate) fn merge_characteristic_subtype(subtypes:&mut SharedVec<Subtype>,incoming:Subtype) {
+    if let Some(index)=subtypes.iter().position(|prior|*prior==incoming) {
+        if let (Subtype::Custom(a),Subtype::Custom(b))=(subtypes[index],incoming) {
+            let merged=a.union_associations(b);
+            if !a.families().eq(merged.families()) {subtypes[index]=Subtype::Custom(merged);}
+        }
+    }else{subtypes.push(incoming);}
+}
+
 pub(crate) fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
     (subtype.is_land_subtype() && card_types.contains(&CardType::Land))
         || (subtype.is_creature_type()
@@ -2416,9 +2465,23 @@ pub(crate) fn remove_card_types_and_prune_subtypes(
     subtypes.retain(|subtype| card_types_support_subtype(card_types, *subtype));
 }
 
+pub(crate) fn replace_card_types_and_prune_subtypes_in_game(card_types:&mut SharedVec<CardType>,subtypes:&mut SharedVec<Subtype>,replacement:&[CardType],game:&crate::game_state::GameState) {
+    canonicalize_subtype_associations(subtypes,game);
+    replace_card_types_and_prune_subtypes(card_types,subtypes,replacement);
+}
+pub(crate) fn remove_card_types_and_prune_subtypes_in_game(card_types:&mut SharedVec<CardType>,subtypes:&mut SharedVec<Subtype>,removed:&[CardType],game:&crate::game_state::GameState) {
+    canonicalize_subtype_associations(subtypes,game);
+    remove_card_types_and_prune_subtypes(card_types,subtypes,removed);
+}
+pub(crate) fn replace_subtypes_for_set_in_game(subtypes:&mut SharedVec<Subtype>,replacement:&[Subtype],game:&crate::game_state::GameState) {
+    canonicalize_subtype_associations(subtypes,game);
+    let replacement:Vec<_>=replacement.iter().map(|ty|game.admitted_subtype(*ty)).collect();
+    replace_subtypes_for_set(subtypes,&replacement);
+}
+
 /// Every subtype family represented in `subtypes`.
 pub(crate) fn subtype_families_of(subtypes: &[Subtype]) -> Vec<SubtypeFamily> {
-    const FAMILIES: [SubtypeFamily; 7] = [
+    const FAMILIES: [SubtypeFamily; 8] = [
         SubtypeFamily::Land,
         SubtypeFamily::Creature,
         SubtypeFamily::Artifact,
@@ -2426,6 +2489,7 @@ pub(crate) fn subtype_families_of(subtypes: &[Subtype]) -> Vec<SubtypeFamily> {
         SubtypeFamily::Spell,
         SubtypeFamily::Planeswalker,
         SubtypeFamily::Battle,
+        SubtypeFamily::Planar,
     ];
     FAMILIES
         .into_iter()
@@ -2813,7 +2877,7 @@ fn initial_characteristics(object: &Object, current_turn: u32, game: Option<&cra
 }
 
 fn initial_text_box_characteristics(object: &Object, game: Option<&crate::game_state::GameState>) -> CalculatedCharacteristics {
-    if let Some(component) = game.and_then(|game| game.merged_permanent(object.stable_id))
+    let mut chars = if let Some(component) = game.and_then(|game| game.merged_permanent(object.stable_id))
         .and_then(|state| state.components.iter().find(|component| component.object.stable_id == object.stable_id))
     {
         let mut base = component.object.clone();
@@ -2823,10 +2887,20 @@ fn initial_text_box_characteristics(object: &Object, game: Option<&crate::game_s
         if component.face_down {
             chars.abilities.clear();
             chars.static_abilities = Vec::new().into();
+            if let Some(values)=chars.copy_values.as_mut() {
+                let values=Arc::make_mut(values);
+                values.alternative_casts.clear();
+                values.optional_costs.clear();
+            }
         }
-        return chars;
+        chars
+    } else {
+        initial_unmerged_text_box_characteristics(object, game)
+    };
+    if let Some(game)=game {
+        chars.controller=game.initial_controller_with_control_prohibitions(object.id,chars.controller);
     }
-    initial_unmerged_text_box_characteristics(object, game)
+    chars
 }
 
 fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crate::game_state::GameState>) -> CalculatedCharacteristics {
@@ -2891,6 +2965,7 @@ fn initial_unmerged_text_box_characteristics(object: &Object, game: Option<&crat
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
     };
+    if let Some(game)=game {canonicalize_subtype_associations(&mut chars.subtypes,game);}
     chars.abilities.bind_host(object.id);
     chars.record_base_pt();
     chars
@@ -3042,7 +3117,12 @@ fn copy_characteristics_from_copiable_values(
     add_supertypes: &[Supertype],
     origin: Option<AbilityEffectOrigin>,
 ) {
-    chars.copy_values = Some(Arc::new(values.clone()));
+    let retained_dependencies=preserve_source_abilities.then(||chars.copy_values.as_ref().and_then(|values|values.definition_dependencies.clone())).flatten();
+    let mut retained_values=values.clone();
+    if let Some(dependencies)=retained_dependencies {
+        if let Some(packet)=&mut retained_values.definition_dependencies{packet.include(&dependencies);}else{retained_values.definition_dependencies=Some(dependencies);}
+    }
+    chars.copy_values = Some(Arc::new(retained_values));
     chars.name = values.name.clone().into();
     chars.alternate_name = None;
     chars.mana_cost = values.mana_cost.clone();
@@ -3485,6 +3565,18 @@ fn calculate_characteristics_layer_batch_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    calculate_characteristics_layer_batch_internal(ids, objects, effects, battlefield, commanders, game, false)
+}
+
+fn calculate_characteristics_layer_batch_internal(
+    ids: &[ObjectId],
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+    copy_only: bool,
+) -> HashMap<ObjectId, CalculatedCharacteristics> {
     let _tap_reads = game.derived_tap_read_scope();
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
@@ -3519,7 +3611,11 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(object) = objects.get(&id) else {
             continue;
         };
-        let mut chars = initial_characteristics(object, game.turn.turn_number, Some(game));
+        let mut chars = if copy_only {
+            initial_copiable_layer_frame(object, game)
+        } else {
+            initial_characteristics(object, game.turn.turn_number, Some(game))
+        };
         if chars.world_supertype_since.is_some() {
             chars.world_supertype_since = game
                 .effect_store
@@ -3565,6 +3661,15 @@ fn calculate_characteristics_layer_batch_with_effects(
         Layer::Color,
         Layer::Ability,
     ] {
+        if copy_only && layer != Layer::Copy { break; }
+        if layer == Layer::Text {
+            for (idx,&id) in order.iter().enumerate() {
+                if let (Some(object),Some(chars))=(objects.get(&id),chars_by_id.get_mut(&id)) {
+                    optional_text_fragments::apply_cast_choice(chars,object);
+                    guards[idx].update(chars);
+                }
+            }
+        }
         if layer == Layer::Ability {
             for (idx, &id) in order.iter().enumerate() {
                 let (Some(object), Some(chars)) = (objects.get(&id), chars_by_id.get_mut(&id))
@@ -3587,7 +3692,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     };
                     let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, chars);
-                    apply_room_no_unlocked_door_layer(object, chars, game);
+                    if !copy_only { apply_room_no_unlocked_door_layer(object, chars, game); }
                     update_world_supertype_since(
                         chars,
                         had_world,
@@ -3779,7 +3884,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 };
                 let had_world = chars.supertypes.contains(&Supertype::World);
                 apply_face_down_layer(object, chars);
-                apply_room_no_unlocked_door_layer(object, chars, game);
+                if !copy_only { apply_room_no_unlocked_door_layer(object, chars, game); }
                 update_world_supertype_since(
                     chars,
                     had_world,
@@ -3817,6 +3922,8 @@ fn calculate_characteristics_layer_batch_with_effects(
             }
         }
     }
+
+    if copy_only { return chars_by_id; }
 
     let mut pending_level_pt: HashMap<ObjectId, (i32, i32, u64)> = HashMap::new();
     let mut counters_applied_before_switch: std::collections::HashSet<ObjectId> =
@@ -4071,6 +4178,87 @@ pub(super) fn calculate_characteristics_with_effects_simple_internal(
     ))
 }
 
+thread_local! {
+    static LIVE_COPY_FRAMES: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+}
+struct LiveCopyFrameGuard(usize);
+impl Drop for LiveCopyFrameGuard {
+    fn drop(&mut self) {
+        LIVE_COPY_FRAMES.with(|frames| {
+            let removed = frames.borrow_mut().pop();
+            debug_assert_eq!(removed, Some(self.0));
+        });
+    }
+}
+
+fn live_copy_frame_active(game: &crate::game_state::GameState) -> bool {
+    let key = std::ptr::from_ref(game) as usize;
+    LIVE_COPY_FRAMES.with(|frames| frames.borrow().contains(&key))
+}
+
+/// Copiable envelopes ignore flip status and retain both printed Room halves.
+/// Keep this initialization aligned with copiable_values_with_effects below.
+fn initial_copiable_layer_frame(object: &Object, game: &crate::game_state::GameState) -> CalculatedCharacteristics {
+    let unflipped = (game.is_flipped(object.id)
+        && object.copied_face_values.is_none()
+        && object.linked_face_layout == crate::card::LinkedFaceLayout::Flip)
+        .then(|| game.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(), object.other_face))
+        .flatten().map(|definition| {
+            let mut normal = object.clone();
+            normal.apply_flipped_face(&definition);
+            normal
+        });
+    let mut chars = initial_text_box_characteristics(unflipped.as_ref().unwrap_or(object), Some(game));
+    if game.is_room_fully_unlocked(object.id)
+        && object.split_combined.as_ref().is_some_and(|combined| combined.unfused_half.is_some())
+    {
+        let values = CopiableValues::from_object_with_linked_face(object, game);
+        copy_characteristics_from_copiable_values(&values, &mut chars, false, &None, &None, &[], None);
+    }
+    if game.is_flipped(object.id)
+        && let Some(values) = &object.copied_face_values
+    {
+        copy_characteristics_from_copiable_values(values, &mut chars, false, &None, &None, &[], None);
+    }
+    chars
+}
+
+/// Resolve ongoing donors in one global layer-1 projection. Nested reads use
+/// its current frame; they never discover statics or recursively solve donors.
+fn copy_values_in_layer_frame<'a>(
+    effect: &ContinuousEffect,
+    frozen: &'a CopiableValues,
+    effects: &[ContinuousEffect],
+    game: &crate::game_state::GameState,
+) -> Option<std::borrow::Cow<'a, CopiableValues>> {
+    let Some(source) = effect.live_copy_source else {
+        return Some(std::borrow::Cow::Borrowed(frozen));
+    };
+    let key = std::ptr::from_ref(game) as usize;
+    if LIVE_COPY_FRAMES.with(|frames| frames.borrow().contains(&key)) {
+        return in_progress_characteristics(game, source)
+            .and_then(|mut chars| {
+                // A donor's face-down overlay is already part of its copiable
+                // envelope even while the global frame is applying layer 1a.
+                let object = game.object(source)?;
+                apply_face_down_layer(object, &mut chars);
+                Some(std::borrow::Cow::Owned(CopiableValues::from_calculated(&chars)))
+            });
+    }
+    LIVE_COPY_FRAMES.with(|frames| frames.borrow_mut().push(key));
+    let _frame = LiveCopyFrameGuard(key);
+    let copy_effects = effects.iter().filter(|effect| effect.modification.layer() == Layer::Copy)
+        // CR 612.6/707.2: full-text substitution is not a copiable effect.
+        .filter(|effect| !effect.originating_static_ability.as_ref().is_some_and(|ability|
+            ability.id() == StaticAbilityId::SourceHasFullTextOfTopGraveyardCard))
+        .cloned().collect::<Vec<_>>();
+    let ids = game.object_ids_in_deterministic_order();
+    calculate_characteristics_layer_batch_internal(&ids, game.objects_map(), &copy_effects,
+        &game.battlefield, game.commander_objects(), game, true)
+        .get(&source).map(|chars| std::borrow::Cow::Owned(CopiableValues::from_calculated(chars)))
+}
+
 /// Calculate only the values established in layers 1a and 1b.
 ///
 /// Copy effects freeze this result when they begin. In particular, this keeps
@@ -4216,7 +4404,7 @@ pub(crate) fn copiable_values_with_effects(
                 continue;
             }
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, unflipped.as_ref().unwrap_or(object), false, game);
+            apply_text_box_modification_to_chars(effect, &mut chars, unflipped.as_ref().unwrap_or(object), false, effects, game);
             calc_guard.update(&chars);
         }
     }
@@ -4272,6 +4460,10 @@ pub fn text_box_characteristics_with_effects(
     let mut started_groups = HashSet::new();
 
     for layer in [Layer::Copy, Layer::Control, Layer::Text] {
+        if layer == Layer::Text {
+            optional_text_fragments::apply_cast_choice(&mut chars,object);
+            calc_guard.update(&chars);
+        }
         let Some(layer_effects) = effects_by_layer.get(&layer) else {
             if layer == Layer::Copy {
                 apply_face_down_layer(object, &mut chars);
@@ -4369,7 +4561,7 @@ pub fn text_box_characteristics_with_effects(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, object, game.is_flipped(object.id), game);
+            apply_text_box_modification_to_chars(effect, &mut chars, object, game.is_flipped(object.id), effects, game);
             calc_guard.update(&chars);
         }
 
@@ -4396,10 +4588,37 @@ fn apply_merge_component(
     let Some(component) = game.merged_permanent(object.stable_id)
         .and_then(|state| state.components.iter().find(|component| component.object.stable_id == component_id)) else { return; };
     let mut values = CopiableValues::from_object_with_linked_face(&component.object, game);
-    if component.face_down { values.abilities = Arc::new(Vec::new()); }
+    if component.face_down {
+        values.abilities = Arc::new(Vec::new());
+        // Casting and optional-cost declarations are abilities too, although
+        // stored outside AbilityKind. A face-down component contributes none.
+        values.alternative_casts.clear();
+        values.optional_costs.clear();
+        values.definition_dependencies=Some(crate::snapshot::CopyDefinitionDependencies{ability_counter_definitions:Default::default(),custom_subtypes:Vec::new()});
+    }
     if on_top {
+        let previous_casting = chars.copy_values.as_ref().map(|previous|
+            (previous.alternative_casts.clone(),previous.optional_costs.clone()));
         copy_characteristics_from_copiable_values(&values, chars, true, &None, &None, &[], Some(effect.into()));
+        if let (Some((alternative,optional)),Some(retained))=(previous_casting,chars.copy_values.as_mut()) {
+            let retained=Arc::make_mut(retained);
+            retained.alternative_casts.extend(alternative);
+            retained.optional_costs.extend(optional);
+        }
     } else {
+        // Match the acquired component ability packet: equal declarations
+        // from distinct physical components remain distinct occurrences.
+        if let Some(retained)=chars.copy_values.as_mut() {
+            let retained=Arc::make_mut(retained);
+            retained.alternative_casts.extend(values.alternative_casts.iter().cloned());
+            retained.optional_costs.extend(values.optional_costs.iter().cloned());
+        }
+        if let Some(dependencies)=&values.definition_dependencies {
+            if let Some(retained)=chars.copy_values.as_mut(){
+                let retained=Arc::make_mut(retained);
+                if let Some(packet)=&mut retained.definition_dependencies{packet.include(dependencies);}else{retained.definition_dependencies=Some(dependencies.clone());}
+            }
+        }
         replace_rules_text_abilities(chars, values.abilities.as_ref().clone(), Some(effect.into()), true);
         chars.static_abilities = extract_static_abilities(&chars.abilities).into();
     }
@@ -4410,8 +4629,10 @@ fn apply_text_box_modification_to_chars(
     chars: &mut CalculatedCharacteristics,
     object: &Object,
     flipped: bool,
+    effects: &[ContinuousEffect],
     game: &crate::game_state::GameState,
 ) {
+    canonicalize_subtype_associations(&mut chars.subtypes,game);
     chars.abilities.begin_effect(effect);
     match &effect.modification {
         Modification::MergeComponent { component, on_top } => {
@@ -4422,15 +4643,18 @@ fn apply_text_box_modification_to_chars(
             copiable_values,
             preserve_source_abilities,
             retain_original_name,
+            retain_original_types,
             name_override,
             name_override_surface,
             add_supertypes,
             ..
         } => {
+            let Some(copiable_values) = copy_values_in_layer_frame(effect, copiable_values, effects, game) else { return; };
+            let retained_types = (*retain_original_types).then(|| (chars.card_types.clone(), chars.supertypes.clone(), chars.subtypes.clone()));
             let retained_name = if *retain_original_name { Some(chars.name.to_string()) } else { name_override.clone() };
             let retained_other_name = chars.copy_values.as_ref().and_then(|values| values.other_copy_face.as_ref()).map(|face| face.name.clone()).unwrap_or_else(|| chars.name.to_string());
             copy_characteristics_from_copiable_values(
-                selected_copy_face(copiable_values, flipped),
+                selected_copy_face(copiable_values.as_ref(), flipped),
                 chars,
                 *preserve_source_abilities,
                 &retained_name,
@@ -4438,6 +4662,15 @@ fn apply_text_box_modification_to_chars(
                 add_supertypes,
                 Some(effect.into()),
             );
+            if let Some((card_types, supertypes, subtypes)) = retained_types {
+                chars.card_types = card_types; chars.supertypes = supertypes; chars.subtypes = subtypes;
+                if let Some(values) = chars.copy_values.as_mut() {
+                    let values = Arc::make_mut(values);
+                    values.card_types = chars.card_types.to_vec();
+                    values.supertypes = chars.supertypes.to_vec();
+                    values.subtypes = chars.subtypes.to_vec();
+                }
+            }
             if *retain_original_name {
                 if let Some(other) = chars.copy_values.as_mut().filter(|values| values.other_copy_face.is_some()).and_then(|values| Arc::make_mut(values).other_copy_face.as_mut()) { other.name = retained_other_name; }
             }
@@ -4450,6 +4683,7 @@ fn apply_text_box_modification_to_chars(
         }
         Modification::ChangeText { .. } => {}
         Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
+        Modification::RemoveOptionalTextFragments(mask) => optional_text_fragments::apply_removed_mask(chars,*mask,object),
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
@@ -4534,6 +4768,10 @@ fn calculate_with_layers_direct_internal(
     let mut next_ability_counter = 0;
 
     for layer in layers_1_to_6 {
+        if layer == Layer::Text {
+            optional_text_fragments::apply_cast_choice(&mut chars,object);
+            calc_guard.update(&chars);
+        }
         if layer == Layer::Ability {
             add_intrinsic_abilities(&mut chars);
             game.apply_deploy_creatures_ability_layer(object, &mut chars);
@@ -5549,7 +5787,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         // applicability cache entry across effects.
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => false,
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => false,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_source_independent(base) && player_filter_source_independent(excluded)
         }
@@ -6409,6 +6647,15 @@ pub(crate) fn bind_effect_controller_in_ability(ability: &Ability, effect_contro
     bound
 }
 
+fn push_granted_complete_ability(chars: &mut CalculatedCharacteristics, ability: Ability) {
+    let static_payload=match &ability.kind {
+        AbilityKind::Static(payload)=>Some(payload.clone()),
+        _=>None,
+    };
+    chars.abilities.push(ability);
+    if let Some(payload)=static_payload {chars.static_abilities.push(payload);}
+}
+
 fn push_granted_static_ability(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
     chars
         .abilities
@@ -6479,6 +6726,8 @@ fn copy_static_ability_variants_into(
     chars: &mut CalculatedCharacteristics,
     filter: &ObjectFilter,
     selectors: &[ironsmith_core::StaticAbilityVariantSelector],
+    copy_all: bool,
+    excluded_ability_designations: &[String],
     exclude_source_id: bool,
     object: &Object,
     objects: &ObjectMap,
@@ -6526,10 +6775,8 @@ fn copy_static_ability_variants_into(
             let AbilityKind::Static(ability) = &runtime_ability.kind else {
                 continue;
             };
-            if !selectors
-                .iter()
-                .copied()
-                .any(|selector| static_ability_matches_variant_selector(ability, selector))
+            if (!copy_all && !selectors.iter().copied().any(|selector| static_ability_matches_variant_selector(ability, selector)))
+                || excluded_ability_designations.iter().any(|name| runtime_ability.has_designation(name))
                 || !seen_variants.insert(ability.instance_id())
             {
                 continue;
@@ -6540,7 +6787,7 @@ fn copy_static_ability_variants_into(
                 .expect("copied static variant retains its paired donor origin")
                 .clone();
             chars.abilities.push_with_origin(
-                Ability::static_ability(ability.clone()),
+                runtime_ability.clone(),
                 AbilityOrigin::Borrowed {
                     effect: effect.into(),
                     source: candidate.id,
@@ -6700,15 +6947,18 @@ fn apply_modification_to_chars(
             copiable_values,
             preserve_source_abilities,
             retain_original_name,
+            retain_original_types,
             name_override,
             name_override_surface,
             add_supertypes,
             ..
         } => {
+            let Some(copiable_values) = copy_values_in_layer_frame(effect, copiable_values, effects, game) else { return; };
+            let retained_types = (*retain_original_types).then(|| (chars.card_types.clone(), chars.supertypes.clone(), chars.subtypes.clone()));
             let retained_name = if *retain_original_name { Some(chars.name.to_string()) } else { name_override.clone() };
             let retained_other_name = chars.copy_values.as_ref().and_then(|values| values.other_copy_face.as_ref()).map(|face| face.name.clone()).unwrap_or_else(|| chars.name.to_string());
             copy_characteristics_from_copiable_values(
-                selected_copy_face(copiable_values, game.is_flipped(object.id)),
+                selected_copy_face(copiable_values.as_ref(), game.is_flipped(object.id) && !live_copy_frame_active(game)),
                 chars,
                 *preserve_source_abilities,
                 &retained_name,
@@ -6716,6 +6966,15 @@ fn apply_modification_to_chars(
                 add_supertypes,
                 Some(effect.into()),
             );
+            if let Some((card_types, supertypes, subtypes)) = retained_types {
+                chars.card_types = card_types; chars.supertypes = supertypes; chars.subtypes = subtypes;
+                if let Some(values) = chars.copy_values.as_mut() {
+                    let values = Arc::make_mut(values);
+                    values.card_types = chars.card_types.to_vec();
+                    values.supertypes = chars.supertypes.to_vec();
+                    values.subtypes = chars.subtypes.to_vec();
+                }
+            }
             if *retain_original_name {
                 if let Some(other) = chars.copy_values.as_mut().filter(|values| values.other_copy_face.is_some()).and_then(|values| Arc::make_mut(values).other_copy_face.as_mut()) { other.name = retained_other_name; }
             }
@@ -6732,6 +6991,7 @@ fn apply_modification_to_chars(
             // Legacy wire vocabulary. New instructions use RewriteText.
         }
         Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
+        Modification::RemoveOptionalTextFragments(mask) => optional_text_fragments::apply_removed_mask(chars,*mask,object),
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
@@ -6773,24 +7033,17 @@ fn apply_modification_to_chars(
             );
         }
         Modification::AddSubtypes(subtypes) => {
-            // CR 205.3d: only subtypes matching a current card type are gained.
-            for st in subtypes {
-                if !chars.subtypes.contains(st)
-                    && card_types_support_subtype(&chars.card_types, *st)
-                {
-                    chars.subtypes.push(*st);
-                }
+            for subtype in subtypes {
+                let subtype=game.admitted_subtype(*subtype);
+                if card_types_support_subtype(&chars.card_types,subtype) {merge_characteristic_subtype(&mut chars.subtypes,subtype);}
             }
         }
-        Modification::RemoveSubtypes(subtypes) => {
-            chars.subtypes.retain(|st| !subtypes.contains(st));
-        }
+        Modification::RemoveSubtypes(subtypes) => {chars.subtypes.retain(|st|!subtypes.contains(st));}
         Modification::SetSubtypes(subtypes) => {
-            replace_subtypes_for_set(&mut chars.subtypes, subtypes);
-            let card_types = chars.card_types.clone();
-            chars.subtypes.retain(|st| {
-                !subtypes.contains(st) || card_types_support_subtype(&card_types, *st)
-            });
+            let subtypes:Vec<_>=subtypes.iter().map(|ty|game.admitted_subtype(*ty)).collect();
+            replace_subtypes_for_set(&mut chars.subtypes,&subtypes);
+            let card_types=chars.card_types.clone();
+            chars.subtypes.retain(|st|!subtypes.contains(st)||card_types_support_subtype(&card_types,*st));
         }
         Modification::SetAuraAttachmentFilter(filter) => {
             replace_enchant_metadata(chars, filter);
@@ -6827,11 +7080,7 @@ fn apply_modification_to_chars(
         }
         Modification::AddAbilityGeneric(ability) => {
             let bound_ability = bind_effect_controller_in_ability(ability, effect_controller);
-            if let AbilityKind::Static(ref sa) = bound_ability.kind {
-                push_granted_static_ability(chars, sa.clone());
-            } else {
-                chars.abilities.push(bound_ability);
-            }
+            push_granted_complete_ability(chars, bound_ability);
         }
         Modification::SetAbilities(abilities) => {
             chars.abilities.replace_with_origin(abilities.clone(), Some(effect.into()));
@@ -6843,6 +7092,7 @@ fn apply_modification_to_chars(
             }
         }
         Modification::CopyActivatedAbilities {
+            excluded_ability_designations,
             filter,
             counter,
             include_mana,
@@ -6909,6 +7159,7 @@ fn apply_modification_to_chars(
                 }
 
                 for (ability_index, ability) in candidate_chars.abilities.iter().enumerate() {
+                    if excluded_ability_designations.iter().any(|name| ability.has_designation(name)) { continue; }
                     let AbilityKind::Activated(activated) = &ability.kind else {
                         continue;
                     };
@@ -6947,6 +7198,8 @@ fn apply_modification_to_chars(
             }
         }
         Modification::CopyStaticAbilityVariants {
+            excluded_ability_designations,
+            copy_all,
             filter,
             selectors,
             exclude_source_id,
@@ -6955,6 +7208,8 @@ fn apply_modification_to_chars(
                 chars,
                 filter,
                 selectors,
+                *copy_all,
+                excluded_ability_designations,
                 *exclude_source_id,
                 object,
                 objects,
@@ -6966,6 +7221,7 @@ fn apply_modification_to_chars(
             );
         }
         Modification::CopyTriggeredAbilities {
+            excluded_ability_designations,
             filter,
             exclude_source_name,
             exclude_source_id,
@@ -7022,6 +7278,7 @@ fn apply_modification_to_chars(
                 }
 
                 for (slot, ability) in candidate_chars.abilities.iter().enumerate() {
+                    if excluded_ability_designations.iter().any(|name| ability.has_designation(name)) { continue; }
                     if matches!(ability.kind, AbilityKind::Triggered(_)) {
                         chars.abilities.push_with_origin(ability.clone(), AbilityOrigin::Borrowed {
                             effect: effect.into(),
@@ -7345,11 +7602,7 @@ fn apply_modification_to_chars(
             chars.supertypes.retain(|st| !supertypes.contains(st));
         }
         Modification::AddAllSubtypesOfFamily(family) => {
-            for subtype in &game.subtypes_in_family(*family) {
-                if !chars.subtypes.contains(subtype) {
-                    chars.subtypes.push(*subtype);
-                }
-            }
+            for subtype in game.subtypes_in_family(*family) {merge_characteristic_subtype(&mut chars.subtypes,subtype);}
         }
         Modification::RemoveAllSubtypesOfFamily(family) => {
             chars.subtypes.retain(|st| !st.belongs_to_family(*family));
@@ -7361,6 +7614,7 @@ fn apply_modification_to_chars(
             chars.colors = ColorSet::new();
         }
     }
+    canonicalize_subtype_associations(&mut chars.subtypes,game);
     enforce_ability_gain_prohibitions(chars, &effect.modification);
     if effect
         .modification
@@ -7512,3 +7766,7 @@ pub(crate) fn creature_spells_cast_this_game(game: &crate::game_state::GameState
         .map(|player| player.creature_spells_cast_this_game)
         .fold(0u32, u32::saturating_add)
 }
+
+#[cfg(test)]
+#[path="continuous/merged_casting_ability_tests.rs"]
+mod merged_casting_ability_tests;

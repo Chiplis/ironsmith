@@ -126,7 +126,7 @@ pub use collect_mana_payments::CollectManaPaymentsEffect;
 pub use bind_x_value::BindXValueEffect;
 pub(crate) use compound::{
     execute_checkpoint_transaction, execute_compound, execute_decision_transaction,
-    execute_error_transaction_if, execute_optional_world_transaction,
+    execute_error_transaction_if, execute_optional_transaction, execute_optional_world_transaction,
     execute_original_view_transaction, execute_result_checkpoint_transaction,
     execute_result_decision_checkpoint_transaction, execute_result_decision_transaction,
     execute_result_transaction, execute_transaction, execute_transaction_from_body,
@@ -136,7 +136,7 @@ pub(crate) use compound::{
 pub use conditional::ConditionalEffect;
 pub use cumulative_upkeep::CumulativeUpkeepEffect;
 pub use emit_gift_given::EmitGiftGivenEffect;
-pub use emit_keyword_action::EmitKeywordActionEffect;
+pub use emit_keyword_action::{EmitKeywordActionEffect, PerformNamedActionEffect};
 pub(crate) use emit_keyword_action::{
     complete_keyword_action, complete_keyword_action_with_outputs,
     complete_keyword_action_with_result, observe_keyword_action_completion,
@@ -222,6 +222,8 @@ pub(crate) use if_effect::{
 
 
 mod keyword_action;
+mod keyword_recipient_batch;
+pub(crate) use keyword_recipient_batch::execute_keyword_recipient_batch;
 pub(crate) use keyword_action::{
     KeywordActionAmount, KeywordActionOutput, execute_keyword_action,
     execute_keyword_action_with_outputs,
@@ -273,3 +275,12 @@ pub(crate) mod payable_choice;
 
 #[cfg(test)]
 mod remaining_contract_tests;
+
+mod first_resolution;
+pub use first_resolution::FirstResolutionEachTurnEffect;
+mod named_action_program;
+pub(crate) mod named_action_mode_plan;
+pub use named_action_program::NamedActionProgramEffect;
+
+mod prepared_target_assignments;
+pub(crate) use prepared_target_assignments::scope_prepared_target_assignments;

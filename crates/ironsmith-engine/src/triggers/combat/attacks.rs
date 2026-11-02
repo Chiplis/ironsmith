@@ -774,6 +774,7 @@ impl TriggerMatcher for AttacksTrigger {
                 ChoiceAggregateMetric::Toughness => "toughness",
                 ChoiceAggregateMetric::ManaValue => "mana value",
                 ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+                ChoiceAggregateMetric::DistinctColorRepresentatives => "distinct represented colors",
                 ChoiceAggregateMetric::ManaSymbolsOfColor(color) => match color {
                     crate::color::Color::White => "white mana symbols",
                     crate::color::Color::Blue => "blue mana symbols",

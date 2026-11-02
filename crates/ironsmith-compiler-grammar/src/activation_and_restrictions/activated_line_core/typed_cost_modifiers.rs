@@ -107,7 +107,7 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
         !this_ability && !subject_words.starts_with(&["activated", "abilities", "of"]);
     let extended_tail = tail
         .first()
-        .is_some_and(|token| token.is_any_word(&["if", "where", "during"]));
+        .is_some_and(|token| token.is_any_word(&["if", "where", "during", "as"]));
     if direction == "less" && !extended_subject && !extended_tail {
         return Ok(None);
     }
@@ -182,6 +182,9 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
         } else {
             predicate = Some(parse_static_condition_clause(condition)?);
         }
+    } else if tail.len() > 3 && words_are(&tail[..3], &["as", "long", "as"]) {
+        crate::word_claims::claim_tokens(&tail[..3]);
+        predicate = Some(parse_static_condition_clause(&tail[3..])?);
     } else if words_are(tail, &["during", "your", "turn"]) {
         // The whole condition tail is the your-turn predicate.
         crate::word_claims::claim_tokens(tail);
@@ -191,11 +194,17 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
         if multiplier.is_none() {
             return Err(unsupported(tokens, "for-each value"));
         }
+        // This connector belongs to the validated multiplier clause; its
+        // quantity and object filter retain their independent value readers.
+        crate::word_claims::claim_tokens(&tail[..2]);
     } else if !tail.is_empty() {
         return Err(unsupported(tokens, "tail"));
     }
 
     if direction == "more" {
+        // Surcharges use the same independently matched subject/cost frame as
+        // reductions, even though their constructor returns before that path.
+        claim_price_frame(subject, &subject_words, &first[cost_index..=cost_index], &sentences);
         // The increase representation and scope binding are handled by the
         // same engine total-cost pipeline as fixed activation surcharges.
         return build_increase(
@@ -378,5 +387,22 @@ mod tests {
                 "{text}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod intrinsic_surcharge_claim_tests {
+    use super::*;
+    #[test]
+    fn own_surcharge_claims_only_its_complete_typed_frame_and_value() {
+        let text="This ability costs {1} more to activate for each +1/+1 counter on this permanent.";
+        let tokens=crate::lexer::lex_line(text,0).unwrap();
+        let (result,claims)=crate::word_claims::scoped(||parse(&tokens));
+        assert!(matches!(result,Ok(Some(_))),"{result:?}");
+        assert!(crate::word_claims::unclaimed_words(&tokens,&claims).is_empty(),"unread={:?}",crate::word_claims::unclaimed_words(&tokens,&claims));
+        let tokens=crate::lexer::lex_line("This ability costs {1} more to activate nonsense.",0).unwrap();
+        let (result,claims)=crate::word_claims::scoped(||parse(&tokens));
+        assert!(!matches!(result,Ok(Some(_))));
+        assert!(!crate::word_claims::unclaimed_words(&tokens,&claims).is_empty(),"unrecognized tail cannot be claimed by the frame");
     }
 }

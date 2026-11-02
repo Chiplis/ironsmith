@@ -17,6 +17,12 @@ mod r#controller_life_doubling;
 #[path = "../cumulative_action_costs.rs"]
 mod r#cumulative_action_costs;
 
+#[path = "../custom_collection_color_protection.rs"]
+mod r#custom_collection_color_protection;
+
+#[path = "../custom_selected_cast_characteristics.rs"]
+mod r#custom_selected_cast_characteristics;
+
 #[path = "../damage_history_filter_bodies.rs"]
 mod r#damage_history_filter_bodies;
 
@@ -79,6 +85,9 @@ mod r#triggered_object_predicates;
 
 #[path = "../twice_that_much_damage.rs"]
 mod r#twice_that_much_damage;
+
+#[path = "../unfunded_activation_support.rs"]
+mod r#unfunded_activation_support;
 
 #[path = "../value_driven_payments.rs"]
 mod r#value_driven_payments;

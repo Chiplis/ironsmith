@@ -65,6 +65,10 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
             **player = rewrite_player_filter_words(player, change)?;
             **filter = rewrite_filter_words(filter, change)?;
         }
+        PlayerFilter::WithMatchingAttachments { base, filter } => {
+            **base = rewrite_player_filter_words(base, change)?;
+            **filter = rewrite_filter_words(filter, change)?;
+        }
         PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } | PlayerFilter::ControlsMatchingObject { filter } => {
             **filter = rewrite_filter_words(filter, change)?;
         }
@@ -116,7 +120,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         subtypes, all_subtypes, type_or_subtype_union, union_surface, excluded_subtypes,
         supertypes, excluded_supertypes, colors, required_colors, chosen_color,
         colors_chosen_while_drafting_named, name_noted_while_drafting_named,
-        creature_types_noted_while_drafting_named, exiled_with_cards_named,
+        creature_types_noted_while_drafting_named, exiled_with_cards_named, related_exile_anchor, related_exile_members, library_boundary,
         chosen_land_type, has_basic_land_type, has_nonbasic_land_type,
         chosen_creature_type, chosen_card_type, excluded_chosen_creature_type,
         excluded_any_chosen_creature_type, excluded_colors, colorless, multicolored,
@@ -128,7 +132,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         blocked_this_turn, was_blocked_this_turn, didnt_attack_this_turn,
         attacked_during_controllers_last_turn,
         could_have_attacked_this_turn, attacking_player_or_planeswalker_controlled_by,
-        attacking_player_only, protected_by, attached_to_object, attached_to_player,
+        attacking_player_only, protected_by, attached_to_object, attached_to_player, group_member_of, same_group_as,
         with_attached_object, without_attached_object, could_enchant_object,
         controller_controls, nonattacking, enlist_eligible, blocking, nonblocking,
         blocked, blocked_by, blocked_by_source, blocked_source_this_turn,
@@ -162,11 +166,23 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         no_shared_creature_types_with, characteristic_relations,
         shares_creature_type_with_source, is_commander, noncommander,
         tagged_constraints, specific, any_of, source, source_surface, shares_name,
+        shares_name_with_named_action_objects, name_noted_for, noted_name_pair,
         shares_color, last_drawn_this_turn, mana_symbol_count, colored_mana_symbol_count, physical_card, not_cast,
         match_captured_public_destination, castable_face_match,
     );
     if residual != empty { return Err(TextChangeDomainError::ObjectFilter); }
     let mut rewritten = filter.clone();
+    if let Some(history)=&mut rewritten.shares_name_with_named_action_objects {
+        history.player=rewrite_player_filter_words(&history.player,change)?;
+    }
+    if let Some(boundary)=&mut rewritten.library_boundary {boundary.count=Box::new(rewrite_value_words(boundary.count.as_ref(),change)?);}
+    if let Some(relation)=&mut rewritten.related_exile_anchor {
+        *relation.host=rewrite_choose_spec_words(&relation.host,change)?;
+    }
+    if let Some(relation)=&mut rewritten.related_exile_members {
+        *relation.filter=rewrite_filter_words(&relation.filter,change)?;
+        relation.count=rewrite_filter_comparison_words(&relation.count,change)?;
+    }
     for words in [&mut rewritten.colors, &mut rewritten.required_colors].into_iter().flatten() {
         change.replace_color_words(words);
     }
@@ -189,6 +205,9 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         &mut rewritten.dealt_damage_to_player_this_turn, &mut rewritten.last_drawn_this_turn,
     ].into_iter().flatten() {
         *player = rewrite_player_filter_words(player, change)?;
+    }
+    for group in [&mut rewritten.group_member_of, &mut rewritten.same_group_as].into_iter().flatten() {
+        **group = rewrite_choose_spec_words(group, change)?;
     }
     for nested in [
         &mut rewritten.mana_from_source_spent_to_cast, &mut rewritten.targets_object,
@@ -329,8 +348,10 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::TypeCountOf(spec)
         | Value::GenericManaInManaCostOf(spec)
         | Value::TotalToxicValueOf(spec)
+        | Value::NamedActionCount {object:spec,..}
         | Value::CountersOn(spec, _)
-        | Value::ObjectVoteCount(spec) | Value::KicksPaidOf(spec) | Value::ModeSelectionsOf(spec) | Value::BasePowerOf(spec)
+        | Value::ObjectVoteCount(spec) | Value::KicksPaidOf(spec)
+        | Value::TimesPaidLabelOf { object: spec, .. } | Value::ModeSelectionsOf(spec) | Value::BasePowerOf(spec)
         | Value::StationContributionOf(spec) => {
             **spec = rewrite_choose_spec_words(spec, change)?;
         }
@@ -454,7 +475,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
     match &mut rewritten {
         TurnHistoryCount::Died { filter, .. } | TurnHistoryCount::EnteredBattlefield(filter)
         | TurnHistoryCount::DealtExcessDamage(filter) | TurnHistoryCount::DiedTotalPower(filter)
-        | TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
+        | TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::MovedZonesEver { filter, .. } | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
         TurnHistoryCount::TokensCreated(player) | TurnHistoryCount::TurnedFaceUp(player)
@@ -590,7 +611,8 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } | Condition::PlayerIsMonarch { player }
         | Condition::PlayerHasMoreLifeThanAnotherOpponent { player }
         | Condition::PlayerHasInitiative { player } | Condition::PlayerHasCitysBlessing { player }
-        | Condition::PlayerHasEnduringStory { player } | Condition::SourceIsRingBearer { player }
+        | Condition::PlayerNamedActionHistory { player, .. } | Condition::PlayerHasDesignation { player, .. } | Condition::PlayerHasEnduringStory { player } | Condition::SourceIsRingBearer { player }
+        | Condition::PlayerSpentManaToCastSpellsThisTurnAtLeast { player, .. }
         | Condition::PlayerRingTemptedThisGameOrMore { player, .. } | Condition::PlayerCommittedCrimeThisTurn { player }
         | Condition::PlayerRolledResultThisTurn { player, .. } | Condition::PlayerCompletedDungeon { player, .. }
         | Condition::PlayerCardsInHandOrMore { player, .. } | Condition::PlayerCardsInHandOrFewer { player, .. }
@@ -609,6 +631,11 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         Condition::ValueComparison { left, right, .. } => {
             *left = rewrite_value_words(left, change)?;
             *right = rewrite_value_words(right, change)?;
+        }
+        Condition::NamedPaymentOutcome { payer, .. } => {
+            if let Some(player) = payer {
+                *player = rewrite_player_filter_words(player, change)?;
+            }
         }
         Condition::ValueIsPrime(value) => *value = rewrite_value_words(value, change)?,
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
@@ -654,7 +681,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::ColoredManaSpentToCastThisSpellAtLeast(_) | Condition::TriggeringSpellColoredManaSpentToCastAtLeast(_)
         | Condition::TriggeringSpellWasKicked | Condition::YouControlMoreCreaturesThanTargetSpellController
         | Condition::TargetHasGreatestPowerAmongCreatures | Condition::TargetManaValueLteColorsSpentToCastThisSpell
-        | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::FirstEndStepOfTurn | Condition::FirstUpkeepStepOfTurn | Condition::SecondMainPhaseOfTurn | Condition::SourceControllersMainPhase
+        | Condition::InEndingPhase | Condition::ItIsNight | Condition::FirstCombatPhaseOfTurn | Condition::FirstEndStepOfTurn | Condition::FirstUpkeepStepOfTurn | Condition::SecondMainPhaseOfTurn | Condition::FirstMainPhaseOfTurn | Condition::SourceControllersMainPhase
         | Condition::SourceControllersCombatPhase | Condition::SourceControllersEndStep | Condition::SourceControllersUntapStep | Condition::SourceStartedTurnUntapped | Condition::OpponentsEndStep | Condition::SourceIsTapped
         | Condition::SourceIsSaddled | Condition::SourceDevouredCreaturesOrMore(_) | Condition::SourceIsMonstrous
         | Condition::SourceHasDealtDamageSinceEntered
@@ -676,6 +703,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::DoThisMaxTimesEachTurn(_) | Condition::TriggeringObjectWasEnchanted
         | Condition::TriggeringObjectBecameTappedFirstTimeThisTurn | Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | Condition::TriggeringObjectTappedForAttack | Condition::TriggeringObjectWasSacrificed
+        | Condition::TriggeringNamedActionPaidMana {..}
         | Condition::TriggeringKeywordActionIs(_)
         | Condition::YouCycledCardNamedThisGameAtLeast { .. }
         | Condition::YouCastSpellNamedThisGameAtLeast { .. }
@@ -684,6 +712,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::EvolveEnteringCreatureIsLarger | Condition::SoulbondPairingPossible
         | Condition::SourceClassLevelAtLeast(_) | Condition::TriggeringObjectHadCounters { .. }
         | Condition::ControlCreaturesTotalPowerAtLeast(_) | Condition::SourceIsInZone(_)
+        | Condition::EachCurrentDesignatedAbilityActivatedByYou { .. }
         | Condition::ActivationTiming(_) | Condition::MaxActivationsPerTurn(_) | Condition::MaxActivationsPerObject(_)
         | Condition::SourceIsEquipped | Condition::SourceIsEnchanted | Condition::EnchantedPermanentIsCreature
         | Condition::EnchantedPermanentIsLand | Condition::EnchantedPermanentIsEquipment | Condition::EnchantedPermanentIsVehicle

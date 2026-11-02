@@ -8,6 +8,7 @@
 //! - `Cost` (in the `costs` module): Individual cost components (trait objects)
 
 pub(crate) mod prospective_references;
+pub(crate) mod announced_mana_price;
 
 pub(crate) mod counter_declaration;
 pub use counter_declaration::CounterRemovalDeclaration;
@@ -289,6 +290,18 @@ pub(crate) fn cost_consumed_choice_tag(cost: &Cost) -> Option<crate::tag::TagKey
     cost.effect_ref().and_then(effect_consumed_choice_tag)
 }
 
+/// Selection decorators retain identity and receipt ownership while exposing
+/// their underlying choice. Opaque scopes must supply their own cost query.
+pub(crate) fn cost_object_choice(cost: &Cost) -> Option<&crate::effects::ChooseObjectsEffect> {
+    let mut effect = cost.effect_ref()?;
+    loop {
+        if let Some(choice) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            return Some(choice);
+        }
+        effect = effect.0.transparent_child_effect()?;
+    }
+}
+
 /// Whether `components[idx]` is a `ChooseObjectsEffect` cost immediately
 /// followed by a component that pays with the objects it chooses. Such a
 /// pair must be checked (and paid) together: checking the consumer on its own
@@ -297,10 +310,7 @@ pub(crate) fn tagged_choice_pair_at(
     components: &[Cost],
     idx: usize,
 ) -> Option<&crate::effects::ChooseObjectsEffect> {
-    let choose = components
-        .get(idx)?
-        .effect_ref()?
-        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let choose = cost_object_choice(components.get(idx)?)?;
     let consumer = components.get(idx + 1)?;
     (cost_consumed_choice_tag(consumer).as_ref() == Some(&choose.tag)).then_some(choose)
 }
@@ -398,6 +408,8 @@ mod tests {
             costs: vec![("Gift a tapped Fish".into(), 1)],
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+        text_fragment_choices: Vec::new(),
+            payment_branch_choices: Vec::new(),
             cast_was_foretold: None,
             cast_payment_turn: None,
             main_phase_caster: None,

@@ -277,3 +277,39 @@ test('activated inspector preferences apply to stack copies and optional resolut
  } });
  assert.deepEqual(policy.evaluate(resolving), { type: 'select_options', option_indices: [1] });
 });
+
+test('remembered coin calls persist by seat, follow face rather than index, and repeat across flips', () => {
+ const values = new Map();
+ const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+ const policy = createPriorityPolicy({ storage });
+ const coin = base({ decision: { kind: 'select_options', player: 0, min: 1, max: 1,
+   options: [{ index: 7, description: 'Tails' }, { index: 9, description: 'Heads' }] } });
+ assert.equal(policy.evaluate(coin), null);
+ policy.setCoinChoice('Heads', coin);
+ for (const snapshot_id of [1, 2, 3]) {
+   assert.deepEqual(policy.evaluate({ ...coin, snapshot_id }), { type: 'select_options', option_indices: [9] });
+ }
+ const restored = createPriorityPolicy({ storage });
+ assert.deepEqual(restored.evaluate(coin), { type: 'select_options', option_indices: [9] });
+ assert.equal(restored.evaluate({ ...coin, perspective: 1 }), null);
+ assert.equal(restored.evaluate({ ...coin, perspective: 1, decision: { ...coin.decision, player: 1 } }), null);
+ restored.setFullControl(true, coin);
+ assert.equal(restored.evaluate(coin), null);
+ restored.setFullControl(false, coin);
+ restored.clear(coin);
+ assert.equal(restored.evaluate(coin), null);
+ assert.equal(createPriorityPolicy({ storage }).evaluate(coin), null);
+});
+
+test('remembered coin calls do not answer unrelated, optional, repeatable, or illegal choices', () => {
+ const policy = createPriorityPolicy({ storage: null });
+ policy.setCoinChoice('Tails', base());
+ const decision = { kind: 'select_options', player: 0, min: 1, max: 1,
+   options: [{ index: 0, description: 'Heads' }, { index: 1, description: 'Tails' }] };
+ for (const change of [
+   { min: 0 }, { max: 2 }, { repeatable: true },
+   { options: [{ index: 0, description: 'Yes' }, { index: 1, description: 'No' }] },
+   { options: [decision.options[0], { ...decision.options[1], legal: false }] },
+ ]) assert.equal(policy.evaluate(base({ decision: { ...decision, ...change } })), null);
+ assert.equal(policy.evaluate(base({ decision, game_over: {} })), null);
+});

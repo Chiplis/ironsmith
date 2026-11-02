@@ -96,4 +96,18 @@ mod tests {
         assert_eq!(label[parsed.delimiter_token].kind, TokenKind::EmDash);
         assert_eq!(label[parsed.body_first].parser_text(), "return");
     }
+
+    #[test]
+    fn modal_point_symbols_preserve_star_budgets_and_weights() {
+        let header = lex_line("Choose up to X ⭐ worth of modes", 0).unwrap();
+        assert_eq!(parse_modal_point_header_tokens(&header), Some(ModalPointHeaderShape));
+        for (text, expected) in [("• ★ — Draw a card", 1), ("• ★★ — You gain 2 life", 2), ("• ★★★★★ — Draw five cards", 5)] {
+            let tokens = lex_line(text, 0).unwrap();
+            let parsed = parse_modal_point_label_tokens(&tokens).unwrap();
+            assert_eq!(parsed.count, expected);
+            assert_eq!(tokens[parsed.delimiter_token].kind, TokenKind::EmDash);
+        }
+        assert!(parse_modal_point_header_tokens(&lex_line("Choose up to X modes", 0).unwrap()).is_none());
+        assert!(parse_modal_point_label_tokens(&lex_line("★★ Draw two cards", 0).unwrap()).is_none());
+    }
 }

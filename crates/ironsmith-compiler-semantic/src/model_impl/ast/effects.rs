@@ -32,7 +32,17 @@ pub struct ChooseOneModeAst {
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum CardCreationSelectionAst {
+    ChosenName,
+    Named(String),
+    AllNamed(Vec<String>),
+    RandomMatching { filter:ObjectFilter, independent:bool },
+    Duplicate(TargetAst),
+}
+
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum EffectAst {
+    CreateLinkedFaceToken { required_subtype: Subtype, attached_to: TargetAst },
     /// Permissions: see [`PermissionEffectAst`].
     Permissions(PermissionEffectAst),
     /// Conditionals: see [`ConditionalEffectAst`].
@@ -110,6 +120,8 @@ pub enum EffectAst {
     /// "Creatures it was blocking that had become blocked by only this
     /// creature this combat become unblocked." (Ydwen Efreet)
     UnblockSoleBlockedAttackers(ironsmith_core::UnblockSoleBlockedAttackersEffect),
+    /// One reusable physical battlefield-component merge operation.
+    MergePermanents(ironsmith_core::MergePermanentsEffect),
     /// "Until end of turn, any time you could activate a mana ability, you may
     /// pay 1 life. If you do, add {C}." (Channel): a player-owned mana ability
     /// for the rest of the turn (CR 605.1a).
@@ -144,6 +156,7 @@ pub enum EffectAst {
     /// "the last red instant or sorcery spell that dealt damage to you this
     /// turn": tags that damage source's event-time snapshot.
     TagLastDamageSource(ironsmith_core::TagLastDamageSourceEffect),
+    LinkObjectsToGroup(ironsmith_core::LinkObjectsToGroupEffect),
     /// "You choose how each player votes this turn." (Illusion of Choice).
     ControlVotesThisTurn,
     /// "This ability still resolves if its target becomes illegal."
@@ -205,6 +218,7 @@ pub enum EffectAst {
     },
     /// Relax the loyalty-ability activation rule this turn (CR 606.3).
     GrantLoyaltyActivationAllowance {
+        target: Option<TargetAst>,
         scope: ironsmith_core::LoyaltyActivationScope,
         allowance: ironsmith_core::LoyaltyActivationAllowance,
     },
@@ -345,6 +359,17 @@ pub enum EffectAst {
         value: Value,
         effects: Vec<EffectAst>,
     },
+    /// None denotes the existing iteration object's stable binding, independent
+    /// of a later choice made inside that iteration.
+    LinkExiledCards { cards: Option<TargetAst>, host: TargetAst, relationship: String },
+    /// Real cards come from the caller's explicit definition pool. The opaque
+    /// optional action label composes an ordinary named-operation boundary.
+    CreateCards {
+        selection:CardCreationSelectionAst, count:Value, player:PlayerAst,
+        zone:Zone, library_position:ironsmith_core::card_creation::CardCreationLibraryPosition,
+        operation_label:Option<String>, result_tag:TagRef,
+    },
+    NoteObjectNames(ironsmith_core::NoteObjectNamesEffect),
 }
 
 impl EffectAst {
@@ -383,6 +408,7 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
+                repeat_for_turn: false,
                 filter,
                 ability: Box::new(ability),
                 mode: ironsmith_core::NextSpellGrantMode::Ability,
@@ -399,6 +425,7 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
+                repeat_for_turn: false,
                 filter,
                 ability: Box::new(GrantedAbilityAst::KeywordAction(Box::new(
                     crate::payload::KeywordAction::Flash,
@@ -1412,7 +1439,8 @@ impl EffectAst {
         if let Self::SubjectVerb(subject) = &mut self {
             match &mut subject.action {
                 SubjectVerbActionAst::Stack(StackActionAst::CastTagged { alternative_cost, .. })
-                | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { alternative_cost, .. }) => *alternative_cost = Some(cost),
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { alternative_cost, .. })
+                | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { alternative_cost, .. }) => *alternative_cost = Some(cost),
                 _ => {},
             }
         }
@@ -1813,6 +1841,9 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                starts_after_current_turn: false,
+                control_duration: None,
+                alternative_cost: None,
                 permission_bound_mana: false,
                 tag,
                 player,
@@ -1841,6 +1872,9 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                starts_after_current_turn: false,
+                control_duration: None,
+                alternative_cost: None,
                 permission_bound_mana: false,
                 tag,
                 player,
@@ -1871,6 +1905,9 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                starts_after_current_turn: false,
+                control_duration: None,
+                alternative_cost: None,
                 permission_bound_mana: false,
                 tag,
                 player,
@@ -1899,6 +1936,9 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                starts_after_current_turn: false,
+                control_duration: None,
+                alternative_cost: None,
                 permission_bound_mana: false,
                 tag,
                 player,
@@ -2757,6 +2797,9 @@ impl EffectAst {
                 add_supertypes: Vec::new(),
                 remove_all_abilities: false,
                 remove_other_abilities: false,
+                remove_other_supertypes: false,
+                remove_other_card_types: false,
+                remove_other_subtypes: false,
                 base_power_toughness,
                 target,
                 card_types,
@@ -3103,6 +3146,8 @@ impl EffectAst {
             SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment {
                 target,
                 attachment_filter,
+                attachment_player_filter: None,
+                additional_subtypes: Vec::new(),
                 granted_abilities,
                 duration,
             }),
@@ -3173,6 +3218,9 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeCreatureTypeChoice {
+                    use_source_chosen_type: false,
+                    use_source_chosen_card_type: false,
+                    source_type_is_unspecified: false,
                     target,
                     duration,
                     excluded_subtypes,
@@ -5230,12 +5278,17 @@ impl EffectAst {
         filter: ObjectFilter,
         reduction: ManaCost,
     ) -> Self {
+        Self::subject_verb_reduce_next_spell_cost_window(player, filter, reduction, false)
+    }
+
+    pub fn subject_verb_reduce_next_spell_cost_window(
+        player: PlayerAst, filter: ObjectFilter, reduction: ManaCost,
+        starts_during_next_turn: bool,
+    ) -> Self {
         Self::subject_verb(
-            SubjectVerbRoleAst::AffectedPlayer,
-            player,
+            SubjectVerbRoleAst::AffectedPlayer, player,
             SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
-                filter,
-                reduction,
+                filter, reduction, starts_during_next_turn,
             }),
         )
     }
@@ -5456,6 +5509,8 @@ impl EffectAst {
             player,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
                 described_face_down: false,
+                no_turn_up_permission: false,
+                exile_cast_permission: None,
                 target,
                 tapped,
                 controller,
@@ -5478,6 +5533,8 @@ impl EffectAst {
             player,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
                 described_face_down: false,
+                no_turn_up_permission: false,
+                exile_cast_permission: None,
                 target,
                 tapped,
                 controller,
@@ -5502,6 +5559,8 @@ impl EffectAst {
             player,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PutOntoBattlefield {
                 described_face_down: false,
+                no_turn_up_permission: false,
+                exile_cast_permission: None,
                 target,
                 tapped,
                 controller,

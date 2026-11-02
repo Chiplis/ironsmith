@@ -29,6 +29,16 @@ if filter.zone == Some(Zone::Hand)
         }
 }
 
+    if let Some(trigger) = effect.downcast_ref::<crate::effects::TriggerAbilitiesByClassEffect>() {
+        return format!("Trigger {}{} {} triggered {} of {}{}{}",if trigger.minimum==0 {"up to "} else {""}, trigger.maximum,trigger.class,if trigger.maximum==1 { "ability" } else { "abilities" },trigger.source_selector.as_ref().map(describe_choose_spec).unwrap_or_else(||describe_for_each_filter(&trigger.sources)),trigger.action_name.as_ref().map(|name|format!(" as the {name} action")).unwrap_or_default(),trigger.chooser.as_ref().map(|chooser|format!(", chosen by {}",describe_player_filter(chooser))).unwrap_or_default());
+    }
+    if let Some(activate) = effect.downcast_ref::<crate::effects::ActivateAbilityWithoutCostsEffect>() {
+        if let Some(designation) = &activate.designation {
+            let action = activate.invocation_action.as_ref().map(|action| format!(" during {action} actions")).unwrap_or_default();
+            return format!("Activate an activated ability with designation {designation} of {} without paying its costs{action}", describe_choose_spec(&activate.source));
+        }
+        return format!("Activate one of {} activated abilities without paying its cost", if matches!(activate.source.base(), crate::target::ChooseSpec::Source) { "this permanent's" } else { "that permanent's" });
+    }
     if let Some(change) = effect.downcast_ref::<crate::effects::ChangeTextEffect>() {
         use ironsmith_core::TextChangeSelection;
         let replacement = match &change.selection {
@@ -2070,7 +2080,8 @@ if filter.zone == Some(Zone::Hand)
     }
     if let Some(designation) = effect.downcast_ref::<crate::effects::AscendEffect>() {
         if !designation.descriptive { return "Ascend".to_string(); }
-        return format!("If you control {} or more {}, you {} for the rest of the game", designation.minimum, if designation.historic_only { "artifacts, legendaries, and/or Sagas" } else { "permanents" }, if designation.enduring_story { "have an enduring story" } else { "get the city's blessing" });
+        if !designation.history_requirements.is_empty() { return format!("If you {}, you are in your {} for the rest of the game", designation.history_requirements.iter().map(|requirement| requirement.clause()).collect::<Vec<_>>().join(", "), designation.named_designation.as_deref().unwrap_or("designation")); }
+        return format!("If you control {} or more {}, you {} for the rest of the game", designation.minimum, if designation.historic_only { "artifacts, legendaries, and/or Sagas" } else if designation.tapped_only { "tapped permanents" } else { "permanents" }, if let Some(name) = &designation.named_designation { format!("are in your {name}") } else if designation.enduring_story { "have an enduring story".into() } else { "get the city's blessing".into() });
     }
     if effect.downcast_ref::<crate::effects::ForPlayersEffect>().is_some()
         && let Some(text) = super::effect_lists::describe_each_player_blights(
@@ -3985,7 +3996,7 @@ if filter.zone == Some(Zone::Hand)
         if let Some(changes) = &move_to_zone.entry_type_changes {
             // Recognize the keyword from its complete entry operations. Any
             // extra move rider remains in the expanded rendering below.
-            if changes.color_changes.is_empty()
+            if changes.set_card_types.is_none() && changes.color_changes.is_empty()
                 && changes.added_card_types == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
                 && changes.removed_subtype_families == [crate::types::SubtypeFamily::Creature]
                 && changes.added_subtypes == [crate::types::Subtype::Borg]
@@ -4015,7 +4026,7 @@ if filter.zone == Some(Zone::Hand)
             let rendered = describe_effect(&Effect::new(plain_move));
             // Purely additive entry changes read as Oracle's "It's a black
             // Zombie in addition to its other colors and types".
-            if changes.removed_subtype_families.is_empty()
+            if changes.set_card_types.is_none() && changes.removed_subtype_families.is_empty()
                 && (!changes.added_subtypes.is_empty() || !changes.added_card_types.is_empty())
                 && changes.color_changes.iter().all(|change| {
                     matches!(change, ironsmith_core::effect::BattlefieldEntryColorChange::Add(_))
@@ -4043,6 +4054,10 @@ if filter.zone == Some(Zone::Hand)
             }
             let mut clauses = changes.removed_subtype_families.iter()
                 .map(|family| format!("it loses all {}s", family.type_phrase())).collect::<Vec<_>>();
+            if let Some(types)=&changes.set_card_types {
+                clauses.push(format!("it is {} and loses its other card types",
+                    types.iter().map(|kind|kind.name()).collect::<Vec<_>>().join(" and ")));
+            }
             for change in &changes.color_changes {
                 let (colors, additive) = match change {
                     ironsmith_core::effect::BattlefieldEntryColorChange::Add(colors) => (*colors, true),
@@ -5100,6 +5115,7 @@ if filter.zone == Some(Zone::Hand)
             }
             crate::effects::ExileUntilDuration::NextEndStep => "until the next end step",
             crate::effects::ExileUntilDuration::EndOfCombat => "until end of combat",
+            crate::effects::ExileUntilDuration::SourceLeavesStackOrBattlefield => "until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield",
         };
         let face_down_suffix = if exile_until.face_down {
             " face down"
@@ -8559,6 +8575,10 @@ if filter.zone == Some(Zone::Hand)
         );
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
+        if let Some(name) = &tap.named_payment {
+            let mut ordinary = tap.clone(); ordinary.named_payment = None;
+            return format!("{} as payment named \"{name}\"", describe_effect(&Effect::new(ordinary)));
+        }
         if let Some(text) = describe_dynamic_count_tap(tap) {
             if let Some(actor) = &tap.actor {
                 let player = describe_player_filter(actor);
@@ -8631,6 +8651,15 @@ if filter.zone == Some(Zone::Hand)
             return format!(
                 "{subject} phases out until you roll a {max_result} or less while rolling to visit your Attractions"
             );
+        }
+        if phase_out.duration==crate::effects::PhaseOutDuration::UntilEndOfTurn {
+            let verb=if matches!(phase_out.spec.base(),ChooseSpec::All(_)){"phase"}else{"phases"};
+            return format!("{} {verb} out until end of turn",capitalize_first(&target));
+        }
+        if let crate::effects::PhaseOutDuration::UntilControllerCastsNthSpellInTurn(nth) = phase_out.duration {
+            let ordinal = ironsmith_core::ordinal_word(nth).unwrap_or_else(|| format!("{nth}th"));
+            let verb = if matches!(phase_out.spec.base(), ChooseSpec::All(_)) { "phase" } else { "phases" };
+            return format!("{} {verb} out until you cast your {ordinal} spell in a turn", capitalize_first(&target));
         }
         if phase_out.duration.is_until_source_leaves() {
             let source = phase_out
@@ -9888,6 +9917,12 @@ if filter.zone == Some(Zone::Hand)
     }
     if let Some(grant_target) = effect.downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()
     {
+        if let Some(source)=&grant_target.keyword_from {
+            return format!("{} gains each of {} that {} {} {}",capitalize_first(&describe_choose_spec(&grant_target.target)),
+                source.keywords.iter().map(|keyword|crate::compiled_text::render_effects::structural_bundles::keyword_label_from_static_ability_id(*keyword)
+                    .map(str::to_string).unwrap_or_else(||format!("{keyword:?}").to_lowercase())).collect::<Vec<_>>().join(", "),describe_choose_spec(&source.source),
+                if source.last_known {"had"}else{"has"},describe_until(&grant_target.duration));
+        }
         if let Some(source) = &grant_target.activated_from {
             let mut text = format!("{} gains all activated abilities of {} {}",
                 capitalize_first(&describe_choose_spec(&grant_target.target)),
@@ -10330,6 +10365,22 @@ if filter.zone == Some(Zone::Hand)
     if let Some(transform) = effect.downcast_ref::<crate::effects::TransformEffect>() {
         return format!("Transform {}", describe_transform_target(&transform.target));
     }
+    if let Some(linked) = effect.downcast_ref::<crate::effects::LinkExiledCardsEffect>() {
+        return format!("Link {} to {} under the {} relationship", describe_choose_spec(&linked.cards), describe_choose_spec(&linked.host), linked.relationship);
+    }
+    if let Some(linked)=effect.downcast_ref::<crate::effects::CreateLinkedFaceTokenEffect>() {
+        return format!("If this permanent's back face is a {}, create a token that's a copy of its back face attached to {}",linked.required_subtype,describe_choose_spec(&linked.attached_to));
+    }
+    if let Some(merge)=effect.downcast_ref::<crate::effects::MergePermanentsEffect>() {
+        let mut text=format!("Merge {} with {}",merge.incoming.description(),merge.host.description());
+        if merge.choose_top{text.push_str(", choosing which is on top");}
+        match (merge.transfer_counters,merge.transfer_attachments){
+            (true,true)=>text.push_str(" and moving all counters and attachments to the merged permanent"),
+            (true,false)=>text.push_str(" and moving all counters to the merged permanent"),
+            (false,true)=>text.push_str(" and moving all attachments to the merged permanent"),_=>{},
+        }
+        return text;
+    }
     if let Some(meld) = effect.downcast_ref::<crate::effects::MeldEffect>() {
         let result_name = meld
             .result_name
@@ -10414,6 +10465,13 @@ if filter.zone == Some(Zone::Hand)
             "Tag the triggering damaged object as '{}'",
             tag_damage_target.tag.as_str()
         );
+    }
+    if let Some(link)=effect.downcast_ref::<crate::effects::LinkObjectsToGroupEffect>() {
+        return link.groups.iter().map(|group|{
+            let owner=group.owner.as_ref().map(|owner|format!(" under {}",describe_choose_spec(owner))).unwrap_or_default();
+            let rule=if group.combat_together{if group.owner.is_some(){" so all members attack and block if any member or the owner does, if able"}else{" so all members attack and block if any member does, if able"}}else{""};
+            format!("Group {}{owner}{rule}",describe_choose_spec(&group.subjects))
+        }).collect::<Vec<_>>().join(". ");
     }
     // The spliced-card capture is an invisible binding; the instruction that
     // reads it ("a card spliced onto that spell") carries the surface.
@@ -10689,7 +10747,7 @@ if filter.zone == Some(Zone::Hand)
         }
         if matches!(
             repeat.predicate,
-            EffectPredicate::PriorEffectResult(_) | EffectPredicate::AffectedObjectsShare { .. }
+            EffectPredicate::PriorEffectResult(_) | EffectPredicate::ResultObjectsMatch { .. } | EffectPredicate::AffectedObjectsShare { .. }
         ) {
             return format!(
                 "{body}. If {}, repeat this process",
@@ -10828,6 +10886,11 @@ if filter.zone == Some(Zone::Hand)
             describe_choose_spec(&reselect.target),
             describe_player_filter(player)
         );
+    }
+    if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>()
+        && reselect.enters_combat && reselect.attacked_player.is_none() && reselect.among_attacked_by.is_none()
+    {
+        return format!("{} is attacking",describe_choose_spec(&reselect.target));
     }
     if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>() {
         let choices = if reselect.players_only { "player" } else { "player or permanent" };
@@ -11359,6 +11422,7 @@ if filter.zone == Some(Zone::Hand)
         }
         if conditional.surface == ironsmith_core::ConditionalSurface::Instead {
             let segment = crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: conditional.if_false.clone(),
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                     conditional.condition.clone(),
@@ -11988,6 +12052,12 @@ if filter.zone == Some(Zone::Hand)
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(label)=&may.payment_receipt {
+            let payer=may.decider.as_ref().map(|player|player.description()).unwrap_or_else(||"you".into());
+            let body=describe_effect_list(&may.effects);
+            return format!("{payer} may make this payment: {body}. If that player doesn't, they fail the {label}");
+        }
+
         if let Some(compact) = describe_may_temporary_flash_and_cast_trigger(may) {
             return compact;
         }
@@ -12068,7 +12138,7 @@ if filter.zone == Some(Zone::Hand)
             && grant.filter.is_none()
             && grant.spell_filter.is_none()
             && !grant.while_on_top_of_library
-            && grant.while_player_controls.is_none()
+            && (grant.while_player_controls.is_none() && grant.control_duration.is_none())
             && grant.spell_cost_increase.is_none()
             && grant.spell_cost_reduction.is_none()
             && grant.max_plays.is_none()

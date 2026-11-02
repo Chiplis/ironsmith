@@ -45,8 +45,15 @@ pub(super) fn choose_binding<T: Copy>(
     options: &[(T, String)],
     fallback: bool,
 ) -> Option<T> {
+    let player = ctx.controller;
+    choose_binding_for_player(game, ctx, player, prompt, options, fallback)
+}
+pub(super) fn choose_binding_for_player<T: Copy>(
+    game: &GameState, ctx: &mut ExecutionContext, player: crate::ids::PlayerId,
+    prompt: &str, options: &[(T, String)], fallback: bool,
+) -> Option<T> {
     let choice = crate::decisions::context::SelectOptionsContext::new(
-        ctx.controller,
+        player,
         Some(ctx.source),
         prompt,
         options

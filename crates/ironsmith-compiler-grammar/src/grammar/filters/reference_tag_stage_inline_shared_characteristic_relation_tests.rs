@@ -477,3 +477,14 @@ fn blocked_or_was_blocked_union_keeps_its_outer_creature_and_controller_scope() 
     assert!(filter.any_of.iter().any(|arm| arm.blocked_this_turn && !arm.was_blocked_this_turn));
     assert!(filter.any_of.iter().any(|arm| arm.was_blocked_this_turn && !arm.blocked_this_turn));
 }
+
+
+#[test]
+fn distinct_plural_mana_values_retain_their_shared_upper_bound() {
+ let filter=parse_filter("creature cards with different mana values 4 or less");
+ assert!(filter.distinct_mana_values);
+ assert_eq!(filter.mana_value,Some(crate::filter::Comparison::LessThanOrEqual(4)));
+ let unbounded=parse_filter("creature cards with different mana values");
+ assert!(unbounded.distinct_mana_values);
+ assert!(unbounded.mana_value.is_none());
+}

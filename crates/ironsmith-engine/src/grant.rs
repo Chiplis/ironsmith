@@ -292,6 +292,22 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     cost: mana_cost.reduce_generic(*reduction),
                 })
             }
+            Self::ExilePreparationFromCardManaCost { reduction, optional_cast, label } => {
+                if card.zone != Zone::Hand { return None; }
+                let price = card.mana_cost_owned()?.reduce_generic(*reduction);
+                let mut method = AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                    "Parsed delayed casting preparation", Zone::Exile, TotalCost::free(), None, false,
+                ).with_zone_cast_instructions(ironsmith_core::ZoneCastInstructions {
+                    exile_preparation: Some(ironsmith_core::alternative_cast_model::ExilePreparation::FaceUpSorcery {
+                        price, on_next_spell_resolution: true, optional_cast: *optional_cast,
+                    }), ..Default::default()
+                });
+                if let Some(label) = label
+                    && let AlternativeCastingMethod::FromZone { name, .. } = &mut method {
+                    *name = label.clone().into();
+                }
+                Some(method)
+            }
             // CR 702.170a: the plot cost is the card's own mana cost; the
             // plot special action decides where the card may be plotted from.
             Self::PlotFromCardManaCost => {

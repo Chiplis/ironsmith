@@ -4,6 +4,11 @@
 //! suspending/foretelling cards, and activating mana abilities.
 
 mod payment;
+pub mod private_cost_admission;
+mod intrinsic_action;
+pub use intrinsic_action::{intrinsic_action_cost_display, intrinsic_action_label};
+mod face_down_cast;
+pub(crate) use face_down_cast::register_face_down_exile_cast_action;
 pub(crate) use payment::pay_resolution_cost_with_outputs;
 use payment::{
     SpecialActionPayment, check_special_action_payment, pay_special_action_payment_with_x,
@@ -425,7 +430,7 @@ fn foretell_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost
             crate::alternative_cast::AlternativeCastingMethod::Foretell { cost } => {
                 Some(cost.clone())
             }
-            method if method.prepares_face_down() => method.mana_cost().cloned(),
+
             _ => None,
         })
 }
@@ -452,7 +457,7 @@ fn plot_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
     object
         .alternative_casts
         .iter()
-        .find_map(|method| method.plot_cost().cloned())
+        .filter(|method| method.exile_preparation().is_none()).find_map(|method| method.plot_cost().cloned())
 }
 
 /// The card's plot cost: printed, or granted in its current zone ("The top
@@ -500,7 +505,7 @@ fn plot_special_action_cost(
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
     let cost = plot_cost_for(game, player, object).ok_or(ActionError::NoSuchAbility)?;
     // "Plotting cards from your hand costs {N} less" reads only hand plots.
-    if object.zone != Zone::Hand || object.alternative_casts.iter().any(|method| method.exile_preparation().is_some()) {
+    if object.zone != Zone::Hand {
         return Ok(cost);
     }
     let checked =
@@ -699,6 +704,12 @@ pub enum SpecialAction {
     /// Discard a card from hand whose own static ability allows it "any time
     /// you could cast an instant" (Circling Vultures; CR 116.2).
     DiscardFromHand { card_id: ObjectId },
+    /// A source's static permission, paid and executed without an ability stack object.
+    PerformIntrinsicAction { source_id: ObjectId, ability_index: usize },
+
+    /// An independently selected source-authored preparation occurrence.
+    PrepareExile { card_id: ObjectId, method_index: usize, preparation: crate::alternative_cast::ExilePreparation },
+    PrepareGrantedExile { card_id: ObjectId, grant: crate::alternative_cast::GrantSelection, preparation: crate::alternative_cast::ExilePreparation },
 }
 
 /// Errors that can occur when attempting to perform a special action.
@@ -864,6 +875,8 @@ pub fn can_perform_check(
         } => validate_turn_face_up_with_method(game, player, *permanent_id, *method),
         SpecialAction::Suspend { card_id } => can_suspend(game, player, *card_id),
         SpecialAction::Foretell { card_id } => can_foretell(game, player, *card_id),
+        SpecialAction::PrepareExile { card_id, method_index, preparation } => can_prepare_exile(game, player, *card_id, *method_index, preparation),
+        SpecialAction::PrepareGrantedExile { card_id, grant, preparation } => selected_granted_exile_preparation(game,player,*card_id,grant,preparation).map(|_|()),
         SpecialAction::Plot { card_id } => can_plot(game, player, *card_id),
         SpecialAction::ActivateManaAbility {
             permanent_id,
@@ -894,6 +907,8 @@ pub fn can_perform_check(
         SpecialAction::DiscardFromHand { card_id } => {
             can_discard_from_hand_special_action(game, player, *card_id)
         }
+        SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+            intrinsic_action::validate(game, player, *source_id, *ability_index).map(|_| ()) ,
     }?;
     if let Some(payment) = action.payment_spec(game, player)? {
         check_special_action_payment(game, player, &payment)?;
@@ -920,14 +935,43 @@ pub(crate) fn perform_with_mana_activation_outputs(
     player: PlayerId,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<Option<CompletedManaActivation>, ActionError> {
+    perform_with_payment_completion(action,game,player,decision_maker,&mut false)
+}
+
+/// Native phase receipt for a private action replay. Only this owner may say
+/// its complete cost finished; a speculative decision snapshot cannot do so.
+pub(super) fn perform_with_payment_completion(
+    action: SpecialAction,
+    game: &mut GameState,
+    player: PlayerId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+    payment_completed: &mut bool,
+) -> Result<Option<CompletedManaActivation>, ActionError> {
+    *payment_completed=false;
     can_perform(&action, game, player, &mut *decision_maker)?;
+    // Freeze the exact static permission before mana abilities/payment can
+    // change its current array index or the source's abilities.
+    let intrinsic = match &action {
+        SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+            Some((*source_id, intrinsic_action::validate(game, player, *source_id, *ability_index)?)),
+        _ => None,
+    };
+    // Retain the selected grant before any payment can remove its provider,
+    // alter its acquisition, or change a hand-card-derived price.
+    let preparation_grant=match &action {
+        SpecialAction::PrepareGrantedExile {card_id,grant,preparation}=>Some(selected_granted_exile_preparation(game,player,*card_id,grant,preparation)?),
+        _=>None,
+    };
     let checkpoint = game.clone();
     let restore_on_pending = matches!(
         &action,
         SpecialAction::TurnFaceUp { .. }
             | SpecialAction::Suspend { .. }
+            | SpecialAction::PerformIntrinsicAction { .. }
             | SpecialAction::PlayLand { .. }
             | SpecialAction::PlayLandBackFace { .. }
+            | SpecialAction::PrepareExile { .. }
+            | SpecialAction::PrepareGrantedExile { .. }
     );
     let mut announced_x = None;
     if let Some(payment) = action.payment_spec(game, player)? {
@@ -937,6 +981,7 @@ pub(crate) fn perform_with_mana_activation_outputs(
         if matches!(
             action,
             SpecialAction::TurnFaceUp { .. } | SpecialAction::Suspend { .. }
+                | SpecialAction::PerformIntrinsicAction { .. }
         ) && let Some(max_x) = special_action_payment_max_x(game, player, &payment)
         {
             let min_x = if let SpecialAction::Suspend { card_id } = &action {
@@ -950,7 +995,7 @@ pub(crate) fn perform_with_mana_activation_outputs(
             if max_x < min_x {
                 return Err(ActionError::CantPayCost);
             }
-            let ctx = crate::decisions::context::NumberContext::x_value_with_min(
+            let mut ctx = crate::decisions::context::NumberContext::x_value_with_min(
                 player,
                 payment.source,
                 min_x,
@@ -993,19 +1038,23 @@ pub(crate) fn perform_with_mana_activation_outputs(
             return Ok(None);
         }
     }
+    *payment_completed=true;
     if let SpecialAction::TurnFaceUp { permanent_id, .. } = &action
         && let Some(object) = game.object_mut(*permanent_id)
     {
         // The X paid to turn it face up, or 0 when no X was paid (CR 107.3m).
         object.x_value = Some(announced_x.unwrap_or(0));
     }
-    let result = finish_special_action_with_mana_activation_outputs(
+    let result = if let Some((source, spec)) = intrinsic {
+        intrinsic_action::perform_prepared_action(game, player, source, spec, announced_x, decision_maker).map(|_| None)
+    } else { finish_special_action_with_mana_activation_outputs(
+        preparation_grant,
         action,
         game,
         player,
         announced_x,
         decision_maker,
-    );
+    ) };
     if (result.is_err() && !decision_maker.awaiting_choice())
         || (restore_on_pending && decision_maker.awaiting_choice())
     {
@@ -1018,6 +1067,7 @@ pub(crate) fn perform_with_mana_activation_outputs(
 }
 
 fn finish_special_action_with_mana_activation_outputs(
+    preparation_grant: Option<crate::grant_registry::GrantedAlternativeCast>,
     action: SpecialAction,
     game: &mut GameState,
     player: PlayerId,
@@ -1039,6 +1089,14 @@ fn finish_special_action_with_mana_activation_outputs(
             perform_suspend(game, player, card_id, announced_x, decision_maker)
         }
         SpecialAction::Foretell { card_id } => perform_foretell(game, player, card_id),
+        SpecialAction::PrepareExile { card_id, method_index, preparation } => perform_prepare_exile(game, player, card_id, method_index, preparation, None, None),
+        SpecialAction::PrepareGrantedExile {card_id,grant,preparation} => {
+            let receipt=preparation_grant.ok_or(ActionError::NoSuchAbility)?;
+            if let Some(identity)=receipt.permission_identity.as_ref() && matches!(receipt.usage_limit,Some(crate::grant::GrantUsageLimit::OnceEachTurn|crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)) {
+                game.turn_store.grant_cast_uses_this_turn.insert((player,identity.clone()));
+            }
+            perform_prepare_exile(game,player,card_id,0,preparation,Some(receipt.method),Some(grant))
+        },
         SpecialAction::Plot { card_id } => perform_plot(game, player, card_id),
         SpecialAction::ActivateManaAbility {
             permanent_id,
@@ -1085,6 +1143,8 @@ fn finish_special_action_with_mana_activation_outputs(
         SpecialAction::DiscardFromHand { card_id } => {
             perform_discard_from_hand_special_action(game, player, card_id, decision_maker)
         }
+        SpecialAction::PerformIntrinsicAction { source_id, ability_index } =>
+            intrinsic_action::perform_action(game, player, source_id, ability_index, decision_maker),
     }
     .map(|_| None)
 }
@@ -1102,9 +1162,38 @@ fn repeatable_mana_payment_action(
         .repeatable_mana_payment_actions
         .get(action_index)
         .ok_or(ActionError::InvalidTarget)?;
-    if action.player != player
+    let acting_player = if action.restrictions.source_controller_acts {
+        game.controller_of_id(action.source)
+    } else { Some(action.player) };
+    if acting_player != Some(player)
         || action.is_expired(game.turn.turn_number)
         || !action.end_effect_offer_is_live(game)
+    {
+        return Err(ActionError::InvalidTiming);
+    }
+    let restrictions = &action.restrictions;
+    if let Some(permission) = &restrictions.face_down_exile_cast {
+        if !face_down_cast::can_exile_cast(game, player, action.source, permission)? {
+            return Err(ActionError::InvalidTiming);
+        }
+    }
+    if restrictions.remaining_uses == Some(0) {
+        return Err(ActionError::InvalidTiming);
+    }
+    if restrictions.sorcery_speed {
+        has_sorcery_speed_special_action_timing(game, player)?;
+    }
+    if let Some(zone) = restrictions.source_zone {
+        if !game.object(action.source).is_some_and(|object| {
+            object.zone == zone && game.controller_of(object) == if restrictions.source_controller_acts { player } else { action.controller }
+        }) {
+            return Err(ActionError::InvalidTiming);
+        }
+    }
+    if restrictions.source_attacking
+        && !game.combat.as_ref().is_some_and(|combat| {
+            crate::combat_state::is_attacking(combat, action.source)
+        })
     {
         return Err(ActionError::InvalidTiming);
     }
@@ -1127,6 +1216,17 @@ fn perform_repeatable_mana_payment_action(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let action = repeatable_mana_payment_action(game, player, action_index)?.clone();
+    // Payment has already committed. Consume the permission before running
+    // instructions, including instructions that can suspend for a choice.
+    if let Some(uses) = game.effect_store.repeatable_mana_payment_actions[action_index]
+        .restrictions.remaining_uses.as_mut()
+    {
+        *uses -= 1;
+    }
+
+    if let Some(permission) = &action.restrictions.face_down_exile_cast {
+        return face_down_cast::perform_exile_cast(game, player, action.source, permission, decision_maker);
+    }
 
     // CR 116.2c: "pay [cost] to end this effect" ends the linked continuous
     // effects at once (no stack) and uses up the offer.
@@ -1168,7 +1268,7 @@ fn perform_repeatable_mana_payment_action(
             }
             if crate::effects::match_triggers_at_instruction_boundary(
                 game,
-                &ctx,
+                &mut ctx,
                 action.effects.get(index + 1),
                 reported.iter(),
             )
@@ -1559,7 +1659,7 @@ fn perform_discard_from_hand_special_action(
         }
         if crate::effects::match_triggers_at_instruction_boundary(
             game,
-            &ctx,
+            &mut ctx,
             None::<&crate::effect::Effect>,
             reported.iter(),
         )
@@ -2637,6 +2737,66 @@ fn perform_suspend(
     Ok(())
 }
 
+
+fn selected_granted_exile_preparation(game:&GameState,player:PlayerId,card_id:ObjectId,key:&crate::alternative_cast::GrantSelection,preparation:&crate::alternative_cast::ExilePreparation)->Result<crate::grant_registry::GrantedAlternativeCast,ActionError> {
+    if !game.team_has_priority(player) {return Err(ActionError::NotYourPriority);}
+    let card=game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    if card.zone!=Zone::Hand {return Err(ActionError::WrongZone{expected:Zone::Hand,actual:card.zone});}
+    if card.owner!=player {return Err(ActionError::InvalidTarget);}
+    match preparation {
+        crate::alternative_cast::ExilePreparation::FaceDown {..} => {if !game.is_active_player(player) {return Err(ActionError::NotActivePlayer);}},
+        _=>has_sorcery_speed_special_action_timing(game,player)?,
+    }
+    let grants=game.effect_store.grant_registry.granted_alternative_casts_for_card(game,card_id,Zone::Hand,player);
+    grants.get(key.index).filter(|grant|
+        grant.source_id==key.source && grant.permission_identity.as_ref()==Some(&key.identity)
+        && grant.method.exile_preparation()==Some(preparation)
+        && crate::grant_registry::grant_usage_limit_allows(game,player,grant.permission_identity.as_ref(),grant.usage_limit)
+    ).cloned().ok_or(ActionError::NoSuchAbility)
+}
+
+fn can_prepare_exile(game: &GameState, player: PlayerId, card_id: ObjectId, method_index: usize, preparation: &crate::alternative_cast::ExilePreparation) -> Result<(), ActionError> {
+    use crate::alternative_cast::ExilePreparation;
+    if !game.team_has_priority(player) { return Err(ActionError::NotYourPriority); }
+    let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    if object.zone != Zone::Hand { return Err(ActionError::WrongZone { expected: Zone::Hand, actual: object.zone }); }
+    if object.owner != player { return Err(ActionError::InvalidTarget); }
+    if !game.is_hidden_card_placeholder(card_id) && object.alternative_casts.get(method_index).and_then(|method|method.exile_preparation()) != Some(preparation) { return Err(ActionError::NoSuchAbility); }
+    match preparation {
+        ExilePreparation::FaceDown { .. } if !game.is_active_player(player) => return Err(ActionError::NotActivePlayer),
+        ExilePreparation::FaceDownSorcery { .. } | ExilePreparation::FaceUpSorcery { .. } => { has_sorcery_speed_special_action_timing(game,player)?; },
+        _ => {}
+    }
+    Ok(())
+}
+fn perform_prepare_exile(game: &mut GameState, player: PlayerId, card_id: ObjectId, method_index: usize, preparation: crate::alternative_cast::ExilePreparation, granted_method: Option<crate::alternative_cast::AlternativeCastingMethod>, grant_key: Option<crate::alternative_cast::GrantSelection>) -> Result<(), ActionError> {
+    use crate::alternative_cast::ExilePreparation;
+    // Every peer retains the same public occurrence and price claim while the
+    // source identity stays hidden. The opening checks this exact occurrence.
+    if granted_method.is_none() {game.record_hidden_exile_preparation_obligation(card_id,method_index,preparation.clone());}
+    let new_id=game.move_object(card_id,Zone::Exile,crate::events::cause::EventCause::from_special_action(Some(card_id),player)).ok_or(ActionError::ObjectNotFound)?;
+    if let Some(grant)=grant_key {game.retain_exile_preparation_grant(new_id,grant);}
+    let method_index=if let Some(method)=granted_method {
+        let object=game.object_mut(new_id).ok_or(ActionError::ObjectNotFound)?;
+        let index=object.alternative_casts.len();object.alternative_casts.push(method);index
+    }else{method_index};
+    match preparation {
+        ExilePreparation::FaceDown { .. } | ExilePreparation::FaceDownSorcery { .. } => {
+            game.set_face_down(new_id);game.grant_face_down_exile_view(new_id,player);
+            game.mark_selected_exile_preparation(new_id,method_index,false,player);
+        }
+        ExilePreparation::FaceUpSorcery { on_next_spell_resolution: true, optional_cast, .. } => {
+            let cast=crate::effect::Effect::new(crate::effects::CastSourceEffect::new().from_zone(Zone::Exile).without_paying_mana_cost());
+            let cast=if optional_cast {crate::effect::Effect::may(vec![cast])}else{cast};
+            crate::effects::delayed::queue_delayed_trigger(game,crate::effects::delayed::DelayedTriggerConfig::new(
+                crate::triggers::Trigger::spell_resolves(crate::target::PlayerFilter::You),crate::resolution::ResolutionProgram::from_effects(vec![cast]),true,vec![new_id],player,
+            ).with_ability_source(Some(new_id)));
+        }
+        ExilePreparation::FaceUpSorcery { .. } => {game.mark_selected_exile_preparation(new_id,method_index,true,player);}
+    }
+    Ok(())
+}
+
 // === Foretell ===
 
 /// One checked quote for live special-action pricing and timing. Current
@@ -2647,9 +2807,6 @@ fn foretell_special_action_quote(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(crate::mana::ManaCost, bool), ActionError> {
-    if let Some(price) = game.object(card_id).and_then(|object| object.alternative_casts.iter().find_map(|method| match method.exile_preparation() {
-        Some(ironsmith_core::alternative_cast_model::ExilePreparation::FaceDown { price }) => Some(price.clone()), _ => None,
-    })) { return Ok((price, false)); }
     let checked =
         game.continuous_query_snapshot()
             .map_err(|error| ActionError::ExecutionFailure {
@@ -2747,7 +2904,6 @@ fn perform_foretell(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
-    let descriptive = game.object(card_id).is_some_and(|object| object.alternative_casts.iter().any(|method| method.exile_preparation().is_some()));
     // A granted foretell cost is fixed as the card is foretold: the card
     // keeps it in exile even if the granting permanent leaves (CR 702.143).
     let granted_cost = match game.object(card_id) {
@@ -2769,8 +2925,7 @@ fn perform_foretell(
     game.set_face_down(new_id);
     game.grant_face_down_exile_view(new_id, player);
     game.set_foretold(new_id);
-    if descriptive { game.mark_descriptive_exile_preparation(new_id); }
-    if !descriptive { game.record_foretell_action(player); }
+    game.record_foretell_action(player);
     if let Some(cost) = granted_cost
         && let Some(object) = game.object_mut(new_id)
     {
@@ -2779,7 +2934,6 @@ fn perform_foretell(
             .push(crate::alternative_cast::AlternativeCastingMethod::Foretell { cost });
     }
 
-    if descriptive { return Ok(()); }
     // "Whenever you foretell a card" (CR 702.143a): the special action is the
     // keyword action that triggers.
     let action_provenance = game.provenance_graph_mut().alloc_root(
@@ -2829,7 +2983,6 @@ fn perform_plot(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
-    let descriptive = game.object(card_id).is_some_and(|object| object.alternative_casts.iter().any(|method| method.exile_preparation().is_some()));
     let action_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {
             source: card_id,
@@ -2845,8 +2998,6 @@ fn perform_plot(
         )
         .ok_or(ActionError::ObjectNotFound)?;
     game.set_plotted(new_id, player);
-    if descriptive { game.mark_descriptive_exile_preparation(new_id); }
-    if descriptive { return Ok(()); }
     let event_provenance = game
         .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
     game.queue_trigger_event(
@@ -2943,6 +3094,8 @@ fn can_activate_mana_ability_with_cost_checks(
         .current_ability(permanent_id, ability_index)
         .ok_or(ActionError::NoSuchAbility)?;
 
+    let prepared = crate::activation_zone_permissions::prepare_occurrence(game, permanent_id, ability_index, &ability);
+    let ability = prepared.as_ref().unwrap_or(&ability);
     // Check the ability functions in this zone
     if !ability.functions_in(&object.zone) {
         return Err(ActionError::WrongZone {
@@ -2986,7 +3139,9 @@ fn can_activate_mana_ability_with_cost_checks(
     ) {
         return Err(ActionError::CantPayCost);
     }
-    if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+    if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id)
+        && !crate::decision::ActivationCostAbility::at(game, player, permanent_id, ability_index)
+            .is_some_and(|facts| crate::activation_cost_alternatives::has_available_alternative(game, permanent_id, &facts, &mana_ability.mana_cost)) {
         return Err(ActionError::CantPayCost);
     }
     check_costs(mana_ability)?;
@@ -3020,12 +3175,7 @@ fn can_activate_mana_ability(
                 permanent_id,
                 &mana_ability.mana_cost,
                 &[],
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    player,
-                    permanent_id,
-                    mana_ability,
-                )),
+                (crate::decision::ActivationCostAbility::at(game, player, permanent_id, ability_index)).as_ref(),
             );
             let view = crate::derived_view::DerivedGameView::new(game);
             let mut execution = ExecutionContext::new(permanent_id, player, decision_maker);
@@ -3133,6 +3283,8 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
     perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
     payment: Option<&crate::mana_payment::ManaPaymentRequest>,
 ) -> Result<(), ActionError> {
+    let prepared = crate::activation_zone_permissions::prepare_occurrence(game, permanent_id, ability_index, ability);
+    let ability = prepared.as_ref().unwrap_or(ability);
     let object = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)?;
@@ -3203,7 +3355,9 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
         });
     }
 
-    if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id) {
+    if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(permanent_id)
+        && !crate::decision::ActivationCostAbility::at(game, player, permanent_id, ability_index)
+            .is_some_and(|facts| crate::activation_cost_alternatives::has_available_alternative(game, permanent_id, &facts, &mana_ability.mana_cost)) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
         }
@@ -3221,7 +3375,8 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
 
     let has_activation_cost_modifiers = perf_ctx
         .map(crate::decision::BattlefieldAbilityContext::has_activation_cost_modifiers)
-        .unwrap_or_else(|| view.has_activated_ability_cost_modifiers());
+        .unwrap_or_else(|| view.has_activated_ability_cost_modifiers())
+        || !game.effect_store.activation_cost_alternatives.is_empty();
     let cost_started_at = crate::perf::PerfTimer::start();
     let total_cost = if has_activation_cost_modifiers {
         crate::decision::calculate_effective_activation_total_cost_with_view(
@@ -3230,12 +3385,7 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
             permanent_id,
             &mana_ability.mana_cost,
             &[],
-            Some(crate::decision::ActivationCostAbility::of(
-                game,
-                player,
-                permanent_id,
-                mana_ability,
-            )),
+            (crate::decision::ActivationCostAbility::at(game, player, permanent_id, ability_index)).as_ref(),
             view,
         )
     } else {
@@ -3409,20 +3559,22 @@ pub(crate) fn prepare_mana_activation_cost(
     activated: &crate::ability::ActivatedAbility,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Option<(crate::cost::TotalCost, Option<u32>)>, ActionError> {
+    let prepared = crate::activation_zone_permissions::prepare(game, source, ability_index, activated);
+    let activated = prepared.as_ref().unwrap_or(activated);
     let mut facts = crate::decision::ActivationCostAbility::of(game, player, source, activated);
     facts.ability_index = Some(ability_index);
-    let mut original = activated.mana_cost.clone();
+    let mut original = crate::activation_cost_alternatives::unpriced_cost(game, source, &facts, &activated.mana_cost, &crate::derived_view::DerivedGameView::new(game));
     while let Some(branches) = original.as_one_of() {
         let priced: Vec<_> = branches
             .iter()
             .map(|branch| {
-                crate::decision::calculate_effective_activation_total_cost_for_ability(
+                crate::decision::calculate_effective_activation_selected_branch_cost(
                     game,
                     player,
                     source,
                     branch,
                     &[],
-                    Some(facts),
+                    Some(&facts),
                 )
             })
             .collect();
@@ -3453,14 +3605,14 @@ pub(crate) fn prepare_mana_activation_cost(
     }
     let mut announced_x = None;
     if let Some(maximum) =
-        crate::decision::maximum_x_for_activation_cost(game, player, source, &original, &[], facts)
+        crate::decision::maximum_x_for_activation_cost(game, player, source, &original, &[], &facts)
             .map_err(|error| ActionError::ExecutionFailure { source, error })?
     {
         let minimum = activated.activation_x_minimum();
         if maximum < minimum {
             return Err(ActionError::CantPayCost);
         }
-        let context = crate::decisions::context::NumberContext::x_value_with_min(
+        let mut context = crate::decisions::context::NumberContext::x_value_with_min(
             player, source, minimum, maximum,
         );
         let chosen = decision_maker.decide_number(game, &context);
@@ -3473,13 +3625,13 @@ pub(crate) fn prepare_mana_activation_cost(
         announced_x = Some(chosen);
         original = crate::decision::activation_cost_with_locked_x(&original, chosen);
     }
-    let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(
+    let priced = crate::decision::calculate_effective_activation_selected_branch_cost(
         game,
         player,
         source,
         &original,
         &[],
-        Some(facts),
+        Some(&facts),
     );
     Ok(Some((priced, announced_x)))
 }
@@ -3529,6 +3681,26 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
     reserved_tap_sources: Vec<ObjectId>,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<CompletedManaActivation, ActionError> {
+    perform_mana_ability_with_cost_policy(game, player, permanent_id, ability_index,
+        mana_color_restriction, interactive_mana_exclusions, reserved_tap_sources, false, decision_maker)
+}
+
+/// Use the ordinary immediate mana-activation consumer with every cost waived.
+/// The caller has already checked the selected occurrence's non-cost legality.
+pub(crate) fn perform_mana_ability_without_activation_costs(
+    game: &mut GameState, player: PlayerId, source: ObjectId, ability_index: usize,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<CompletedManaActivation, ActionError> {
+    perform_mana_ability_with_cost_policy(game, player, source, ability_index,
+        None, None, Vec::new(), true, decision_maker)
+}
+
+fn perform_mana_ability_with_cost_policy(
+    game: &mut GameState, player: PlayerId, permanent_id: ObjectId, ability_index: usize,
+    mana_color_restriction: Option<Vec<crate::color::Color>>,
+    interactive_mana_exclusions: Option<Vec<ObjectId>>, reserved_tap_sources: Vec<ObjectId>,
+    waive_all_costs: bool, decision_maker: &mut dyn DecisionMaker,
+) -> Result<CompletedManaActivation, ActionError> {
     let mut transaction_ctx =
         crate::effects::ExecutionContext::new(permanent_id, player, decision_maker);
     let mut active_guard = None;
@@ -3567,15 +3739,13 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                     return Err(ActionError::CantPayCost);
                 }
                 active_guard = Some(visibility_provenance);
-                let Some((total_cost, announced_x)) = prepare_mana_activation_cost(
-                    game,
-                    player,
-                    permanent_id,
-                    ability_index,
-                    mana_ability,
-                    decision_maker,
-                )?
-                else {
+                let proposed_cost = if waive_all_costs {
+                    // CR 107.3b: X in an activation cost which is not paid is zero.
+                    Some((crate::cost::TotalCost::free(), mana_ability.mana_cost.mana_cost().filter(|cost| cost.has_x()).map(|_| 0)))
+                } else { prepare_mana_activation_cost(
+                    game, player, permanent_id, ability_index, mana_ability, decision_maker,
+                )? };
+                let Some((total_cost, announced_x)) = proposed_cost else {
                     return Ok(CompletedManaActivation::default());
                 };
                 let mana_production_provenance =
@@ -3685,11 +3855,13 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                     .ability_origins
                     .as_ref()
                     .and_then(|origins| origins.get(ability_index).cloned());
-                game.record_ability_activation_with_origin(
+                game.record_ability_activation_with_payment(
                     permanent_id,
                     ability_index,
+                    player,
                     activation_origin.clone(),
                     effects.activation_definition,
+                    completion.activation_notification.as_ref().and_then(|event|event.mana_spend_evidence.as_ref()),
                 );
                 // Use the same resolved-event owner as mana-producing effects.
                 let mut mana_ctx =
@@ -3924,7 +4096,7 @@ pub(crate) fn pay_total_cost_without_preflight_with_outputs(
     cost_ctx: &mut CostContext<'_>,
 ) -> Result<CompletedCostPayment, CostPaymentError> {
     let checkpoint = game.clone();
-    let context = cost_ctx.checkpoint();
+    let mut context = cost_ctx.checkpoint();
     let result = pay_total_cost_branch_without_execution_context(game, cost, cost_ctx);
     let pending = cost_ctx.decision_maker.awaiting_choice()
         && !matches!(&result, Err(CostPaymentError::ExecutionFailed(_)));
@@ -4102,6 +4274,7 @@ fn check_total_cost_in_query_scope(
             if game.is_tapped(source) && costs.iter().any(|cost| cost.requires_tap()) {
                 return Err(CostPaymentError::AlreadyTapped);
             }
+            let mut cumulative_mana=crate::mana::ManaCost::new();
             let mut speculative_tagged_objects = execution_ctx.tagged_objects.clone();
             let mut discard_slots = Vec::new();
             // Each exile-chosen material slot consumes distinct objects: one
@@ -4137,18 +4310,26 @@ fn check_total_cost_in_query_scope(
                 if costs.iter().any(|cost| cost.requires_tap()) {
                     cost_ctx.reserved_tap_sources.push(source);
                 }
+                // Components share one payer's mana resources. Resolve in
+                // authored order (for preceding choice references), but test
+                // their accumulated mana obligation, never the same pool twice.
+                let cumulative_component=adjusted_component.mana_cost_ref().map(|mana|{
+                    cumulative_mana=cumulative_mana.combined_with(mana);
+                    crate::costs::Cost::mana(cumulative_mana.clone())
+                });
+                let funding_component=cumulative_component.as_ref().unwrap_or(&adjusted_component);
                 match funding {
                     CostQueryFunding::DeferredMana if adjusted_component.is_mana_cost() => {}
                     CostQueryFunding::PotentialMana(view, payment)
                         if adjusted_component.is_mana_cost() =>
                     {
-                        adjusted_component.0.can_potentially_pay_with_query(
+                        funding_component.0.can_potentially_pay_with_query(
                             game,
                             &cost_ctx,
                             &crate::costs::PotentialManaQuery { view, payment },
                         )?;
                     }
-                    _ => adjusted_component.0.can_pay(game, &cost_ctx)?,
+                    _ => funding_component.0.can_pay(game, &cost_ctx)?,
                 }
                 if let crate::costs::CostProcessingMode::DiscardCards { count, filter } =
                     adjusted_component.processing_mode()
@@ -4159,6 +4340,16 @@ fn check_total_cost_in_query_scope(
                         return Err(CostPaymentError::InsufficientCardsInHand);
                     }
                     discard_slots.extend(std::iter::repeat_n(candidates, count as usize));
+                }
+
+                // Pure capture preludes derive the same immutable selection
+                // partitions as payment, without executing physical actions.
+                if let Some(cost) = adjusted_component.effect_ref()
+                    .and_then(|effect| effect.0.as_cost_executable())
+                {
+                    cost.preview_payment_bindings(game, execution_ctx)
+                        .map_err(CostPaymentError::ExecutionFailed)?;
+                    speculative_tagged_objects = execution_ctx.tagged_objects.clone();
                 }
 
                 // Some multi-object costs are represented as a choice that tags the
@@ -4239,9 +4430,7 @@ fn preflight_tagged_choice_in_context(
     Option<(crate::tag::TagKey, Vec<ObjectSnapshot>, Vec<ObjectId>, usize)>,
     CostPaymentError,
 > {
-    let Some(choice) = choice_component
-        .effect_ref()
-        .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+    let Some(choice) = crate::cost::cost_object_choice(choice_component)
     else {
         return Ok(None);
     };
@@ -4263,19 +4452,9 @@ fn preflight_tagged_choice_in_context(
         return Ok(None);
     }
 
-    let required = if choice.count.up_to_x {
-        0
-    } else if let Some(value) = choice.count_value.as_ref() {
-        crate::effects::helpers::resolve_value(game, value, execution_ctx)
-            .map_err(CostPaymentError::ExecutionFailed)?
-            .max(0) as usize
-    } else if choice.count.dynamic_x {
-        // A legality precheck runs before X is announced; X = 0 is always an
-        // available announcement, so the minimal selection is empty.
-        execution_ctx.x_value.unwrap_or(0) as usize
-    } else {
-        choice.count.min
-    };
+    let required = crate::effects::composition::choose_objects::minimum_selection_cost_count(
+        choice, game, execution_ctx,
+    ).map_err(CostPaymentError::ExecutionFailed)?;
 
     let mut filter_ctx = execution_ctx
         .filter_context(game)
@@ -4374,6 +4553,26 @@ fn preflight_tagged_choice_in_context(
     }
 
     let all_candidates = candidates.clone();
+    // Independent color representatives form a transversal matroid: greedily
+    // extending an independent set finds a legal set whenever one exists.
+    // Candidate order alone can otherwise pick two mono-white objects before
+    // an available blue object and publish an impossible prospective payment.
+    if choice.aggregate_constraint.as_ref().is_some_and(|constraint|
+        constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives)
+    {
+        let mut masks = Vec::new();
+        candidates.retain(|id| {
+            let mask = crate::targeting::aggregate_object_value(
+                game, *id, crate::effect::ChoiceAggregateMetric::DistinctColorRepresentatives) as u32;
+            masks.push(mask);
+            if crate::targeting::card_type_slot_matching_size(&masks) == masks.len() {
+                true
+            } else {
+                masks.pop();
+                false
+            }
+        });
+    }
     let snapshots = candidates
         .into_iter()
         .take(required)
@@ -4858,7 +5057,7 @@ fn hand_cost_placeholders(
     filter: &ObjectFilter,
     ids: &[ObjectId],
 ) -> Vec<ObjectId> {
-    let ctx = game.filter_context_for(payer, Some(source));
+    let mut ctx = game.filter_context_for(payer, Some(source));
     game.hidden_hand_payable_placeholders(filter, &ctx, ids.iter().copied())
         .into_iter()
         .filter(|id| *id != source)
@@ -5266,7 +5465,17 @@ pub(crate) fn resolve_dynamic_mana_cost(
         .collect::<Vec<_>>();
     execution_ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
 
-    let referenced_mana = if let Some(spec) = dynamic_mana.mana_cost_of.as_deref() {
+    let referenced_mana = if dynamic_mana.mana_cost_of_cast_origin {
+        if dynamic_mana.source_mana_cost {return Err(CostPaymentError::Other("ambiguous retained mana-cost source".into()));}
+        let Some(crate::target::ChooseSpec::SpecificObject(expected))=dynamic_mana.mana_cost_of.as_deref() else {
+            return Err(CostPaymentError::Other("retained mana cost requires an exact original object operand".into()));
+        };
+        let snapshot=game.cast_origin_snapshot(execution_ctx.source)
+            .filter(|snapshot|snapshot.object_id==*expected)
+            .ok_or_else(||CostPaymentError::Other("retained mana-cost operand does not match this cast's original object".into()))?;
+        let cost=snapshot.mana_cost.clone().ok_or_else(||CostPaymentError::Other("original cast object has no payable mana cost".into()))?;
+        Some((cost,if snapshot.zone==Zone::Stack {snapshot.x_value.unwrap_or(0)}else{0}))
+    } else if let Some(spec) = dynamic_mana.mana_cost_of.as_deref() {
         if dynamic_mana.source_mana_cost {
             return Err(CostPaymentError::Other(
                 "ambiguous referenced mana cost".into(),
@@ -5274,7 +5483,7 @@ pub(crate) fn resolve_dynamic_mana_cost(
         }
         let objects = match spec.base() {
             crate::target::ChooseSpec::Object(filter) | crate::target::ChooseSpec::All(filter) => {
-                let context = execution_ctx.filter_context(game);
+                let mut context = execution_ctx.filter_context(game);
                 let zone = filter.zone.unwrap_or(Zone::Battlefield);
                 game.objects_in_zone(zone)
                     .into_iter()
@@ -5956,7 +6165,7 @@ fn legal_sacrifice_targets(
     reason: crate::costs::PaymentReason,
     cause: &crate::events::cause::EventCause,
 ) -> Vec<ObjectId> {
-    let ctx = FilterContext {
+    let mut ctx = FilterContext {
         you: Some(payer),
         source: Some(source),
         ..Default::default()
@@ -6072,7 +6281,7 @@ fn legal_exile_objects(
         Zone::Exile => game.exile.to_vec(),
         _ => Vec::new(),
     };
-    let ctx = game.filter_context_for(payer, Some(source));
+    let mut ctx = game.filter_context_for(payer, Some(source));
     let placeholders = if zone == Zone::Hand {
         hand_cost_placeholders(game, payer, source, filter, &ids)
     } else {
@@ -6121,7 +6330,7 @@ fn legal_return_targets(
     source: ObjectId,
     filter: &ObjectFilter,
 ) -> Vec<ObjectId> {
-    let ctx = FilterContext {
+    let mut ctx = FilterContext {
         you: Some(payer),
         source: Some(source),
         ..Default::default()
@@ -6144,7 +6353,7 @@ fn legal_cost_choice_objects(
     zone: Zone,
     top_only: bool,
 ) -> Vec<ObjectId> {
-    let ctx = game.filter_context_for(payer, Some(source));
+    let mut ctx = game.filter_context_for(payer, Some(source));
 
     let ids: Vec<ObjectId> = match zone {
         Zone::Battlefield => game.battlefield.to_vec(),
@@ -8452,3 +8661,7 @@ mod retained_counter_follow_on_costs {
         }
     }
 }
+
+#[cfg(test)]
+#[path="special_actions/cast_origin_mana_tests.rs"]
+mod cast_origin_mana_tests;

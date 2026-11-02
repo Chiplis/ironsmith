@@ -236,7 +236,8 @@ fn borrowed_producer_does_not_entitle_the_hosts_printed_reader_or_the_hand_choos
         let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         let donor = game.create_object_from_definition(&definition, A, Zone::Exile);
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(source, A, EffectTarget::Specific(source),
-            Modification::CopyTriggeredAbilities { filter: ObjectFilter::specific(donor), exclude_source_name: false, exclude_source_id: true }));
+            Modification::CopyTriggeredAbilities { excluded_ability_designations: Vec::new(),
+            filter: ObjectFilter::specific(donor), exclude_source_name: false, exclude_source_id: true }));
         game.refresh_continuous_state().unwrap();
         hand(&mut game, B, false); hand(&mut game, B, false); combat(&mut game, source); assert_eq!(game.stack.len(), 2);
         let owners = game.stack.iter().map(|entry| entry.linked_exile_owner.clone().unwrap()).collect::<Vec<_>>();

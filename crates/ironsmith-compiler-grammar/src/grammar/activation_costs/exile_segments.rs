@@ -49,9 +49,54 @@ pub fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    // A repeated counted selection is one announced cardinality expression,
+    // not a sequence of unrelated choices: "exile two times X cards ...".
+    let count_start = if tokens.get(1).is_some_and(|token| token.is_word("exactly")) { 2 } else { 1 };
+    if tokens.first().is_some_and(|token| token.is_word("exile"))
+        && tokens.get(count_start + 1).is_some_and(|token| token.is_word("times"))
+        && tokens.get(count_start + 2).is_some_and(|token| token.is_word("x"))
+        && let Some(multiplier) = tokens.get(count_start).and_then(|token| crate::util::parse_number_word_u32(token.parser_text()))
+    {
+        let multiplier = i32::try_from(multiplier)
+            .map_err(|_| unsupported(tokens, "scaled-exile-count"))?;
+        if multiplier <= 0 { return Err(unsupported(tokens, "scaled-exile-count")); }
+        let normalized: Vec<_> = tokens[..1].iter().cloned()
+            .chain(tokens[count_start + 2..].iter().cloned()).collect();
+        let mut parsed = parse_exile_segment_tokens(&normalized, contextual_source_reference)?;
+        if let ActivationCostSegmentCst::ExileChosen { count_value, .. } = &mut parsed {
+            crate::word_claims::claim_tokens(&tokens[1..count_start + 2]);
+            *count_value = Some(crate::effect::Value::XTimes(multiplier));
+            return Ok(parsed);
+        }
+        return Err(unsupported(tokens, "scaled-exile-count"));
+    }
     if tokens.first().is_some_and(|t| t.is_word("exile"))
         && let Some(from) = tokens.iter().position(|t| t.is_word("from")) {
         let tail: String = render_token_slice(&tokens[from..]).to_ascii_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
+        if matches!(tail.as_str(), "fromyourhandand/orgraveyard" | "fromyourhandand/orfromyourgraveyard" | "fromyourhandandorgraveyard" | "fromyourhandandorfromyourgraveyard") {
+            let subject = &tokens[1..from];
+            let subject = if subject.first().is_some_and(|t| t.is_word("exactly")) { &subject[1..] } else { subject };
+            let choice = parse_activation_choice_prefix_tokens(subject)
+                .ok_or_else(|| unsupported(subject, "mixed-zone-exile-selector"))?;
+            let mut material = crate::object_filters::parse_object_filter_lexed(choice.rest, false)?;
+            material.zone = None;
+            material.controller = None;
+            material.owner = None;
+            let mut filter = crate::target::ObjectFilter::default();
+            filter.any_of = vec![
+                material.clone().in_zone(Zone::Hand).owned_by(PlayerFilter::You),
+                material.in_zone(Zone::Graveyard).owned_by(PlayerFilter::You),
+            ];
+            // This reader owns the complete public zone union, while the
+            // independent selector reader owns the count and card qualities.
+            crate::word_claims::claim_tokens(&tokens[from..]);
+            if tokens.get(1).is_some_and(|token| token.is_word("exactly")) {
+                crate::word_claims::claim_tokens(&tokens[1..2]);
+            }
+            return Ok(ActivationCostSegmentCst::ExileChosen {
+                count_value: None, choice_count: choice.count, filter, top_only: false, turn_face_up: false,
+            });
+        }
         if tail == "fromamongotherpermanentsyoucontroland/orcardsinyourgraveyard" {
             let subject = &tokens[1..from];
             let subject = if subject.first().is_some_and(|t| t.is_word("the")) { &subject[1..] } else { subject };

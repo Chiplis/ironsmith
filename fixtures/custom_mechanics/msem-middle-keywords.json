@@ -1,0 +1,2020 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact originals preserved. Candidates do not certify gameplay support."
+  },
+  "mechanics": [
+    {
+      "id": "msem-589",
+      "keyword": "Cadence",
+      "original_reminder": "Whenever you cast a spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.",
+      "executable_reminder": "Whenever you cast a spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature.",
+      "source_cards": [
+        "Almgrove Champion"
+      ],
+      "rule_reference": "702.220.",
+      "rule_text": [
+        {
+          "name": "702.220a",
+          "rule": "Cadence is a triggered ability of some creatures. “Cadence” means “Whenever you cast a spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.”",
+          "custom": true
+        },
+        {
+          "name": "702.220b",
+          "rule": "If a permanent with cadence isn't a creature, the cadence ability will trigger whenever you cast a spell with mana value greater than 0.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Almgrove Champion_CAC",
+          "name": "Almgrove Champion",
+          "source_card_key": "Almgrove Champion_CAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nFirst strike\nCadence *(Whenever you cast a spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.)*\nAlmgrove Champion can only attack or block alone.",
+          "executable_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nFirst strike\nWhenever you cast a spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature\nAlmgrove Champion can only attack or block alone.",
+          "mana_cost": "{W}",
+          "type_line": "Creature — Human Soldier",
+          "power": "1",
+          "toughness": "1",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Almgrove Champion",
+              "original_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nFirst strike\nCadence *(Whenever you cast a spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.)*\nAlmgrove Champion can only attack or block alone."
+            }
+          ],
+          "all_faces_validation": "single face",
+          "source_equivalent_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nFirst strike\nWhenever you cast a spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature.\nAlmgrove Champion can only attack or block alone.",
+          "custom_keyword_identities": [
+            "cadence"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "First strike\nCadence\nAlmgrove Champion can only attack or block alone.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Almgrove Champion",
+              "executable_text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\nFirst strike\nWhenever you cast a spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature\nAlmgrove Champion can only attack or block alone.",
+              "custom_keyword_identities": [
+                "cadence"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "First strike\nCadence\nAlmgrove Champion can only attack or block alone."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Exact cast trigger with an intervening-if comparison against the triggering spell mana value and current source power; noncreature power is zero under the source custom rule. Typed instant/sorcery/Dragon filter is retained independently."
+      },
+      "implementation_status": "source_equivalence_candidate_pending_parser_and_gameplay",
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ],
+      "implementation_obligations": [
+        "Intervening-if compares cast spell mana value to current source power both when triggered and when resolved; source noncreature power is zero.",
+        "Prepositive spell-type variant is an instant/sorcery/Dragon union, not all spells."
+      ]
+    },
+    {
+      "id": "msem-590",
+      "keyword": "Cadence",
+      "original_reminder": "Whenever you cast an instant, sorcery or Dragon spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.",
+      "executable_reminder": "Whenever you cast an instant, sorcery or Dragon spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature.",
+      "source_cards": [
+        "Dragon's Breath Throatsinger"
+      ],
+      "rule_reference": "702.220.",
+      "rule_text": [
+        {
+          "name": "702.220a",
+          "rule": "Cadence is a triggered ability of some creatures. “Cadence” means “Whenever you cast a spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.”",
+          "custom": true
+        },
+        {
+          "name": "702.220b",
+          "rule": "If a permanent with cadence isn't a creature, the cadence ability will trigger whenever you cast a spell with mana value greater than 0.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dragon's Breath Throatsinger_OTH",
+          "name": "Dragon's Breath Throatsinger",
+          "source_card_key": "Dragon's Breath Throatsinger_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Bard Shaman\nPower/Toughness: 1/2\nInstant, sorcery, and Dragon cadence *(Whenever you cast an instant, sorcery or Dragon spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.)*\n{R}, {T}, Discard a card: Draw a card.",
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Bard Shaman\nPower/Toughness: 1/2\nWhenever you cast an Instant, sorcery or Dragon spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature.\n{R}, {T}, Discard a card: Draw a card.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Human Bard Shaman",
+          "power": "1",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dragon's Breath Throatsinger",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Bard Shaman\nPower/Toughness: 1/2\nInstant, sorcery, and Dragon cadence *(Whenever you cast an instant, sorcery or Dragon spell, if its mana value is greater than this creature's power, put a +1/+1 counter on this creature.)*\n{R}, {T}, Discard a card: Draw a card."
+            }
+          ],
+          "all_faces_validation": "single face",
+          "source_equivalent_text": "Mana cost: {R}\nType: Creature — Human Bard Shaman\nPower/Toughness: 1/2\nWhenever you cast an instant, sorcery or Dragon spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature.\n{R}, {T}, Discard a card: Draw a card.",
+          "custom_keyword_identities": [
+            "cadence"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Dragon's Breath Throatsinger",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Bard Shaman\nPower/Toughness: 1/2\nWhenever you cast an Instant, sorcery or Dragon spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature.\n{R}, {T}, Discard a card: Draw a card.",
+              "custom_keyword_identities": [
+                "cadence"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Instant, sorcery, and Dragon cadence\n{R}, {T}, Discard a card: Draw a card."
+            }
+          ],
+          "original_display_text": "Instant, sorcery, and Dragon cadence\n{R}, {T}, Discard a card: Draw a card."
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Exact cast trigger with an intervening-if comparison against the triggering spell mana value and current source power; noncreature power is zero under the source custom rule. Typed instant/sorcery/Dragon filter is retained independently."
+      },
+      "implementation_status": "source_equivalence_candidate_pending_parser_and_gameplay",
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Cadence",
+          "prefixTemplate": "{Type}",
+          "reminder": "Whenever you cast an {Type} spell, if that spell's mana value is greater than this creature's power, put a +1/+1 counter on this creature."
+        }
+      ],
+      "implementation_obligations": [
+        "Intervening-if compares cast spell mana value to current source power both when triggered and when resolved; source noncreature power is zero.",
+        "Prepositive spell-type variant is an instant/sorcery/Dragon union, not all spells."
+      ]
+    },
+    {
+      "id": "msem-594",
+      "keyword": "Recite",
+      "original_reminder": "You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.",
+      "executable_reminder": "You may cast this card from your graveyard for {Cost}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+      "source_cards": [
+        "Archive Guardian",
+        "Breaker of Secrets",
+        "Ceaseless Valiant",
+        "Compulsion's Voice",
+        "Gruff Smith",
+        "Vitality Maestro",
+        "Whistling Blades",
+        "Charming Marauder",
+        "Cognitive Fumigator",
+        "Fading Dead",
+        "Fallacy's Sanctifier",
+        "Ophidian Oracle",
+        "Seeker of Horizons",
+        "Strayseeker Ranger",
+        "Theurgist of the Depths",
+        "Withering Husk",
+        "Flameform Amalgam"
+      ],
+      "rule_reference": "702.222.",
+      "rule_text": [
+        {
+          "name": "702.222a",
+          "rule": "Recite represents a static ability that functions while the card with recite is in a graveyard, a triggered ability that functions on the battlefield, and a static ability that functions on the battlefield. “Recite (cost)” means “You may cast this card from your graveyard by paying (cost) rather than paying its mana cost.”, “When this permanent enters, if its recite cost was paid, its controller exiles it.”, and “If this creature would leave the battlefield, if its recite cost was paid, exile it instead of putting it anywhere else.” Paying a card's recite cost follows the rules for paying alternative costs.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Archive Guardian_CAC",
+          "name": "Archive Guardian",
+          "original_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental\nPower/Toughness: 2/2\nWhen Archive Guardian enters, return target card from your graveyard to your hand.\nRecite {1}{B}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*",
+          "executable_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental\nPower/Toughness: 2/2\nWhen Archive Guardian enters, return target card from your graveyard to your hand.\nYou may cast this card from your graveyard for {1}{B}{G}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+          "mana_cost": "{2}{B}{G}",
+          "type_line": "Creature — Elemental",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Archive Guardian_CAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Archive Guardian",
+              "original_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental\nPower/Toughness: 2/2\nWhen Archive Guardian enters, return target card from your graveyard to your hand.\nRecite {1}{B}{G} *(You may cast this creature from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Archive Guardian",
+              "executable_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental\nPower/Toughness: 2/2\nWhen Archive Guardian enters, return target card from your graveyard to your hand.\nYou may cast this card from your graveyard for {1}{B}{G}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+              "custom_keyword_identities": [
+                "recite"
+              ],
+              "custom_keyword_payments": [
+                "recite"
+              ],
+              "original_display_text": "When Archive Guardian enters, return target card from your graveyard to your hand.\nRecite {1}{B}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "recite"
+          ],
+          "custom_keyword_payments": [
+            "recite"
+          ],
+          "original_display_text": "When Archive Guardian enters, return target card from your graveyard to your hand.\nRecite {1}{B}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Recite",
+          "template": "{Cost}",
+          "reminder": "You may cast this card from your graveyard for {Cost}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Graveyard alternative cast cost must preserve the method receipt without granting flashback or evoke identity.",
+        "ETB exile trigger is conditional on paid recite method; leave-battlefield exile replacement must protect other zone changes before the trigger resolves.",
+        "Countering the recited spell on the stack must not apply a battlefield-only exile replacement."
+      ]
+    },
+    {
+      "id": "msem-595",
+      "keyword": "Recite",
+      "original_reminder": "You may cast this spell from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.",
+      "executable_reminder": "You may cast this card from your graveyard for {Cost}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+      "source_cards": [
+        "Aethermancer's Companion"
+      ],
+      "rule_reference": "702.222.",
+      "rule_text": [
+        {
+          "name": "702.222a",
+          "rule": "Recite represents a static ability that functions while the card with recite is in a graveyard, a triggered ability that functions on the battlefield, and a static ability that functions on the battlefield. “Recite (cost)” means “You may cast this card from your graveyard by paying (cost) rather than paying its mana cost.”, “When this permanent enters, if its recite cost was paid, its controller exiles it.”, and “If this creature would leave the battlefield, if its recite cost was paid, exile it instead of putting it anywhere else.” Paying a card's recite cost follows the rules for paying alternative costs.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aethermancer's Companion_OTH",
+          "name": "Aethermancer's Companion",
+          "original_text": "Mana cost: {3}{W}{U}\nType: Creature — Cat\nPower/Toughness: 4/4\nWhen Aethermancer's Companion enters, aetherize up to two other non-Cat permanents you control. *(Create tokens that are copies of each of them, then exile them.)*\nRecite {5}{W}{U} *(You may cast this spell from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*",
+          "executable_text": "Mana cost: {3}{W}{U}\nType: Creature — Cat\nPower/Toughness: 4/4\nWhen Aethermancer's Companion enters, aetherize up to two other non-Cat permanents you control.\nYou may cast this card from your graveyard for {5}{W}{U}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+          "mana_cost": "{3}{W}{U}",
+          "type_line": "Creature — Cat",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Aethermancer's Companion_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aethermancer's Companion",
+              "original_text": "Mana cost: {3}{W}{U}\nType: Creature — Cat\nPower/Toughness: 4/4\nWhen Aethermancer's Companion enters, aetherize up to two other non-Cat permanents you control. *(Create tokens that are copies of each of them, then exile them.)*\nRecite {5}{W}{U} *(You may cast this spell from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave the battlefield.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aethermancer's Companion",
+              "executable_text": "Mana cost: {3}{W}{U}\nType: Creature — Cat\nPower/Toughness: 4/4\nWhen Aethermancer's Companion enters, aetherize up to two other non-Cat permanents you control.\nYou may cast this card from your graveyard for {5}{W}{U}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+              "custom_keyword_identities": [
+                "recite"
+              ],
+              "custom_keyword_payments": [
+                "recite"
+              ],
+              "original_display_text": "When Aethermancer's Companion enters, aetherize up to two other non-Cat permanents you control.\nRecite {5}{W}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "recite"
+          ],
+          "custom_keyword_payments": [
+            "recite"
+          ],
+          "original_display_text": "When Aethermancer's Companion enters, aetherize up to two other non-Cat permanents you control.\nRecite {5}{W}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Recite",
+          "template": "{Cost}",
+          "reminder": "You may cast this card from your graveyard for {Cost}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Graveyard alternative cast cost must preserve the method receipt without granting flashback or evoke identity.",
+        "ETB exile trigger is conditional on paid recite method; leave-battlefield exile replacement must protect other zone changes before the trigger resolves.",
+        "Countering the recited spell on the stack must not apply a battlefield-only exile replacement."
+      ]
+    },
+    {
+      "id": "msem-596",
+      "keyword": "Recite",
+      "original_reminder": "You may cast this from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave.",
+      "executable_reminder": "You may cast this card from your graveyard for {Cost}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.",
+      "source_cards": [
+        "Eighth-Life Companion"
+      ],
+      "rule_reference": "702.222.",
+      "rule_text": [
+        {
+          "name": "702.222a",
+          "rule": "Recite represents a static ability that functions while the card with recite is in a graveyard, a triggered ability that functions on the battlefield, and a static ability that functions on the battlefield. “Recite (cost)” means “You may cast this card from your graveyard by paying (cost) rather than paying its mana cost.”, “When this permanent enters, if its recite cost was paid, its controller exiles it.”, and “If this creature would leave the battlefield, if its recite cost was paid, exile it instead of putting it anywhere else.” Paying a card's recite cost follows the rules for paying alternative costs.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Eighth-Life Companion_OTH",
+          "name": "Eighth-Life Companion",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Cat\nPower/Toughness: 1/1\nWhen Eighth-Life Companion enters, put two +1/+1 counters on target creature you control.\nRecite {1}{W} *(You may cast this from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave.)*\nRevive {2}{W}{W} *({2}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of it except it has no mana cost. Revive only as a sorcery.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Cat\nPower/Toughness: 1/1\nWhen Eighth-Life Companion enters, put two +1/+1 counters on target creature you control.\nYou may cast this card from your graveyard for {1}{W}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.\nRevive {2}{W}{W}",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Cat",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Eighth-Life Companion_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Eighth-Life Companion",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Cat\nPower/Toughness: 1/1\nWhen Eighth-Life Companion enters, put two +1/+1 counters on target creature you control.\nRecite {1}{W} *(You may cast this from your graveyard for its recite cost. If you do, exile it when it enters or if it would leave.)*\nRevive {2}{W}{W} *({2}{W}{W}, Exile this card from your graveyard: Create a token that's a copy of it except it has no mana cost. Revive only as a sorcery.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Eighth-Life Companion",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Cat\nPower/Toughness: 1/1\nWhen Eighth-Life Companion enters, put two +1/+1 counters on target creature you control.\nYou may cast this card from your graveyard for {1}{W}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it.\nRevive {2}{W}{W}",
+              "custom_keyword_identities": [
+                "recite"
+              ],
+              "custom_keyword_payments": [
+                "recite"
+              ],
+              "original_display_text": "When Eighth-Life Companion enters, put two +1/+1 counters on target creature you control.\nRecite {1}{W}\nRevive {2}{W}{W}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "recite"
+          ],
+          "custom_keyword_payments": [
+            "recite"
+          ],
+          "original_display_text": "When Eighth-Life Companion enters, put two +1/+1 counters on target creature you control.\nRecite {1}{W}\nRevive {2}{W}{W}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Recite",
+          "template": "{Cost}",
+          "reminder": "You may cast this card from your graveyard for {Cost}. If the permanent this spell becomes would leave the battlefield, exile it instead.\nWhen this permanent enters, if its recite cost was paid, exile it."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Graveyard alternative cast cost must preserve the method receipt without granting flashback or evoke identity.",
+        "ETB exile trigger is conditional on paid recite method; leave-battlefield exile replacement must protect other zone changes before the trigger resolves.",
+        "Countering the recited spell on the stack must not apply a battlefield-only exile replacement."
+      ]
+    },
+    {
+      "id": "msem-597",
+      "keyword": "Spirited",
+      "original_reminder": "When this creature enters, you may activate one of its activated abilities without paying its cost.",
+      "executable_reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost.",
+      "source_cards": [
+        "Akaima Rager"
+      ],
+      "rule_reference": "702.223.",
+      "rule_text": [
+        {
+          "name": "702.223a",
+          "rule": "Spirited is a triggered ability. “Spirited” means “When this permanent enters, you may activate one of its abilities without paying that ability's cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.223b",
+          "rule": "If a creature has spirited, its activated abilities whose cost includes the tap symbol or the untap symbol can be activated by its spirited ability even if that creature hasn’t been controlled by that player continuously since their most recent turn began.",
+          "custom": true
+        },
+        {
+          "name": "702.223c",
+          "rule": "The ability that will be activated is chosen as the spirited ability resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.223d",
+          "rule": "Multiple instances of spirited trigger separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Akaima Rager_TOJ",
+          "name": "Akaima Rager",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nHaste\nSpirited *(When this creature enters, you may activate one of its activated abilities without paying its cost.)*\n{1}{R}: Akaima Rager gets +1/+0 until end of turn.",
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nHaste\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{1}{R}: Akaima Rager gets +1/+0 until end of turn.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Human Warrior",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Akaima Rager_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Akaima Rager",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nHaste\nSpirited *(When this creature enters, you may activate one of its activated abilities without paying its cost.)*\n{1}{R}: Akaima Rager gets +1/+0 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Akaima Rager",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nHaste\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{1}{R}: Akaima Rager gets +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "spirited"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Haste\nSpirited\n{1}{R}: Akaima Rager gets +1/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "spirited"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Haste\nSpirited\n{1}{R}: Akaima Rager gets +1/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Spirited",
+          "reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Resolution chooses one currently activated ability, optionally; all activation costs are waived, including tap/untap/sacrifice.",
+        "The activated ability still uses its own targets, modes, controller, legality and activation event; summoning sickness cannot prevent a waived tap cost.",
+        "Multiple spirited instances remain separate ETB triggers; effect execution is not a substitute for actual ability activation."
+      ]
+    },
+    {
+      "id": "msem-598",
+      "keyword": "Spirited",
+      "original_reminder": "When this enters, you may activate one of its activated abilities without paying its cost.",
+      "executable_reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost.",
+      "source_cards": [
+        "Imperial Coins"
+      ],
+      "rule_reference": "702.223.",
+      "rule_text": [
+        {
+          "name": "702.223a",
+          "rule": "Spirited is a triggered ability. “Spirited” means “When this permanent enters, you may activate one of its abilities without paying that ability's cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.223b",
+          "rule": "If a creature has spirited, its activated abilities whose cost includes the tap symbol or the untap symbol can be activated by its spirited ability even if that creature hasn’t been controlled by that player continuously since their most recent turn began.",
+          "custom": true
+        },
+        {
+          "name": "702.223c",
+          "rule": "The ability that will be activated is chosen as the spirited ability resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.223d",
+          "rule": "Multiple instances of spirited trigger separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Imperial Coins_TOJ",
+          "name": "Imperial Coins",
+          "original_text": "Mana cost: {2}\nType: Artifact\nSpirited *(When this enters, you may activate one of its activated abilities without paying its cost.)*\n{1}, {T}: Add one mana of any color. When you do, surveil 1. *(Look at the top card of your library. You may put it into your graveyard.)*",
+          "executable_text": "Mana cost: {2}\nType: Artifact\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{1}, {T}: Add one mana of any color. When you do, surveil 1.",
+          "mana_cost": "{2}",
+          "type_line": "Artifact",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Imperial Coins_TOJ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Imperial Coins",
+              "original_text": "Mana cost: {2}\nType: Artifact\nSpirited *(When this enters, you may activate one of its activated abilities without paying its cost.)*\n{1}, {T}: Add one mana of any color. When you do, surveil 1. *(Look at the top card of your library. You may put it into your graveyard.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Imperial Coins",
+              "executable_text": "Mana cost: {2}\nType: Artifact\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{1}, {T}: Add one mana of any color. When you do, surveil 1.",
+              "custom_keyword_identities": [
+                "spirited"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Spirited\n{1}, {T}: Add one mana of any color. When you do, surveil 1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "spirited"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Spirited\n{1}, {T}: Add one mana of any color. When you do, surveil 1.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Spirited",
+          "reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Resolution chooses one currently activated ability, optionally; all activation costs are waived, including tap/untap/sacrifice.",
+        "The activated ability still uses its own targets, modes, controller, legality and activation event; summoning sickness cannot prevent a waived tap cost.",
+        "Multiple spirited instances remain separate ETB triggers; effect execution is not a substitute for actual ability activation."
+      ]
+    },
+    {
+      "id": "msem-599",
+      "keyword": "Spirited",
+      "original_reminder": "When this creature enters, you may activate one of its activated abilities without paying its costs.",
+      "executable_reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost.",
+      "source_cards": [
+        "Avalia, Cyber Stalker"
+      ],
+      "rule_reference": "702.223.",
+      "rule_text": [
+        {
+          "name": "702.223a",
+          "rule": "Spirited is a triggered ability. “Spirited” means “When this permanent enters, you may activate one of its abilities without paying that ability's cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.223b",
+          "rule": "If a creature has spirited, its activated abilities whose cost includes the tap symbol or the untap symbol can be activated by its spirited ability even if that creature hasn’t been controlled by that player continuously since their most recent turn began.",
+          "custom": true
+        },
+        {
+          "name": "702.223c",
+          "rule": "The ability that will be activated is chosen as the spirited ability resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.223d",
+          "rule": "Multiple instances of spirited trigger separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Avalia, Cyber Stalker_OTH",
+          "name": "Avalia, Cyber Stalker",
+          "original_text": "Mana cost: {1}{U/B}{U/B}\nType: Legendary Creature — Vampire\nPower/Toughness: 3/3\nFlying\nSpirited *(When this creature enters, you may activate one of its activated abilities without paying its costs.)*\n{3}{U/B}{U/B}: Look at the top card of target opponent's library, then exile it face down. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any type to cast that spell.",
+          "executable_text": "Mana cost: {1}{U/B}{U/B}\nType: Legendary Creature — Vampire\nPower/Toughness: 3/3\nFlying\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{3}{U/B}{U/B}: Look at the top card of target opponent's library, then exile it face down. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any type to cast that spell.",
+          "mana_cost": "{1}{U/B}{U/B}",
+          "type_line": "Legendary Creature — Vampire",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Avalia, Cyber Stalker_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Avalia, Cyber Stalker",
+              "original_text": "Mana cost: {1}{U/B}{U/B}\nType: Legendary Creature — Vampire\nPower/Toughness: 3/3\nFlying\nSpirited *(When this creature enters, you may activate one of its activated abilities without paying its costs.)*\n{3}{U/B}{U/B}: Look at the top card of target opponent's library, then exile it face down. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any type to cast that spell."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Avalia, Cyber Stalker",
+              "executable_text": "Mana cost: {1}{U/B}{U/B}\nType: Legendary Creature — Vampire\nPower/Toughness: 3/3\nFlying\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{3}{U/B}{U/B}: Look at the top card of target opponent's library, then exile it face down. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any type to cast that spell.",
+              "custom_keyword_identities": [
+                "spirited"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nSpirited\n{3}{U/B}{U/B}: Look at the top card of target opponent's library, then exile it face down. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any type to cast that spell."
+            }
+          ],
+          "custom_keyword_identities": [
+            "spirited"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nSpirited\n{3}{U/B}{U/B}: Look at the top card of target opponent's library, then exile it face down. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any type to cast that spell.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Spirited",
+          "reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Resolution chooses one currently activated ability, optionally; all activation costs are waived, including tap/untap/sacrifice.",
+        "The activated ability still uses its own targets, modes, controller, legality and activation event; summoning sickness cannot prevent a waived tap cost.",
+        "Multiple spirited instances remain separate ETB triggers; effect execution is not a substitute for actual ability activation."
+      ]
+    },
+    {
+      "id": "msem-600",
+      "keyword": "Spirited",
+      "original_reminder": "When this enters, you may activate one of its activated abilities without paying its costs.",
+      "executable_reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost.",
+      "source_cards": [
+        "Erduk, Settled Nomad"
+      ],
+      "rule_reference": "702.223.",
+      "rule_text": [
+        {
+          "name": "702.223a",
+          "rule": "Spirited is a triggered ability. “Spirited” means “When this permanent enters, you may activate one of its abilities without paying that ability's cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.223b",
+          "rule": "If a creature has spirited, its activated abilities whose cost includes the tap symbol or the untap symbol can be activated by its spirited ability even if that creature hasn’t been controlled by that player continuously since their most recent turn began.",
+          "custom": true
+        },
+        {
+          "name": "702.223c",
+          "rule": "The ability that will be activated is chosen as the spirited ability resolves.",
+          "custom": true
+        },
+        {
+          "name": "702.223d",
+          "rule": "Multiple instances of spirited trigger separately.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Erduk, Settled Nomad_OTH",
+          "name": "Erduk, Settled Nomad",
+          "original_text": "Mana cost: {W}{B}{G}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 3/3\nVigilance, spirited *(When this enters, you may activate one of its activated abilities without paying its costs.)*\n{T}: Choose artifact or enchantment. Target nonland permanent becomes the chosen type in addition to its other types until end of turn.\nCivilized — At the beginning of your end step, if you control an artifact, a creature, and an enchantment, put a +1/+1 counter on target creature you control.",
+          "executable_text": "Mana cost: {W}{B}{G}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 3/3\nVigilance\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{T}: Choose artifact or enchantment. Target nonland permanent becomes the chosen type in addition to its other types until end of turn.\nCivilized — At the beginning of your end step, if you control an artifact, a creature, and an enchantment, put a +1/+1 counter on target creature you control.",
+          "mana_cost": "{W}{B}{G}",
+          "type_line": "Legendary Creature — Human Soldier",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Erduk, Settled Nomad_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Erduk, Settled Nomad",
+              "original_text": "Mana cost: {W}{B}{G}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 3/3\nVigilance, spirited *(When this enters, you may activate one of its activated abilities without paying its costs.)*\n{T}: Choose artifact or enchantment. Target nonland permanent becomes the chosen type in addition to its other types until end of turn.\nCivilized — At the beginning of your end step, if you control an artifact, a creature, and an enchantment, put a +1/+1 counter on target creature you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Erduk, Settled Nomad",
+              "executable_text": "Mana cost: {W}{B}{G}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 3/3\nVigilance\nWhen this permanent enters, you may activate one of its activated abilities without paying that ability's cost\n{T}: Choose artifact or enchantment. Target nonland permanent becomes the chosen type in addition to its other types until end of turn.\nCivilized — At the beginning of your end step, if you control an artifact, a creature, and an enchantment, put a +1/+1 counter on target creature you control.",
+              "custom_keyword_identities": [
+                "spirited"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance, spirited\n{T}: Choose artifact or enchantment. Target nonland permanent becomes the chosen type in addition to its other types until end of turn.\nCivilized — At the beginning of your end step, if you control an artifact, a creature, and an enchantment, put a +1/+1 counter on target creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "spirited"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance, spirited\n{T}: Choose artifact or enchantment. Target nonland permanent becomes the chosen type in addition to its other types until end of turn.\nCivilized — At the beginning of your end step, if you control an artifact, a creature, and an enchantment, put a +1/+1 counter on target creature you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Spirited",
+          "reminder": "When this permanent enters, you may activate one of its activated abilities without paying that ability's cost."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Resolution chooses one currently activated ability, optionally; all activation costs are waived, including tap/untap/sacrifice.",
+        "The activated ability still uses its own targets, modes, controller, legality and activation event; summoning sickness cannot prevent a waived tap cost.",
+        "Multiple spirited instances remain separate ETB triggers; effect execution is not a substitute for actual ability activation."
+      ]
+    },
+    {
+      "id": "msem-601",
+      "keyword": "Embody",
+      "original_reminder": "Enchanted creature is a copy of this card except for its types.",
+      "executable_reminder": "Enchanted creature is a copy of this permanent except for its card types, supertypes, and subtypes.",
+      "source_cards": [
+        "Fate of the Brave"
+      ],
+      "rule_reference": "702.224.",
+      "rule_text": [
+        {
+          "name": "702.224a",
+          "rule": "Embody is a static ability of Persona Auras. It means “Enchanted creature is a copy of this Persona except for its types, supertypes, and subtypes.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Fate of the Brave_HVF",
+          "name": "Fate of the Brave",
+          "original_text": "Mana cost: {1}{R}\nType: Enchantment — Aura Persona\nPower/Toughness: 3/3\nEnchant creature\nEmbody *(Enchanted creature is a copy of this card except for its types.)*\nWhenever Fate of the Brave becomes tapped, it deals 1 damage to each opponent.",
+          "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Aura Persona\nPower/Toughness: 3/3\nEnchant creature\nEnchanted creature is a copy of this permanent except for its card types, supertypes, and subtypes\nWhenever Fate of the Brave becomes tapped, it deals 1 damage to each opponent.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Enchantment — Aura Persona",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Fate of the Brave_HVF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fate of the Brave",
+              "original_text": "Mana cost: {1}{R}\nType: Enchantment — Aura Persona\nPower/Toughness: 3/3\nEnchant creature\nEmbody *(Enchanted creature is a copy of this card except for its types.)*\nWhenever Fate of the Brave becomes tapped, it deals 1 damage to each opponent."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fate of the Brave",
+              "executable_text": "Mana cost: {1}{R}\nType: Enchantment — Aura Persona\nPower/Toughness: 3/3\nEnchant creature\nEnchanted creature is a copy of this permanent except for its card types, supertypes, and subtypes\nWhenever Fate of the Brave becomes tapped, it deals 1 damage to each opponent.",
+              "custom_keyword_identities": [
+                "embody"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Enchant creature\nEmbody\nWhenever Fate of the Brave becomes tapped, it deals 1 damage to each opponent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "embody"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Enchant creature\nEmbody\nWhenever Fate of the Brave becomes tapped, it deals 1 damage to each opponent.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Embody",
+          "reminder": "Enchanted creature is a copy of this permanent except for its card types, supertypes, and subtypes."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Ongoing copy effect applies to enchanted creature from this Persona, preserving enchanted object card types, supertypes and subtypes.",
+        "Copies abilities, colors, mana cost, power and toughness while preserving all three type categories; copying only power/toughness is insufficient."
+      ]
+    },
+    {
+      "id": "msem-602",
+      "keyword": "Harvest",
+      "original_reminder": "You may tap any number of creatures you control as you cast this spell. If you do, reduce this spell's mana cost by their total power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap any number of untapped creatures you control. This spell costs {X} less to cast, where X is the total power of creatures tapped this way.",
+      "source_cards": [
+        "A Whisper's Touch"
+      ],
+      "rule_reference": "702.225.",
+      "rule_text": [
+        {
+          "name": "702.225a",
+          "rule": "Harvest represents a static ability that functions while the spell with harvest is on the stack. “Harvest” means “As an additional cost to cast this spell, you may tap any number of untapped creatures you control. This spell costs less to cast, where X is the total power of creatures tapped this way.” Paying a spell's harvest cost follows the rules for paying additional costs in rules 601.2b and 601.2f-h.",
+          "custom": true
+        },
+        {
+          "name": "702.225b",
+          "rule": "You choose which creatures you will tap as you choose to pay a spell's harvest cost, and you tap those creatures as you pay the total cost.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "A Whisper's Touch_HVF",
+          "name": "A Whisper's Touch",
+          "source_card_key": "A Whisper's Touch_HVF",
+          "source_face": "front",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {X}{X}{B}\nType: Sorcery\nHarvest *(You may tap any number of creatures you control as you cast this spell. If you do, reduce this spell's mana cost by their total power.)*\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life.",
+          "executable_text": "Mana cost: {X}{X}{B}\nType: Sorcery\nAs an additional cost to cast this spell, you may tap any number of untapped creatures you control. This spell costs {X} less to cast, where X is the total power of creatures tapped this way\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life.",
+          "mana_cost": "{X}{X}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "A Whisper's Touch",
+              "original_text": "Mana cost: {X}{X}{B}\nType: Sorcery\nHarvest *(You may tap any number of creatures you control as you cast this spell. If you do, reduce this spell's mana cost by their total power.)*\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life."
+            }
+          ],
+          "all_faces_validation": "single face",
+          "source_equivalent_text": "Mana cost: {X}{X}{B}\nType: Sorcery\nAs an additional cost to cast this spell, you may tap any number of untapped creatures you control. This spell costs {X} less to cast, where X is the total power of creatures tapped this way.\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life.",
+          "custom_keyword_identities": [
+            "harvest"
+          ],
+          "custom_keyword_payments": [
+            "harvest"
+          ],
+          "original_display_text": "Harvest\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "A Whisper's Touch",
+              "executable_text": "Mana cost: {X}{X}{B}\nType: Sorcery\nAs an additional cost to cast this spell, you may tap any number of untapped creatures you control. This spell costs {X} less to cast, where X is the total power of creatures tapped this way\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life.",
+              "custom_keyword_identities": [
+                "harvest"
+              ],
+              "custom_keyword_payments": [
+                "harvest"
+              ],
+              "original_display_text": "Harvest\nFor each nonland permanent target player controls, that player sacrifices it unless they pay X life."
+            }
+          ]
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Exact optional multi-creature additional tap cost and total-power reduction of generic total cast cost. This requires joint selection and mana reservation; it must not be approximated by single-creature Harness or by convoke."
+      },
+      "implementation_status": "source_equivalence_candidate_pending_parser_and_gameplay",
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ],
+      "pending_engine_plumbing": "Generalized multi-object cost characteristic selection and reservation; current single-object adapter is insufficient.",
+      "implementation_obligations": [
+        "Optional additional tap cost chooses any number of untapped friendly creatures; sum their power rather than their count.",
+        "Reduction applies to generic mana only and must reserve cost-tapped mana creatures against simultaneous mana payment.",
+        "Cost preview uses the same scoped choice receipt as actual payment, including minima, maxima and negative power."
+      ]
+    },
+    {
+      "id": "msem-603",
+      "keyword": "Puzzlebox",
+      "original_reminder": "Begin the game with this and another card you own from outside the game in the command zone, locked. That card is face down until you unlock this.",
+      "executable_reminder": null,
+      "source_cards": [
+        "Ancient Maze"
+      ],
+      "rule_reference": "702.226.",
+      "rule_text": [
+        {
+          "name": "702.226a",
+          "rule": "Puzzlebox represents two abilities, a static ability that functions as a conspiracy card with puzzlebox is put into the command zone, and a static ability that functions while the conspiracy is face up in the command zone. “Puzzlebox” means “As you put this conspiracy card into the command zone, put a card you own from outside the game into the command zone face down and locked” and “As this puzzlebox becomes unlocked, turn the locked card face up.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ancient Maze_UNR",
+          "name": "Ancient Maze",
+          "original_text": "Type: Conspiracy\nPuzzlebox *(Begin the game with this and another card you own from outside the game in the command zone, locked. That card is face down until you unlock this.)*\n{6}: Unlock Ancient Maze. If the revealed card is green, put it into your hand. Otherwise, put it on top of your library.",
+          "executable_text": null,
+          "mana_cost": "",
+          "type_line": "Conspiracy",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ancient Maze_UNR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ancient Maze",
+              "original_text": "Type: Conspiracy\nPuzzlebox *(Begin the game with this and another card you own from outside the game in the command zone, locked. That card is face down until you unlock this.)*\n{6}: Unlock Ancient Maze. If the revealed card is green, put it into your hand. Otherwise, put it on top of your library."
+            }
+          ]
+        }
+      ],
+      "support_status": "unsupported_requires_new_rules",
+      "test_status": "pending_behavioral_verification",
+      "boundary_evidence": "702.226a-c requires outside-game selection at pregame command-zone placement, a locked designation, and linked face-down card revelation when unlocked; ordinary battlefield/stack actions cannot supply that pregame action."
+    },
+    {
+      "id": "msem-604",
+      "keyword": "Sleight",
+      "original_reminder": "You may cast this spell as though it had flash if you pay {1} more to cast it.",
+      "executable_reminder": "You may cast this spell as though it had flash if you pay {1} more to cast it.",
+      "source_cards": [
+        "Beckon of the Wild"
+      ],
+      "rule_reference": "702.227.",
+      "rule_text": [
+        {
+          "name": "702.227a",
+          "rule": "Sleight is a static ability that functions while a spell with sleight is being cast. “Sleight” means “You may cast this spell as though it had flash if you pay more to cast it.",
+          "custom": true
+        },
+        {
+          "name": "702.227b",
+          "rule": "The spell with sleight will not actually gain flash, you will just be able to cast it as though it did.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Beckon of the Wild_MS1",
+          "name": "Beckon of the Wild",
+          "original_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nSleight *(You may cast this spell as though it had flash if you pay {1} more to cast it.)*\nSearch your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle.",
+          "executable_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nYou may cast this spell as though it had flash if you pay {1} more to cast it\nSearch your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle.",
+          "mana_cost": "{X}{G}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Beckon of the Wild_MS1",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Beckon of the Wild",
+              "original_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nSleight *(You may cast this spell as though it had flash if you pay {1} more to cast it.)*\nSearch your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Beckon of the Wild",
+              "executable_text": "Mana cost: {X}{G}{G}\nType: Sorcery\nYou may cast this spell as though it had flash if you pay {1} more to cast it\nSearch your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle.",
+              "custom_keyword_identities": [
+                "sleight"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Sleight\nSearch your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [
+            "sleight"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Sleight\nSearch your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Sleight",
+          "reminder": "You may cast this spell as though it had flash if you pay {1} more to cast it."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Optional extra generic mana permits instant timing without granting flash keyword; normal sorcery timing remains available without surcharge."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ]
+    },
+    {
+      "id": "msem-605",
+      "keyword": "Mark",
+      "original_reminder": "Whenever this creature attacks, mark target creature until end of turn.",
+      "executable_reminder": "Whenever this creature attacks, give target creature the marked status until end of turn.",
+      "source_cards": [
+        "Alley Hunter"
+      ],
+      "rule_reference": "702.228.",
+      "rule_text": [
+        {
+          "name": "702.228a",
+          "rule": "Mark is a triggered ability of some creatures. “Mark” means “Whenever this creature attacks, target creature becomes marked until end of turn.",
+          "custom": true
+        },
+        {
+          "name": "702.228b",
+          "rule": "Marked is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become marked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Alley Hunter_VTM",
+          "name": "Alley Hunter",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nMark *(Whenever this creature attacks, mark target creature until end of turn.)*\nAlley Hunter has lifelink as long as it's blocked by a marked creature.",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nWhenever this creature attacks, give target creature the marked status until end of turn\nAlley Hunter has lifelink as long as it's blocked by a creature with the marked status.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Rogue",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Alley Hunter_VTM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Alley Hunter",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nMark *(Whenever this creature attacks, mark target creature until end of turn.)*\nAlley Hunter has lifelink as long as it's blocked by a marked creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Alley Hunter",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nWhenever this creature attacks, give target creature the marked status until end of turn\nAlley Hunter has lifelink as long as it's blocked by a creature with the marked status.",
+              "custom_keyword_identities": [
+                "mark"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Mark\nAlley Hunter has lifelink as long as it's blocked by a marked creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "mark"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Mark\nAlley Hunter has lifelink as long as it's blocked by a marked creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature attacks, target creature becomes marked until end of turn.",
+      "equivalence_basis": "authoritative keyword rule per independent instance",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "independent attack triggers",
+        "target announcements",
+        "end-of-turn expiry",
+        "copy and zone reset"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mark",
+          "reminder": "Whenever this creature attacks, give target creature the marked status until end of turn."
+        }
+      ],
+      "implementation_obligations": [
+        "Each Mark instance independently triggers with one target; triple declaration summary must not collapse into a single optional up-to-three target trigger.",
+        "Marked status expires at end of turn and downstream marked references inspect that status."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "existing_test_requires_current_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_statuses.rs",
+          "observable": "Independent triggers, intervening condition, zone identity and status lifetime."
+        }
+      ]
+    },
+    {
+      "id": "msem-606",
+      "keyword": "Mark",
+      "original_reminder": "Whenever this creature attacks, mark up to three target creatures until end of turn.",
+      "executable_reminder": "Whenever this creature attacks, give target creature the marked status until end of turn.",
+      "source_cards": [
+        "Compulsive Accuser"
+      ],
+      "rule_reference": "702.228.",
+      "rule_text": [
+        {
+          "name": "702.228a",
+          "rule": "Mark is a triggered ability of some creatures. “Mark” means “Whenever this creature attacks, target creature becomes marked until end of turn.",
+          "custom": true
+        },
+        {
+          "name": "702.228b",
+          "rule": "Marked is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become marked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Compulsive Accuser_VTM",
+          "name": "Compulsive Accuser",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace, mark, mark, mark *(Whenever this creature attacks, mark up to three target creatures until end of turn.)*\nWhenever a marked creature dies, you lose 1 life and you draw a card.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever a creature with the marked status dies, you lose 1 life and you draw a card.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Vampire Rogue",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Compulsive Accuser_VTM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Compulsive Accuser",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace, mark, mark, mark *(Whenever this creature attacks, mark up to three target creatures until end of turn.)*\nWhenever a marked creature dies, you lose 1 life and you draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Compulsive Accuser",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever a creature with the marked status dies, you lose 1 life and you draw a card.",
+              "custom_keyword_identities": [
+                "mark"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Menace, mark, mark, mark\nWhenever a marked creature dies, you lose 1 life and you draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "mark"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Menace, mark, mark, mark\nWhenever a marked creature dies, you lose 1 life and you draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature attacks, target creature becomes marked until end of turn.",
+      "equivalence_basis": "authoritative keyword rule per independent instance",
+      "source_discrepancy": "Reminder summarizes three independent Mark instances as up to three targets; preserve three triggers, not one optional multi-target trigger.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "independent attack triggers",
+        "target announcements",
+        "end-of-turn expiry",
+        "copy and zone reset"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mark",
+          "reminder": "Whenever this creature attacks, give target creature the marked status until end of turn."
+        }
+      ],
+      "implementation_obligations": [
+        "Each Mark instance independently triggers with one target; triple declaration summary must not collapse into a single optional up-to-three target trigger.",
+        "Marked status expires at end of turn and downstream marked references inspect that status."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "existing_test_requires_current_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_statuses.rs",
+          "observable": "Independent triggers, intervening condition, zone identity and status lifetime."
+        }
+      ]
+    },
+    {
+      "id": "msem-652",
+      "keyword": "Chosen one",
+      "original_reminder": "{W}{U}{B}{R}{G}: Transform this permanent.",
+      "executable_reminder": "{W}{U}{B}{R}{G}: Transform this permanent.",
+      "source_cards": [
+        "Bashful Drake//Archon of Supremacy"
+      ],
+      "rule_reference": "702.230.",
+      "rule_text": [
+        {
+          "name": "702.230a",
+          "rule": "Chosen one is an activated ability of some permanents. “Chosen one” means “(W)(U)(B)(R)(G): Transform this permanent.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bashful Drake//Archon of Supremacy_ATB",
+          "name": "Bashful Drake",
+          "original_text": "Mana cost: {U}\nType: Creature — Drake\nPower/Toughness: 0/3\nFlying\nChosen one *({W}{U}{B}{R}{G}: Transform this permanent.)*",
+          "executable_text": "Mana cost: {U}\nType: Creature — Drake\nPower/Toughness: 0/3\nFlying\n{W}{U}{B}{R}{G}: Transform this permanent",
+          "mana_cost": "{U}",
+          "type_line": "Creature — Drake",
+          "power": "0",
+          "toughness": "3",
+          "source_card_key": "Bashful Drake//Archon of Supremacy_ATB",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bashful Drake",
+              "original_text": "Mana cost: {U}\nType: Creature — Drake\nPower/Toughness: 0/3\nFlying\nChosen one *({W}{U}{B}{R}{G}: Transform this permanent.)*"
+            },
+            {
+              "face": "back",
+              "name": "Archon of Supremacy",
+              "original_text": "Type: Creature — Archon\nPower/Toughness: 5/5\nFlying\n{1}: Archon of Supremacy gets +1/-1 until end of turn."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Bashful Drake",
+              "executable_text": "Mana cost: {U}\nType: Creature — Drake\nPower/Toughness: 0/3\nFlying\n{W}{U}{B}{R}{G}: Transform this permanent",
+              "custom_keyword_identities": [
+                "chosen one"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nChosen one"
+            },
+            {
+              "name": "Archon of Supremacy",
+              "executable_text": "Type: Creature — Archon\nPower/Toughness: 5/5\nFlying\n{1}: Archon of Supremacy gets +1/-1 until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "chosen one"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nChosen one",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Chosen one",
+          "reminder": "{W}{U}{B}{R}{G}: Transform this permanent."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Preserve both exact source faces and five colored activation symbols; transform refers to the linked other face."
+      ]
+    },
+    {
+      "id": "msem-653",
+      "keyword": "Chosen one",
+      "original_reminder": "This effect lasts indefinitely.",
+      "executable_reminder": "{W}{U}{B}{R}{G}: Transform this permanent.",
+      "source_cards": [
+        "Faithful of Helar//Shard of Helar"
+      ],
+      "rule_reference": "702.230.",
+      "rule_text": [
+        {
+          "name": "702.230a",
+          "rule": "Chosen one is an activated ability of some permanents. “Chosen one” means “(W)(U)(B)(R)(G): Transform this permanent.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Faithful of Helar//Shard of Helar_HQZ",
+          "name": "Faithful of Helar",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Human Cultist\nPower/Toughness: 2/4\nChosen one *({W}{U}{B}{R}{G}: Transform this permanent.)*\nWhen Faithful of Helar enters, you may have another target creature become a copy of it, except it doesn't have chosen one. *(This effect lasts indefinitely.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Cultist\nPower/Toughness: 2/4\n{W}{U}{B}{R}{G}: Transform this permanent\nWhen Faithful of Helar enters, you may have another target creature become a copy of it, except it doesn't have chosen one.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Human Cultist",
+          "power": "2",
+          "toughness": "4",
+          "source_card_key": "Faithful of Helar//Shard of Helar_HQZ",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Faithful of Helar",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Cultist\nPower/Toughness: 2/4\nChosen one *({W}{U}{B}{R}{G}: Transform this permanent.)*\nWhen Faithful of Helar enters, you may have another target creature become a copy of it, except it doesn't have chosen one. *(This effect lasts indefinitely.)*"
+            },
+            {
+              "face": "back",
+              "name": "Shard of Helar",
+              "original_text": "Type: Creature — Cultist Horror\nPower/Toughness: 5/5\nOther creatures have base power and toughness 1/1."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Faithful of Helar",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Cultist\nPower/Toughness: 2/4\n{W}{U}{B}{R}{G}: Transform this permanent\nWhen Faithful of Helar enters, you may have another target creature become a copy of it, except it doesn't have chosen one.",
+              "custom_keyword_identities": [
+                "chosen one"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Chosen one\nWhen Faithful of Helar enters, you may have another target creature become a copy of it, except it doesn't have chosen one."
+            },
+            {
+              "name": "Shard of Helar",
+              "executable_text": "Type: Creature — Cultist Horror\nPower/Toughness: 5/5\nOther creatures have base power and toughness 1/1.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "chosen one"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Chosen one\nWhen Faithful of Helar enters, you may have another target creature become a copy of it, except it doesn't have chosen one.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Chosen one",
+          "reminder": "{W}{U}{B}{R}{G}: Transform this permanent."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "source_annotation": "Source original_reminder describes a separate copy effect; Chosen one declaration is the standard five-color transform ability.",
+      "implementation_obligations": [
+        "Preserve both exact source faces and five colored activation symbols; transform refers to the linked other face."
+      ]
+    },
+    {
+      "id": "msem-654",
+      "keyword": "Desecrate",
+      "original_reminder": "When this creature enters, you may sacrifice an artifact or land.",
+      "executable_reminder": "When this creature enters, you may sacrifice an artifact or land.",
+      "source_cards": [
+        "Back-Alley Vandal"
+      ],
+      "rule_reference": "702.231.",
+      "rule_text": [
+        {
+          "name": "702.231a",
+          "rule": "Desecrate is a triggered ability. “Desecrate” means “When this creature enters, you may sacrifice an artifact or land.”",
+          "custom": true
+        },
+        {
+          "name": "702.231b",
+          "rule": "A creature with desecrate “desecrates a permanent” when the controller of the desecrate ability sacrifices a permanent as that ability resolves.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Back-Alley Vandal_ATB",
+          "name": "Back-Alley Vandal",
+          "original_text": "Mana cost: {B}{B}\nType: Creature — Human Rogue\nPower/Toughness: 3/2\nDesecrate *(When this creature enters, you may sacrifice an artifact or land.)*\nWhen Back-Alley Vandal desecrates a permanent, put a +1/+1 counter on Back-Alley Vandal.",
+          "executable_text": "Mana cost: {B}{B}\nType: Creature — Human Rogue\nPower/Toughness: 3/2\nWhen this creature enters, you may sacrifice an artifact or land\nWhen Back-Alley Vandal desecrates a permanent, put a +1/+1 counter on Back-Alley Vandal.",
+          "mana_cost": "{B}{B}",
+          "type_line": "Creature — Human Rogue",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Back-Alley Vandal_ATB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Back-Alley Vandal",
+              "original_text": "Mana cost: {B}{B}\nType: Creature — Human Rogue\nPower/Toughness: 3/2\nDesecrate *(When this creature enters, you may sacrifice an artifact or land.)*\nWhen Back-Alley Vandal desecrates a permanent, put a +1/+1 counter on Back-Alley Vandal."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Back-Alley Vandal",
+              "executable_text": "Mana cost: {B}{B}\nType: Creature — Human Rogue\nPower/Toughness: 3/2\nWhen this creature enters, you may sacrifice an artifact or land\nWhen Back-Alley Vandal desecrates a permanent, put a +1/+1 counter on Back-Alley Vandal.",
+              "custom_keyword_identities": [
+                "desecrate"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Desecrate\nWhen Back-Alley Vandal desecrates a permanent, put a +1/+1 counter on Back-Alley Vandal."
+            }
+          ],
+          "custom_keyword_identities": [
+            "desecrate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Desecrate\nWhen Back-Alley Vandal desecrates a permanent, put a +1/+1 counter on Back-Alley Vandal.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Desecrate",
+          "reminder": "When this creature enters, you may sacrifice an artifact or land."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Own ETB optional artifact-or-land sacrifice; source card downstream when-desecrates trigger must refer to this exact sacrifice receipt, not every sacrifice."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ]
+    },
+    {
+      "id": "msem-655",
+      "keyword": "Bloodprice",
+      "original_reminder": "You may cast this card by sacrificing a creature and paying its bloodprice.",
+      "executable_reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost.",
+      "source_cards": [
+        "Beckon the Shadows",
+        "Consuming Knowledge",
+        "Dark Huntress",
+        "Emissary of Smoke",
+        "Heartless Pact",
+        "Jejun, Dark Hunter",
+        "Rite of the Dark Harvest"
+      ],
+      "rule_reference": "702.232.",
+      "rule_text": [
+        {
+          "name": "702.232a",
+          "rule": "Bloodprice is a static ability that functions while the spell with bloodprice is on the stack. “Bloodprice (cost)” means “You may cast this spell by paying (cost) and sacrificing a creature rather than paying its mana cost.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Beckon the Shadows_DHL",
+          "name": "Beckon the Shadows",
+          "original_text": "Mana cost: {B}\nType: Sorcery\nBloodprice {2}{B}{B} *(You may cast this card by sacrificing a creature and paying its bloodprice.)*\nReturn target creature card from your graveyard to your hand. If you cast this spell for its bloodprice, return that card to the battlefield instead.",
+          "executable_text": "Mana cost: {B}\nType: Sorcery\nYou may pay {2}{B}{B} and sacrifice a creature rather than pay this spell's mana cost.\nReturn target creature card from your graveyard to your hand. If you cast this spell for its bloodprice, return that card to the battlefield instead.",
+          "mana_cost": "{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Beckon the Shadows_DHL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Beckon the Shadows",
+              "original_text": "Mana cost: {B}\nType: Sorcery\nBloodprice {2}{B}{B} *(You may cast this card by sacrificing a creature and paying its bloodprice.)*\nReturn target creature card from your graveyard to your hand. If you cast this spell for its bloodprice, return that card to the battlefield instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Beckon the Shadows",
+              "executable_text": "Mana cost: {B}\nType: Sorcery\nYou may pay {2}{B}{B} and sacrifice a creature rather than pay this spell's mana cost.\nReturn target creature card from your graveyard to your hand. If you cast this spell for its bloodprice, return that card to the battlefield instead.",
+              "custom_keyword_identities": [
+                "bloodprice"
+              ],
+              "custom_keyword_payments": [
+                "bloodprice"
+              ],
+              "original_display_text": "Bloodprice {2}{B}{B}\nReturn target creature card from your graveyard to your hand. If you cast this spell for its bloodprice, return that card to the battlefield instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "bloodprice"
+          ],
+          "custom_keyword_payments": [
+            "bloodprice"
+          ],
+          "original_display_text": "Bloodprice {2}{B}{B}\nReturn target creature card from your graveyard to your hand. If you cast this spell for its bloodprice, return that card to the battlefield instead.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Bloodprice",
+          "reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost.",
+          "template": "{Cost}"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Alternative total price combines sacrifice and mana/nonmana action costs; cannot waive the sacrifice or treat the price as additional to printed mana.",
+        "Source nonmana Reappropriate variant composes independent colored mixed-zone exact-two exile action into the alternative price."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ]
+    },
+    {
+      "id": "msem-656",
+      "keyword": "Bloodprice",
+      "original_reminder": "You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.",
+      "executable_reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost.",
+      "source_cards": [
+        "Creed's Desperado"
+      ],
+      "rule_reference": "702.232.",
+      "rule_text": [
+        {
+          "name": "702.232a",
+          "rule": "Bloodprice is a static ability that functions while the spell with bloodprice is on the stack. “Bloodprice (cost)” means “You may cast this spell by paying (cost) and sacrificing a creature rather than paying its mana cost.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Creed's Desperado_OTH",
+          "name": "Creed's Desperado",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nBloodprice—Reappropriate red. *(You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.)*\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nYou may exile exactly two red cards from your hand and/or graveyard and sacrifice a creature rather than pay this spell's mana cost.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Spirit Warrior",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Creed's Desperado_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Creed's Desperado",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nBloodprice—Reappropriate red. *(You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.)*\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Creed's Desperado",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nYou may exile exactly two red cards from your hand and/or graveyard and sacrifice a creature rather than pay this spell's mana cost.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+              "custom_keyword_identities": [
+                "bloodprice"
+              ],
+              "custom_keyword_payments": [
+                "bloodprice"
+              ],
+              "original_display_text": "Bloodprice—Reappropriate red.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "bloodprice"
+          ],
+          "custom_keyword_payments": [
+            "bloodprice"
+          ],
+          "original_display_text": "Bloodprice—Reappropriate red.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Bloodprice",
+          "template": "{Cost}",
+          "reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost."
+        },
+        {
+          "keyword": "Reappropriate",
+          "template": "{Type}",
+          "reminder": "Exile exactly two {Type} cards from your hand and/or graveyard."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Alternative total price combines sacrifice and mana/nonmana action costs; cannot waive the sacrifice or treat the price as additional to printed mana.",
+        "Source nonmana Reappropriate variant composes independent colored mixed-zone exact-two exile action into the alternative price."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ]
+    },
+    {
+      "id": "msem-657",
+      "keyword": "Bloodprice",
+      "original_reminder": "You may cast this spell by paying {W}{W}{W} and sacrificing a creature rather than paying its mana cost.",
+      "executable_reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost.",
+      "source_cards": [
+        "Bloodstained Celestial"
+      ],
+      "rule_reference": "702.232.",
+      "rule_text": [
+        {
+          "name": "702.232a",
+          "rule": "Bloodprice is a static ability that functions while the spell with bloodprice is on the stack. “Bloodprice (cost)” means “You may cast this spell by paying (cost) and sacrificing a creature rather than paying its mana cost.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bloodstained Celestial_MSY",
+          "name": "Bloodstained Celestial",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 3/2\nBloodprice {W}{W}{W} *(You may cast this spell by paying {W}{W}{W} and sacrificing a creature rather than paying its mana cost.)*\nFlying, lifelink\nWhen this creature enters, exile up to one other target creature. That creature's controller gains life equal to its power.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 3/2\nYou may pay {W}{W}{W} and sacrifice a creature rather than pay this spell's mana cost.\nFlying, lifelink\nWhen this creature enters, exile up to one other target creature. That creature's controller gains life equal to its power.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Creature — Angel",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Bloodstained Celestial_MSY",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloodstained Celestial",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 3/2\nBloodprice {W}{W}{W} *(You may cast this spell by paying {W}{W}{W} and sacrificing a creature rather than paying its mana cost.)*\nFlying, lifelink\nWhen this creature enters, exile up to one other target creature. That creature's controller gains life equal to its power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bloodstained Celestial",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel\nPower/Toughness: 3/2\nYou may pay {W}{W}{W} and sacrifice a creature rather than pay this spell's mana cost.\nFlying, lifelink\nWhen this creature enters, exile up to one other target creature. That creature's controller gains life equal to its power.",
+              "custom_keyword_identities": [
+                "bloodprice"
+              ],
+              "custom_keyword_payments": [
+                "bloodprice"
+              ],
+              "original_display_text": "Bloodprice {W}{W}{W}\nFlying, lifelink\nWhen this creature enters, exile up to one other target creature. That creature's controller gains life equal to its power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "bloodprice"
+          ],
+          "custom_keyword_payments": [
+            "bloodprice"
+          ],
+          "original_display_text": "Bloodprice {W}{W}{W}\nFlying, lifelink\nWhen this creature enters, exile up to one other target creature. That creature's controller gains life equal to its power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Bloodprice",
+          "reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost.",
+          "template": "{Cost}"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Alternative total price combines sacrifice and mana/nonmana action costs; cannot waive the sacrifice or treat the price as additional to printed mana.",
+        "Source nonmana Reappropriate variant composes independent colored mixed-zone exact-two exile action into the alternative price."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "pending_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_msem_middle_keywords.rs",
+          "observable": "Direct/artifact parity and positive/negative gameplay assertions; full source compile separately audited."
+        }
+      ]
+    },
+    {
+      "id": "msem-658",
+      "keyword": "Defiance",
+      "original_reminder": "Whenever this creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "executable_reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.",
+      "source_cards": [
+        "Elvish Songseeker"
+      ],
+      "rule_reference": "702.233.",
+      "rule_text": [
+        {
+          "name": "702.233a",
+          "rule": "Defiance is a triggered ability of some creatures. “Defiance” means “Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Elvish Songseeker_DHL",
+          "name": "Elvish Songseeker",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nDefiance *(Whenever this creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nWhenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Elf Warrior",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Elvish Songseeker_DHL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Elvish Songseeker",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nDefiance *(Whenever this creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Elvish Songseeker",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nWhenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+              "custom_keyword_identities": [
+                "defiance"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Defiance\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "defiance"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Defiance\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "equivalence_basis": "authoritative keyword rule; reminder survival/past-tense wording retained as discrepancy",
+      "source_discrepancy": "Source reminder says survives and was not defiant; authoritative702.233 specifies intervening-if is not defiant. Granted instance must bind to recipient, not spell.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "real damage event",
+        "intervening-if at trigger and resolution",
+        "lethal damage",
+        "zone identity",
+        "temporary granted recipient"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Defiance",
+          "reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status."
+        }
+      ],
+      "implementation_obligations": [
+        "Intervening-if checks persistent defiant status both at creation and resolution; status is independent of counters and resets on zone change."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "existing_test_requires_current_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_statuses.rs",
+          "observable": "Independent triggers, intervening condition, zone identity and status lifetime."
+        }
+      ]
+    },
+    {
+      "id": "msem-659",
+      "keyword": "Defiance",
+      "original_reminder": "Whenever that creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "executable_reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.",
+      "source_cards": [
+        "Rebellious Streak"
+      ],
+      "rule_reference": "702.233.",
+      "rule_text": [
+        {
+          "name": "702.233a",
+          "rule": "Defiance is a triggered ability of some creatures. “Defiance” means “Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Rebellious Streak_DHL",
+          "name": "Rebellious Streak",
+          "original_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn. *(Whenever that creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and \"Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.\" until end of turn.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Rebellious Streak_DHL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rebellious Streak",
+              "original_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn. *(Whenever that creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rebellious Streak",
+              "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and \"Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.\" until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "equivalence_basis": "authoritative keyword rule; reminder survival/past-tense wording retained as discrepancy",
+      "source_discrepancy": "Source reminder says survives and was not defiant; authoritative702.233 specifies intervening-if is not defiant. Granted instance must bind to recipient, not spell.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "real damage event",
+        "intervening-if at trigger and resolution",
+        "lethal damage",
+        "zone identity",
+        "temporary granted recipient"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Defiance",
+          "reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status."
+        }
+      ],
+      "implementation_obligations": [
+        "Intervening-if checks persistent defiant status both at creation and resolution; status is independent of counters and resets on zone change."
+      ],
+      "behavioral_assertions": [
+        {
+          "status": "existing_test_requires_current_parent_verification",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_statuses.rs",
+          "observable": "Independent triggers, intervening condition, zone identity and status lifetime."
+        }
+      ]
+    },
+    {
+      "id": "msem-660",
+      "keyword": "Enspirit",
+      "original_reminder": "As you cast this spell, you may exile a nonenchantment creature you control until this leaves the battlefield or fails to resolve. Reduce this spell's cost by the exiled card's mana value.",
+      "executable_reminder": "As an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield. Perform the enspirit action with creatures exiled this way.\nThis spell costs {X} less to cast, where X is the total mana value of creatures exiled this way.",
+      "source_cards": [
+        "Antonin Lazaire"
+      ],
+      "rule_reference": "702.234.",
+      "rule_text": [
+        {
+          "name": "702.234a",
+          "rule": "Enspirit represents two static abilities, one that functions while the spell with enspirit is on the stack and another that functions both while it's on the stack and while it's on the battlefield. “Enspirit” means “As an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell is put from the stack into a zone other than the battlefield or the permanent this spell becomes leaves the battlefield” and “If you chose to pay this spell's additional cost, its total cost is reduced by an amount of generic mana equal to the exiled card's mana value.” Paying a spell's enspirit cost follows the rules for paying additional costs in rules 601.2b and 601.2f–h.",
+          "custom": true
+        },
+        {
+          "name": "702.234b",
+          "rule": "The two abilities represented by enspirit are linked. The first ability may also be linked with any number of other abilities printed on the card with enspirit which refer either to “the exiled card” or to cards “exiled with [this object]”. See rule 607, “Linked Abilities.”",
+          "custom": true
+        },
+        {
+          "name": "702.234c",
+          "rule": "You choose which creature to exile as you choose to pay a spell's enspirit cost (see rule 601.2b), and you exile that creature as you pay the total cost (see rule 601.2h).",
+          "custom": true
+        },
+        {
+          "name": "702.234d",
+          "rule": "A creature “becomes enspirited” when it's exiled to pay a spell's enspirit cost. Abilities that trigger when a creature becomes enspirited are leaves-the-battlefield abilities (see rule 603.6c).",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Antonin Lazaire_EAU",
+          "name": "Antonin Lazaire",
+          "original_text": "Mana cost: {4}{U}{B}\nType: Legendary Planeswalker — Lazaire\nLoyalty: 5\nEnspirit *(As you cast this spell, you may exile a nonenchantment creature you control until this leaves the battlefield or fails to resolve. Reduce this spell's cost by the exiled card's mana value.)*\n[+2]: Look at the top three cards of your library. Put one of them into your hand and exile the rest.\n[-3]: Exile target creature. You may return it to the battlefield under its owner's control.\n[-9]: Return any number of creature cards exiled with Lazaire to the battlefield under your control. Then exile any number of target creatures.",
+          "executable_text": "Mana cost: {4}{U}{B}\nType: Legendary Planeswalker — Lazaire\nLoyalty: 5\nAs an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield. This spell costs {X} less to cast, where X is the exiled card's mana value\n[+2]: Look at the top three cards of your library. Put one of them into your hand and exile the rest.\n[-3]: Exile target creature. You may return it to the battlefield under its owner's control.\n[-9]: Return any number of creature cards exiled with Lazaire to the battlefield under your control. Then exile any number of target creatures.",
+          "mana_cost": "{4}{U}{B}",
+          "type_line": "Legendary Planeswalker — Lazaire",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Antonin Lazaire_EAU",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "5",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Antonin Lazaire",
+              "original_text": "Mana cost: {4}{U}{B}\nType: Legendary Planeswalker — Lazaire\nLoyalty: 5\nEnspirit *(As you cast this spell, you may exile a nonenchantment creature you control until this leaves the battlefield or fails to resolve. Reduce this spell's cost by the exiled card's mana value.)*\n[+2]: Look at the top three cards of your library. Put one of them into your hand and exile the rest.\n[-3]: Exile target creature. You may return it to the battlefield under its owner's control.\n[-9]: Return any number of creature cards exiled with Lazaire to the battlefield under your control. Then exile any number of target creatures."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Antonin Lazaire",
+              "executable_text": "Mana cost: {4}{U}{B}\nType: Legendary Planeswalker — Lazaire\nLoyalty: 5\nAs an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield. This spell costs {X} less to cast, where X is the exiled card's mana value\n[+2]: Look at the top three cards of your library. Put one of them into your hand and exile the rest.\n[-3]: Exile target creature. You may return it to the battlefield under its owner's control.\n[-9]: Return any number of creature cards exiled with Lazaire to the battlefield under your control. Then exile any number of target creatures.",
+              "custom_keyword_identities": [
+                "enspirit"
+              ],
+              "custom_keyword_payments": [
+                "enspirit"
+              ],
+              "original_display_text": "Enspirit\n[+2]: Look at the top three cards of your library. Put one of them into your hand and exile the rest.\n[-3]: Exile target creature. You may return it to the battlefield under its owner's control.\n[-9]: Return any number of creature cards exiled with Lazaire to the battlefield under your control. Then exile any number of target creatures."
+            }
+          ],
+          "custom_keyword_identities": [
+            "enspirit"
+          ],
+          "custom_keyword_payments": [
+            "enspirit"
+          ],
+          "original_display_text": "Enspirit\n[+2]: Look at the top three cards of your library. Put one of them into your hand and exile the rest.\n[-3]: Exile target creature. You may return it to the battlefield under its owner's control.\n[-9]: Return any number of creature cards exiled with Lazaire to the battlefield under your control. Then exile any number of target creatures.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Enspirit",
+          "reminder": "As an additional cost to cast this spell, you may exile a nonenchantment creature you control until this spell leaves the stack without entering the battlefield or the permanent it becomes leaves the battlefield. Perform the enspirit action with creatures exiled this way.\nThis spell costs {X} less to cast, where X is the total mana value of creatures exiled this way.",
+          "linkedExileVerb": "enspirited",
+          "linkedExileScope": "source"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "implementation_obligations": [
+        "Exile a nonenchantment friendly creature as an optional additional cost, linked to this spell/permanent incarnation.",
+        "Reduce generic mana by exiled card mana value, not its power or creature count.",
+        "Return the exiled card if the spell leaves stack without entering battlefield, or the resulting permanent leaves; a normal stack-to-battlefield move preserves exile.",
+        "Other printed abilities referencing cards exiled with this object share the linked exile collection."
+      ]
+    }
+  ]
+}

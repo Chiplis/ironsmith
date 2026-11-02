@@ -110,6 +110,12 @@ impl TapAction {
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         crate::events::other::bind_before_tap_state_snapshots(&mut self.events, &self.before);
         crate::events::other::group_tap_state_events(game, &mut self.events, self.provenance)?;
+        let mut sources=game.try_trigger_source_lookback_snapshots()?;
+        let mut seen=sources.iter().map(|snapshot|snapshot.object_id).collect::<std::collections::HashSet<_>>();
+        for snapshot in crate::events::other::before_tap_state_snapshots(game)?.into_values() {
+            if seen.insert(snapshot.object_id){sources.push(snapshot);}
+        }
+        for event in &mut self.events {*event=event.clone().with_lookback_source_snapshots(sources.clone());}
         Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(self.objects.len() as i32)
                 .with_events(self.events)
@@ -264,6 +270,8 @@ fn commit_tap_cost_objects_for_kind(
 /// let effect = TapEffect::all(ObjectFilter::creature());
 /// ```
 impl EffectExecutor for TapEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
+
     fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
         crate::effects::CostChoiceBindings::from_spec(&self.target)
     }
@@ -295,6 +303,12 @@ impl EffectExecutor for TapEffect {
                 .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
                 .transpose()?.unwrap_or(ctx.controller);
             let selected = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+            if let Some(name) = &self.named_payment {
+                if ctx.cause.cause_type != crate::events::cause::CauseType::Cost
+                    || selected.iter().any(|id| !crate::filter::admits_named_tap_payment(game, *id, name)) {
+                    return Err(ExecutionError::Impossible("Named tap payment contributor is not eligible".into()));
+                }
+            }
             for object in &selected {
                 if !game.is_tapped(*object)
                     && !game.prepare_turn_face_up_before_action(*object, &mut *ctx.decision_maker)?
@@ -307,12 +321,15 @@ impl EffectExecutor for TapEffect {
             let cost_source = (ctx.cause.cause_type == crate::events::cause::CauseType::Cost)
                 .then_some(ctx.source);
             let mut action = TapAction::new(game, actor, ctx.provenance)?.paying_cost_of(cost_source);
-            let result_policy = if self.target.is_target() && self.target.is_single() {
+            let result_policy = if self.target.is_target() && self.target.is_single() && !crate::effects::target_packets::multiple(ctx,&self.target) {
                 ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
             } else { ObjectApplyResultPolicy::CountApplied };
             let apply_result = crate::effects::helpers::apply_to_selected_objects_with_prepared(
                 game, ctx, &self.target, result_policy, None, Some(selected.clone()),
                 |game, ctx, object| {
+                    if self.named_payment.as_deref().is_some_and(|name| !crate::filter::admits_named_tap_payment(game, object, name)) {
+                        return Err(ExecutionError::Impossible("Named tap payment contributor changed eligibility".into()));
+                    }
                     if replace_tap_event(game, ctx, object)? {
                         return Ok(true);
                     }
@@ -429,7 +446,7 @@ mod tests {
                 let mut result = crate::effects::execute_effect(game, &crate::effect::Effect::new(TapCostObjects(vec![first], kind.clone())), &mut ctx)?;
                 // Like CostEffect::pay_with_receipt, the payment owner publishes
                 // its final instruction's reported events before the next cost.
-                crate::effects::capture_triggers_before_added_program(game, &ctx, None, result.events.iter_mut())?;
+                crate::effects::capture_triggers_before_added_program(game, &mut ctx, None, result.events.iter_mut())?;
                 Ok::<_, ExecutionError>(result)
             }).unwrap();
             let event = result.events.iter().find(|event| event.downcast::<PermanentTappedEvent>().is_some()).unwrap();

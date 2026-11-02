@@ -50,6 +50,10 @@ pub(crate) fn check_life_payment_cost_with_context(
 }
 
 impl EffectExecutor for PayLifeEffect {
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        self.player.is_target().then(||self.player.clone()).into_iter().collect()
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

@@ -252,3 +252,11 @@ mod tests {
         assert_eq!(CounterType::Named("hour".into()).description(), "hour");
     }
 }
+
+/// Canonical identity shared by counter metadata and printed counter operands.
+/// Labels may contain arbitrary words/punctuation; spelling is case-insensitive
+/// and runs of source whitespace do not define a different kind.
+pub fn normalize_named_counter_name(name: &str) -> Result<String, String> {
+    let normalized = name.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
+    if normalized.is_empty() { Err("ability-counter name is empty".into()) } else { Ok(normalized) }
+}

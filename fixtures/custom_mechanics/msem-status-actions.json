@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "named permanent statuses",
+  "notes": [
+    "Candidates only; executable_reminder remains null until frontend binding and gameplay verified.",
+    "Source discrepancies preserved; compile success alone is not equivalence."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-605",
+      "keyword": "Mark",
+      "original_reminder": "Whenever this creature attacks, mark target creature until end of turn.",
+      "executable_reminder": "Whenever this creature attacks, give target creature the marked status until end of turn.",
+      "source_cards": [
+        "Alley Hunter"
+      ],
+      "rule_reference": "702.228.",
+      "rule_text": [
+        {
+          "name": "702.228a",
+          "rule": "Mark is a triggered ability of some creatures. “Mark” means “Whenever this creature attacks, target creature becomes marked until end of turn.",
+          "custom": true
+        },
+        {
+          "name": "702.228b",
+          "rule": "Marked is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become marked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Alley Hunter_VTM",
+          "name": "Alley Hunter",
+          "original_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nMark *(Whenever this creature attacks, mark target creature until end of turn.)*\nAlley Hunter has lifelink as long as it's blocked by a marked creature.",
+          "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nWhenever this creature attacks, give target creature the marked status until end of turn\nAlley Hunter has lifelink as long as it's blocked by a creature with the marked status.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Creature — Human Rogue",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Alley Hunter_VTM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Alley Hunter",
+              "original_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nMark *(Whenever this creature attacks, mark target creature until end of turn.)*\nAlley Hunter has lifelink as long as it's blocked by a marked creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Alley Hunter",
+              "executable_text": "Mana cost: {1}{B}\nType: Creature — Human Rogue\nPower/Toughness: 2/2\nWhenever this creature attacks, give target creature the marked status until end of turn\nAlley Hunter has lifelink as long as it's blocked by a creature with the marked status.",
+              "custom_keyword_identities": [
+                "mark"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Mark\nAlley Hunter has lifelink as long as it's blocked by a marked creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "mark"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Mark\nAlley Hunter has lifelink as long as it's blocked by a marked creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature attacks, target creature becomes marked until end of turn.",
+      "equivalence_basis": "authoritative keyword rule per independent instance",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "independent attack triggers",
+        "target announcements",
+        "end-of-turn expiry",
+        "copy and zone reset"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mark",
+          "reminder": "Whenever this creature attacks, give target creature the marked status until end of turn."
+        }
+      ]
+    },
+    {
+      "id": "msem-606",
+      "keyword": "Mark",
+      "original_reminder": "Whenever this creature attacks, mark up to three target creatures until end of turn.",
+      "executable_reminder": "Whenever this creature attacks, give target creature the marked status until end of turn.",
+      "source_cards": [
+        "Compulsive Accuser"
+      ],
+      "rule_reference": "702.228.",
+      "rule_text": [
+        {
+          "name": "702.228a",
+          "rule": "Mark is a triggered ability of some creatures. “Mark” means “Whenever this creature attacks, target creature becomes marked until end of turn.",
+          "custom": true
+        },
+        {
+          "name": "702.228b",
+          "rule": "Marked is a designation that has no rules meaning other than to act as a marker that spells and abilities can identify. Only permanents can be or become marked.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Compulsive Accuser_VTM",
+          "name": "Compulsive Accuser",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace, mark, mark, mark *(Whenever this creature attacks, mark up to three target creatures until end of turn.)*\nWhenever a marked creature dies, you lose 1 life and you draw a card.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever a creature with the marked status dies, you lose 1 life and you draw a card.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Vampire Rogue",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Compulsive Accuser_VTM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Compulsive Accuser",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace, mark, mark, mark *(Whenever this creature attacks, mark up to three target creatures until end of turn.)*\nWhenever a marked creature dies, you lose 1 life and you draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Compulsive Accuser",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Vampire Rogue\nPower/Toughness: 3/2\nMenace\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever this creature attacks, give target creature the marked status until end of turn\nWhenever a creature with the marked status dies, you lose 1 life and you draw a card.",
+              "custom_keyword_identities": [
+                "mark"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Menace, mark, mark, mark\nWhenever a marked creature dies, you lose 1 life and you draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "mark"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Menace, mark, mark, mark\nWhenever a marked creature dies, you lose 1 life and you draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature attacks, target creature becomes marked until end of turn.",
+      "equivalence_basis": "authoritative keyword rule per independent instance",
+      "source_discrepancy": "Reminder summarizes three independent Mark instances as up to three targets; preserve three triggers, not one optional multi-target trigger.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "independent attack triggers",
+        "target announcements",
+        "end-of-turn expiry",
+        "copy and zone reset"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Mark",
+          "reminder": "Whenever this creature attacks, give target creature the marked status until end of turn."
+        }
+      ]
+    },
+    {
+      "id": "msem-658",
+      "keyword": "Defiance",
+      "original_reminder": "Whenever this creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "executable_reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.",
+      "source_cards": [
+        "Elvish Songseeker"
+      ],
+      "rule_reference": "702.233.",
+      "rule_text": [
+        {
+          "name": "702.233a",
+          "rule": "Defiance is a triggered ability of some creatures. “Defiance” means “Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Elvish Songseeker_DHL",
+          "name": "Elvish Songseeker",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nDefiance *(Whenever this creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nWhenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Elf Warrior",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Elvish Songseeker_DHL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Elvish Songseeker",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nDefiance *(Whenever this creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Elvish Songseeker",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Elf Warrior\nPower/Toughness: 2/2\nWhenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+              "custom_keyword_identities": [
+                "defiance"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Defiance\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "defiance"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Defiance\nAt the beginning of your upkeep, if Elvish Songseeker has a +1/+1 counter on it, exile the top card of your library. Until your next turn, you may play that card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "equivalence_basis": "authoritative keyword rule; reminder survival/past-tense wording retained as discrepancy",
+      "source_discrepancy": "Source reminder says survives and was not defiant; authoritative702.233 specifies intervening-if is not defiant. Granted instance must bind to recipient, not spell.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "real damage event",
+        "intervening-if at trigger and resolution",
+        "lethal damage",
+        "zone identity",
+        "temporary granted recipient"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Defiance",
+          "reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status."
+        }
+      ]
+    },
+    {
+      "id": "msem-659",
+      "keyword": "Defiance",
+      "original_reminder": "Whenever that creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "executable_reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.",
+      "source_cards": [
+        "Rebellious Streak"
+      ],
+      "rule_reference": "702.233.",
+      "rule_text": [
+        {
+          "name": "702.233a",
+          "rule": "Defiance is a triggered ability of some creatures. “Defiance” means “Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Rebellious Streak_DHL",
+          "name": "Rebellious Streak",
+          "original_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn. *(Whenever that creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and \"Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.\" until end of turn.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Rebellious Streak_DHL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Rebellious Streak",
+              "original_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn. *(Whenever that creature takes damage, if it survives and wasn't defiant, put a +1/+1 counter on it and it becomes defiant.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Rebellious Streak",
+              "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nGain control of target creature until end of turn. Untap that creature. It gains haste and \"Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status.\" until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Gain control of target creature until end of turn. Untap that creature. It gains haste and defiance until end of turn."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature is dealt damage, if it isn't defiant, put a +1/+1 counter on it and it becomes defiant.",
+      "equivalence_basis": "authoritative keyword rule; reminder survival/past-tense wording retained as discrepancy",
+      "source_discrepancy": "Source reminder says survives and was not defiant; authoritative702.233 specifies intervening-if is not defiant. Granted instance must bind to recipient, not spell.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "real damage event",
+        "intervening-if at trigger and resolution",
+        "lethal damage",
+        "zone identity",
+        "temporary granted recipient"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Defiance",
+          "reminder": "Whenever this creature is dealt damage, if this creature doesn't have the defiant status, put a +1/+1 counter on it. Then give this creature the defiant status."
+        }
+      ]
+    },
+    {
+      "id": "msem-723",
+      "keyword": "Infamy",
+      "original_reminder": "Whenever this creature deals combat damage to a player, if it has no +1/+1 counters on it, put a +1/+1 counter on it and it becomes infamous.",
+      "executable_reminder": "Whenever this creature deals combat damage to a player, if this creature doesn't have the infamous status, put a +1/+1 counter on it. Then give this creature the infamous status.",
+      "source_cards": [
+        "Alpha Scout"
+      ],
+      "rule_reference": "702.257.",
+      "rule_text": [
+        {
+          "name": "702.257a",
+          "rule": "Infamy is a triggered ability. “Infamy N” means “When this creature deals combat damage to a player, if it isn’t infamous, put N +1/+1 counters on it and it becomes infamous.”",
+          "custom": true
+        },
+        {
+          "name": "702.257b",
+          "rule": "Infamous is a designation that has no rules meaning other than to act as a marker that the infamy ability and other spells and abilities can identify. Only permanents can be or become infamous. Once a permanent becomes infamous, it stays infamous until it leaves the battlefield. Infamous is neither an ability nor part of the permanent’s copiable values.",
+          "custom": true
+        },
+        {
+          "name": "702.257c",
+          "rule": "If a creature has multiple instances of infamy, each triggers separately. The first such ability to resolve will cause the creature to become infamous, and subsequent abilities will have no effect. (See rule 603.4)",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Alpha Scout_OTH",
+          "name": "Alpha Scout",
+          "original_text": "Mana cost: {G}{G}\nType: Creature — Human Scout Druid\nPower/Toughness: 2/2\nInfamy 1 *(Whenever this creature deals combat damage to a player, if it has no +1/+1 counters on it, put a +1/+1 counter on it and it becomes infamous.)*\nWhen Alpha Scout becomes infamous, create a 2/2 green Wolf creature token.",
+          "executable_text": "Mana cost: {G}{G}\nType: Creature — Human Scout Druid\nPower/Toughness: 2/2\nWhenever this creature deals combat damage to a player, if this creature doesn't have the infamous status, put 1 +1/+1 counters on it. Then give this creature the infamous status.\nWhen Alpha Scout gains the infamous status, create a 2/2 green Wolf creature token.",
+          "mana_cost": "{G}{G}",
+          "type_line": "Creature — Human Scout Druid",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Alpha Scout_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Alpha Scout",
+              "original_text": "Mana cost: {G}{G}\nType: Creature — Human Scout Druid\nPower/Toughness: 2/2\nInfamy 1 *(Whenever this creature deals combat damage to a player, if it has no +1/+1 counters on it, put a +1/+1 counter on it and it becomes infamous.)*\nWhen Alpha Scout becomes infamous, create a 2/2 green Wolf creature token."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Alpha Scout",
+              "executable_text": "Mana cost: {G}{G}\nType: Creature — Human Scout Druid\nPower/Toughness: 2/2\nWhenever this creature deals combat damage to a player, if this creature doesn't have the infamous status, put 1 +1/+1 counters on it. Then give this creature the infamous status.\nWhen Alpha Scout gains the infamous status, create a 2/2 green Wolf creature token.",
+              "custom_keyword_identities": [
+                "infamy"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Infamy 1\nWhen Alpha Scout becomes infamous, create a 2/2 green Wolf creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "infamy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Infamy 1\nWhen Alpha Scout becomes infamous, create a 2/2 green Wolf creature token."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_executable_reminder": "Whenever this creature deals combat damage to a player, if it isn't infamous, put a +1/+1 counter on it and it becomes infamous.",
+      "equivalence_basis": "authoritative keyword rule",
+      "source_discrepancy": "Source reminder checks no +1/+1 counters; authoritative702.257 checks not infamous. External/removal counters distinguish them; explicit rule-based erratum requires review.",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "required_behavioral_assertions": [
+        "combat-only player damage",
+        "external counters do not suppress",
+        "counter removal does not reactivate",
+        "multiple instances resolve once",
+        "gains-status trigger",
+        "copy and zone reset"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Infamy {Number}",
+          "reminder": "Whenever this creature deals combat damage to a player, if this creature doesn't have the infamous status, put {Number} +1/+1 counters on it. Then give this creature the infamous status."
+        }
+      ]
+    }
+  ]
+}

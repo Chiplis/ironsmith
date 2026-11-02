@@ -2,6 +2,13 @@ use crate::tag::TagKeyWalk;
 
 use crate::{AuraAttachmentFilter, Card, CostComponent, ResolutionProgram, TotalCost};
 
+// A missing vocabulary means an empty map, independent of the ability type.
+// Explicit default functions prevent serde derive from imposing A: Default.
+#[cfg(feature = "serde")]
+fn empty_counter_programs<A>() -> std::collections::BTreeMap<String, Vec<A>> {
+    std::collections::BTreeMap::new()
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CardDefinition<A, E, C, AC, OC> {
@@ -14,6 +21,10 @@ pub struct CardDefinition<A, E, C, AC, OC> {
     /// Canonical labels for the executable abilities in `abilities`.
     pub ability_labels: Vec<String>,
     pub abilities: Vec<A>,
+    /// Supplied counter definitions are executable programs, never prose.
+    /// They are admitted into a game's counter vocabulary with this definition.
+    #[cfg_attr(feature = "serde", serde(default = "empty_counter_programs", skip_serializing_if = "std::collections::BTreeMap::is_empty"))]
+    pub ability_counter_definitions: std::collections::BTreeMap<String, Vec<A>>,
     pub spell_effect: Option<ResolutionProgram<E>>,
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     pub alternative_casts: Vec<AC>,
@@ -35,6 +46,7 @@ where
             canonical_text: String::new(),
             ability_labels: Vec::new(),
             abilities: Vec::new(),
+            ability_counter_definitions: std::collections::BTreeMap::new(),
             spell_effect: None,
             aura_attach_filter: None,
             alternative_casts: Vec::new(),
@@ -51,6 +63,7 @@ where
             canonical_text: String::new(),
             ability_labels: Vec::new(),
             abilities,
+            ability_counter_definitions: std::collections::BTreeMap::new(),
             spell_effect: None,
             aura_attach_filter: None,
             alternative_casts: Vec::new(),
@@ -70,6 +83,7 @@ where
             canonical_text: String::new(),
             ability_labels: Vec::new(),
             abilities: Vec::new(),
+            ability_counter_definitions: std::collections::BTreeMap::new(),
             spell_effect: Some(ResolutionProgram::from_effects(effects)),
             aura_attach_filter: None,
             alternative_casts: Vec::new(),
@@ -89,6 +103,7 @@ where
             canonical_text: String::new(),
             ability_labels: Vec::new(),
             abilities,
+            ability_counter_definitions: std::collections::BTreeMap::new(),
             spell_effect: Some(ResolutionProgram::from_effects(effects)),
             aura_attach_filter: None,
             alternative_casts: Vec::new(),
@@ -135,6 +150,10 @@ where
             abilities.push(map_ability(ability)?);
         }
 
+        let mut ability_counter_definitions = std::collections::BTreeMap::new();
+        for (kind, program) in self.ability_counter_definitions {
+            ability_counter_definitions.insert(kind, program.into_iter().map(&mut map_ability).collect::<Result<Vec<_>, Error>>()?);
+        }
         let mut alternative_casts = Vec::with_capacity(self.alternative_casts.len());
         for method in self.alternative_casts {
             alternative_casts.push(map_alternative_cast(method)?);
@@ -150,6 +169,7 @@ where
             canonical_text: self.canonical_text,
             ability_labels: self.ability_labels,
             abilities,
+            ability_counter_definitions,
             spell_effect: self
                 .spell_effect
                 .map(|effects| effects.try_map_effects(&mut map_effect))
@@ -164,6 +184,33 @@ where
     }
 }
 
+/// Adapter shared by compiler and runtime abilities for custom source-owned prices.
+pub trait CustomKeywordPaymentAttribution {
+    fn unattributed_text_addition_payments(&self) -> usize;
+    fn attribute_text_addition_payment(&mut self, keyword: &str) -> bool;
+}
+impl<T,E,C,Cond,ICond> CustomKeywordPaymentAttribution for crate::StaticAbility<T,E,C,Cond,ICond> {
+    fn unattributed_text_addition_payments(&self)->usize {
+        usize::from(matches!(&self.payload,crate::StaticAbilityPayload::Splice(spec) if spec.descriptive && spec.custom_keyword.is_none()))
+    }
+    fn attribute_text_addition_payment(&mut self,keyword:&str)->bool {
+        if let crate::StaticAbilityPayload::Splice(spec)=&mut self.payload
+            && spec.descriptive && spec.custom_keyword.is_none() {
+            spec.custom_keyword=Some(keyword.to_owned());return true;
+        }
+        false
+    }
+}
+impl<SA,T,E,C,Cond> CustomKeywordPaymentAttribution for crate::Ability<SA,T,E,C,Cond>
+where SA:CustomKeywordPaymentAttribution {
+    fn unattributed_text_addition_payments(&self)->usize {
+        match &self.kind {crate::AbilityKind::Static(ability)=>ability.unattributed_text_addition_payments(),_=>0}
+    }
+    fn attribute_text_addition_payment(&mut self,keyword:&str)->bool {
+        match &mut self.kind {crate::AbilityKind::Static(ability)=>ability.attribute_text_addition_payment(keyword),_=>false}
+    }
+}
+
 /// Generic payment shapes produced from a custom keyword's reminder text.
 pub const GENERIC_ALTERNATIVE_COST_NAME: &str = "Parsed alternative cost";
 /// The described form of a timed exile ("exile it with N progress counters
@@ -172,6 +219,7 @@ pub const GENERIC_TIMED_EXILE_NAME: &str = "Parsed timed exile";
 
 fn is_generic_alternative_name(name: &str) -> bool {
     name.eq_ignore_ascii_case(GENERIC_ALTERNATIVE_COST_NAME) || name.eq_ignore_ascii_case(GENERIC_TIMED_EXILE_NAME)
+        || name.eq_ignore_ascii_case("Parsed delayed casting preparation")
 }
 
 impl<A, E, C, Cond> CardDefinition<A, E, C, crate::AlternativeCastingMethod<E, C, Cond>, crate::OptionalCost<C>>
@@ -184,8 +232,12 @@ where
     /// created to that keyword, so "a spell using <keyword>" can read its
     /// receipt. Official payments are never renamed. Returns whether a unique
     /// generic payment existed.
-    pub fn attribute_custom_keyword_payment(&mut self, keyword: &str) -> bool {
+    pub fn attribute_custom_keyword_payment(&mut self, keyword: &str) -> bool
+    where A:CustomKeywordPaymentAttribution {
         let keyword = keyword.trim();
+        let attributed=self.optional_costs.iter().filter(|cost|cost.reference.custom_keyword.as_deref()
+            .is_some_and(|name|name.eq_ignore_ascii_case(keyword))).count();
+        if attributed==1{return true;}
         let generic_alternatives = self
             .alternative_casts
             .iter()
@@ -198,8 +250,9 @@ where
                 && cost.reference.custom_keyword.is_none()
                 && (cost.reference.custom_keyword_attributable || cost.reference.discriminator.is_none()))
             .count();
-        match (generic_alternatives, generic_additional) {
-            (1, 0) => {
+        let generic_text_additions=self.abilities.iter().map(CustomKeywordPaymentAttribution::unattributed_text_addition_payments).sum::<usize>();
+        match (generic_alternatives, generic_additional, generic_text_additions) {
+            (1, 0, 0) => {
                 for method in &mut self.alternative_casts {
                     if let crate::AlternativeCastingMethod::Composed { name, .. }
                     | crate::AlternativeCastingMethod::FromZone { name, .. } = method
@@ -211,7 +264,7 @@ where
                 }
                 false
             }
-            (0, 1) => {
+            (0, 1, 0) => {
                 let cost = self
                     .optional_costs
                     .iter_mut()
@@ -227,6 +280,7 @@ where
                 }
                 true
             }
+            (0, 0, 1) => self.abilities.iter_mut().any(|ability|ability.attribute_text_addition_payment(keyword)),
             _ => false,
         }
     }

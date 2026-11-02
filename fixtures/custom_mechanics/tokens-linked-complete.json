@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "scope": "Three token-action source omissions found by complete main/back rulesText declaration scan: linked Mushroom Merchant/Overgrowth Host, Silent Hunt and Sink",
+    "validation": "Frontend materialized, native tests not run by worker"
+  },
+  "mechanics": [
+    {
+      "id": "msem-322",
+      "keyword": "Germinate",
+      "original_reminder": "To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.",
+      "executable_reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+      "source_cards": [
+        "Fungal Whomper",
+        "Mushroom Merchant//Overgrowth Host",
+        "Ontarachie Bushwhack",
+        "Sporecrafter's Gift",
+        "Whispers of the Ontarachie",
+        "Woopip Bruiser",
+        "Zadyk Contamination"
+      ],
+      "rule_reference": "701.82.",
+      "rule_text": [
+        {
+          "name": "701.82a",
+          "rule": "“Germinate” means “You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Mushroom Merchant//Overgrowth Host_EAU",
+          "source_card_key": "Mushroom Merchant//Overgrowth Host_EAU",
+          "name": "Mushroom Merchant",
+          "source_shape": "doubleface",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nAt the beginning of your upkeep, germinate. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant. *(To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)*",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mushroom Merchant",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nAt the beginning of your upkeep, germinate. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant. *(To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)*"
+            },
+            {
+              "face": "back",
+              "name": "Overgrowth Host",
+              "original_text": "Type: Creature — Fungus Druid\nPower/Toughness: 3/3\nWhenever Overgrowth Host attacks, germinate. Then creatures you control that are Saprolings or have counters on them gain trample until end of turn.\nSaprolings you control get +1/+1."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mushroom Merchant",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nAt the beginning of your upkeep, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant.",
+              "custom_keyword_identities": [
+                "germinate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "merchant",
+                  "plural": "merchants",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "At the beginning of your upkeep, germinate. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant.",
+              "original_printed_rules_text": "At the beginning of your upkeep, germinate. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant. (To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)"
+            },
+            {
+              "name": "Overgrowth Host",
+              "executable_text": "Type: Creature — Fungus Druid\nPower/Toughness: 3/3\nWhenever Overgrowth Host attacks, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Then creatures you control that are Saprolings or have counters on them gain trample until end of turn.\nSaprolings you control get +1/+1.",
+              "custom_keyword_identities": [
+                "germinate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "merchant",
+                  "plural": "merchants",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever Overgrowth Host attacks, germinate. Then creatures you control that are Saprolings or have counters on them gain trample until end of turn.\nSaprolings you control get +1/+1.",
+              "original_printed_rules_text": "Whenever Overgrowth Host attacks, germinate. Then creatures you control that are Saprolings or have counters on them gain trample until end of turn.\nSaprolings you control get +1/+1."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nAt the beginning of your upkeep, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant.",
+          "custom_keyword_identities": [
+            "germinate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "At the beginning of your upkeep, germinate. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "merchant",
+              "plural": "merchants",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "At the beginning of your upkeep, germinate. Then if creatures you control have total power 10 or greater, transform Mushroom Merchant. (To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Complete rule701.82 permits any creature, chosen without targeting; preserves optional counter placement and declined token branch."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "nontarget chosen creature may belong to opponent; declined choice creates Saproling"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Germinate",
+          "reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+          "actionProgram": true
+        }
+      ]
+    },
+    {
+      "id": "msem-357",
+      "keyword": "Forebode",
+      "original_reminder": "Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”",
+      "executable_reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+      "source_cards": [
+        "Abandon Ship",
+        "Adoroth, the Baneful",
+        "Calamitous Wave",
+        "Captain's Companion",
+        "Civil Discourse",
+        "Dusk Lieutenant",
+        "Fated Mariner",
+        "Helicos Aberration",
+        "Old Salt",
+        "Perilous Treaty",
+        "Rattled Bones",
+        "Raving Brigand",
+        "Rum Guzzler",
+        "Siren's Song",
+        "Fretport Market Smuggler"
+      ],
+      "rule_reference": "701.91.",
+      "rule_text": [
+        {
+          "name": "701.91a",
+          "rule": "To forebode, create a tapped colorless Omen artifact token with “T, Discard a card, Sacrifice this artifact: Draw a card.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Silent Hunt_DSS",
+          "name": "Silent Hunt",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nSilent Hunt deals 3 damage to target creature and you gain 3 life.\nForebode. *(Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)*",
+          "source_shape": "normal",
+          "executable_faces": [
+            {
+              "name": "Silent Hunt",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nSilent Hunt deals 3 damage to target creature and you gain 3 life.\nCreate a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+              "custom_keyword_identities": [
+                "forebode"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Silent Hunt deals 3 damage to target creature and you gain 3 life.\nForebode.",
+              "original_printed_rules_text": "Silent Hunt deals 3 damage to target creature and you gain 3 life.\nForebode. (Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nSilent Hunt deals 3 damage to target creature and you gain 3 life.\nCreate a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+          "custom_keyword_identities": [
+            "forebode"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Silent Hunt deals 3 damage to target creature and you gain 3 life.\nForebode.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Silent Hunt deals 3 damage to target creature and you gain 3 life.\nForebode. (Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)"
+        },
+        {
+          "id": "Sink_DSS",
+          "name": "Sink",
+          "original_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nForebode. *(Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)*",
+          "source_shape": "normal",
+          "executable_faces": [
+            {
+              "name": "Sink",
+              "executable_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nCreate a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+              "custom_keyword_identities": [
+                "forebode"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Counter target spell.\nForebode.",
+              "original_printed_rules_text": "Counter target spell.\nForebode. (Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{U}{U}\nType: Instant\nCounter target spell.\nCreate a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\".",
+          "custom_keyword_identities": [
+            "forebode"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Counter target spell.\nForebode.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Counter target spell.\nForebode. (Create a tapped colorless Omen artifact token with “{T}, Discard a card, Sacrifice this artifact: Draw a card.”)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Preserves tapped entry and all three activation costs; explicitly closes source formatting quote where absent. Three-token reminder is source-specific while operative three-times repetition must remain three independent forebode instructions."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Forebode",
+          "reminder": "Create a tapped colorless Omen artifact token with \"{T}, Discard a card, Sacrifice this artifact: Draw a card.\"."
+        }
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "resource-costs",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_resource_tokens.rs",
+          "observable": "Gold sacrifices without tapping as a mana ability; Omen requires untap+discard+sacrifice and draws on resolution."
+        }
+      ]
+    }
+  ]
+}

@@ -106,7 +106,7 @@ pub(crate) fn preflight(game: &GameState, source: ObjectId, ability_index: usize
     if requirement.min_targets != 1 || requirement.max_targets != Some(1) { return Some(false); }
     Some(requirement.legal_targets.iter().copied().any(|target| {
         let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(game, payer, source, &locked, &[target],
-            Some(crate::decision::ActivationCostAbility::of(game, payer, source, activated)));
+            Some(&crate::decision::ActivationCostAbility::of(game, payer, source, activated)));
         if validate_locked(&priced, declared).is_err() { return false; }
         let mut mana = crate::mana::ManaCost::new(); let mut nonmana = Vec::new();
         for component in priced.costs() {

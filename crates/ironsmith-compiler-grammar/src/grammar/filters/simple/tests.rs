@@ -418,3 +418,16 @@ fn ring_bearer_nouns_keep_designation_separate_from_creature_type() {
         assert!(parse_simple_object_filter_lexed(&tokens, false).is_none(), "{text}");
     }
 }
+
+#[test]
+fn explicit_card_noun_does_not_inherit_permanent_type_battlefield_default() {
+    for phrase in ["a creature card", "an artifact card", "a land card", "an enchantment card", "a planeswalker card", "a battle card"] {
+        assert_eq!(parse(phrase).zone, None, "{phrase}");
+    }
+    for phrase in ["a creature", "an artifact", "a permanent", "a creature token"] {
+        assert_eq!(parse(phrase).zone, Some(Zone::Battlefield), "{phrase}");
+    }
+    assert_eq!(parse("a creature spell").zone, Some(Zone::Stack));
+    assert_eq!(parse("a creature card in your graveyard").zone, Some(Zone::Graveyard));
+    assert_eq!(parse("an artifact card in your hand").zone, Some(Zone::Hand));
+}

@@ -29,6 +29,12 @@ mod r#collect_evidence;
 #[path = "../counted_number_sentences.rs"]
 mod r#counted_number_sentences;
 
+#[path = "../custom_assault_receipt.rs"]
+mod r#custom_assault_receipt;
+
+#[path = "../custom_transformed_main_phase_return.rs"]
+mod r#custom_transformed_main_phase_return;
+
 #[path = "../defined_x_keywords.rs"]
 mod r#defined_x_keywords;
 
@@ -82,6 +88,3 @@ mod r#token_template_replacements;
 
 #[path = "../vote_control.rs"]
 mod r#vote_control;
-
-#[path = "../wymi_complete.rs"]
-mod r#wymi_complete;

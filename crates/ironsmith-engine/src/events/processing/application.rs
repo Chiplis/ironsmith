@@ -12,6 +12,27 @@ use crate::zone::Zone;
 
 /// The current value of a static prevention amount ("X, where X is the number
 /// of age counters on this enchantment"), read from its source.
+/// Actual recipient damage and this exact ability's prevention are separate
+/// facts. Other prevention never spends a dealt-damage cap.
+pub(super) fn turn_prevention_remaining(
+    game: &GameState, effect: &ReplacementEffect, target: crate::events::DamageTarget,
+    maximum: u32, include_own_prevention: bool,
+) -> u32 {
+    let key = effect.application_key();
+    let mut used = 0u128;
+    for record in game.turn_store.turn_history.projected_records() {
+        if let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() {
+            if damage.target == target { used += u128::from(damage.amount); }
+        }
+        if include_own_prevention {
+            if let Some(prevented) = record.event.downcast::<crate::events::DamagePreventedEvent>() {
+                if prevented.target == target && prevented.prevention_effect.as_ref() == Some(&key) { used += u128::from(prevented.amount); }
+            }
+        }
+    }
+    u128::from(maximum).saturating_sub(used) as u32
+}
+
 pub(super) fn resolve_static_prevention_amount(
     game: &GameState,
     effect: &ReplacementEffect,
@@ -26,6 +47,13 @@ pub(super) fn resolve_static_prevention_amount(
     }
     let amount = crate::effects::helpers::resolve_value(game, amount, &ctx)?;
     Ok(amount.max(0) as u32)
+}
+
+pub(super) fn excess_redirect_amount(game: &GameState, event: &Event) -> u32 {
+    let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()) else { return 0; };
+    let crate::events::DamageTarget::Object(target) = damage.target else { return 0; };
+    let keywords = crate::rules::damage::source_damage_keywords(game, damage.source, event.0.source_snapshot());
+    crate::effects::damage::excess_damage_to_object(game, target, damage.amount, keywords).min(damage.amount)
 }
 
 pub(super) fn apply_trait_replacement(
@@ -85,6 +113,8 @@ pub(super) fn apply_trait_replacement(
                     ironsmith_core::StaticDamagePreventionAmount::AllBut(remaining) => {
                         damage.amount.saturating_sub(*remaining)
                     }
+                    ironsmith_core::StaticDamagePreventionAmount::FirstEachTurn(maximum) => damage.amount.min(turn_prevention_remaining(game,effect,damage.target,*maximum,true)),
+                    ironsmith_core::StaticDamagePreventionAmount::AllButFirstEachTurn(maximum) => damage.amount.saturating_sub(turn_prevention_remaining(game,effect,damage.target,*maximum,false)),
                     ironsmith_core::StaticDamagePreventionAmount::Amount(amount)
                     // A lone event spends its source's whole shared budget;
                     // simultaneous events are allocated before application.
@@ -257,6 +287,19 @@ pub(super) fn apply_trait_replacement(
             let mut resolved = effect.clone();
             resolved.replacement = ReplacementAction::Modify(EventModification::Add(delta));
             return apply_trait_replacement(game, event, &resolved);
+        }
+        ReplacementAction::Modify(EventModification::NamedActionFirstThenOtherMode { first_mode }) => {
+            let proposal = event.inner().as_any().downcast_ref::<crate::events::other::NamedActionProposalEvent>()
+                .ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence("modal operation replacement requires its original named proposal".into()))?;
+            // Validate before modifying the event. Repeated providers retain the
+            // same original menu rather than transforming already transformed modes.
+            crate::effects::composition::named_action_mode_plan::first_then_other_mode(&proposal.original_program, *first_mode)?;
+            if proposal.first_then_other_mode.is_some_and(|previous| previous != *first_mode) {
+                return Err(crate::effects::ExecutionError::IncompleteEvidence("conflicting original-mode operation replacements".into()));
+            }
+            let mut proposal = proposal.clone();
+            proposal.first_then_other_mode = Some(*first_mode);
+            TraitApplyResult::Modified(event.rewrap(proposal))
         }
         ReplacementAction::Modify(modification) => {
             if let Some(tokens) =
@@ -623,20 +666,21 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
-        ReplacementAction::RedirectDamageAmount {
-            target,
-            which,
-            amount,
-        } => {
+        ReplacementAction::RedirectDamageAmount { target, which, .. }
+        | ReplacementAction::RedirectExcessDamage { target, which } => {
             use crate::events::{DamageEvent, DamageTarget, downcast_event};
-
-            if *amount == 0 {
-                return Ok(TraitApplyResult::Unchanged(event));
-            }
 
             let Some(damage) = downcast_event::<DamageEvent>(event.inner()) else {
                 return Ok(TraitApplyResult::Unchanged(event));
             };
+            let redirected_amount = match &effect.replacement {
+                ReplacementAction::RedirectDamageAmount { amount, .. } => (*amount).min(damage.amount),
+                ReplacementAction::RedirectExcessDamage { .. } => excess_redirect_amount(game, &event),
+                _ => unreachable!("partial redirect branch"),
+            };
+            if redirected_amount == 0 {
+                return Ok(TraitApplyResult::Unchanged(event));
+            }
             let Some(new_target) =
                 resolve_trait_redirect_target(game, &event, target, which, effect.controller)
             else {
@@ -647,10 +691,6 @@ pub(super) fn apply_trait_replacement(
                 Target::Object(object_id) => DamageTarget::Object(object_id),
             };
 
-            let redirected_amount = (*amount).min(damage.amount);
-            if redirected_amount == 0 {
-                return Ok(TraitApplyResult::Unchanged(event));
-            }
 
             let mut modified = damage
                 .with_target(redirected_target)
@@ -928,7 +968,9 @@ pub(super) fn apply_trait_replacement(
             copy_followups,
         } => {
             let modified = apply_trait_enter_as_copy(
+                game,
                 &event,
+                effect.controller,
                 *source,
                 *enters_tapped,
                 copy_duration.clone(),
@@ -944,7 +986,7 @@ pub(super) fn apply_trait_replacement(
                 added_abilities,
                 *set_base_power_toughness,
                 copy_followups,
-            );
+            )?;
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -952,12 +994,14 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::EnterWithCharacteristics {
+            face_down,
             added_card_types,
             added_subtypes,
             set_base_power_toughness,
         } => {
             let modified = apply_trait_enter_with_characteristics(
                 &event,
+                *face_down,
                 added_card_types,
                 added_subtypes,
                 *set_base_power_toughness,
@@ -1246,6 +1290,7 @@ fn queue_damage_prevented_event(
         effect.controller,
         damage.is_combat,
     );
+    prevented.prevention_effect = Some(effect.application_key());
     if let Some(snapshot) = damage.target_snapshot.clone() {
         prevented = prevented.with_target_snapshot(snapshot);
     }
@@ -1533,9 +1578,10 @@ fn modify_token_groups_checked(
                 u128::from(if round_up { total.div_ceil(2) } else { total / 2 })
             })
         }
-        EventModification::LeaveOneCounter => {
+        EventModification::ReplaceCardDefinition(_) | EventModification::LeaveOneCounter => {
             tokens.adjusted_token_total(covers, |total| u128::from(total))
         }
+        EventModification::NamedActionFirstThenOtherMode { .. } => unreachable!("modal operation modifier dispatched before quantity modification"),
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }
@@ -1565,7 +1611,8 @@ fn modified_count(
             if *round_up { count.div_ceil(2) } else { count / 2 }
         }
         // Needs the target's current counters; see the removal arm below.
-        EventModification::LeaveOneCounter => count,
+        EventModification::ReplaceCardDefinition(_) | EventModification::LeaveOneCounter => count,
+        EventModification::NamedActionFirstThenOtherMode { .. } => unreachable!("modal operation modifier dispatched before quantity modification"),
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }
@@ -1580,6 +1627,21 @@ fn apply_trait_modification(
 ) -> Option<Event> {
     use crate::events::{DrawEvent, downcast_event};
 
+    if let Some(copy) = downcast_event::<crate::events::CopyCardSourceEvent>(event.inner()) {
+        if let EventModification::ReplaceCardDefinition(name)=modification {
+            let mut copy=copy.clone();copy.replacement_name=Some(name.clone());copy.replacement_source=Some(effect.source);
+            return Some(event.rewrap(copy));
+        }
+        return None;
+    }
+    if let Some(creation) = downcast_event::<crate::events::CreateCardsEvent>(event.inner()) {
+        let mut creation=creation.clone();
+        match modification {
+            EventModification::ReplaceCardDefinition(name)=>{creation.card_name=name.clone();creation.replacement_source=Some(effect.source);},
+            _=>creation.amount=modified_count(game,creation.amount,modification,effect),
+        }
+        return Some(event.rewrap(creation));
+    }
     match event.kind() {
         EventKind::RemoveCounters => {
             let removal = crate::events::CounterRemovalEvent::from_event(event.inner())?;
@@ -1814,9 +1876,15 @@ pub(super) fn apply_trait_change_destination(event: &Event, new_zone: Zone) -> O
         }
         EventKind::EnterBattlefield => {
             let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            if let Some(mut creation) = etb.creation.clone() {
+                creation.zone = new_zone;
+                creation.amount = 1;
+                creation.selection_finalized = true;
+                return Some(event.rewrap(creation));
+            }
             Some(event.rewrap(ZoneChangeEvent::with_cause(
                 etb.object,
-                etb.from,
+                etb.from?,
                 new_zone,
                 crate::events::cause::EventCause::effect(),
                 None,
@@ -1900,7 +1968,9 @@ fn apply_trait_enter_with_counter_entries(
 }
 
 fn apply_trait_enter_as_copy(
+    game: &GameState,
     event: &Event,
+    condition_controller: PlayerId,
     source_id: crate::ids::ObjectId,
     enters_tapped: bool,
     copy_duration: Option<crate::effect::Until>,
@@ -1916,10 +1986,10 @@ fn apply_trait_enter_as_copy(
     added_abilities: &[crate::ability::Ability],
     set_base_power_toughness: Option<(i32, i32)>,
     copy_followups: &[ironsmith_core::EnterAsCopyFollowup],
-) -> Option<Event> {
+) -> Result<Option<Event>, crate::effects::ExecutionError> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
-    let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| {
+    let apply_copy_modifiers = |mut etb: EnterBattlefieldEvent| -> Result<EnterBattlefieldEvent,crate::effects::ExecutionError> {
         // CR 707.9e: a later copy effect replaces an earlier copy choice; the
         // earlier choice's exceptions and additional effects no longer apply.
         if etb.enters_as_copy_of.is_some() {
@@ -1981,36 +2051,60 @@ fn apply_trait_enter_as_copy(
         if enters_tapped {
             etb = etb.with_tapped();
         }
+        let declared=std::mem::take(&mut etb.copy_followups);
+        // Unbound conditions are not prospective modifications. Build the
+        // evolving copied permanent with all ordinary exceptions first.
+        etb.copy_followups=declared.iter().filter(|followup|!matches!(followup,
+            ironsmith_core::EnterAsCopyFollowup::ConditionalCharacteristics{..})).cloned().collect();
+        let mut selected_pt=None;
+        if declared.iter().any(|followup|matches!(followup,ironsmith_core::EnterAsCopyFollowup::ConditionalCharacteristics{..})) {
+            let prospective=etb.prospective_game_state(game).ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence("conditional copy exception lacks its evolving entry world".into()))?;
+            let snapshot=crate::snapshot::ObjectSnapshot::from_object_id(&prospective,etb.object).ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence("conditional copy exception lacks its entering object".into()))?;
+            let context=prospective.filter_context_for(condition_controller,Some(etb.object));
+            for followup in declared {
+                if let ironsmith_core::EnterAsCopyFollowup::ConditionalCharacteristics{entering_filter,remove_mana_cost,set_base_power_toughness}=followup
+                    && entering_filter.matches_snapshot(&snapshot,&context,&prospective) {
+                    if remove_mana_cost {etb.copy_followups.push(ironsmith_core::EnterAsCopyFollowup::RemoveManaCost);}
+                    if let Some(pt)=set_base_power_toughness {selected_pt=Some(pt);}
+                }
+            }
+        }
         let mut contribution = contribution;
+        if let Some((power,toughness))=selected_pt {
+            etb=etb.with_base_power_toughness(power,toughness);
+            contribution.base_power_toughness=Some((power,toughness));
+        }
         contribution.added_ability_count = etb.added_abilities.len() - abilities_before;
         etb.prior_copy_exceptions = Some(Box::new(contribution));
-        etb
+        Ok(etb)
     };
 
-    match event.kind() {
+    Ok(match event.kind() {
         EventKind::EnterBattlefield => {
-            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
-            Some(event.rewrap(apply_copy_modifiers(etb.clone())))
+            let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event.inner()) else {return Ok(None);};
+            Some(event.rewrap(apply_copy_modifiers(etb.clone())?))
         }
         EventKind::ZoneChange => {
-            let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
+            let Some(zone_change) = downcast_event::<ZoneChangeEvent>(event.inner()) else {return Ok(None);};
             if zone_change.to == Zone::Battlefield {
+                let Some(first)=zone_change.objects.first() else{return Ok(None);};
                 Some(
                     event.rewrap(apply_copy_modifiers(EnterBattlefieldEvent::new(
-                        *zone_change.objects.first()?,
+                        *first,
                         zone_change.from,
-                    ))),
+                    ))?),
                 )
             } else {
                 None
             }
         }
         _ => None,
-    }
+    })
 }
 
 fn apply_trait_enter_with_characteristics(
     event: &Event,
+    face_down: bool,
     added_card_types: &[crate::types::CardType],
     added_subtypes: &[crate::types::Subtype],
     set_base_power_toughness: Option<(i32, i32)>,
@@ -2018,6 +2112,7 @@ fn apply_trait_enter_with_characteristics(
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
 
     let apply = |mut etb: EnterBattlefieldEvent| {
+        etb.enters_face_down |= face_down;
         etb = etb
             .with_added_card_types(added_card_types)
             .with_added_subtypes(added_subtypes);
@@ -2642,7 +2737,7 @@ mod counter_kind_entry_projection_tests {
             let changed = apply_trait_enter_with_counter_entries(&event, &entries, &[Subtype::Dinosaur], &[]).unwrap();
             let etb = downcast_event::<EnterBattlefieldEvent>(changed.inner()).unwrap();
             assert_eq!(etb.object, id);
-            assert_eq!(etb.from, Zone::Hand);
+            assert_eq!(etb.from, Some(Zone::Hand));
             assert!(etb.enters_tapped);
             assert_eq!(etb.enters_as_copy_of, Some(donor));
             assert!(etb.added_subtypes.contains(&Subtype::Vehicle));

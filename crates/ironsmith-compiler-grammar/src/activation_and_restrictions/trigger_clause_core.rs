@@ -2362,7 +2362,61 @@ fn try_parse_enters_or_becomes_tapped_trigger_lexed(
     Ok(Some(TriggerSpec::Either(Box::new(enters), Box::new(becomes))))
 }
 
+/// A source-zone suffix changes where this trigger functions; it does not
+/// refer to the event's affected object or create an intervening-if check.
+fn source_zone_trigger_suffix(tokens: &[OwnedLexToken]) -> Option<(usize, Zone)> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let at = words.iter().rposition(|word| *word == "while")?;
+    if at == 0 { return None; }
+    let tail = &words[at + 1..];
+    let is = tail.iter().position(|word| *word == "is")?;
+    if !crate::util::is_source_reference_words(&tail[..is]) { return None; }
+    let location = tail.get(is + 1..)?;
+    let location = location.strip_prefix(&["in"][..]).or_else(|| location.strip_prefix(&["on"][..]))?;
+    let location = location.strip_prefix(&["your"][..])
+        .or_else(|| location.strip_prefix(&["the"][..]))
+        .or_else(|| location.strip_prefix(&["a"][..])).unwrap_or(location);
+    let zone = match location {
+        [zone] => crate::word_claims::probe_only(|| crate::util::parse_zone_word(zone))?,
+        ["command", "zone"] => Zone::Command,
+        _ => return None,
+    };
+    let token_at = view.token_start_indices()[at];
+    Some((token_at, zone))
+}
+
 pub fn parse_trigger_clause_lexed(tokens: &[OwnedLexToken]) -> Result<TriggerSpec, CardTextError> {
+    if let Some((at, zone)) = source_zone_trigger_suffix(tokens) {
+        let alternative = split_trigger_or_index(&tokens[..at]);
+        // A terminal qualification on a complete second event belongs only
+        // to that arm. Numeric `or more` is guarded by the shared OR owner.
+        if let Some(separator) = alternative {
+            if let (Ok(_), Ok(_)) = crate::word_claims::probe_only(|| (
+                parse_trigger_clause_lexed(&tokens[..separator]),
+                parse_trigger_clause_lexed(&tokens[separator + 1..]),
+            )) {
+                let left = parse_trigger_clause_lexed(&tokens[..separator])?;
+                let right = parse_trigger_clause_lexed(&tokens[separator + 1..])?;
+                crate::word_claims::claim_tokens(&tokens[separator..=separator]);
+                return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
+            }
+        }
+        let prefix = crate::word_claims::probe_only(|| parse_trigger_clause_lexed(&tokens[..at]));
+        // A noun-filter union is one event. A shared-subject event union is
+        // left to its existing owner, which retains the arm's source zone.
+        if prefix.as_ref().is_ok_and(|trigger| alternative.is_none()
+            || !matches!(trigger, TriggerSpec::Either(..) | TriggerSpec::AnyOf(..))) {
+            let trigger = parse_trigger_clause_lexed(&tokens[..at])?;
+            crate::word_claims::claim_tokens(&tokens[at..]);
+            return Ok(TriggerSpec::ConditionQualified {
+                trigger: Box::new(trigger),
+                condition: crate::cards::builders::PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceIsInZone(zone)),
+                surface: crate::lexer::render_token_slice(&tokens[at..]).trim().to_owned(),
+            });
+        }
+    }
     if let Some(trigger) = try_parse_enters_or_becomes_tapped_trigger_lexed(tokens)? {
         return Ok(trigger);
     }
@@ -2796,12 +2850,33 @@ fn try_parse_player_attack_with_aggregate_lexed(
     }) else {
         return Ok(None);
     };
-    if words.get(attack_word + 1) != Some(&"with") {
-        return Ok(None);
-    }
     let Some(player) = parse_trigger_subject_player_filter(&words[..attack_word]) else {
         return Ok(None);
     };
+    let diversity = &words[attack_word+1..];
+    if diversity.len() == 12 && diversity[..3] == ["and", "there", "are"]
+        && diversity[4..] == ["or", "more", "different", "creature", "types", "among", "attacking", "creatures"]
+        && let Some(minimum) = crate::util::parse_number_word_u32(diversity[3])
+        && let Ok(minimum) = i32::try_from(minimum)
+    {
+        let mut attacking = ObjectFilter::creature();
+        attacking.attacking = true;
+        let mut attackers = ObjectFilter::creature();
+        attackers.controller = Some(player);
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::AttacksOneOrMore(attackers)),
+            condition: PredicateAst::ValueComparison {
+                left: Value::CreatureTypesAmong(attacking),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(minimum),
+            },
+            surface: format!("and there are {} or more different creature types among attacking creatures", diversity[3]),
+        }));
+    }
+    if words.get(attack_word + 1) != Some(&"with") {
+        return Ok(None);
+    }
     let Some(metric_word) =
         crate::word_primitives::parse_last_sequence_start(&words, &["with", "total", "power"])
     else {
@@ -3503,5 +3578,33 @@ mod graveyard_destination_and_controller_tests {
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert!(filter.subtypes.contains(&crate::Subtype::Aura));
+    }
+}
+
+#[cfg(test)]
+mod source_zone_suffix_tests {
+    use super::*;
+    #[test]
+    fn action_amount_and_source_graveyard_zone_are_both_retained() {
+        let tokens = crate::lexer::lex_line("you perform the deliberation action with an amount of 1 or more while this card is in your graveyard", 0).unwrap();
+        let trigger = parse_trigger_clause_lexed(&tokens).unwrap();
+        assert_eq!(ironsmith_compiler_semantic::model::trigger_zones::base_trigger_functional_zones(&trigger), vec![Zone::Graveyard]);
+        let TriggerSpec::ConditionQualified { trigger, condition, .. } = trigger else { panic!("event qualification") };
+        assert_eq!(condition, crate::cards::builders::PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceIsInZone(Zone::Graveyard)));
+        assert!(matches!(*trigger, TriggerSpec::NamedAction { minimum_amount: 1, .. }));
+    }
+    #[test]
+    fn source_zone_suffix_does_not_claim_an_unrelated_object_or_unknown_zone() {
+        for text in ["you perform the deliberation action while another creature is in your graveyard", "you perform the deliberation action while this card is in your vault", "you perform the deliberation action while this card is in your graveyard then"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_trigger_clause_lexed(&tokens).is_err(), "{text}");
+        }
+    }
+    #[test]
+    fn a_graveyard_arm_does_not_narrow_the_other_event_arm() {
+        let tokens = crate::lexer::lex_line("this creature attacks or you perform the deliberation action while this card is in your graveyard", 0).unwrap();
+        let trigger = parse_trigger_clause_lexed(&tokens).unwrap();
+        let zones = ironsmith_compiler_semantic::model::trigger_zones::base_trigger_functional_zones(&trigger);
+        assert!(zones.contains(&Zone::Battlefield)); assert!(zones.contains(&Zone::Graveyard)); assert_eq!(zones.len(), 2);
     }
 }

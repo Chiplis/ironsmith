@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "msem-legacy",
+  "notes": [
+    "Source identities and original texts are immutable. Frontend materialization and native behavior remain separate verification obligations.",
+    "Named action watchers, dynamic grants, mana source name restrictions, selected sacrifice reductions and linked exile must retain their exact structured semantics."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-806",
+      "keyword": "Legacy",
+      "original_reminder": "You may play this side of this card only from your graveyard. Exile it if it would leave the battlefield or not resolve.",
+      "executable_reminder": "You may cast this card from your graveyard, but not from anywhere else.\nIf this spell would leave the stack other than being put onto the battlefield, exile it instead.\nIf this permanent would leave the battlefield, exile it instead.",
+      "source_cards": [
+        "Amancay, Weichafe Exemplar//Condor's Protection"
+      ],
+      "rule_reference": "702.272.",
+      "rule_text": [
+        {
+          "name": "702.272a",
+          "rule": "Legacy is an ability found on the back face of some modal double-faced cards (see rule 712, “Double-Faced Cards”). “Legacy” means “You may cast this spell from your graveyard, but not from anywhere else,” “If this spell would leave the stack other than being put onto the battlefield, exile it instead,” and “If this permanent would leave the battlefield, exile it instead.” See rule 712.4b.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Condor's Protection",
+          "name": "Condor's Protection",
+          "original_text": "Mana cost: {1}{B}{R}{G}\nType: Legendary Enchantment\nLegacy *(You may play this side of this card only from your graveyard. Exile it if it would leave the battlefield or not resolve.)*\nWhenever a Warrior you control dies, each opponent loses 1 life and discards a card, then you draw a card and gain 1 life.",
+          "executable_text": "Mana cost: {1}{B}{R}{G}\nType: Legendary Enchantment\nYou may cast this card from your graveyard, but not from anywhere else.\nIf this spell would leave the stack other than being put onto the battlefield, exile it instead.\nIf this permanent would leave the battlefield, exile it instead\nWhenever a Warrior you control dies, each opponent loses 1 life and discards a card, then you draw a card and gain 1 life.",
+          "mana_cost": "{1}{B}{R}{G}",
+          "type_line": "Legendary Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Amancay, Weichafe Exemplar//Condor's Protection_RCM",
+          "source_face": "back",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Amancay, Weichafe Exemplar",
+              "original_text": "Mana cost: {B}{R}{G}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 3/3\nTrample\nWhenever a Warrior you control dies, it deals 1 damage to any target."
+            },
+            {
+              "face": "back",
+              "name": "Condor's Protection",
+              "original_text": "Mana cost: {1}{B}{R}{G}\nType: Legendary Enchantment\nLegacy *(You may play this side of this card only from your graveyard. Exile it if it would leave the battlefield or not resolve.)*\nWhenever a Warrior you control dies, each opponent loses 1 life and discards a card, then you draw a card and gain 1 life."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "source_card_name": "Condor's Protection",
+          "executable_faces": [
+            {
+              "name": "Amancay, Weichafe Exemplar",
+              "executable_text": "Mana cost: {B}{R}{G}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 3/3\nTrample\nWhenever a Warrior you control dies, it deals 1 damage to any target.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": []
+            },
+            {
+              "name": "Condor's Protection",
+              "executable_text": "Mana cost: {1}{B}{R}{G}\nType: Legendary Enchantment\nYou may cast this card from your graveyard, but not from anywhere else.\nIf this spell would leave the stack other than being put onto the battlefield, exile it instead.\nIf this permanent would leave the battlefield, exile it instead\nWhenever a Warrior you control dies, each opponent loses 1 life and discards a card, then you draw a card and gain 1 life.",
+              "custom_keyword_identities": [
+                "legacy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Legacy\nWhenever a Warrior you control dies, each opponent loses 1 life and discards a card, then you draw a card and gain 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "legacy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Legacy\nWhenever a Warrior you control dies, each opponent loses 1 life and discards a card, then you draw a card and gain 1 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "modal_dfc",
+          "source_layout_evidence": {
+            "rule_reference": "702.272a",
+            "basis": "Legacy is an ability found on the back face of modal double-faced cards."
+          },
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires graveyard-only restriction on this face, stack departure except battlefield redirect, and battlefield departure redirect; both linked faces must be checked."
+    },
+    {
+      "id": "msem-807",
+      "keyword": "Legacy",
+      "original_reminder": "You may play this side of this card only from your graveyard. Exile it if it would be put into a graveyard or not resolve.",
+      "executable_reminder": "You may cast this card from your graveyard, but not from anywhere else.\nIf this spell would leave the stack other than being put onto the battlefield, exile it instead.\nIf this permanent would leave the battlefield, exile it instead.",
+      "source_cards": [
+        "Ancient Pillan//Volcano Sacrifice"
+      ],
+      "rule_reference": "702.272.",
+      "rule_text": [
+        {
+          "name": "702.272a",
+          "rule": "Legacy is an ability found on the back face of some modal double-faced cards (see rule 712, “Double-Faced Cards”). “Legacy” means “You may cast this spell from your graveyard, but not from anywhere else,” “If this spell would leave the stack other than being put onto the battlefield, exile it instead,” and “If this permanent would leave the battlefield, exile it instead.” See rule 712.4b.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Volcano Sacrifice",
+          "name": "Volcano Sacrifice",
+          "original_text": "Mana cost: {2}{R}{R}\nType: Sorcery\nLegacy *(You may play this side of this card only from your graveyard. Exile it if it would be put into a graveyard or not resolve.)*\nVolcano Sacrifice deals damage to target creature or planeswalker equal to the number of creature cards in your graveyard.",
+          "executable_text": "Mana cost: {2}{R}{R}\nType: Sorcery\nYou may cast this card from your graveyard, but not from anywhere else.\nIf this spell would leave the stack other than being put onto the battlefield, exile it instead.\nIf this permanent would leave the battlefield, exile it instead\nVolcano Sacrifice deals damage to target creature or planeswalker equal to the number of creature cards in your graveyard.",
+          "mana_cost": "{2}{R}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ancient Pillan//Volcano Sacrifice_RCM",
+          "source_face": "back",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ancient Pillan",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Creature — Spirit\nPower/Toughness: 4/4\nTrample\nWhen Ancient Pillan enters, it fights up to one target creature an opponent controls. "
+            },
+            {
+              "face": "back",
+              "name": "Volcano Sacrifice",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Sorcery\nLegacy *(You may play this side of this card only from your graveyard. Exile it if it would be put into a graveyard or not resolve.)*\nVolcano Sacrifice deals damage to target creature or planeswalker equal to the number of creature cards in your graveyard."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "source_card_name": "Volcano Sacrifice",
+          "executable_faces": [
+            {
+              "name": "Ancient Pillan",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Creature — Spirit\nPower/Toughness: 4/4\nTrample\nWhen Ancient Pillan enters, it fights up to one target creature an opponent controls. ",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": []
+            },
+            {
+              "name": "Volcano Sacrifice",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Sorcery\nYou may cast this card from your graveyard, but not from anywhere else.\nIf this spell would leave the stack other than being put onto the battlefield, exile it instead.\nIf this permanent would leave the battlefield, exile it instead\nVolcano Sacrifice deals damage to target creature or planeswalker equal to the number of creature cards in your graveyard.",
+              "custom_keyword_identities": [
+                "legacy"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Legacy\nVolcano Sacrifice deals damage to target creature or planeswalker equal to the number of creature cards in your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "legacy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Legacy\nVolcano Sacrifice deals damage to target creature or planeswalker equal to the number of creature cards in your graveyard.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "source_layout": "modal_dfc",
+          "source_layout_evidence": {
+            "rule_reference": "702.272a",
+            "basis": "Legacy is an ability found on the back face of modal double-faced cards."
+          },
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": []
+        }
+      ],
+      "verification_status": "unverified_source_equivalence_candidate",
+      "remaining_semantic_obligation": "Requires graveyard-only restriction on this face, stack departure except battlefield redirect, and battlefield departure redirect; both linked faces must be checked."
+    }
+  ]
+}

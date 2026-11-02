@@ -11,7 +11,7 @@ use super::text_change_predicates::{
     rewrite_player_filter_words, rewrite_value_words,
 };
 use super::text_change_programs::{
-    rewrite_ability_words, rewrite_cost_words, rewrite_program_words,
+    rewrite_ability_words, rewrite_cost_words, rewrite_program_words, rewrite_effect_words,
     rewrite_total_cost_words, rewrite_triggered_ability_words,
 };
 use super::text_changes::{
@@ -77,6 +77,7 @@ fn ability_model_words(ability: &mut AbilityModel, change: TextChange) -> Result
             // Use its complete owner rather than reconstructing only cost/effects.
             let runtime = crate::ability::Ability {
                 kind: crate::ability::AbilityKind::Activated(model.clone()),
+                designations: ability.designations.clone(),
                 functional_zones: ability.functional_zones.clone(),
             };
             let transformed = rewrite_ability_words(&runtime, change)?;
@@ -116,7 +117,59 @@ pub(crate) fn rewrite_static_model_words(
     let mut rewritten = model.clone();
     match &mut rewritten.payload {
         // Keyword names are identities, not color/type words in rules text.
-        P::CustomKeywordIdentity { .. } => {},
+        P::CustomKeywordIdentity { .. } | P::OptionalTextFragments(_) => {},
+        P::NamedActionPaymentAlternative { player, effects: body, .. } => {
+            *player = rewrite_player_filter_words(player, change)?;
+            effects_words(body, change)?;
+        }
+        P::ActivateAbilitiesAsThoughZone { filter, .. } => {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+        // Named price identities are opaque; the eligibility filter still
+        // contains authored color and type words.
+        P::NamedCastingPriceReduction { filter, keywords: _, maximum: _, optional: _ } => {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+        P::CardCreationSelectionReplacement { operation_label: _, player, replacement, display: _ } => {
+            *player = rewrite_player_filter_words(player, change)?;
+            if let Some(effect) = rewrite_effect_words(replacement, change)? { *replacement = effect; }
+        }
+        P::CopySourceSelectionReplacement {player,replacement,..} => {
+            *player = rewrite_player_filter_words(player, change)?;
+            if let Some(effect)=rewrite_effect_words(replacement, change)? {*replacement=effect;}
+        }
+        P::TriggerClassEventChoice { class: _, official_keyword: _, event, sources, include_event_source: _, destination_subject: _, maximum: _, optional: _, automatic: _, caused_by_event: _ } => {
+            *event = super::text_change_triggers::rewrite_trigger_words(event, change)?;
+            if let Some(filter)=sources { *filter = rewrite_filter_words(filter, change)?; }
+        }
+        P::GrantOptionalSpellCost { filter, price, effects, generic_reduction, .. } => {
+            *filter = rewrite_filter_words(filter, change)?;
+            if let ironsmith_core::static_ability_model::GrantedOptionalCostPrice::Fixed(cost) = price {
+                *cost = rewrite_total_cost_words(cost, change)?;
+            }
+            effects_words(effects, change)?;
+            optional_value(generic_reduction, change)?;
+        }
+        P::OptionalCostPaymentAlternative { filter, replacement, .. } => {
+            *filter = rewrite_filter_words(filter, change)?;
+            *replacement = rewrite_total_cost_words(replacement, change)?;
+        }
+        P::NamedActionFirstThenOtherMode { player, .. } => {
+            *player = rewrite_player_filter_words(player, change)?;
+        }
+        P::NamedActionTokenAbilityGrant { player, abilities, .. } => {
+            *player = rewrite_player_filter_words(player, change)?;
+            abilities_words(abilities, change)?;
+        }
+        P::RevealActionOffer { effects, .. } => effects_words(effects, change)?,
+        P::IntrinsicImmediateAction { cost, player, condition, effects, .. } => {
+            *cost = rewrite_total_cost_words(cost, change)?;
+            *player = rewrite_player_filter_words(player, change)?;
+            optional_condition(condition, change)?;
+            effects_words(effects, change)?;
+        }
+        // Generic creature/payment words carry no color, land-type or creature-subtype operand.
+        P::GenericManaTapPayment { .. } | P::GenericManaTapPaymentProhibition { .. } => {},
         // Sticker-sheet rows are inert on the sheet (CR 123.2).
         P::TicketAbilitySticker { abilities, .. } => abilities_words(abilities, change)?,
         P::TicketPowerToughnessSticker { .. } => {}
@@ -139,8 +192,15 @@ pub(crate) fn rewrite_static_model_words(
         P::LookAtSourceExiledCards { pair: _, source: _ } => {},
         P::Protection(from) => *from = rewrite_protection_words(from, change)?,
         P::Landwalk(kind) => *kind = rewrite_core_landwalk_words(*kind, change),
+        P::PhaseBoundaryPlayerAction { condition, .. } => { *condition = rewrite_condition_words(condition, change)?; }
+        P::TriggerEventProjection { sources, subjects, .. } => {
+            *sources = rewrite_filter_words(sources, change)?;
+            *subjects = rewrite_filter_words(subjects, change)?;
+        }
         P::Enchant(filter) => *filter = rewrite_attachment_words(filter, change)?,
         P::HexproofFrom(filter) | P::BandsWithOther(filter)
+        | P::AdditionalSpellTargets { filter, .. }
+        | P::CanBeBlockedAsThoughBlockersWereUntapped(filter)
         | P::PreventAllCombatDamageToPermanentsMatching(filter)
         | P::PreventAllCombatDamageToAndByPermanentsMatching(filter)
         | P::PreventAllNoncombatDamageToPermanentsMatching(filter)
@@ -168,6 +228,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::RevealCardOrEnterTapped { filter, .. } | P::RedirectWouldEnter { filter, .. }
         | P::CanBlockAdditionalForEach { filter, .. }
         | P::GrantSpellKeyword { filter, .. }
+
         | P::AlternativeCastFromZoneForFilter { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
@@ -415,13 +476,20 @@ pub(crate) fn rewrite_static_model_words(
             abilities_words(&mut spec.added_abilities, change)?;
             optional_filter(&mut spec.additional_counters_source_filter, change)?;
             optional_filter(&mut spec.added_abilities_source_filter, change)?;
+            for followup in &mut spec.copy_followups {
+                if let ironsmith_core::EnterAsCopyFollowup::ConditionalCharacteristics{entering_filter,..}=followup {
+                    *entering_filter=rewrite_filter_words(entering_filter,change)?;
+                }
+            }
             for counters in &mut spec.conditional_additional_counters {
                 counters.source_filter = rewrite_filter_words(&counters.source_filter, change)?;
             }
             // Durations, copy-source references, follow-up operations, name
             // exceptions, link keys and fixed counter/P/T facts are retained.
         }
+        P::CastAnnouncementProgram {program} => *program=rewrite_program_words(program,change)?,
         P::AsEntersEffectProgram { program, .. } => *program = rewrite_program_words(program, change)?,
+        P::SpellResolutionDestinationProgram { follow_up, .. } => *follow_up = rewrite_program_words(follow_up, change)?,
         P::ExileToExileInsteadOfGraveyard { filter, graveyard_owner, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
             *graveyard_owner = rewrite_player_filter_words(graveyard_owner, change)?;
@@ -479,6 +547,12 @@ pub(crate) fn rewrite_static_model_words(
         }
         P::CreateOneOfEachTokenReplacement { kinds, .. } => {
             if kinds.contains(&ironsmith_core::AdditionalTokenKind::Squirrel) { return Err(hold(model)); }
+        }
+        P::NamedActionReplacement { source_filter, performer_filter, object_requirement, replacement_effects, .. } => {
+            *source_filter=rewrite_filter_words(source_filter,change)?;
+            optional_player(performer_filter,change)?;
+            if let Some(requirement)=object_requirement { *requirement.filter=rewrite_filter_words(&requirement.filter,change)?; }
+            effects_words(replacement_effects,change)?;
         }
         P::KeywordActionReplacement { source_filter, performer_filter, replacement_effects, .. } => {
             *source_filter = rewrite_filter_words(source_filter, change)?;
@@ -594,9 +668,12 @@ pub(crate) fn rewrite_static_model_words(
             // The color set conflates an authored list with the word "colored".
             ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => return Err(hold(model)),
             ironsmith_core::mana::ManaSpendingRestriction::NoMana
+            | ironsmith_core::mana::ManaSpendingRestriction::UnspentActivationColors
             | ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor
             | ironsmith_core::mana::ManaSpendingRestriction::Colorless
-            | ironsmith_core::mana::ManaSpendingRestriction::Snow => {}
+            | ironsmith_core::mana::ManaSpendingRestriction::Snow
+            | ironsmith_core::mana::ManaSpendingRestriction::AtLeastColors(_)
+            | ironsmith_core::mana::ManaSpendingRestriction::GenericManaByMinusOneCounters => {}
             // Color words would need text-change rewriting (CR 612.2).
             ironsmith_core::mana::ManaSpendingRestriction::Colors(_) => return Err(hold(model)),
         },
@@ -630,6 +707,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::MaxCreaturesCanBlockEachCombat(_) | P::ChooseBasicLandTypeAsEnters(_)
         | P::ChooseLandTypeAsEnters(_) | P::EnchantedLandIsChosenType(_)
         | P::AttachedIsCopyOfChosenObject(_)
+        | P::AttachedIsCopyOfSource { .. }
         | P::SourceLandIsChosenType(_) | P::SoulbondSharedPowerToughness { .. }
         | P::ChooseBasicLandTypesAsEnters { .. }
         | P::CostIncreasePerTargetBeyondFirst(_) | P::CostIncreaseManaCostPerTargetBeyondFirst(_)
@@ -684,6 +762,8 @@ fn wordless_leaf(id: Option<StaticAbilityId>) -> bool {
         | StaticAbilityId::Deathtouch | StaticAbilityId::Defender | StaticAbilityId::Flash
         | StaticAbilityId::Haste | StaticAbilityId::Hexproof | StaticAbilityId::Indestructible
         | StaticAbilityId::Intimidate | StaticAbilityId::Lifelink | StaticAbilityId::Menace
+        | StaticAbilityId::CanBeBlockedAsThoughBlockersWereUntapped
+        | StaticAbilityId::TriggerEventProjection
         | StaticAbilityId::Banding | StaticAbilityId::Reach | StaticAbilityId::Shroud
         | StaticAbilityId::Trample | StaticAbilityId::Vigilance | StaticAbilityId::Fear
         | StaticAbilityId::Skulk | StaticAbilityId::Wither | StaticAbilityId::Infect
@@ -710,7 +790,7 @@ fn activation_cost_condition_words(condition: &mut ironsmith_core::ActivatedAbil
             *filter = rewrite_filter_words(filter, change)?
         }
         C::EquipAbility { targeting } => optional_filter(targeting, change)?,
-        C::ThisAbility { .. } | C::Keyword(_) | C::NonManaAbility | C::ManaAbility | C::LoyaltyAbility
+        C::ThisAbility { .. } | C::Named(_) | C::Keyword(_) | C::NonManaAbility | C::ManaAbility | C::LoyaltyAbility
         | C::FirstKeywordAbilityThisTurn { .. } => {}
         C::Activator(player) => *player = rewrite_player_filter_words(player, change)?,
         C::All(conditions) => {
@@ -793,6 +873,7 @@ fn attack_condition_words(condition: &mut ironsmith_core::CantAttackUnlessCondit
 fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: TextChange) -> Result<(), Error> {
     use ironsmith_core::Restriction as R;
     match restriction {
+        R::MoveBetweenZones { .. } => {},
         R::AdditionalLandPlays(player, _) | R::NoMaximumHandSize(player) | R::GainLife(player)
         | R::ReduceMaximumHandSize(player, _)
         | R::DrawFromBottom(player) | R::ActivateAbilities(player)
@@ -922,7 +1003,10 @@ fn grantable_words(
             | D::MiracleFromCardManaCostReducedBy { .. } | D::EscapeFromCardManaCost { .. }
             | D::ManaValueAsGenericFromHand | D::LifeEqualManaValueFromHand { .. }
             | D::LifeEqualManaValueFromZone { .. } | D::MadnessFromCardManaCost
-            | D::ForetellFromCardManaCostReducedBy { .. } | D::PlotFromCardManaCost => {}
+            | D::ForetellFromCardManaCostReducedBy { .. } | D::PlotFromCardManaCost
+            // Printed-price derivation and its optionality have no authored
+            // color/type words. The full preparation label is an identity.
+            | D::ExilePreparationFromCardManaCost { reduction: _, optional_cast: _, label: _ } => {}
         },
         G::AlternativeCast(method) => match method {
             A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost } | A::BeamMeUp { total_cost }
@@ -1111,6 +1195,7 @@ mod tests {
     #[test]
     fn entry_program_retains_linked_pair_and_source_surface_through_self_replacement() {
         let program = crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            ability_designations: Default::default(),
             default_effects: vec![word_effect()], starts_new_source_line: true,
             self_replacements: vec![crate::resolution::SelfReplacementBranch {
                 condition: Condition::YouControl(black()), replacement_effects: vec![word_effect()],
@@ -1229,6 +1314,48 @@ mod tests {
             TextChange::creature_type(Subtype::Human, Subtype::Vampire).unwrap()).unwrap();
         let P::AddSubtypes { subtypes, .. } = changed.payload else { unreachable!() };
         assert_eq!(subtypes, vec![Subtype::Vampire]);
+    }
+
+    #[test]
+    fn named_price_filter_rewrites_but_complete_identity_and_policy_do_not() {
+        let original=model(P::NamedCastingPriceReduction {filter:black(),keywords:vec!["black human craft".into()],maximum:2,optional:true});
+        let changed=rewrite_static_model_words(&original,change()).unwrap();
+        let P::NamedCastingPriceReduction {filter,keywords,maximum,optional}=changed.payload else {panic!("typed named price")};
+        assert_eq!(filter,blue());assert_eq!(keywords,vec!["black human craft"]);assert_eq!(maximum,2);assert!(optional);
+        assert_eq!(changed.label,original.label);
+    }
+
+    #[test]
+    fn creation_selection_replacement_visits_player_and_template_but_keeps_catalog_identity() {
+        let definition=crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Black Human")
+            .card_types(vec![crate::types::CardType::Creature]).subtypes(vec![Subtype::Human]).build();
+        let template=Effect::new(crate::effects::CreateCardsEffect {
+            definitions:vec![definition.clone()],definition_scope:None,definition_refs:Vec::new(),
+            operation_label:Some("black human conjure".into()),selection:ironsmith_core::CardCreationSelection::Named("Black Human".into()),
+            count:Value::Count(black()),player:PlayerFilter::You,zone:Zone::Hand,
+            library_position:ironsmith_core::CardCreationLibraryPosition::Top,
+        });
+        let original=model(P::CardCreationSelectionReplacement {operation_label:Some("black human conjure".into()),
+            player:PlayerFilter::ControlsMost{filter:Box::new(black())},replacement:template,display:"Black Human identity".into()});
+        let changed=rewrite_static_model_words(&original,change()).unwrap();
+        let P::CardCreationSelectionReplacement {operation_label,player,replacement,display}=changed.payload else {panic!("typed creation replacement")};
+        assert_eq!(operation_label.as_deref(),Some("black human conjure"));assert_eq!(display,"Black Human identity");
+        assert_eq!(player,PlayerFilter::ControlsMost{filter:Box::new(blue())});
+        let template=replacement.downcast_ref::<crate::effects::CreateCardsEffect>().unwrap();
+        assert_eq!(template.count,Value::Count(blue()));assert_eq!(template.selection,ironsmith_core::CardCreationSelection::Named("Black Human".into()));
+        assert_eq!(template.definitions[0].card.id,definition.card.id);assert_eq!(template.definitions[0].card.name,definition.card.name);
+        assert_eq!(template.definitions[0].card.subtypes,definition.card.subtypes);
+    }
+
+    #[test]
+    fn derived_preparation_keeps_full_identity_and_printed_price_recipe() {
+        let mut grantable=ironsmith_core::Grantable::DerivedAlternativeCast(ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
+            reduction:2,optional_cast:true,label:Some("black human preparation".into()),
+        });
+        grantable_words(&mut grantable,change()).unwrap();
+        assert!(matches!(grantable,ironsmith_core::Grantable::DerivedAlternativeCast(ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
+            reduction:2,optional_cast:true,label:Some(label),
+        }) if label=="black human preparation"));
     }
 
 }

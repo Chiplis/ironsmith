@@ -192,6 +192,17 @@ impl ActionProgramCursor for IterationProgramCursor {
                     targets: self.plan.target_scope(self.iteration),
                     iterated_object: input.object.map(Some),
                     iterated_player: Some(Some(input.player)),
+                    entry_attachment_receipts: Some(if self.plan.entry_attachment_hints()
+                        && self.child > 0
+                        && crate::effects::permanents::entry_attachment_for_move(
+                            &self.plan.effects()[self.child - 1], Some(effect),
+                        ).is_some()
+                    {
+                        Some(self.outcomes.last().and_then(EffectOutcome::entry_attachments)
+                            .ok_or_else(|| ExecutionError::InternalError(
+                                "iteration entry instruction lost its attachment receipt".into(),
+                            ))?)
+                    } else { None }),
                     pending_entry_attachment: self.plan.entry_attachment_hints().then(|| {
                         crate::effects::permanents::entry_attachment_for_move(
                             effect,

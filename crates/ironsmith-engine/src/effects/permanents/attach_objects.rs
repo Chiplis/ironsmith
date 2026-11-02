@@ -61,6 +61,58 @@ fn resolve_attachment_target(
     }
 }
 
+/// Freeze the complete destination packet, including an authoritative empty
+/// retained role. A destination choice never reselects targets.
+pub(crate) fn attachment_destinations(
+    game: &GameState, spec: &ChooseSpec, ctx: &ExecutionContext,
+) -> Result<Vec<AttachmentTarget>, ExecutionError> {
+    let assignments = ctx.target_assignments.iter().filter(|assignment| {
+        assignment.spec == *spec || assignment.spec.base() == spec.base()
+    }).collect::<Vec<_>>();
+    if !assignments.is_empty() {
+        return Ok(assignments.into_iter().flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
+            .map(|target| match target {
+                crate::effects::ResolvedTarget::Object(id) => AttachmentTarget::Object(*id),
+                crate::effects::ResolvedTarget::Player(id) => AttachmentTarget::Player(*id),
+            }).collect());
+    }
+    if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+        return crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)
+            .map(|objects| objects.into_iter().map(AttachmentTarget::Object).collect());
+    }
+    resolve_attachment_target(game, spec, ctx).map(|target| vec![target])
+}
+
+/// CR 301.5c / 303.4d: one attachment cannot occupy every proposed host.
+/// Its controller chooses one legal host; every choice is made before commit.
+pub(crate) fn choose_attachment_destination(
+    game: &GameState, ctx: &mut ExecutionContext, attachment: crate::ids::ObjectId,
+    destinations: &[AttachmentTarget],
+) -> Result<Option<AttachmentTarget>, ExecutionError> {
+    let options = destinations.iter().copied().filter(|target| {
+        super::attachment_can_attach_during_effect(game, ctx, attachment, *target)
+            && match target {
+                AttachmentTarget::Object(id) => !crate::targeting::has_protection_from_source(game, *id, attachment),
+                AttachmentTarget::Player(_) => true,
+            }
+    }).map(|target| {
+        let name = match target {
+            AttachmentTarget::Object(id) => game.object(id).map(|object| object.name.to_string()).unwrap_or_else(|| "permanent".into()),
+            AttachmentTarget::Player(id) => format!("player {id:?}"),
+        };
+        (target, name)
+    }).collect::<Vec<_>>();
+    match options.as_slice() {
+        [] => Ok(None),
+        [(target, _)] => Ok(Some(*target)),
+        _ => crate::effects::composition::scoped_choice::select_typed_option(
+            game, ctx, game.controller_of_id(attachment).unwrap_or(ctx.controller),
+            "Choose which destination this permanent attaches to", &options,
+            crate::effects::composition::scoped_choice::SingleChoicePolicy::Strict,
+        ),
+    }
+}
+
 fn choose_spec_names_tag(spec: &ChooseSpec, tag: &crate::tag::TagKey) -> bool {
     match spec.base() {
         ChooseSpec::Tagged(spec_tag) => spec_tag == tag,
@@ -88,11 +140,12 @@ pub(crate) fn entry_attachment_for_move(
     // "Create an Aura token attached to X": the creation's attachment choice
     // is suppressed and the following instruction names its host.
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
-        && let Some(create) = tagged.effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+        && let Some(suppress_choice) = tagged.effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+            .map(|create| create.suppress_aura_attachment_choice)
+            .or_else(|| tagged.effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+                .map(|create| create.suppress_aura_attachment_choice))
     {
-        if !create.suppress_aura_attachment_choice {
-            return None;
-        }
+        if !suppress_choice { return None; }
         let attach = next?.downcast_ref::<AttachObjectsEffect>()?;
         if attach.individual_targets || !choose_spec_names_tag(&attach.objects, &tagged.tag) {
             return None;
@@ -194,6 +247,12 @@ impl EffectExecutor for AttachObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if let Some(receipts) = &ctx.entry_attachment_receipts {
+            // The native entry owner already applied these exact attachments.
+            // Reattaching here could undo an intervening replacement programme.
+            return Ok(EffectOutcome::count(receipts.iter()
+                .filter(|receipt| receipt.choice.performed).count() as i32));
+        }
         if self.individual_targets {
             let object_ids = resolve_objects_for_effect(game, ctx, &self.objects)?;
             if object_ids.is_empty() {
@@ -242,7 +301,7 @@ impl EffectExecutor for AttachObjectsEffect {
                             .object(object_id)
                             .map(|object| object.name.to_string())
                             .unwrap_or_else(|| "attachment".to_string());
-                        let chosen = crate::effects::composition::captured_selection::choose_captured_object(game, ctx, ctx.controller, &candidates,
+                        let chosen = crate::effects::composition::captured_selection::choose_captured_object(game, ctx, game.controller_of_id(object_id).unwrap_or(ctx.controller), &candidates,
                     &format!("Choose what to attach {attachment_name} to"),
                     crate::effects::composition::captured_selection::CapturedChoicePolicy::EXPLICIT_FIRST)?;
                         Ok(
@@ -265,38 +324,40 @@ impl EffectExecutor for AttachObjectsEffect {
             return Ok(EffectOutcome::count(attached_count));
         }
 
-        let target = match resolve_attachment_target(game, &self.target, ctx) {
-            Ok(target) => target,
+        let destinations = match attachment_destinations(game, &self.target, ctx) {
+            Ok(targets) => targets,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-            Err(err) => return Err(err),
+            Err(error) => return Err(error),
         };
-        if !game.attachment_target_exists(target) {
-            return Ok(EffectOutcome::target_invalid());
-        }
-
         let object_ids = resolve_objects_for_effect(game, ctx, &self.objects)?;
-        if object_ids.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-
+        if object_ids.is_empty() { return Ok(EffectOutcome::count(0)); }
+        let attempted_source = object_ids.contains(&ctx.source);
+        let Some(assignments) = crate::effects::composition::scoped_choice::collect_choices_before_commit(
+            game, ctx, object_ids, |game, ctx, object| {
+                choose_attachment_destination(game, ctx, object, &destinations)
+                    .map(|target| target.map(|target| (object, target)))
+            },
+        )? else { return Ok(EffectOutcome::count(0)); };
+        // The historical source fallback is also chosen before any attachment
+        // mutation, so suspending its controller's menu cannot partially commit.
+        let fallback = if !attempted_source && assignments.iter().all(Option::is_none) {
+            choose_attachment_destination(game, ctx, ctx.source, &destinations)?
+        } else { None };
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         let mut attached_count = 0i32;
-        let mut attempted_source = false;
-        for object_id in object_ids {
-            attempted_source |= object_id == ctx.source;
+        for (object_id, target) in assignments.into_iter().flatten()
+            .chain(fallback.map(|target| (ctx.source, target))) {
             if super::attach_battlefield_object_during_effect(game, ctx, object_id, target) {
                 choose_color_as_becomes_attached(game, ctx, object_id, target);
                 attached_count += 1;
             }
         }
-        if attached_count == 0
-            && !attempted_source
-            && super::attach_battlefield_object_during_effect(game, ctx, ctx.source, target)
-        {
-            choose_color_as_becomes_attached(game, ctx, ctx.source, target);
-            attached_count += 1;
-        }
 
         Ok(EffectOutcome::count(attached_count))
+    }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool {
+        self.target == *spec || self.objects == *spec
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -906,7 +967,19 @@ mod tests {
 #[cfg(test)]
 mod authored_attachment_in_tagged_loop_contract_tests {
     use super::*;
-    use crate::{Ability,CardDefinitionBuilder,CardId,PlayerId};
+    use crate::ResolvedTarget;
+    fn setup_game()->GameState {crate::tests::test_helpers::setup_two_player_game()}
+    fn create_creature(game:&mut GameState,name:&str,controller:PlayerId)->ObjectId {
+        let definition=CardDefinitionBuilder::new(CardId::new(),name)
+            .card_types(vec![CardType::Creature]).power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        game.create_object_from_definition(&definition,controller,Zone::Battlefield)
+    }
+    fn create_equipment(game:&mut GameState,name:&str,controller:PlayerId)->ObjectId {
+        let definition=CardDefinitionBuilder::new(CardId::new(),name)
+            .card_types(vec![CardType::Artifact]).subtypes(vec![Subtype::Equipment]).build();
+        game.create_object_from_definition(&definition,controller,Zone::Battlefield)
+    }
+    use crate::{Ability,CardDefinitionBuilder,CardId,ObjectId,PlayerId};
     use crate::object::AuraAttachmentFilter;
     use crate::static_abilities::StaticAbility;
     use crate::types::{CardType,Subtype};
@@ -961,7 +1034,16 @@ mod authored_attachment_in_tagged_loop_contract_tests {
         }
         let effect=if loop_body {Effect::new(crate::effects::ForEachTaggedEffect::new("picked",body))}
             else {Effect::new(crate::effects::SequenceEffect::new(body))};
-        crate::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();
+        let completed = crate::effects::execute_effect(&mut game,&effect,&mut ctx).unwrap();
+        let receipt = completed.execution_facts.iter().find_map(|fact| {
+            if let crate::effect::ExecutionFact::EntryAttachments(receipts) = fact {
+                receipts.iter().find(|receipt| receipt.original_object == original)
+            } else { None }
+        }).expect("entry owner must retain the original incarnation receipt");
+        assert_eq!(receipt.choice.target, Some(AttachmentTarget::Player(bob)));
+        assert!(receipt.choice.performed);
+        assert_ne!(receipt.entered_object, original);
+        assert!(ctx.entry_attachment_receipts.is_none());
         assert!(ctx.pending_entry_attachment.is_none());
         assert!(game.object(original).is_none());
         let current=game.find_object_by_stable_id(stable).unwrap();
@@ -976,6 +1058,52 @@ mod authored_attachment_in_tagged_loop_contract_tests {
         assert_eq!(game.player(alice).unwrap().library.len(),0);
         drop(ctx);
         assert_eq!(choices.asked,0,"an authored entry attachment must not ask for a different attachment at commit");
+    }
+
+    #[test]
+    fn widened_entry_host_choice_is_retained_for_followup_without_reprompt() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = CardDefinitionBuilder::new(CardId::new(), "entry instruction")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let filter = AuraAttachmentFilter::Player(crate::target::PlayerFilter::Any);
+        let aura = CardDefinitionBuilder::new(CardId::new(), "chosen host Aura")
+            .card_types(vec![CardType::Enchantment]).subtypes(vec![Subtype::Aura])
+            .enchants(filter.clone()).with_ability(Ability::static_ability(StaticAbility::enchant(filter))).build();
+        let original = game.create_object_from_definition(&aura, alice, Zone::Library);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(original).unwrap(), &game);
+        struct HostChoice { calls: usize }
+        impl crate::decision::DecisionMaker for HostChoice {
+            fn decide_options(&mut self, game: &GameState, _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                assert_eq!(game.battlefield.iter().filter(|id| game.object(**id)
+                    .is_some_and(|object| object.name.to_string() == "chosen host Aura")).count(), 1,
+                    "the menu uses the native prospective world, before any real entry");
+                self.calls += 1; vec![1]
+            }
+        }
+        let mut choices = HostChoice { calls: 0 };
+        let mut ctx = ExecutionContext::new(source, alice, &mut choices);
+        ctx.tag_object("picked", snapshot);
+        let destination = ChooseSpec::Player(crate::target::PlayerFilter::Any);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Player(alice), crate::effects::ResolvedTarget::Player(bob)];
+        ctx.target_assignments = vec![crate::game_state::TargetAssignment { spec: destination.clone(), range: 0..2 }];
+        ctx.pending_entry_attachment = Some(destination.clone());
+        let movement = crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged("picked".into()), Zone::Battlefield, false);
+        let outcome = crate::effects::execute_effect(&mut game, &Effect::new(movement), &mut ctx).unwrap();
+        let receipts = outcome.entry_attachments().expect("native entry packet");
+        assert_eq!(receipts.len(), 1);
+        let entered = receipts[0].entered_object;
+        assert_eq!(receipts[0].original_object, original);
+        assert_eq!(receipts[0].choice.target, Some(AttachmentTarget::Player(bob)));
+        assert!(receipts[0].choice.performed);
+        assert_eq!(game.object(entered).unwrap().attached_to, Some(AttachmentTarget::Player(bob)));
+        ctx.pending_entry_attachment = None;
+        ctx.entry_attachment_receipts = Some(receipts);
+        let followup = AttachObjectsEffect::new(ChooseSpec::Tagged("picked".into()), destination);
+        assert_eq!(followup.execute(&mut game, &mut ctx).unwrap().value.as_count(), Some(1));
+        drop(ctx);
+        assert_eq!(choices.calls, 1, "the generated followup reuses the exact native verdict");
     }
 
     #[test]
@@ -995,5 +1123,66 @@ mod authored_attachment_in_tagged_loop_contract_tests {
         let bob=PlayerId::from_index(1);let mut body=moves_and_attaches("picked",bob);
         body[1]=moves_and_attaches("unrelated",bob).remove(1);
         assert!(entry_attachment_for_move(&body[0],Some(&body[1])).is_none());
+    }
+
+    struct ChooseHostByOwner;
+    impl crate::decision::DecisionMaker for ChooseHostByOwner {
+        fn decide_options(&mut self, _: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            vec![usize::from(ctx.player == PlayerId::from_index(1))]
+        }
+    }
+    #[test]
+    fn widened_destination_is_chosen_by_each_attachment_controller() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let left = create_creature(&mut game, "Left host", alice);
+        let right = create_creature(&mut game, "Right host", bob);
+        let equipment_a = create_equipment(&mut game, "Alice equipment", alice);
+        let equipment_b = create_equipment(&mut game, "Bob equipment", bob);
+        let spec = ChooseSpec::target_creature();
+        let mut dm = ChooseHostByOwner;
+        let mut ctx = ExecutionContext::new_default(equipment_a, alice).with_decision_maker(&mut dm);
+        ctx.targets = vec![ResolvedTarget::Object(left), ResolvedTarget::Object(right)];
+        ctx.target_assignments = vec![crate::game_state::TargetAssignment { spec: spec.clone(), range: 0..2 }];
+        for equipment in [equipment_a, equipment_b] {
+            AttachObjectsEffect::new(ChooseSpec::SpecificObject(equipment), spec.clone()).execute(&mut game, &mut ctx).unwrap();
+        }
+        assert_eq!(game.object(equipment_a).unwrap().attached_to, Some(AttachmentTarget::Object(left)));
+        assert_eq!(game.object(equipment_b).unwrap().attached_to, Some(AttachmentTarget::Object(right)));
+        assert_eq!(ctx.target_assignments[0].range, 0..2);
+    }
+}
+
+#[cfg(test)]
+mod retained_entry_attachment_receipt_tests {
+    use super::*;
+    use crate::effect::{EntryAttachmentChoice, EntryAttachmentReceipt};
+    use crate::ids::{ObjectId, PlayerId};
+
+    #[test]
+    fn followup_does_not_resolve_or_mutate_any_current_host() {
+        struct NoChoices;
+        impl crate::decision::DecisionMaker for NoChoices {
+            fn decide_options(&mut self, _: &GameState, _: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                panic!("a retained entry receipt must never prompt again")
+            }
+        }
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let mut decisions = NoChoices;
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(90), alice, &mut decisions);
+        ctx.entry_attachment_receipts = Some(vec![EntryAttachmentReceipt {
+            original_object: ObjectId::from_raw(91),
+            entered_object: ObjectId::from_raw(92),
+            choice: EntryAttachmentChoice { target: Some(AttachmentTarget::Player(alice)), performed: true },
+            provenance: ctx.provenance,
+        }]);
+        // Neither the original nor successor still exists. A replacement's
+        // completed programme may have moved it after the original entry.
+        let attach = AttachObjectsEffect::new(ChooseSpec::Tagged("absent".into()), ChooseSpec::Source);
+        let outcome = attach.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(outcome.value.as_count(), Some(1));
+        ctx.entry_attachment_receipts = Some(Vec::new());
+        assert_eq!(attach.execute(&mut game, &mut ctx).unwrap().value.as_count(), Some(0));
     }
 }

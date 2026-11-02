@@ -10440,6 +10440,12 @@ pub(crate) fn describe_inline_ability_with_self_subject(
             for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
                 append_activation_clause(&mut line, &clause);
             }
+            for designation in &activated.effects.activation_designations {
+                append_activation_clause(&mut line, &format!("This activated ability has designation {designation}"));
+            }
+            for action in &activated.effects.activation_sorcery_exceptions {
+                append_activation_clause(&mut line, &format!("This ability's sorcery timing restriction does not apply during {action} actions"));
+            }
             let line = if line.is_empty() {
                 "an activated ability".to_string()
             } else if activated.is_exhaust_ability() {
@@ -11246,6 +11252,17 @@ pub(crate) fn describe_static_ability_with_subject(
 ) -> String {
     if let Some(model) = static_ability.compiled_model() {
         match &model.payload {
+            ironsmith_core::StaticAbilityPayload::SpellResolutionDestinationProgram { origin_zone, destination, follow_up, multiplicity } => {
+                let occurrence=match multiplicity {
+                    ironsmith_core::static_ability_model::SpellResolutionProgramMultiplicity::PerInstance=>String::new(),
+                    ironsmith_core::static_ability_model::SpellResolutionProgramMultiplicity::OncePerDeclaredKey{key}=>format!(" once for the resolution recipe named {key:?}"),
+                };
+                let condition = origin_zone.map(|zone| format!("If this spell was cast from your {}, ", zone.name())).unwrap_or_default();
+                let movement = if *destination == crate::zone::Zone::Exile { "exile it".to_string() }
+                    else { format!("put it into your {}", destination.name()) };
+                let body = super::ast_render::describe_resolution_program(follow_up);
+                return capitalize_first(&format!("{condition}instead of putting it into your graveyard as it resolves, {movement}{occurrence} and {}", body.trim().trim_end_matches('.')));
+            }
             ironsmith_core::StaticAbilityPayload::RuleRestriction {
                 restriction: crate::effect::Restriction::BeBlocked(filter),
                 additional_restrictions,
@@ -12181,10 +12198,19 @@ pub(crate) fn describe_static_ability_with_subject(
         turns_face_up_only,
         uses_enters_with_counter_surface,
         transforms_into,
+        transform_characteristics,
         presentation_label,
         entry_instead_surface,
     }) = static_ability.compiled_model().map(|model| &model.payload)
     {
+        if let (Some(destination), Some(adjustment)) = (transforms_into, transform_characteristics) {
+            use ironsmith_core::static_ability_model::TransformCharacteristicAdjustment as Adjustment;
+            let body = match adjustment {
+                Adjustment::CounterKind(kind) => format!("counters on it become {} counters instead", kind.description()),
+                Adjustment::ColorsFromNamedActivationPayment(label) => format!("for each color of mana spent to {label} it, it becomes that color"),
+            };
+            return format!("As {authored_subject} transforms into {destination}, {body}");
+        }
         if !also_turns_face_up
             && !turns_face_up_only
             && transforms_into.is_none()

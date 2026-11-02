@@ -3,7 +3,6 @@
 use crate::combat_state::AttackTarget;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -337,20 +336,20 @@ impl EffectExecutor for EnterAttackingEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let creature_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-
-        // CR 508.4: the controller chooses what it attacks; whether the
-        // source of the effect is itself attacking doesn't matter.
-        let target = choose_enters_attacking_target(game, ctx, creature_id);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if let Some(target) = target {
-            game.add_entering_attacker(creature_id, target);
+        let creatures = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+        let Some(assignments) = crate::effects::composition::scoped_choice::collect_choices_before_commit(
+            game, ctx, creatures, |game, ctx, creature| {
+                Ok(choose_enters_attacking_target(game, ctx, creature).map(|target| (creature, target)))
+            },
+        )? else { return Ok(EffectOutcome::count(0)); };
+        for (creature, target) in assignments.into_iter().flatten() {
+            game.add_entering_attacker(creature, target);
         }
 
         Ok(EffectOutcome::resolved())
     }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)

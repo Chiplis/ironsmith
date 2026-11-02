@@ -151,6 +151,21 @@ fn parse_modal_common_prefix_effects(
     parse_effect_sentences_lexed(effect_tokens)
 }
 
+/// The bounded operator before a modal choose verb; quoted programs do not
+/// lend payment semantics to their enclosing header.
+pub(crate) fn paid_modal_choice_prefix(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let mut quoted = false;
+    for start in 0..tokens.len() {
+        if tokens[start].kind == TokenKind::Quote { quoted = !quoted; continue; }
+        if !quoted && tokens.get(start..start + 4).is_some_and(|part|
+            part[0].is_word("pay") && part[1].is_word("for")
+                && part[2].is_word("and") && part[3].is_word("choose")) {
+            return Some(start);
+        }
+    }
+    None
+}
+
 pub fn parse_modal_header(
     info: &LineInfo,
     tokens: &[OwnedLexToken],
@@ -158,7 +173,7 @@ pub fn parse_modal_header(
     let words = crate::lexer::token_word_refs(tokens);
     let prose_spree = words == ["choose", "one", "or", "more", "additional", "costs"];
     let prose_tiered = words == ["choose", "one", "additional", "cost"];
-    let descriptive_mode_costs = prose_spree || prose_tiered;
+    let mut descriptive_mode_costs = prose_spree || prose_tiered;
     let spree = prose_spree || tokens.first().is_some_and(|token| token.is_word("spree"));
     let tiered = prose_tiered || tokens.first().is_some_and(|token| token.is_word("tiered"));
     // CR 700.2: "An opponent chooses one —" has an opponent choose the modes
@@ -200,6 +215,9 @@ pub fn parse_modal_header(
             })
     });
     let choose_idx = choose_spec.choose_idx;
+    let paid_mode_prefix = paid_modal_choice_prefix(tokens)
+        .filter(|start| start + 3 == choose_idx);
+    descriptive_mode_costs |= paid_mode_prefix.is_some();
     let min = choose_spec.min;
     let max = choose_spec.max;
     let random = choose_spec.random;
@@ -261,6 +279,11 @@ pub fn parse_modal_header(
     }
 
     if activated.is_none()
+        // Only an actual leading trigger owns this comma. An imperative
+        // producer followed by `When you do` is one resolving prefix plus
+        // a reflexive gate, not a trigger with the producer in its subject.
+        && tokens.get(effect_start_idx).is_some_and(|token|
+            token.is_any_word(&["when", "whenever", "at"]))
         && let Some(comma_idx) = first_trigger_boundary_comma(tokens, choose_idx)
         && choose_idx > comma_idx
     {
@@ -300,6 +323,12 @@ pub fn parse_modal_header(
     } else {
         prechoose_tokens
     };
+    let prechoose_tokens = if paid_mode_prefix.is_some() {
+        let keep = prechoose_tokens.len().checked_sub(3).ok_or_else(||
+            CardTextError::ParseError("paid modal header lacks its payment operator".into()))?;
+        crate::word_claims::claim_tokens(&prechoose_tokens[keep..]);
+        trim_lexed_commas(&prechoose_tokens[..keep])
+    } else { prechoose_tokens };
     let (intervening_if, prechoose_tokens) =
         split_modal_trigger_intervening_if(trigger.is_some(), prechoose_tokens);
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
@@ -431,7 +460,13 @@ fn parse_conditional_mode_change(
         return Ok(None);
     }
 
-    let selection = if tokens
+    let selection = if tokens.get(change_choose_idx + 1).is_some_and(|token| token.is_word("up"))
+        && tokens.get(change_choose_idx + 2).is_some_and(|token| token.is_word("to"))
+    {
+        let Some(maximum) = tokens.get(change_choose_idx + 3).and_then(|token| token.as_word()).and_then(crate::util::parse_number_word_u32) else { return Ok(None); };
+        if !tokens.get(change_choose_idx + 4).is_some_and(|token|token.is_word("instead")) { return Ok(None); }
+        ConditionalModeSelection::UpTo(maximum)
+    } else if tokens
         .get(change_choose_idx + 1)
         .is_some_and(|token| token.is_word("both") || token.is_word("two"))
     {
@@ -559,6 +594,11 @@ fn replace_modal_header_x_in_effect_ast(
 ) -> Result<(), CardTextError> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantActivationCostAlternative { .. }) => {
+                // Use the ordinary target-tree rewrite (count wrappers,
+                // aggregate bounds and nested target filter expressions).
+                crate::effect_sentences::replace_unbound_x_in_effect_anywhere(effect, replacement, clause)?;
+            }
             SubjectVerbActionAst::Library(LibraryActionAst::RetrieveOutsideOrRummage { .. }) => {},
             SubjectVerbActionAst::Counters(CounterActionAst::PayForEachSourceCounter { .. } | CounterActionAst::PutCountersThenBecomeRenowned { .. } | CounterActionAst::GrowCountersOnChosenHolders) => {},
             SubjectVerbActionAst::Library(LibraryActionAst::ExileGraveyardForTotalManaValue { amount })
@@ -753,10 +793,18 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OptionalSourceCopiesForControllerAndOpponent)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ReturnUnblockedAttackerForCost)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EnterAttackingReturnedDefender)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FirstResolutionEachTurn { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::TriggerAbilitiesByClass { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PairUnpairedCreatures)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ExileResolvedSpellForCombatCopies)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CopiesAssignedToOpponents)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ActivateAbilityWithoutCosts { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::SetPermanentDesignation { .. })
+            // This node contains an EffectId, literal zone and output tag, not X.
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RememberOriginalMovementArrivals { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RecordSourceCollection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::GrantExileControllerInspection { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::PerformNamedAction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
@@ -1025,6 +1073,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAllAttachedTo { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Attach { .. })
             | SubjectVerbActionAst::Control(ControlActionAst::Unattach { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::LinkPermanents { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileWhenSourceLeaves {
                 ..
             })
@@ -1167,6 +1216,8 @@ fn replace_modal_header_x_in_effect_ast(
             )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
                 ..
+            } | CharacteristicActionAst::RemoveOptionalTextFragment {
+                ..
             }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 ..
             })
@@ -1180,6 +1231,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceAll { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { .. })
+            | SubjectVerbActionAst::Grants(GrantActionAst::GrantKeywordAbilitiesFrom { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantToTarget { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { .. })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
@@ -1279,6 +1331,10 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::PriorEffectResult(surface) => {
                     EffectPredicate::PriorEffectResult(surface)
                 }
+                IfResultPredicate::NamedActionCompleted { label } => EffectPredicate::NamedActionCompleted {label},
+        IfResultPredicate::ResultObjectsMatch { filter, negated } => {
+                    EffectPredicate::ResultObjectsMatch { filter, negated }
+                }
                 IfResultPredicate::AffectedObjectsShare { required_count, characteristic } => {
                     EffectPredicate::AffectedObjectsShare { required_count, characteristic }
                 }
@@ -1286,6 +1342,7 @@ fn parse_modal_header_prefix_effects(
                     EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
                 }
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
+        IfResultPredicate::ChoiceUnavailable => EffectPredicate::ChoiceUnavailable,
                 IfResultPredicate::Value(cmp) | IfResultPredicate::DieValue(cmp) => EffectPredicate::Value(cmp),
             };
             (

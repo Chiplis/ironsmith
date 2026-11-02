@@ -1439,6 +1439,7 @@ dependencies = [
  "getrandom 0.4.2",
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
+ "ironsmith-core",
  "ironsmith-runtime-catalog",
  "ironsmith-text",
  "serde",

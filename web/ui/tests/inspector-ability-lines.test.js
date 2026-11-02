@@ -120,3 +120,18 @@ test('a discounted Equip action cannot highlight the static Equipped creature li
   assert.equal(view.actions.has(0), false);
   assert.equal(view.actions.get(1)[0], action);
 });
+
+test('intrinsic starting counters are hidden without hiding real counter abilities', async()=>{
+  const {inspectorRulesLines}=await import('../src/lib/inspector-ability-lines.js');
+  const {cardFrameSnapshot}=await import('../src/lib/card-frame-snapshot.mjs');
+  const real='This permanent enters with two additional loyalty counters on it.';
+  const ability='+1: Draw a card.';
+  const lines=['Enters with loyalty counters equal to its printed loyalty number',ability,real,
+    'Enters with defense counters equal to its printed defense number'];
+  assert.deepEqual(inspectorRulesLines(lines),[ability,real]);
+  const action={ability_index:1,ability_text:ability};
+  const view=interactiveRulesView(lines.join('\n'),lines.join('\n'),[action]);
+  assert.deepEqual(view.lines,[ability,real]);
+  assert.equal(view.actions.get(0)[0],action);
+  assert.equal(JSON.parse(cardFrameSnapshot({oracle_text:lines.join('\n')})).oracle_text,[ability,real].join('\n'));
+});

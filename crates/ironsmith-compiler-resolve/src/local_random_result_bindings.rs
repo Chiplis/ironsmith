@@ -105,7 +105,7 @@ impl Family {
                     [] => false,
                 }
             }
-            EffectAst::Permissions(PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. })
+            EffectAst::Permissions(PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. } | PermissionEffectAst::MayPay { effects, .. })
                 if self == Self::Coin => matches!(effects.as_slice(), [only] if self.compatible(only)),
             EffectAst::ControlFlow(control) if self == Self::Coin => {
                 if let crate::model::ControlFlowNodeAst::Permission(permission) = &control.node {

@@ -31,10 +31,16 @@ impl EffectExecutor for ChooseNumberEffect {
         let number=ctx.decision_maker.decide_number(game,&choice);
         if ctx.decision_maker.awaiting_choice() {return Ok(EffectOutcome::resolved())}
         if number < self.min || number > legal_max {return Err(ExecutionError::Impossible("number is outside the legal choice range".into()))}
+        let mut source_number_written = false;
         if let Some(owner)=owner {
-            if game.object(ctx.source).is_some() { game.set_number_for_acquisition(owner,number)?; }
+            if game.object(ctx.source).is_some() { game.set_number_for_acquisition(owner,number)?; source_number_written=true; }
         }
-        Ok(EffectOutcome::count(i64::from(number)).with_execution_fact(ExecutionFact::ChosenNumber(number)))
+        let outcome = EffectOutcome::count(i64::from(number)).with_execution_fact(ExecutionFact::ChosenNumber(number));
+        if source_number_written {
+            return crate::effects::composition::complete_keyword_action_with_result(game, ctx, outcome,
+                crate::events::other::KeywordActionEvent::new(ironsmith_core::KeywordActionKind::ChoosePermanentNumber, chooser, ctx.source, number));
+        }
+        Ok(outcome)
     }
 }
 #[cfg(test)]

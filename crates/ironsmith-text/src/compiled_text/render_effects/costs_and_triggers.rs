@@ -6798,6 +6798,8 @@ fn describe_choose_then_for_each_copy_effects(
         || create_copy.enters_tapped
         || create_copy.has_haste
         || create_copy.loses_soulbond
+        || create_copy.ability_loss_until.is_some()
+        || !create_copy.removed_ability_designations.is_empty()
         || create_copy.enters_attacking
         || create_copy.attack_target_mode.is_some()
         || create_copy.exile_at_end_of_combat

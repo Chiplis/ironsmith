@@ -1,0 +1,1306 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-source.json",
+    "source_snapshot": "reports/cards/lackey-audit-2026-11-01",
+    "scope": "15 original reminder variants; reminders reviewed separately from fullcard frontend expansion",
+    "validation": "Native scenarios written; no builds/tests run by author"
+  },
+  "mechanics": [
+    {
+      "id": "msem-251",
+      "keyword": "Adjudicate",
+      "original_reminder": "Create a white Aura enchantment token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.",
+      "executable_reminder": "Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.",
+      "source_cards": [
+        "Admonish the Unruly",
+        "Archlegislator",
+        "Armorer of the Soul",
+        "Assertive Inaction",
+        "Blazeblade Sergeant",
+        "Council of the Immortals",
+        "Curator of Cures",
+        "Dutiful Counselor",
+        "Ethereal Fervor",
+        "Oracle of Edicts",
+        "Pierce the Unruly",
+        "Repel the Unruly",
+        "Scrivener of Sha'Iv",
+        "Sha'Iv's Scout",
+        "Sha'Iv Cagemage",
+        "Thought Police",
+        "Zealous Enforcers"
+      ],
+      "rule_reference": "701.69.",
+      "rule_text": [
+        {
+          "name": "701.69a",
+          "rule": "Adjudicate is a keyword action that means “Create a white Aura enchantment token with enchant creature and 'Sacrifice this token: Untap enchanted creature' and attach it to target creature.”",
+          "custom": true
+        },
+        {
+          "name": "701.69b",
+          "rule": "If the token can't be attached to the target creature, for example if it has protection from enchantments, the token will never enter the battlefield.",
+          "custom": true
+        },
+        {
+          "name": "701.69c",
+          "rule": "Adjudicate type is a variant of the adjudicate action. “Adjudicate [type]” means “Create a white Aura enchantment token with enchant [type] and 'Sacrifice this token: Untap enchanted permanent' and attach it to target [type] permanent.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Admonish the Unruly_MIS",
+          "name": "Admonish the Unruly",
+          "original_text": "Mana cost: {R}\nType: Instant\nAdjudicate, then Admonish the Unruly deals damage to target creature equal to the number of Auras you control. *(Create a white Aura enchantment token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.)*",
+          "executable_text": "Mana cost: {R}\nType: Instant\nCreate a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature. Then Admonish the Unruly deals damage to target creature equal to the number of Auras you control.",
+          "mana_cost": "{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "adjudicate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Adjudicate, then Admonish the Unruly deals damage to target creature equal to the number of Auras you control.",
+          "executable_faces": [
+            {
+              "name": "Admonish the Unruly",
+              "executable_text": "Mana cost: {R}\nType: Instant\nCreate a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature. Then Admonish the Unruly deals damage to target creature equal to the number of Auras you control.",
+              "custom_keyword_identities": [
+                "adjudicate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Adjudicate, then Admonish the Unruly deals damage to target creature equal to the number of Auras you control.",
+              "original_printed_rules_text": "Adjudicate, then Admonish the Unruly deals damage to target creature equal to the number of Auras you control. (Create a white Aura enchantment token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Adjudicate, then Admonish the Unruly deals damage to target creature equal to the number of Auras you control. (Create a white Aura enchantment token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Quotes delimit independent enchant and activated abilities; attached token creation keeps CR303.4i illegal-host no-create semantics. Runtime behavior still awaiting parent test run."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "legal host receives Aura and enchanted-host untap works; illegal host creates no Aura"
+        }
+      ]
+    },
+    {
+      "id": "msem-252",
+      "keyword": "Adjudicate",
+      "original_reminder": "Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.",
+      "executable_reminder": "Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.",
+      "source_cards": [
+        "Arbiter of Shal'Iv"
+      ],
+      "rule_reference": "701.69.",
+      "rule_text": [
+        {
+          "name": "701.69a",
+          "rule": "Adjudicate is a keyword action that means “Create a white Aura enchantment token with enchant creature and 'Sacrifice this token: Untap enchanted creature' and attach it to target creature.”",
+          "custom": true
+        },
+        {
+          "name": "701.69b",
+          "rule": "If the token can't be attached to the target creature, for example if it has protection from enchantments, the token will never enter the battlefield.",
+          "custom": true
+        },
+        {
+          "name": "701.69c",
+          "rule": "Adjudicate type is a variant of the adjudicate action. “Adjudicate [type]” means “Create a white Aura enchantment token with enchant [type] and 'Sacrifice this token: Untap enchanted permanent' and attach it to target [type] permanent.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Arbiter of Shal'Iv_OTH",
+          "name": "Arbiter of Shal'Iv",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Spirit\nPower/Toughness: 2/3\nDistorted *(This creature can be blocked by tapped creatures but not untapped creatures.)*\nWhen Arbiter of Shal'Iv enters, adjudicate. *(Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.)*",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Spirit\nPower/Toughness: 2/3\nTapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures\nWhen Arbiter of Shal'Iv enters, Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Spirit",
+          "power": "2",
+          "toughness": "3",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "adjudicate",
+            "distorted"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Distorted\nWhen Arbiter of Shal'Iv enters, adjudicate.",
+          "executable_faces": [
+            {
+              "name": "Arbiter of Shal'Iv",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Spirit\nPower/Toughness: 2/3\nTapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures\nWhen Arbiter of Shal'Iv enters, Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.",
+              "custom_keyword_identities": [
+                "adjudicate",
+                "distorted"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Distorted\nWhen Arbiter of Shal'Iv enters, adjudicate.",
+              "original_printed_rules_text": "Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)\nWhen Arbiter of Shal'Iv enters, adjudicate. (Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)\nWhen Arbiter of Shal'Iv enters, adjudicate. (Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature” attached to target creature.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Quotes delimit independent enchant and activated abilities; attached token creation keeps CR303.4i illegal-host no-create semantics. Runtime behavior still awaiting parent test run."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "legal host receives Aura and enchanted-host untap works; illegal host creates no Aura"
+        }
+      ]
+    },
+    {
+      "id": "msem-253",
+      "keyword": "Adjudicate",
+      "original_reminder": "Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature.” attached to target creature.",
+      "executable_reminder": "Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.",
+      "source_cards": [
+        "Judge of Clans",
+        "Keeper of Secret Havens"
+      ],
+      "rule_reference": "701.69.",
+      "rule_text": [
+        {
+          "name": "701.69a",
+          "rule": "Adjudicate is a keyword action that means “Create a white Aura enchantment token with enchant creature and 'Sacrifice this token: Untap enchanted creature' and attach it to target creature.”",
+          "custom": true
+        },
+        {
+          "name": "701.69b",
+          "rule": "If the token can't be attached to the target creature, for example if it has protection from enchantments, the token will never enter the battlefield.",
+          "custom": true
+        },
+        {
+          "name": "701.69c",
+          "rule": "Adjudicate type is a variant of the adjudicate action. “Adjudicate [type]” means “Create a white Aura enchantment token with enchant [type] and 'Sacrifice this token: Untap enchanted permanent' and attach it to target [type] permanent.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Judge of Clans_OTH",
+          "name": "Judge of Clans",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Elf Shaman Warrior\nPower/Toughness: 2/3\nWhen Judge of Clans enters, adjudicate. *(Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature.” attached to target creature.)*\n{T}: Add one mana of any color.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Shaman Warrior\nPower/Toughness: 2/3\nWhen Judge of Clans enters, Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.\n{T}: Add one mana of any color.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Elf Shaman Warrior",
+          "power": "2",
+          "toughness": "3",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "adjudicate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Judge of Clans enters, adjudicate.\n{T}: Add one mana of any color.",
+          "executable_faces": [
+            {
+              "name": "Judge of Clans",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Shaman Warrior\nPower/Toughness: 2/3\nWhen Judge of Clans enters, Create a white Aura enchantment token with \"Enchant creature\" and \"Sacrifice this token: Untap enchanted creature.\" attached to target creature.\n{T}: Add one mana of any color.",
+              "custom_keyword_identities": [
+                "adjudicate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Judge of Clans enters, adjudicate.\n{T}: Add one mana of any color.",
+              "original_printed_rules_text": "When Judge of Clans enters, adjudicate. (Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature.” attached to target creature.)\n{T}: Add one mana of any color."
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Judge of Clans enters, adjudicate. (Create a white enchantment Aura token with enchant creature and “Sacrifice this token: Untap enchanted creature.” attached to target creature.)\n{T}: Add one mana of any color."
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Quotes delimit independent enchant and activated abilities; attached token creation keeps CR303.4i illegal-host no-create semantics. Runtime behavior still awaiting parent test run."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "legal host receives Aura and enchanted-host untap works; illegal host creates no Aura"
+        }
+      ]
+    },
+    {
+      "id": "msem-254",
+      "keyword": "Adjudicate",
+      "original_reminder": "Create a white enchantment Aura token with enchant land and “Sacrifice this token: Untap enchanted land.” attached to target land.",
+      "executable_reminder": "Create a white Aura enchantment token with \"Enchant land\" and \"Sacrifice this token: Untap enchanted land.\" attached to target land.",
+      "source_cards": [
+        "Ramzi, Traveling Merchant"
+      ],
+      "rule_reference": "701.69.",
+      "rule_text": [
+        {
+          "name": "701.69a",
+          "rule": "Adjudicate is a keyword action that means “Create a white Aura enchantment token with enchant creature and 'Sacrifice this token: Untap enchanted creature' and attach it to target creature.”",
+          "custom": true
+        },
+        {
+          "name": "701.69b",
+          "rule": "If the token can't be attached to the target creature, for example if it has protection from enchantments, the token will never enter the battlefield.",
+          "custom": true
+        },
+        {
+          "name": "701.69c",
+          "rule": "Adjudicate type is a variant of the adjudicate action. “Adjudicate [type]” means “Create a white Aura enchantment token with enchant [type] and 'Sacrifice this token: Untap enchanted permanent' and attach it to target [type] permanent.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ramzi, Traveling Merchant_OTH",
+          "name": "Ramzi, Traveling Merchant",
+          "original_text": "Mana cost: {1}{G}\nType: Legendary Creature — Human Scout Merchant\nPower/Toughness: 0/2\nWhen Ramzi, Traveling Merchant enters, adjudicate land. *(Create a white enchantment Aura token with enchant land and “Sacrifice this token: Untap enchanted land.” attached to target land.)*\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token.",
+          "executable_text": "Mana cost: {1}{G}\nType: Legendary Creature — Human Scout Merchant\nPower/Toughness: 0/2\nWhen Ramzi, Traveling Merchant enters, Create a white Aura enchantment token with \"Enchant land\" and \"Sacrifice this token: Untap enchanted land.\" attached to target land.\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Legendary Creature — Human Scout Merchant",
+          "power": "0",
+          "toughness": "2",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "adjudicate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Ramzi, Traveling Merchant enters, adjudicate land.\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token.",
+          "executable_faces": [
+            {
+              "name": "Ramzi, Traveling Merchant",
+              "executable_text": "Mana cost: {1}{G}\nType: Legendary Creature — Human Scout Merchant\nPower/Toughness: 0/2\nWhen Ramzi, Traveling Merchant enters, Create a white Aura enchantment token with \"Enchant land\" and \"Sacrifice this token: Untap enchanted land.\" attached to target land.\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token.",
+              "custom_keyword_identities": [
+                "adjudicate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "merchant",
+                  "plural": "merchants",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Ramzi, Traveling Merchant enters, adjudicate land.\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token.",
+              "original_printed_rules_text": "When Ramzi, Traveling Merchant enters, adjudicate land. (Create a white enchantment Aura token with enchant land and “Sacrifice this token: Untap enchanted land.” attached to target land.)\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token."
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "merchant",
+              "plural": "merchants",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Ramzi, Traveling Merchant enters, adjudicate land. (Create a white enchantment Aura token with enchant land and “Sacrifice this token: Untap enchanted land.” attached to target land.)\nWhenever an Aura becomes attached to a land you control, create a 1/1 green Antelope creature token."
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Quotes delimit independent enchant and activated abilities; attached token creation keeps CR303.4i illegal-host no-create semantics. Runtime behavior still awaiting parent test run."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "legal host receives Aura and enchanted-host untap works; illegal host creates no Aura"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Adjudicate {Type}",
+          "reminder": "Create a white Aura enchantment token with \"Enchant {Type}\" and \"Sacrifice this token: Untap enchanted {Type}.\" attached to target {Type}."
+        }
+      ]
+    },
+    {
+      "id": "msem-268",
+      "keyword": "Arm",
+      "original_reminder": "Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.",
+      "executable_reminder": "Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to that creature.",
+      "source_cards": [
+        "Awoken Soul",
+        "Bjarndyr Outfitter",
+        "Casualty of War",
+        "Culi-Sae Exonerator",
+        "Frostfield Swordsman",
+        "Heartless Host",
+        "Ruthless Conscript",
+        "To the Hunt",
+        "Unending Voracity",
+        "Wanton Cleave",
+        "War-Torn Tundra",
+        "Fretport Market Smuggler",
+        "Playful Scalchopper",
+        "Scarhide, Arsenal Crafter"
+      ],
+      "rule_reference": "701.76.",
+      "rule_text": [
+        {
+          "name": "701.76a",
+          "rule": "To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach that token to that creature.",
+          "custom": true
+        },
+        {
+          "name": "701.76b",
+          "rule": "If the creature that is being armed can't be equipped by the Equipment token (for example, it isn't on the battlefield anymore), the token is created but isn't attached to anything.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Awoken Soul_GHQ",
+          "name": "Awoken Soul",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gains lifelink until end of turn. Arm it. *(Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gains lifelink until end of turn. Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to it.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "arm"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Target creature you control gains lifelink until end of turn. Arm it.",
+          "executable_faces": [
+            {
+              "name": "Awoken Soul",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature you control gains lifelink until end of turn. Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to it.",
+              "custom_keyword_identities": [
+                "arm"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control gains lifelink until end of turn. Arm it.",
+              "original_printed_rules_text": "Target creature you control gains lifelink until end of turn. Arm it. (Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Target creature you control gains lifelink until end of turn. Arm it. (Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Existing atomic token-creation attachment binds recipient before creation; Equipment with illegal recipient still enters unattached. Avoids newly created token capturing an earlier creature pronoun. Native positive/negative integration scenarios required."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "Equipment attaches and boosts equipped creature +1/+0 only"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Arm {Object}",
+          "reminder": "Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to {Object}."
+        }
+      ]
+    },
+    {
+      "id": "msem-269",
+      "keyword": "Arm",
+      "original_reminder": "Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to this creature.",
+      "executable_reminder": "Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to this creature.",
+      "source_cards": [
+        "Beragnian Blacksmith",
+        "Gatetown Warden"
+      ],
+      "rule_reference": "701.76.",
+      "rule_text": [
+        {
+          "name": "701.76a",
+          "rule": "To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach that token to that creature.",
+          "custom": true
+        },
+        {
+          "name": "701.76b",
+          "rule": "If the creature that is being armed can't be equipped by the Equipment token (for example, it isn't on the battlefield anymore), the token is created but isn't attached to anything.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Beragnian Blacksmith_OTH",
+          "name": "Beragnian Blacksmith",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior Artificer\nPower/Toughness: 2/3\nArmed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, arm it. *(Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to this creature.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior Artificer\nPower/Toughness: 2/3\nArmed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to it.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Warrior Artificer",
+          "power": "2",
+          "toughness": "3",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "arm"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Armed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, arm it.",
+          "executable_faces": [
+            {
+              "name": "Beragnian Blacksmith",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Warrior Artificer\nPower/Toughness: 2/3\nArmed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to it.",
+              "custom_keyword_identities": [
+                "arm"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Armed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, arm it.",
+              "original_printed_rules_text": "Armed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, arm it. (Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to this creature.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Armed — Beragnian Blacksmith can't attack unless it's equipped.\nWhen Beragnian Blacksmith enters, you may pay {2}. If you do, arm it. (Create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to this creature.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Existing atomic token-creation attachment binds recipient before creation; Equipment with illegal recipient still enters unattached. Avoids newly created token capturing an earlier creature pronoun. Native positive/negative integration scenarios required."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "Equipment attaches and boosts equipped creature +1/+0 only"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Arm {Object}",
+          "reminder": "Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to {Object}."
+        }
+      ]
+    },
+    {
+      "id": "msem-270",
+      "keyword": "Arm",
+      "original_reminder": "To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.",
+      "executable_reminder": "create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to that creature.",
+      "source_cards": [
+        "Telenian Adornments"
+      ],
+      "rule_reference": "701.76.",
+      "rule_text": [
+        {
+          "name": "701.76a",
+          "rule": "To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach that token to that creature.",
+          "custom": true
+        },
+        {
+          "name": "701.76b",
+          "rule": "If the creature that is being armed can't be equipped by the Equipment token (for example, it isn't on the battlefield anymore), the token is created but isn't attached to anything.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Telenian Adornments_OTH",
+          "name": "Telenian Adornments",
+          "original_text": "Mana cost: {W}\nType: Instant\nArm target creature you control. That creature gets 0/+2 and gains flying until end of turn. *(To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.)*",
+          "executable_text": "Mana cost: {W}\nType: Instant\nCreate a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to target creature you control. That creature gets 0/+2 and gains flying until end of turn.",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "arm"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Arm target creature you control. That creature gets 0/+2 and gains flying until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Telenian Adornments",
+              "executable_text": "Mana cost: {W}\nType: Instant\nCreate a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to target creature you control. That creature gets 0/+2 and gains flying until end of turn.",
+              "custom_keyword_identities": [
+                "arm"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Arm target creature you control. That creature gets 0/+2 and gains flying until end of turn.",
+              "original_printed_rules_text": "Arm target creature you control. That creature gets 0/+2 and gains flying until end of turn. (To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Arm target creature you control. That creature gets 0/+2 and gains flying until end of turn. (To arm a creature, create a colorless Equipment artifact token with “Equipped creature gets +1/+0” and equip {2}, then attach it to that creature.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Existing atomic token-creation attachment binds recipient before creation; Equipment with illegal recipient still enters unattached. Avoids newly created token capturing an earlier creature pronoun. Native positive/negative integration scenarios required."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "Equipment attaches and boosts equipped creature +1/+0 only"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Arm {Object}",
+          "reminder": "Create a colorless Equipment artifact token with \"Equipped creature gets +1/+0.\" and equip {2} attached to {Object}."
+        }
+      ]
+    },
+    {
+      "id": "msem-271",
+      "keyword": "Nourish",
+      "original_reminder": "To nourish 2, either put two +1/+1 counters on this creature or create two 1/1 white Citizen creature tokens.",
+      "executable_reminder": "You may put two +1/+1 counters on this creature. If you don't, create two 1/1 white Citizen creature tokens.",
+      "source_cards": [
+        "Ainok Scout",
+        "Crinster Blacksmith",
+        "Exhausted Farmhand",
+        "Familial Matriarch"
+      ],
+      "rule_reference": "701.77.",
+      "rule_text": [
+        {
+          "name": "701.77a",
+          "rule": "“Nourish N” means “You may put N +1/+1 counters on this permanent. If you don't, create N 1/1 white Citizen creature tokens.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ainok Scout_HVF",
+          "name": "Ainok Scout",
+          "original_text": "Mana cost: {2}{G}{U}\nType: Creature — Hound Scout\nPower/Toughness: 3/3\nTrample\nWhen Ainok Scout enters, nourish 2, then return a creature you control to its owner's hand. *(To nourish 2, either put two +1/+1 counters on this creature or create two 1/1 white Citizen creature tokens.)*",
+          "executable_text": "Mana cost: {2}{G}{U}\nType: Creature — Hound Scout\nPower/Toughness: 3/3\nTrample\nWhen Ainok Scout enters, You may put 2 +1/+1 counters on this creature. If you don't, create 2 1/1 white Citizen creature tokens. Then return a creature you control to its owner's hand.",
+          "mana_cost": "{2}{G}{U}",
+          "type_line": "Creature — Hound Scout",
+          "power": "3",
+          "toughness": "3",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "nourish"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Trample\nWhen Ainok Scout enters, nourish 2, then return a creature you control to its owner's hand.",
+          "executable_faces": [
+            {
+              "name": "Ainok Scout",
+              "executable_text": "Mana cost: {2}{G}{U}\nType: Creature — Hound Scout\nPower/Toughness: 3/3\nTrample\nWhen Ainok Scout enters, You may put 2 +1/+1 counters on this creature. If you don't, create 2 1/1 white Citizen creature tokens. Then return a creature you control to its owner's hand.",
+              "custom_keyword_identities": [
+                "nourish"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "hound",
+                  "plural": "hounds",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhen Ainok Scout enters, nourish 2, then return a creature you control to its owner's hand.",
+              "original_printed_rules_text": "Trample\nWhen Ainok Scout enters, nourish 2, then return a creature you control to its owner's hand. (To nourish 2, either put two +1/+1 counters on this creature or create two 1/1 white Citizen creature tokens.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "hound",
+              "plural": "hounds",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Trample\nWhen Ainok Scout enters, nourish 2, then return a creature you control to its owner's hand. (To nourish 2, either put two +1/+1 counters on this creature or create two 1/1 white Citizen creature tokens.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Uses complete rule701.77 optional-counter decision and decline branch. Fixed count or X preserved; no extra targets or player restriction added."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "counter versus Citizen branch and amount preserved"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Nourish {Number}",
+          "reminder": "You may put {Number} +1/+1 counters on this creature. If you don't, create {Number} 1/1 white Citizen creature tokens."
+        }
+      ]
+    },
+    {
+      "id": "msem-272",
+      "keyword": "Nourish",
+      "original_reminder": "To nourish 1, either put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token.",
+      "executable_reminder": "You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token.",
+      "source_cards": [
+        "Beguiling Witch",
+        "Conjuring Minstrel",
+        "Crinster Sheepdog",
+        "Cybele, Mertle's Apprentice",
+        "Elder Roc",
+        "Herald of the Hunt",
+        "Herd of Sheep",
+        "Maghbri Whisper",
+        "Nomadic Patriarch",
+        "Rolling Homestead",
+        "Seasoned Packfather"
+      ],
+      "rule_reference": "701.77.",
+      "rule_text": [
+        {
+          "name": "701.77a",
+          "rule": "“Nourish N” means “You may put N +1/+1 counters on this permanent. If you don't, create N 1/1 white Citizen creature tokens.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Beguiling Witch_HVF",
+          "name": "Beguiling Witch",
+          "original_text": "Mana cost: {4}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/3\nWhen Beguiling Witch enters, nourish 1. *(To nourish 1, either put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token.)*\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power.",
+          "executable_text": "Mana cost: {4}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/3\nWhen Beguiling Witch enters, You may put 1 +1/+1 counters on this creature. If you don't, create 1 1/1 white Citizen creature tokens.\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power.",
+          "mana_cost": "{4}{B}",
+          "type_line": "Creature — Human Shaman",
+          "power": "2",
+          "toughness": "3",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "nourish"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Beguiling Witch enters, nourish 1.\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power.",
+          "executable_faces": [
+            {
+              "name": "Beguiling Witch",
+              "executable_text": "Mana cost: {4}{B}\nType: Creature — Human Shaman\nPower/Toughness: 2/3\nWhen Beguiling Witch enters, You may put 1 +1/+1 counters on this creature. If you don't, create 1 1/1 white Citizen creature tokens.\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power.",
+              "custom_keyword_identities": [
+                "nourish"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Beguiling Witch enters, nourish 1.\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power.",
+              "original_printed_rules_text": "When Beguiling Witch enters, nourish 1. (To nourish 1, either put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token.)\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power."
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Beguiling Witch enters, nourish 1. (To nourish 1, either put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token.)\nWhenever another creature dies, each opponent mills X cards, where X is Beguiling Witch's power."
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Uses complete rule701.77 optional-counter decision and decline branch. Fixed count or X preserved; no extra targets or player restriction added."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "counter versus Citizen branch and amount preserved"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Nourish {Number}",
+          "reminder": "You may put {Number} +1/+1 counters on this creature. If you don't, create {Number} 1/1 white Citizen creature tokens."
+        }
+      ]
+    },
+    {
+      "id": "msem-273",
+      "keyword": "Nourish",
+      "original_reminder": "To nourish 3, either put three +1/+1 counters on this creature or create three 1/1 white Citizen creature tokens.",
+      "executable_reminder": "You may put three +1/+1 counters on this creature. If you don't, create three 1/1 white Citizen creature tokens.",
+      "source_cards": [
+        "Keeper of the Whispers"
+      ],
+      "rule_reference": "701.77.",
+      "rule_text": [
+        {
+          "name": "701.77a",
+          "rule": "“Nourish N” means “You may put N +1/+1 counters on this permanent. If you don't, create N 1/1 white Citizen creature tokens.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Keeper of the Whispers_HVF",
+          "name": "Keeper of the Whispers",
+          "original_text": "Mana cost: {3}{B}{R}\nType: Creature — Zombie\nPower/Toughness: 2/2\nWhen Keeper of the Whispers enters, nourish 3. *(To nourish 3, either put three +1/+1 counters on this creature or create three 1/1 white Citizen creature tokens.)*\nSacrifice a creature: Creatures you control get +1/+1 until end of turn.",
+          "executable_text": "Mana cost: {3}{B}{R}\nType: Creature — Zombie\nPower/Toughness: 2/2\nWhen Keeper of the Whispers enters, You may put 3 +1/+1 counters on this creature. If you don't, create 3 1/1 white Citizen creature tokens.\nSacrifice a creature: Creatures you control get +1/+1 until end of turn.",
+          "mana_cost": "{3}{B}{R}",
+          "type_line": "Creature — Zombie",
+          "power": "2",
+          "toughness": "2",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "nourish"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Keeper of the Whispers enters, nourish 3.\nSacrifice a creature: Creatures you control get +1/+1 until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Keeper of the Whispers",
+              "executable_text": "Mana cost: {3}{B}{R}\nType: Creature — Zombie\nPower/Toughness: 2/2\nWhen Keeper of the Whispers enters, You may put 3 +1/+1 counters on this creature. If you don't, create 3 1/1 white Citizen creature tokens.\nSacrifice a creature: Creatures you control get +1/+1 until end of turn.",
+              "custom_keyword_identities": [
+                "nourish"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Keeper of the Whispers enters, nourish 3.\nSacrifice a creature: Creatures you control get +1/+1 until end of turn.",
+              "original_printed_rules_text": "When Keeper of the Whispers enters, nourish 3. (To nourish 3, either put three +1/+1 counters on this creature or create three 1/1 white Citizen creature tokens.)\nSacrifice a creature: Creatures you control get +1/+1 until end of turn."
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Keeper of the Whispers enters, nourish 3. (To nourish 3, either put three +1/+1 counters on this creature or create three 1/1 white Citizen creature tokens.)\nSacrifice a creature: Creatures you control get +1/+1 until end of turn."
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Uses complete rule701.77 optional-counter decision and decline branch. Fixed count or X preserved; no extra targets or player restriction added."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "counter versus Citizen branch and amount preserved"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Nourish {Number}",
+          "reminder": "You may put {Number} +1/+1 counters on this creature. If you don't, create {Number} 1/1 white Citizen creature tokens."
+        }
+      ]
+    },
+    {
+      "id": "msem-274",
+      "keyword": "Nourish",
+      "original_reminder": "To nourish X, either put X +1/+1 counters on this creature or create X 1/1 white Citizen creature tokens.",
+      "executable_reminder": "You may put X +1/+1 counters on this creature. If you don't, create X 1/1 white Citizen creature tokens.",
+      "source_cards": [
+        "Spirit of Autumn"
+      ],
+      "rule_reference": "701.77.",
+      "rule_text": [
+        {
+          "name": "701.77a",
+          "rule": "“Nourish N” means “You may put N +1/+1 counters on this permanent. If you don't, create N 1/1 white Citizen creature tokens.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Spirit of Autumn_HVF",
+          "name": "Spirit of Autumn",
+          "original_text": "Mana cost: {1}{R}{G}\nType: Creature — Elemental\nPower/Toughness: 1/1\nWhen Spirit of Autumn enters, nourish X, where X is the number of creatures you control. *(To nourish X, either put X +1/+1 counters on this creature or create X 1/1 white Citizen creature tokens.)*",
+          "executable_text": "Mana cost: {1}{R}{G}\nType: Creature — Elemental\nPower/Toughness: 1/1\nWhen Spirit of Autumn enters, You may put X +1/+1 counters on this creature, where X is the number of creatures you control. If you don't, create X 1/1 white Citizen creature tokens.",
+          "mana_cost": "{1}{R}{G}",
+          "type_line": "Creature — Elemental",
+          "power": "1",
+          "toughness": "1",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "nourish"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Spirit of Autumn enters, nourish X, where X is the number of creatures you control.",
+          "executable_faces": [
+            {
+              "name": "Spirit of Autumn",
+              "executable_text": "Mana cost: {1}{R}{G}\nType: Creature — Elemental\nPower/Toughness: 1/1\nWhen Spirit of Autumn enters, You may put X +1/+1 counters on this creature, where X is the number of creatures you control. If you don't, create X 1/1 white Citizen creature tokens.",
+              "custom_keyword_identities": [
+                "nourish"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Spirit of Autumn enters, nourish X, where X is the number of creatures you control.",
+              "original_printed_rules_text": "When Spirit of Autumn enters, nourish X, where X is the number of creatures you control. (To nourish X, either put X +1/+1 counters on this creature or create X 1/1 white Citizen creature tokens.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Spirit of Autumn enters, nourish X, where X is the number of creatures you control. (To nourish X, either put X +1/+1 counters on this creature or create X 1/1 white Citizen creature tokens.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Uses complete rule701.77 optional-counter decision and decline branch. Fixed count or X preserved; no extra targets or player restriction added."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "counter versus Citizen branch and amount preserved"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Nourish {Number}",
+          "reminder": "You may put {Number} +1/+1 counters on this creature. If you don't, create {Number} 1/1 white Citizen creature tokens."
+        }
+      ]
+    },
+    {
+      "id": "msem-275",
+      "keyword": "Nourish",
+      "original_reminder": "To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.",
+      "executable_reminder": "To nourish, You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token. To germinate, You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+      "source_cards": [
+        "Ontarachie Envoy"
+      ],
+      "rule_reference": "701.77.",
+      "rule_text": [
+        {
+          "name": "701.77a",
+          "rule": "“Nourish N” means “You may put N +1/+1 counters on this permanent. If you don't, create N 1/1 white Citizen creature tokens.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ontarachie Envoy_OTH",
+          "name": "Ontarachie Envoy",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Fungus Advisor\nPower/Toughness: 1/1\nWhen Ontarachie Envoy enters, nourish, then germinate. *(To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Fungus Advisor\nPower/Toughness: 1/1\nWhen Ontarachie Envoy enters, You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token. Then Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Fungus Advisor",
+          "power": "1",
+          "toughness": "1",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "nourish",
+            "germinate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Ontarachie Envoy enters, nourish, then germinate.",
+          "executable_faces": [
+            {
+              "name": "Ontarachie Envoy",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Fungus Advisor\nPower/Toughness: 1/1\nWhen Ontarachie Envoy enters, You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token. Then Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+              "custom_keyword_identities": [
+                "nourish",
+                "germinate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Ontarachie Envoy enters, nourish, then germinate.",
+              "original_printed_rules_text": "When Ontarachie Envoy enters, nourish, then germinate. (To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Ontarachie Envoy enters, nourish, then germinate. (To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "equivalence_basis": "authoritative keyword rule",
+        "evidence": "Both operative keyword actions retained independently. Parenthetical germinate says a creature you control, conflicting with authoritative701.82 any creature. Keywords follow701.77 and701.82; this is an explicit reminder erratum, not literal equivalence to the erroneous restriction."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "counter versus Citizen branch and amount preserved"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Nourish",
+          "reminder": "You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token."
+        },
+        {
+          "keyword": "Germinate",
+          "reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+          "actionProgram": true
+        }
+      ],
+      "source_discrepancy": {
+        "original_reminder_restriction": "a creature you control",
+        "authoritative_rule": "701.82: a creature",
+        "resolution": "Correct nonoperative reminder according to authoritative keyword rule; preserve actual operative text."
+      }
+    },
+    {
+      "id": "msem-321",
+      "keyword": "Germinate",
+      "original_reminder": "Put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.",
+      "executable_reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+      "source_cards": [
+        "Bog Rebirth",
+        "Crown of Spores",
+        "Murmurs of the Bayou",
+        "Ontarachie Vagabond",
+        "Overgrowth Guardian",
+        "Sporeflow Mantle",
+        "Sporeflow Propagator",
+        "Sporeflow Protector",
+        "Sporeflow Repulsion",
+        "Sporegraft",
+        "Undying Watcher",
+        "Woopip Chef",
+        "Woopip Elder",
+        "Woopip Sproutling",
+        "Woopip Wanderer"
+      ],
+      "rule_reference": "701.82.",
+      "rule_text": [
+        {
+          "name": "701.82a",
+          "rule": "“Germinate” means “You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bog Rebirth_EAU",
+          "name": "Bog Rebirth",
+          "original_text": "Mana cost: {B}\nType: Instant\nWhen target creature dies this turn, return it to the battlefield under its owner's control. When you do, germinate. *(Put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)*",
+          "executable_text": "Mana cost: {B}\nType: Instant\nWhen target creature dies this turn, return it to the battlefield under its owner's control. When you do, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+          "mana_cost": "{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "germinate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When target creature dies this turn, return it to the battlefield under its owner's control. When you do, germinate.",
+          "executable_faces": [
+            {
+              "name": "Bog Rebirth",
+              "executable_text": "Mana cost: {B}\nType: Instant\nWhen target creature dies this turn, return it to the battlefield under its owner's control. When you do, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+              "custom_keyword_identities": [
+                "germinate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When target creature dies this turn, return it to the battlefield under its owner's control. When you do, germinate.",
+              "original_printed_rules_text": "When target creature dies this turn, return it to the battlefield under its owner's control. When you do, germinate. (Put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When target creature dies this turn, return it to the battlefield under its owner's control. When you do, germinate. (Put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Complete rule701.82 permits any creature, chosen without targeting; preserves optional counter placement and declined token branch."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "nontarget chosen creature may belong to opponent; declined choice creates Saproling"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Germinate",
+          "reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+          "actionProgram": true
+        }
+      ]
+    },
+    {
+      "id": "msem-322",
+      "keyword": "Germinate",
+      "original_reminder": "To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.",
+      "executable_reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+      "source_cards": [
+        "Fungal Whomper",
+        "Mushroom Merchant//Overgrowth Host",
+        "Ontarachie Bushwhack",
+        "Sporecrafter's Gift",
+        "Whispers of the Ontarachie",
+        "Woopip Bruiser",
+        "Zadyk Contamination"
+      ],
+      "rule_reference": "701.82.",
+      "rule_text": [
+        {
+          "name": "701.82a",
+          "rule": "“Germinate” means “You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Fungal Whomper_EAU",
+          "name": "Fungal Whomper",
+          "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Fungus\nPower/Toughness: 4/4\nWhen Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, germinate four times. *(To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)*",
+          "executable_text": "Mana cost: {4}{G}{G}\nType: Creature — Fungus\nPower/Toughness: 4/4\nWhen Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+          "mana_cost": "{4}{G}{G}",
+          "type_line": "Creature — Fungus",
+          "power": "4",
+          "toughness": "4",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "germinate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, germinate four times.",
+          "executable_faces": [
+            {
+              "name": "Fungal Whomper",
+              "executable_text": "Mana cost: {4}{G}{G}\nType: Creature — Fungus\nPower/Toughness: 4/4\nWhen Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token. Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+              "custom_keyword_identities": [
+                "germinate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, germinate four times.",
+              "original_printed_rules_text": "When Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, germinate four times. (To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Fungal Whomper enters, you gain 4 life.\nWhen Fungal Whomper leaves the battlefield, germinate four times. (To germinate, put a +1/+1 counter on a creature or create a 1/1 green Saproling creature token.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Complete rule701.82 permits any creature, chosen without targeting; preserves optional counter placement and declined token branch."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "nontarget chosen creature may belong to opponent; declined choice creates Saproling"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Germinate",
+          "reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+          "actionProgram": true
+        }
+      ]
+    },
+    {
+      "id": "msem-323",
+      "keyword": "Germinate",
+      "original_reminder": "To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.",
+      "executable_reminder": "To nourish, You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token. To germinate, You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+      "source_cards": [
+        "Ontarachie Envoy"
+      ],
+      "rule_reference": "701.82.",
+      "rule_text": [
+        {
+          "name": "701.82a",
+          "rule": "“Germinate” means “You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ontarachie Envoy_OTH",
+          "name": "Ontarachie Envoy",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Fungus Advisor\nPower/Toughness: 1/1\nWhen Ontarachie Envoy enters, nourish, then germinate. *(To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.)*",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Fungus Advisor\nPower/Toughness: 1/1\nWhen Ontarachie Envoy enters, You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token. Then Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature — Fungus Advisor",
+          "power": "1",
+          "toughness": "1",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "nourish",
+            "germinate"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Ontarachie Envoy enters, nourish, then germinate.",
+          "executable_faces": [
+            {
+              "name": "Ontarachie Envoy",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Fungus Advisor\nPower/Toughness: 1/1\nWhen Ontarachie Envoy enters, You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token. Then Perform the germinate action as follows: You may put a +1/+1 counter on a creature; If you don't, create a 1/1 green Saproling creature token.",
+              "custom_keyword_identities": [
+                "nourish",
+                "germinate"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Ontarachie Envoy enters, nourish, then germinate.",
+              "original_printed_rules_text": "When Ontarachie Envoy enters, nourish, then germinate. (To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.)"
+            }
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "When Ontarachie Envoy enters, nourish, then germinate. (To nourish, put a +1/+1 counter on this creature or create a 1/1 white Citizen creature token. To germinate, put a +1/+1 counter on a creature you control or create a 1/1 green Saproling creature token.)"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "equivalence_basis": "authoritative keyword rule",
+        "evidence": "Both operative keyword actions retained independently. Parenthetical germinate says a creature you control, conflicting with authoritative701.82 any creature. Keywords follow701.77 and701.82; this is an explicit reminder erratum, not literal equivalence to the erroneous restriction."
+      },
+      "support_status": "existing_operations_candidate",
+      "behavioral_assertions": [
+        {
+          "id": "token-action-observables",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_token_actions.rs",
+          "observable": "nontarget chosen creature may belong to opponent; declined choice creates Saproling"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Nourish",
+          "reminder": "You may put a +1/+1 counter on this creature. If you don't, create a 1/1 white Citizen creature token."
+        },
+        {
+          "keyword": "Germinate",
+          "reminder": "You may put a +1/+1 counter on a creature. If you don't, create a 1/1 green Saproling creature token.",
+          "actionProgram": true
+        }
+      ],
+      "source_discrepancy": {
+        "original_reminder_restriction": "a creature you control",
+        "authoritative_rule": "701.82: a creature",
+        "resolution": "Correct nonoperative reminder according to authoritative keyword rule; preserve actual operative text."
+      }
+    }
+  ]
+}

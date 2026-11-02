@@ -1,0 +1,2299 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "golden-age-generic-turn-history-designation",
+  "mechanics": [
+    {
+      "id": "msem-798",
+      "keyword": "Golden age",
+      "original_reminder": "If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.",
+      "executable_reminder": "If you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game.",
+      "source_cards": [
+        "Baptism by Fire"
+      ],
+      "rule_reference": "702.267.",
+      "rule_text": [
+        {
+          "name": "702.267a",
+          "rule": "Golden age on an instant or sorcery spell represents a spell ability. It means “If you've cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, and you're not in a renaissance, you're in a renaissance for the rest of the game.”",
+          "custom": true
+        },
+        {
+          "name": "702.267b",
+          "rule": "Golden age on a permanent represents a static ability. It means “Any time you've cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, and you're not in a renaissance, you're in a renaissance for the rest of the game”",
+          "custom": true
+        },
+        {
+          "name": "702.267c",
+          "rule": "Being in a renaissance is a designation that has no rules meaning other than to act as a marker that other rules and effects can identify. Any number of players may be in a renaissance at the same time.",
+          "custom": true
+        },
+        {
+          "name": "702.267d",
+          "rule": "After a player enters a renaissance, continuous effects are reapplied before the game checks to see if the game state or preceding events have matched any trigger conditions.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Baptism by Fire_NJB",
+          "name": "Baptism by Fire",
+          "original_text": "Mana cost: {1}{R}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead.",
+          "executable_text": "Mana cost: {1}{R}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Baptism by Fire_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Baptism by Fire",
+              "original_text": "Mana cost: {1}{R}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Baptism by Fire",
+              "executable_text": "Mana cost: {1}{R}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nBaptism by Fire deals 3 damage to target creature or planeswalker. If you're in a renaissance, Baptism by Fire deals 6 damage to that permanent instead."
+        },
+        {
+          "id": "Birth of the Yaozu_NJB",
+          "name": "Birth of the Yaozu",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it.",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it.",
+          "mana_cost": "{3}{B}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Birth of the Yaozu_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Birth of the Yaozu",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Birth of the Yaozu",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nReturn target creature card from your graveyard to the battlefield. If it was put there from the battlefield this turn, create a token that's a copy of it. If you're in a renaissance, create a token that's a copy of it."
+        },
+        {
+          "id": "Burning of Xiangyin Temple_NJB",
+          "name": "Burning of Xiangyin Temple",
+          "original_text": "Mana cost: {4}{R}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller.",
+          "executable_text": "Mana cost: {4}{R}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller.",
+          "mana_cost": "{4}{R}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Burning of Xiangyin Temple_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Burning of Xiangyin Temple",
+              "original_text": "Mana cost: {4}{R}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Burning of Xiangyin Temple",
+              "executable_text": "Mana cost: {4}{R}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nBurning of Xiangyin Temple deals 5 damage to target creature or planeswalker. If you're in a renaissance, Burning of Xiangyin Temple deals 3 damage to that permanent's controller."
+        },
+        {
+          "id": "Ceremonial Jian_NJB",
+          "name": "Ceremonial Jian",
+          "original_text": "Mana cost: {R}\nType: Artifact — Equipment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}",
+          "executable_text": "Mana cost: {R}\nType: Artifact — Equipment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}",
+          "mana_cost": "{R}",
+          "type_line": "Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ceremonial Jian_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ceremonial Jian",
+              "original_text": "Mana cost: {R}\nType: Artifact — Equipment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ceremonial Jian",
+              "executable_text": "Mana cost: {R}\nType: Artifact — Equipment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nEquipped creature gets +2/+0.\nAs long as you're in a renaissance, equipped creature has first strike.\nEquip {3}"
+        },
+        {
+          "id": "Consign to Old Diyu_NJB",
+          "name": "Consign to Old Diyu",
+          "original_text": "Mana cost: {3}{B}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {3}{B}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Consign to Old Diyu_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Consign to Old Diyu",
+              "original_text": "Mana cost: {3}{B}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Consign to Old Diyu",
+              "executable_text": "Mana cost: {3}{B}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nDestroy target creature. If you're in a renaissance, you may return a creature card from your graveyard to your hand."
+        },
+        {
+          "id": "Da'Lang, Timberheart_NJB",
+          "name": "Da'Lang, Timberheart",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Legendary Creature — Wolf\nPower/Toughness: 4/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn.",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Legendary Creature — Wolf\nPower/Toughness: 4/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn.",
+          "mana_cost": "{1}{G}{G}",
+          "type_line": "Legendary Creature — Wolf",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Da'Lang, Timberheart_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Da'Lang, Timberheart",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Legendary Creature — Wolf\nPower/Toughness: 4/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Da'Lang, Timberheart",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Legendary Creature — Wolf\nPower/Toughness: 4/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{3}{G}: Da'Lang gets +2/+2 until end of turn. If you're in a renaissance, all creatures able to block Da'Lang this turn do so. Activate only once each turn."
+        },
+        {
+          "id": "Dare to Dream_NJB",
+          "name": "Dare to Dream",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead.",
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Dare to Dream_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dare to Dream",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dare to Dream",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nReturn target nonland permanent to its owner's hand. If you're in a renaissance, that permanent's owner puts it on the top or bottom of their library instead."
+        },
+        {
+          "id": "Exquisite Slash_NJB",
+          "name": "Exquisite Slash",
+          "original_text": "Mana cost: {1}{G}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control.",
+          "executable_text": "Mana cost: {1}{G}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Exquisite Slash_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Exquisite Slash",
+              "original_text": "Mana cost: {1}{G}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Exquisite Slash",
+              "executable_text": "Mana cost: {1}{G}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature you control gets +1/+0 until end of turn if you're in a renaissance. Then that creature deals damage equal to its power to target creature you don't control."
+        },
+        {
+          "id": "Festival Centrum_NJB",
+          "name": "Festival Centrum",
+          "original_text": "Type: Land\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1.",
+          "executable_text": "Type: Land\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1.",
+          "mana_cost": "",
+          "type_line": "Land",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Festival Centrum_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Festival Centrum",
+              "original_text": "Type: Land\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Festival Centrum",
+              "executable_text": "Type: Land\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{T}: Add {C}. If you're in a renaissance, add one mana of any color instead.\n{3}, {T}: Scry 1."
+        },
+        {
+          "id": "Fox of a Radiant Meadow_NJB",
+          "name": "Fox of a Radiant Meadow",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Fox\nPower/Toughness: 2/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nFox of a Radiant Meadow has double strike as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Fox\nPower/Toughness: 2/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nFox of a Radiant Meadow has double strike as long as you're in a renaissance.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Fox",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Fox of a Radiant Meadow_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fox of a Radiant Meadow",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Fox\nPower/Toughness: 2/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nFox of a Radiant Meadow has double strike as long as you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fox of a Radiant Meadow",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Fox\nPower/Toughness: 2/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nFox of a Radiant Meadow has double strike as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nFox of a Radiant Meadow has double strike as long as you're in a renaissance.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nFox of a Radiant Meadow has double strike as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nFox of a Radiant Meadow has double strike as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nFox of a Radiant Meadow has double strike as long as you're in a renaissance."
+        },
+        {
+          "id": "Gilded Sell-Sword_NJB",
+          "name": "Gilded Sell-Sword",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Warrior\nPower/Toughness: 2/3\nMenace\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Warrior\nPower/Toughness: 2/3\nMenace\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Warrior",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Gilded Sell-Sword_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gilded Sell-Sword",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Warrior\nPower/Toughness: 2/3\nMenace\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Gilded Sell-Sword",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Warrior\nPower/Toughness: 2/3\nMenace\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nGolden age\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance.",
+              "original_printed_rules_text": "Menace\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Menace\nGolden age\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Menace\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nGilded Sell-Sword gets +2/+0 as long as you're in a renaissance."
+        },
+        {
+          "id": "Grotesque Defiler_NJB",
+          "name": "Grotesque Defiler",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Demon\nPower/Toughness: 4/5\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card.",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Creature — Demon\nPower/Toughness: 4/5\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card.",
+          "mana_cost": "{3}{B}{B}",
+          "type_line": "Creature — Demon",
+          "power": "4",
+          "toughness": "5",
+          "source_card_key": "Grotesque Defiler_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grotesque Defiler",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Creature — Demon\nPower/Toughness: 4/5\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Grotesque Defiler",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Creature — Demon\nPower/Toughness: 4/5\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSacrifice another creature: Grotesque Defiler gains flying until end of turn.\nWhenever Grotesque Defiler deals combat damage to a player, if you're in a renaissance, that player discards a card."
+        },
+        {
+          "id": "Gui, the Brinebearer_NJB",
+          "name": "Gui, the Brinebearer",
+          "original_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Turtle Beast\nPower/Toughness: 5/6\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life.",
+          "executable_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Turtle Beast\nPower/Toughness: 5/6\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life.",
+          "mana_cost": "{1}{G}{U}",
+          "type_line": "Legendary Creature — Turtle Beast",
+          "power": "5",
+          "toughness": "6",
+          "source_card_key": "Gui, the Brinebearer_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gui, the Brinebearer",
+              "original_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Turtle Beast\nPower/Toughness: 5/6\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Gui, the Brinebearer",
+              "executable_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Turtle Beast\nPower/Toughness: 5/6\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nGui can't attack or block unless you're in a renaissance.\n{T}: Reveal the top card of your library. If it's a land card, put it onto the battlefield. Otherwise, put it back on top or into your graveyard and you gain 3 life."
+        },
+        {
+          "id": "Hang Up Your Lanterns_NJB",
+          "name": "Hang Up Your Lanterns",
+          "original_text": "Mana cost: {2}{G}{W}\nType: Enchantment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{G}{W}: Create an Idol token. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game.",
+          "executable_text": "Mana cost: {2}{G}{W}\nType: Enchantment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{G}{W}: Create a colorless artifact token named Idol. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game.",
+          "mana_cost": "{2}{G}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Hang Up Your Lanterns_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hang Up Your Lanterns",
+              "original_text": "Mana cost: {2}{G}{W}\nType: Enchantment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{G}{W}: Create an Idol token. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{2}{G}{W}: Create an Idol token. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Idol",
+                "manaCost": null,
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Idol"
+                ],
+                "oracleText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery."
+              },
+              "input": {
+                "name": "Idol",
+                "manaCost": null,
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Idol"
+                ],
+                "oracleText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery."
+              }
+            }
+          ],
+          "source_token_provenance": [
+            {
+              "source_file": "reports/cards/lackey-audit-2026-11-01/msem-token-source.json",
+              "source_card_key": "Idol_TKN_GNJ",
+              "original_token": {
+                "fullName": "Idol",
+                "cardName": "Idol",
+                "manaCost": "",
+                "typeLine": "Token Artifact — Idol",
+                "rarityLine": "*GNJ Token*",
+                "rulesText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+                "flavorText": "",
+                "power": "",
+                "toughness": "",
+                "loyalty": "",
+                "color": "",
+                "cmc": 0,
+                "cardType": "Artifact",
+                "rarity": "token",
+                "shape": "normal",
+                "setID": "tokens",
+                "parentSet": "GNJ",
+                "cardID": "GNJ30",
+                "designer": "CanterburyEgg",
+                "script": "",
+                "notes": [
+                  "reprint"
+                ],
+                "artist": "Leeshahanigan",
+                "key": "Idol_TKN_GNJ",
+                "colorIdentity": [],
+                "spellbook": [],
+                "prints": [],
+                "rarities": [],
+                "firstPrint": "",
+                "printKeys": [],
+                "formats": []
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hang Up Your Lanterns",
+              "executable_text": "Mana cost: {2}{G}{W}\nType: Enchantment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{G}{W}: Create a colorless artifact token named Idol. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Idol",
+                  "token": true,
+                  "executable_text": "Type: Artifact — Idol\n{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{2}{G}{W}: Create an Idol token. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{G}{W}: Create an Idol token. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game."
+            }
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Idol",
+              "token": true,
+              "executable_text": "Type: Artifact — Idol\n{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{G}{W}: Create an Idol token. Prevent all damage that would be dealt to and dealt by target creature this turn.\nAt the beginning of your end step, if you're in a renaissance and you control ten or more Idols, you win the game."
+        },
+        {
+          "id": "Harmonic Recruit_NJB",
+          "name": "Harmonic Recruit",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 2/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 2/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Warrior",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Harmonic Recruit_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Harmonic Recruit",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 2/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Harmonic Recruit",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Warrior\nPower/Toughness: 2/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{3}{G}: Harmonic Recruit gets +2/+2 until end of turn. If you're in a renaissance, it gets +4/+4 until end of turn instead."
+        },
+        {
+          "id": "Horizon Glider_NJB",
+          "name": "Horizon Glider",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Drake\nPower/Toughness: 2/2\nFlying\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn.",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Drake\nPower/Toughness: 2/2\nFlying\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Drake",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Horizon Glider_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Horizon Glider",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Drake\nPower/Toughness: 2/2\nFlying\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Horizon Glider",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Drake\nPower/Toughness: 2/2\nFlying\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nGolden age\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn.",
+              "original_printed_rules_text": "Flying\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nGolden age\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nAt the beginning of combat on your turn, if you're in a renaissance, target creature gains flying until end of turn."
+        },
+        {
+          "id": "Imperious Aristocrat_NJB",
+          "name": "Imperious Aristocrat",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Advisor\nPower/Toughness: 3/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life.",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Advisor\nPower/Toughness: 3/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life.",
+          "mana_cost": "{1}{W}{B}",
+          "type_line": "Creature — Human Advisor",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Imperious Aristocrat_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Imperious Aristocrat",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Advisor\nPower/Toughness: 3/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Imperious Aristocrat",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Advisor\nPower/Toughness: 3/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}, Sacrifice another creature: Imperious Aristocrat gains indestructible until end of turn. If you're in a renaissance, each opponent loses 2 life and you gain 2 life."
+        },
+        {
+          "id": "Ing'Wei, Azure Empress_NJB",
+          "name": "Ing'Wei, Azure Empress",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Planeswalker — Ing'Wei\nLoyalty: 3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one.",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Legendary Planeswalker — Ing'Wei\nLoyalty: 3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one.",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Legendary Planeswalker — Ing'Wei",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ing'Wei, Azure Empress_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ing'Wei, Azure Empress",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Planeswalker — Ing'Wei\nLoyalty: 3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ing'Wei, Azure Empress",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Legendary Planeswalker — Ing'Wei\nLoyalty: 3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "ing'wei",
+                  "plural": "ing'weis",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "ing'wei",
+              "plural": "ing'weis",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n[+1]: Scry 1. If you're in a renaissance, draw a card.\n[-2]: Return target nonland permanent to its owner's hand if its mana value is 3 or less or if you're in a renaissance.\n[-6]: Create two 8/8 blue Kraken creature tokens. If you're in a renaissance, take an extra turn after this one."
+        },
+        {
+          "id": "Lady of the Nymphaeas_NJB",
+          "name": "Lady of the Nymphaeas",
+          "original_text": "Mana cost: {1}{G}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand.",
+          "executable_text": "Mana cost: {1}{G}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand.",
+          "mana_cost": "{1}{G}{U}",
+          "type_line": "Creature — Human Wizard",
+          "power": "2",
+          "toughness": "4",
+          "source_card_key": "Lady of the Nymphaeas_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lady of the Nymphaeas",
+              "original_text": "Mana cost: {1}{G}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lady of the Nymphaeas",
+              "executable_text": "Mana cost: {1}{G}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/4\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}{G}{U}: Reveal the top card of your library. If it's a land card, you may put it onto the battlefield. If you didn't put that card onto the battlefield and you're in a renaissance, put it into your hand."
+        },
+        {
+          "id": "Lunar Flock_NJB",
+          "name": "Lunar Flock",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Bird\nPower/Toughness: 3/4\nFlying\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nLunar Flock has vigilance as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Bird\nPower/Toughness: 3/4\nFlying\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nLunar Flock has vigilance as long as you're in a renaissance.",
+          "mana_cost": "{4}{W}",
+          "type_line": "Creature — Bird",
+          "power": "3",
+          "toughness": "4",
+          "source_card_key": "Lunar Flock_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lunar Flock",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Bird\nPower/Toughness: 3/4\nFlying\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nLunar Flock has vigilance as long as you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lunar Flock",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Bird\nPower/Toughness: 3/4\nFlying\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nLunar Flock has vigilance as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nGolden age\nLunar Flock has vigilance as long as you're in a renaissance.",
+              "original_printed_rules_text": "Flying\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nLunar Flock has vigilance as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nGolden age\nLunar Flock has vigilance as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nLunar Flock has vigilance as long as you're in a renaissance."
+        },
+        {
+          "id": "Lunar Shachuan_NJB",
+          "name": "Lunar Shachuan",
+          "original_text": "Mana cost: {2}{U}\nType: Artifact — Vehicle\nPower/Toughness: 3/4\nFlying\nCrew 2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature.",
+          "executable_text": "Mana cost: {2}{U}\nType: Artifact — Vehicle\nPower/Toughness: 3/4\nFlying\nCrew 2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Artifact — Vehicle",
+          "power": "3",
+          "toughness": "4",
+          "source_card_key": "Lunar Shachuan_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lunar Shachuan",
+              "original_text": "Mana cost: {2}{U}\nType: Artifact — Vehicle\nPower/Toughness: 3/4\nFlying\nCrew 2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lunar Shachuan",
+              "executable_text": "Mana cost: {2}{U}\nType: Artifact — Vehicle\nPower/Toughness: 3/4\nFlying\nCrew 2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nCrew 2\nGolden age\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature.",
+              "original_printed_rules_text": "Flying\nCrew 2\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nCrew 2\nGolden age\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying\nCrew 2\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nAs long as you're in a renaissance, Lunar Shachuan is an artifact creature."
+        },
+        {
+          "id": "Mercenary of the Folded Fan_NJB",
+          "name": "Mercenary of the Folded Fan",
+          "original_text": "Mana cost: {3}{B}\nType: Creature — Human Mercenary\nPower/Toughness: 4/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card.",
+          "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Mercenary\nPower/Toughness: 4/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card.",
+          "mana_cost": "{3}{B}",
+          "type_line": "Creature — Human Mercenary",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Mercenary of the Folded Fan_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mercenary of the Folded Fan",
+              "original_text": "Mana cost: {3}{B}\nType: Creature — Human Mercenary\nPower/Toughness: 4/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mercenary of the Folded Fan",
+              "executable_text": "Mana cost: {3}{B}\nType: Creature — Human Mercenary\nPower/Toughness: 4/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{B}, Discard a card: Mercenary of the Folded Fan gains indestructible until end of turn. Tap it. If you're in a renaissance, draw a card."
+        },
+        {
+          "id": "Mieng of the Pyre Waltz_NJB",
+          "name": "Mieng of the Pyre Waltz",
+          "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance.",
+          "executable_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance.",
+          "mana_cost": "{1}{R}{R}",
+          "type_line": "Legendary Creature — Human Wizard",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Mieng of the Pyre Waltz_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mieng of the Pyre Waltz",
+              "original_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mieng of the Pyre Waltz",
+              "executable_text": "Mana cost: {1}{R}{R}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 2/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}{R}: Mieng gains flying until end of turn.\nWhenever Mieng attacks, create a 4/4 red Dragon creature token with flying that's tapped and attacking. Exile that token at end of combat unless you're in a renaissance."
+        },
+        {
+          "id": "Mighty Xioshu_NJB",
+          "name": "Mighty Xioshu",
+          "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Elk Bear\nPower/Toughness: 7/6\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {4}{G}{G}\nType: Creature — Elk Bear\nPower/Toughness: 7/6\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance.",
+          "mana_cost": "{4}{G}{G}",
+          "type_line": "Creature — Elk Bear",
+          "power": "7",
+          "toughness": "6",
+          "source_card_key": "Mighty Xioshu_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mighty Xioshu",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Creature — Elk Bear\nPower/Toughness: 7/6\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mighty Xioshu",
+              "executable_text": "Mana cost: {4}{G}{G}\nType: Creature — Elk Bear\nPower/Toughness: 7/6\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nMighty Xioshu can't be blocked by creatures with power 2 or less as long as you're in a renaissance."
+        },
+        {
+          "id": "Nonpareil of the Abyss_NJB",
+          "name": "Nonpareil of the Abyss",
+          "original_text": "Mana cost: {6}{U}{U}\nType: Creature — Kraken\nPower/Toughness: 8/8\nTrample\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhen Nonpareil of the Abyss enters, create an Idol token.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {6}{U}{U}\nType: Creature — Kraken\nPower/Toughness: 8/8\nTrample\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhen Nonpareil of the Abyss enters, create a colorless artifact token named Idol.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance.",
+          "mana_cost": "{6}{U}{U}",
+          "type_line": "Creature — Kraken",
+          "power": "8",
+          "toughness": "8",
+          "source_card_key": "Nonpareil of the Abyss_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nonpareil of the Abyss",
+              "original_text": "Mana cost: {6}{U}{U}\nType: Creature — Kraken\nPower/Toughness: 8/8\nTrample\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhen Nonpareil of the Abyss enters, create an Idol token.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Trample\nGolden age\nWhen Nonpareil of the Abyss enters, create an Idol token.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Idol",
+                "manaCost": null,
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Idol"
+                ],
+                "oracleText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery."
+              },
+              "input": {
+                "name": "Idol",
+                "manaCost": null,
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Idol"
+                ],
+                "oracleText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery."
+              }
+            }
+          ],
+          "source_token_provenance": [
+            {
+              "source_file": "reports/cards/lackey-audit-2026-11-01/msem-token-source.json",
+              "source_card_key": "Idol_TKN_GNJ",
+              "original_token": {
+                "fullName": "Idol",
+                "cardName": "Idol",
+                "manaCost": "",
+                "typeLine": "Token Artifact — Idol",
+                "rarityLine": "*GNJ Token*",
+                "rulesText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+                "flavorText": "",
+                "power": "",
+                "toughness": "",
+                "loyalty": "",
+                "color": "",
+                "cmc": 0,
+                "cardType": "Artifact",
+                "rarity": "token",
+                "shape": "normal",
+                "setID": "tokens",
+                "parentSet": "GNJ",
+                "cardID": "GNJ30",
+                "designer": "CanterburyEgg",
+                "script": "",
+                "notes": [
+                  "reprint"
+                ],
+                "artist": "Leeshahanigan",
+                "key": "Idol_TKN_GNJ",
+                "colorIdentity": [],
+                "spellbook": [],
+                "prints": [],
+                "rarities": [],
+                "firstPrint": "",
+                "printKeys": [],
+                "formats": []
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Nonpareil of the Abyss",
+              "executable_text": "Mana cost: {6}{U}{U}\nType: Creature — Kraken\nPower/Toughness: 8/8\nTrample\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhen Nonpareil of the Abyss enters, create a colorless artifact token named Idol.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Idol",
+                  "token": true,
+                  "executable_text": "Type: Artifact — Idol\n{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nGolden age\nWhen Nonpareil of the Abyss enters, create an Idol token.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance.",
+              "original_printed_rules_text": "Trample\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhen Nonpareil of the Abyss enters, create an Idol token.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance."
+            }
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Idol",
+              "token": true,
+              "executable_text": "Type: Artifact — Idol\n{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Trample\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhen Nonpareil of the Abyss enters, create an Idol token.\nNonpareil of the Abyss has ward {8} as long as you're in a renaissance."
+        },
+        {
+          "id": "Pack Savagery_NJB",
+          "name": "Pack Savagery",
+          "original_text": "Mana cost: {G}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn.",
+          "executable_text": "Mana cost: {G}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn.",
+          "mana_cost": "{G}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Pack Savagery_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Pack Savagery",
+              "original_text": "Mana cost: {G}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Pack Savagery",
+              "executable_text": "Mana cost: {G}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature has base power and toughness 4/4 until end of turn. If you're in a renaissance, untap it and it gains hexproof and indestructible until end of turn."
+        },
+        {
+          "id": "Savage Convergence_NJB",
+          "name": "Savage Convergence",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand.",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Savage Convergence_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Savage Convergence",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Savage Convergence",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSearch your library for up to three creature cards with different mana values 4 or less, reveal them, put them into your hand, then shuffle. If you're in a renaissance, you may put one of those cards onto the battlefield instead of into your hand."
+        },
+        {
+          "id": "Seal the Gateway_NJB",
+          "name": "Seal the Gateway",
+          "original_text": "Mana cost: {W}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead.",
+          "executable_text": "Mana cost: {W}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead.",
+          "mana_cost": "{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Seal the Gateway_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seal the Gateway",
+              "original_text": "Mana cost: {W}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seal the Gateway",
+              "executable_text": "Mana cost: {W}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature or planeswalker an opponent controls phases out. If you're in a renaissance, exile it instead."
+        },
+        {
+          "id": "Spear Flourish_NJB",
+          "name": "Spear Flourish",
+          "original_text": "Mana cost: {1}{B}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead.",
+          "executable_text": "Mana cost: {1}{B}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead.",
+          "mana_cost": "{1}{B}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Spear Flourish_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spear Flourish",
+              "original_text": "Mana cost: {1}{B}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Spear Flourish",
+              "executable_text": "Mana cost: {1}{B}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nTarget creature gets -2/-2 until end of turn. If you're in a renaissance, it gets -5/-5 until end of turn instead."
+        },
+        {
+          "id": "Spirited Florist_NJB",
+          "name": "Spirited Florist",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn. *(It's still a land.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Druid",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Spirited Florist_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Spirited Florist",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn. *(It's still a land.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Spirited Florist",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Druid\nPower/Toughness: 1/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn. (It's still a land.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{G}: Put two +1/+1 counters on target land you control. If you're in a renaissance, you may have that land become a 0/0 green Elemental creature until end of turn. (It's still a land.)"
+        },
+        {
+          "id": "Sponsor of the Folded Fan_NJB",
+          "name": "Sponsor of the Folded Fan",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Warrior",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Sponsor of the Folded Fan_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sponsor of the Folded Fan",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sponsor of the Folded Fan",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Warrior\nPower/Toughness: 1/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{3}{W}: You gain 1 life.\nSponsor of the Folded Fan gets +2/+0 as long as you're in a renaissance."
+        },
+        {
+          "id": "Sword Dance_NJB",
+          "name": "Sword Dance",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead.",
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Sword Dance_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sword Dance",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sword Dance",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSword Dance deals 3 damage to target attacking or blocking creature. If you're in a renaissance, Sword Dance deals 5 damage to that creature instead."
+        },
+        {
+          "id": "The Great War Ends_NJB",
+          "name": "The Great War Ends",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers.",
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers.",
+          "mana_cost": "{3}{W}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "The Great War Ends_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Great War Ends",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "The Great War Ends",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nIf you're in a renaissance, you may have up to one target creature or planeswalker gain indestructible until end of turn.\nDestroy all creatures and planeswalkers."
+        },
+        {
+          "id": "Trawl the Annals_NJB",
+          "name": "Trawl the Annals",
+          "original_text": "Mana cost: {3}{U}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards.",
+          "executable_text": "Mana cost: {3}{U}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards.",
+          "mana_cost": "{3}{U}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Trawl the Annals_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Trawl the Annals",
+              "original_text": "Mana cost: {3}{U}\nType: Instant\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Trawl the Annals",
+              "executable_text": "Mana cost: {3}{U}\nType: Instant\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nScry 2, then draw two cards. If you're in a renaissance, instead scry 2, then draw three cards."
+        },
+        {
+          "id": "Tzelin, Cabal Liturgist_NJB",
+          "name": "Tzelin, Cabal Liturgist",
+          "original_text": "Mana cost: {B}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards.",
+          "executable_text": "Mana cost: {B}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards.",
+          "mana_cost": "{B}",
+          "type_line": "Legendary Creature — Human Wizard",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Tzelin, Cabal Liturgist_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tzelin, Cabal Liturgist",
+              "original_text": "Mana cost: {B}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Tzelin, Cabal Liturgist",
+              "executable_text": "Mana cost: {B}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhenever a Demon you control enters, put a +1/+1 counter on Tzelin.\n{2}{B}: Sacrifice Tzelin. If you do, each opponent loses life equal to Tzelin's power. If you're in a renaissance, also draw that many cards."
+        },
+        {
+          "id": "Ushi Yun, the Curator_NJB",
+          "name": "Ushi Yun, the Curator",
+          "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhen Ushi Yun enters, create an Idol token.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”",
+          "executable_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhen Ushi Yun enters, create a colorless artifact token named Idol.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”",
+          "mana_cost": "{1}{U}{U}",
+          "type_line": "Legendary Creature — Human Wizard",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Ushi Yun, the Curator_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ushi Yun, the Curator",
+              "original_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhen Ushi Yun enters, create an Idol token.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”"
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nWhen Ushi Yun enters, create an Idol token.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_tokens": [
+            {
+              "face": {
+                "name": "Idol",
+                "manaCost": null,
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Idol"
+                ],
+                "oracleText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery."
+              },
+              "input": {
+                "name": "Idol",
+                "manaCost": null,
+                "cardTypes": [
+                  "Artifact"
+                ],
+                "subtypes": [
+                  "Idol"
+                ],
+                "oracleText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery."
+              }
+            }
+          ],
+          "source_token_provenance": [
+            {
+              "source_file": "reports/cards/lackey-audit-2026-11-01/msem-token-source.json",
+              "source_card_key": "Idol_TKN_GNJ",
+              "original_token": {
+                "fullName": "Idol",
+                "cardName": "Idol",
+                "manaCost": "",
+                "typeLine": "Token Artifact — Idol",
+                "rarityLine": "*GNJ Token*",
+                "rulesText": "{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+                "flavorText": "",
+                "power": "",
+                "toughness": "",
+                "loyalty": "",
+                "color": "",
+                "cmc": 0,
+                "cardType": "Artifact",
+                "rarity": "token",
+                "shape": "normal",
+                "setID": "tokens",
+                "parentSet": "GNJ",
+                "cardID": "GNJ30",
+                "designer": "CanterburyEgg",
+                "script": "",
+                "notes": [
+                  "reprint"
+                ],
+                "artist": "Leeshahanigan",
+                "key": "Idol_TKN_GNJ",
+                "colorIdentity": [],
+                "spellbook": [],
+                "prints": [],
+                "rarities": [],
+                "firstPrint": "",
+                "printKeys": [],
+                "formats": []
+              }
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ushi Yun, the Curator",
+              "executable_text": "Mana cost: {1}{U}{U}\nType: Legendary Creature — Human Wizard\nPower/Toughness: 1/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhen Ushi Yun enters, create a colorless artifact token named Idol.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [
+                {
+                  "name": "Idol",
+                  "token": true,
+                  "executable_text": "Type: Artifact — Idol\n{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+                  "custom_subtypes": [],
+                  "custom_keyword_identities": [],
+                  "custom_keyword_payments": [],
+                  "custom_keyword_counter_definitions": []
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nWhen Ushi Yun enters, create an Idol token.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhen Ushi Yun enters, create an Idol token.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”"
+            }
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [
+            {
+              "name": "Idol",
+              "token": true,
+              "executable_text": "Type: Artifact — Idol\n{1}, Sacrifice this artifact: Put a +1/+1 counter on target creature. Activate only as a sorcery.",
+              "custom_subtypes": [],
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_keyword_counter_definitions": []
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhen Ushi Yun enters, create an Idol token.\nAs long as you're in a renaissance, artifacts you control have “{T}: Draw a card.”"
+        },
+        {
+          "id": "Verdant Druid_NJB",
+          "name": "Verdant Druid",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Human Druid\nPower/Toughness: 3/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of in any order.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Human Druid\nPower/Toughness: 3/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of your library in any order.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Human Druid",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Verdant Druid_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Verdant Druid",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Human Druid\nPower/Toughness: 3/2\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of in any order.",
+              "reviewed_source_corrections": [
+                {
+                  "original": "Put the rest on the bottom of in any order.",
+                  "replacement": "Put the rest on the bottom of your library in any order.",
+                  "source_context": "Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of in any order.",
+                  "review_status": "source_context_reviewed",
+                  "evidence": "The immediately preceding source instruction reveals the top three cards of your library. The next two branches select from that exact group. The rest denotes the remainder of those same library cards, so your library is the uniquely evidenced omitted destination; no other library or ordered zone appears in the ability."
+                }
+              ]
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of your library in any order.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Verdant Druid",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Human Druid\nPower/Toughness: 3/2\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of your library in any order.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of your library in any order.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of your library in any order."
+            }
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{G}: Reveal the top three cards of your library. You may put a creature card from among them on top. If you're in a renaissance, put it into your hand instead. Put the rest on the bottom of your library in any order."
+        },
+        {
+          "id": "Visit from Aunti_NJB",
+          "name": "Visit from Aunti",
+          "original_text": "Mana cost: {2}{B}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life.",
+          "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Visit from Aunti_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Visit from Aunti",
+              "original_text": "Mana cost: {2}{B}\nType: Sorcery\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Visit from Aunti",
+              "executable_text": "Mana cost: {2}{B}\nType: Sorcery\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nDraw two cards. Then if you're in a renaissance, each opponent loses 2 life and you gain 2 life. Otherwise, you lose 2 life."
+        },
+        {
+          "id": "Yenzu Blood Pact_NJB",
+          "name": "Yenzu Blood Pact",
+          "original_text": "Mana cost: {2}{W}{B}\nType: Enchantment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn.",
+          "executable_text": "Mana cost: {2}{W}{B}\nType: Enchantment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn.",
+          "mana_cost": "{2}{W}{B}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Yenzu Blood Pact_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Yenzu Blood Pact",
+              "original_text": "Mana cost: {2}{W}{B}\nType: Enchantment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Yenzu Blood Pact",
+              "executable_text": "Mana cost: {2}{W}{B}\nType: Enchantment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{1}, Sacrifice a creature: Draw a card. Each opponent loses 1 life and you gain 1 life.\nWhenever you sacrifice a creature, if you're in a renaissance, each opponent sacrifices a creature. This ability triggers only once each turn."
+        },
+        {
+          "id": "Zihao, Song of the Glade_NJB",
+          "name": "Zihao, Song of the Glade",
+          "original_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Druid Bard\nPower/Toughness: 3/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance.",
+          "executable_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Druid Bard\nPower/Toughness: 3/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance.",
+          "mana_cost": "{R}{G}{W}",
+          "type_line": "Legendary Creature — Human Druid Bard",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Zihao, Song of the Glade_NJB",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Zihao, Song of the Glade",
+              "original_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Druid Bard\nPower/Toughness: 3/3\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Zihao, Song of the Glade",
+              "executable_text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Human Druid Bard\nPower/Toughness: 3/3\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\n{2}{R}{G}{W}: You may put a creature card from your hand onto the battlefield. It gains haste and vigilance until end of turn. At the beginning of the next end step, return it to your hand  unless you're in a renaissance."
+        },
+        {
+          "id": "Almgrove Skydancer_MC25",
+          "name": "Almgrove Skydancer",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nFlying, lifelink\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nYou may cast this card from your graveyard as long as you're in a renaissance.",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nFlying, lifelink\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nYou may cast this card from your graveyard as long as you're in a renaissance.",
+          "mana_cost": "{2}{W}{W}",
+          "type_line": "Creature — Human Wizard",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Almgrove Skydancer_MC25",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Almgrove Skydancer",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nFlying, lifelink\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nYou may cast this card from your graveyard as long as you're in a renaissance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Almgrove Skydancer",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Human Wizard\nPower/Toughness: 4/3\nFlying, lifelink\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nYou may cast this card from your graveyard as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, lifelink\nGolden age\nYou may cast this card from your graveyard as long as you're in a renaissance.",
+              "original_printed_rules_text": "Flying, lifelink\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nYou may cast this card from your graveyard as long as you're in a renaissance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying, lifelink\nGolden age\nYou may cast this card from your graveyard as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Flying, lifelink\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nYou may cast this card from your graveyard as long as you're in a renaissance."
+        },
+        {
+          "id": "Fifth Street Patronage_HQZ",
+          "name": "Fifth Street Patronage",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1.",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Fifth Street Patronage_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fifth Street Patronage",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fifth Street Patronage",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "actor",
+                  "plural": "actors",
+                  "family": "Creature"
+                },
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Golden age\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1.",
+              "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Golden age\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "actor",
+              "plural": "actors",
+              "family": "Creature"
+            },
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Golden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nWhen Fifth Street Patronage enters, create two 1/1 white Citizen creature tokens.\nAs long as you're in a renaissance, Actors, Artists, Bards, Citizens, Nobles, and Peasants you control get +1/+1."
+        },
+        {
+          "id": "Satrapy Guard_HQZ",
+          "name": "Satrapy Guard",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFirst strike\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSatrapy Guard gets +2/+2 as long you're in a renaissance.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFirst strike\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSatrapy Guard gets +2/+2 as long as you're in a renaissance.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Soldier",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Satrapy Guard_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Satrapy Guard",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFirst strike\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSatrapy Guard gets +2/+2 as long you're in a renaissance.",
+              "reviewed_source_corrections": [
+                {
+                  "original": "Satrapy Guard gets +2/+2 as long you're in a renaissance.",
+                  "replacement": "Satrapy Guard gets +2/+2 as long as you're in a renaissance.",
+                  "source_context": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFirst strike\nGolden age *(If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)*\nSatrapy Guard gets +2/+2 as long you're in a renaissance.",
+                  "review_status": "source_context_reviewed",
+                  "evidence": "The source has a standard continuous +2/+2 modifier immediately followed by the renaissance status condition established by Golden age on this same card. The phrase 'as long you're' omits the second 'as' of the conditional connective; adding it preserves the printed condition and changes neither its timing nor its subject."
+                }
+              ]
+            }
+          ],
+          "custom_keyword_identities": [
+            "golden age"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "First strike\nGolden age\nSatrapy Guard gets +2/+2 as long as you're in a renaissance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Satrapy Guard",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Soldier\nPower/Toughness: 2/2\nFirst strike\nIf you cast an instant or sorcery spell this turn, activated a nonmana ability this turn, and attacked this turn, you are in your renaissance for the rest of the game\nSatrapy Guard gets +2/+2 as long as you're in a renaissance.",
+              "custom_keyword_identities": [
+                "golden age"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "First strike\nGolden age\nSatrapy Guard gets +2/+2 as long as you're in a renaissance.",
+              "original_printed_rules_text": "First strike\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSatrapy Guard gets +2/+2 as long as you're in a renaissance."
+            }
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "First strike\nGolden age (If you cast an instant or sorcery spell, activated a nonmana ability, and attacked this turn, enter a renaissance for this game.)\nSatrapy Guard gets +2/+2 as long as you're in a renaissance."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_verification",
+      "behavioral_assertions": [
+        {
+          "id": "golden-age-conjunction",
+          "status": "pending",
+          "test_reference": "custom_golden_age_designation",
+          "observable": "All three historical actions by same actor this turn; actual nonmana activation; actual declared attack; instant/sorcery-only casting; permanent continuous vs resolving spell checks; independent lasting marker and artifact parity."
+        }
+      ]
+    }
+  ]
+}

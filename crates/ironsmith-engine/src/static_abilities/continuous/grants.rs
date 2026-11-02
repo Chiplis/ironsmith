@@ -250,6 +250,7 @@ impl StaticAbilityKind for AttachedIsCopyOfChosenObject {
                 controller,
                 EffectTarget::AttachedTo(source),
                 Modification::CopyOf {
+retain_original_types: false,
                     retain_original_name: false,
                     target_id: chosen.object_id,
                     copiable_values: Box::new(chosen.copiable_values.clone()),
@@ -1511,4 +1512,36 @@ fn grant_subject_is_plural(subject: &str) -> bool {
     // subjects such as "Elves you control" as well as invariant plurals such
     // as "Merfolk you control".
     true
+}
+
+/// Ongoing attached copy of its source. Source copiable values are frozen for
+/// this discovery pass; the recipient's type exception is applied in layer 1.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttachedIsCopyOfSource { pub retain_original_types: bool }
+impl AttachedIsCopyOfSource {
+    pub fn new(retain_original_types: bool) -> Self { Self { retain_original_types } }
+}
+impl StaticAbilityKind for AttachedIsCopyOfSource {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::AttachedIsCopyOfSource }
+    fn display(&self) -> String {
+        let tail = if self.retain_original_types { " except for its card types, supertypes, and subtypes" } else { "" };
+        format!("The permanent this is attached to is a copy of this permanent{tail}")
+    }
+    fn generate_effects(&self, source: ObjectId, controller: PlayerId, game: &GameState) -> Vec<ContinuousEffect> {
+        if game.object(source).is_none_or(|object| object.attached_to.is_none()) { return Vec::new(); }
+        // Materialize the donor only when layer 1 has its complete effect
+        // input. Discovering descriptors must not recursively discover statics.
+        let values = crate::snapshot::CopiableValues::from_object_with_linked_face(
+            game.object(source).expect("copy source was checked"), game);
+        let mut effect = ContinuousEffect::new(source, controller, EffectTarget::AttachedTo(source), Modification::CopyOf {
+            retain_original_name: false,
+            retain_original_types: self.retain_original_types,
+            target_id: source,
+            copiable_values: Box::new(values),
+            preserve_source_abilities: false,
+            name_override: None, name_override_surface: None, add_supertypes: Vec::new(),
+        }).with_source_type(EffectSourceType::StaticAbility);
+        effect.live_copy_source = Some(source);
+        vec![effect]
+    }
 }

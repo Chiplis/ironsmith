@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'keyword_static::complete_granted_cost_boundary_tests::derived_flashback_companion_preserves_the_whole_permission_on_both_reader_routes' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs:7093:72:
+called `Result::unwrap()` on an `Err` value: ParseError("unsupported flashback cost (clause: 'the flashback cost is equal to that cards mana cost')")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::complete_granted_cost_boundary_tests::derived_flashback_companion_preserves_the_whole_permission_on_both_reader_routes ... FAILED
+
+failures:
+
+failures:
+    keyword_static::complete_granted_cost_boundary_tests::derived_flashback_companion_preserves_the_whole_permission_on_both_reader_routes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.09s
+

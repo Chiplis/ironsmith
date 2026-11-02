@@ -1,0 +1,102 @@
+{
+  "status": "USER_QUOTA_STOP_RECOVERY_ONLY_DO_NOT_INTEGRATE",
+  "archive": "source-snapshots.tar.gz",
+  "archive_sha256": "73a59df1c0a876cf0e7a7fd3630fd713d1af077687960ab78ea8bea25de2b181",
+  "archive_directories": [
+    "abilities_final_counter_producer_exclusion",
+    "abilities_final_counter_entry_replacement",
+    "abilities_final_counter_cost_producers",
+    "tokens-entry-counter-producer-transport",
+    "actions_linked/counter-payment-producers",
+    "actions_linked/counter-producer-metadata-guard",
+    "actions_linked/counter-producer-query-boundary"
+  ],
+  "unfinished_entry_patch": "UNFINISHED-entry-consumer-recovery.patch",
+  "unfinished_entry_patch_sha256": "d3a7fd7130af5c01267a27630b67d12947fc0990150f3f3741d0f95a12f2f8f7",
+  "unfinished_entry_files": [
+    {
+      "path": "crates/ironsmith-compiler-runtime/tests/custom_counter_producer_exclusion.rs",
+      "base_sha256": "2cf52b45ec0efa10b5aa4a04ec8cd5089a28e59d0bdaccd23c464406b2d88ed8",
+      "edited_sha256": "5a6380f3dd10a1b278dc20c2249cf0cdfd327e07f59577e7b96534ba41fbbfd6"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/effects/context.rs",
+      "base_sha256": "2213b1715acfd91daf4bb8f16be7c2ca2728e13b8f132721dcafe31a06857d1a",
+      "edited_sha256": "52baa06f6b2c26aee043e7eefdae7419b3764abad5c2415708362f3e7c73d6c4"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/effects/counters/object_counter_placement.rs",
+      "base_sha256": "841fb7f9c5d91dfd393543ac2b2aa910b5a67b3f9f044bf02101163c5c41ebee",
+      "edited_sha256": "d59d8d083e6c7208d773a047b7434d92a9541590924683712b940ffa70b81dc1"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/effects/replacement/apply_replacement.rs",
+      "base_sha256": "d968ee6a2b5b8a1d804d2e59b52d9c8c2ceaf786a1f3e66dec6285322319b4d2",
+      "edited_sha256": "c0b238706d939179bbe4cadc4ef860a6e5256430565459731ca94879d96e39c4"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/events/mod.rs",
+      "base_sha256": "6e32e2db447b435152402da9c031be5bb80d6f763c552e95837bb89ccc30f2db",
+      "edited_sha256": "cc0652d6e443b55955af0a10784dabeeb700c52ef62a92ed01dce9cd2acdfd60"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/events/processing/application.rs",
+      "base_sha256": "fb20dedf603f8d32ff4bbf595861e71b9eba7019d4cb9fe75dfab64bbb197a9c",
+      "edited_sha256": "9afc98b289a3d569ab3e9dfc332f44d8dd76d66b4ba4ecd7905d4803becc865f"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/events/processing/mod.rs",
+      "base_sha256": "b1162398af164625e3a220f672dcebb19f582f66a3303d7523e0c676695c5ed3",
+      "edited_sha256": "717bd1dbdbc5897dd6200b4ef3dd8310ade3e90930ffcec449687a1189fc9721"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/events/zones/enter_battlefield.rs",
+      "base_sha256": "f3f7f31e78a5ec1f3ee1e688772a45e0e05729393e5e45c53a40d743a29b86c6",
+      "edited_sha256": "704be1c52becbe46ecea6a3b54b5170e29344246e93dca69dee4c154393b5136"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/events/zones/mod.rs",
+      "base_sha256": "acd42f95f431625378510b1a518b1b6e9ad5e8975660b62574b2705b34669b67",
+      "edited_sha256": "e2ba7dfc7623507d776701d4074b236d2bbc3be8df448c528c274c8c532d9745"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/game_state/zones_and_characteristics.rs",
+      "base_sha256": "29cb439f8e45a94e06b453ab7c51f1b55eb264f9a0c74a711a339efc048862fc",
+      "edited_sha256": "e8a10b31e881fdaabe25401bc037de2f16c2e988eb0e395e108ab918ed11e67c"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/replacement.rs",
+      "base_sha256": "22af68207610e882caa9acc9b0c473aa4c1645deed6b6a3d942c5981529849bc",
+      "edited_sha256": "7bcfa13f48c93232ab38fb7ca35362b5d29d94f64878d42919dfa25ca3b643b2"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/replacement_ability_processor.rs",
+      "base_sha256": "7897ef16ae2a6b5b41527995321ff8a861bda7d3096997fb843790ef3d0d610a",
+      "edited_sha256": "559966e38c6d992c566836930f965d4d8c1ef3b23d326e9463272b532be04137"
+    },
+    {
+      "path": "crates/ironsmith-engine/src/static_abilities/misc/replacements_and_rules.rs",
+      "base_sha256": "91673663b3333c37d8498574001f5090b494e7b8c535a8b525b2aa824aa6e83c",
+      "edited_sha256": "2ad8f28678b429311f314bca9f77bd513c489dafadb961e917c2016dc78fb418"
+    }
+  ],
+  "frozen_inputs": {
+    "battlefield_foundation": "734462f68d9f54c71f9fab190f81e73e428c40dbdb09310e42cae2047d297610",
+    "entry_transport": "dc3f25677a5d15cb4347b0d6073d71a36578ffb00b78be5b5b62ecfbadc8b7f0",
+    "cost_model_acquisition": "566b6ceb7dad3a8fd95afd3c50e8f998430c5bfccef2563e6414447e19c4985e",
+    "cost_allocation_transport": "075485e317d7fc8ff10aee1684ef7a98712ce61d4a017ecf4b6d3eaf4a04ca5d",
+    "cost_metadata_guard": "1f913454fd280b73d13867a2ace4a0b8c27a328dd572e51cb5499c91593c9d9f",
+    "cost_checked_query": "2f3702b63fe18ce715be589c62ad285602eeb1a671856c4eb8ea410a9817773d"
+  },
+  "verification": "No tests/builds/probes/materialization/live production edits. Earlier frozen foundation/static current-path cost apply-checks only; unfinished entry code is not asserted to compile.",
+  "policy": "Existential same-atom causal EFFECT producer interpretation was proposed and independently rationalized as inference; root admission pending. Original Cost alone never qualifies; no global Siphon veto; no last-producer overwrite. No such final causal-atom implementation was authored.",
+  "blockers": [
+    "COST indexed cause must preserve original request source/controller/reason separately from selected spending-rule producer; current frozen075+1f constructs hybrid when they differ. Proposed separate EventCause producer receipt NOT authored.",
+    "Final source_inventory_checked meter wrapper followup was requested from actions_linked; frozen2f only checks metadata then calls unchecked without with_inventory_query. Later owner followup may need to be added separately.",
+    "Entry copy-exception additional-counter receipt capture/removal remains unfinished.",
+    "Entry counter modifier dependency journal/reconciliation and scoped actual-applied counter-effect producer evidence remain unfinished.",
+    "Actual-source native/artifact and cross-controller/same-atom/group isolation regressions must be completed and executed by root.",
+    "Effective typed schema bindings must be refreshed after final coherent admission; old format descriptors/goldens remain immutable."
+  ],
+  "source_prerequisite": "whole14 source packet9cd4c197ba267dfabf62fa7921f2c5db36243248be2489b290ad58651efeb50b; source fixture is current live now, but resume must preserve latest root metadata/materialization changes."
+}

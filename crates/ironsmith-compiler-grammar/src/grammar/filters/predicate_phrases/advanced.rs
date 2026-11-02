@@ -1,3 +1,4 @@
+mod spell_mana_spending;
 use super::*;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::SourcePredicateAst;
@@ -1080,6 +1081,7 @@ pub(super) fn parse_world_state_or_timing_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     parse_initiative_choice_predicate_shape(tokens)
+        .or_else(|| parse_ending_phase_predicate_shape(tokens))
         .or_else(|| parse_night_state_predicate_shape(tokens))
         .or_else(|| parse_first_combat_phase_predicate_shape(tokens))
         .or_else(|| parse_source_controllers_main_phase_predicate_shape(tokens))
@@ -1170,6 +1172,16 @@ pub(super) fn is_player_youre_attacking_clause(clause: LexedClause<'_>) -> bool 
 
 pub(super) fn is_initiative_status_clause(clause: LexedClause<'_>) -> bool {
     surface::exact_any(clause, &[&["initiative"], &["the", "initiative"]])
+}
+
+fn parse_ending_phase_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !matches!(words.as_slice(),
+        ["it", "is", "a" | "an" | "the", "ending", "phase"]
+        | ["its" | "it's", "a" | "an" | "the", "ending", "phase"])
+    { return None; }
+    crate::word_claims::claim_tokens(tokens);
+    Some(PredicateAst::InEndingPhase)
 }
 
 pub(super) fn parse_night_state_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1403,12 +1415,14 @@ pub(super) fn parse_havent_added_mana_with_this_ability_predicate(
 }
 
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(predicate) = parse_player_named_action_history(tokens) { return Some(predicate); }
     let achievement = crate::grammar::conditions::parse_player_achievement_condition(tokens)?;
     let player = achievement.player;
     let predicate = match achievement.achievement {
         crate::grammar::conditions::PlayerAchievementAst::CitysBlessing => Some(
             PredicateAst::Player(PlayerPredicateAst::PlayerHasCitysBlessing { player }),
         ),
+        crate::grammar::conditions::PlayerAchievementAst::NamedDesignation(designation) => Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasDesignation { player, designation })),
         crate::grammar::conditions::PlayerAchievementAst::EnduringStory => Some(
             PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory { player }),
         ),
@@ -6854,6 +6868,59 @@ pub(super) fn parse_counter_placement_result_count(tokens: &[OwnedLexToken]) -> 
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    if let Some(predicate)=crate::util::payment_receipt_references::named_paid_predicate(tokens){return Ok(predicate);}
+    if let Some(predicate)=crate::util::payment_receipt_references::tap_predicate(tokens)? {return Ok(predicate);}
+    {
+        let clean = crate::util::trim_edge_punctuation_tokens(tokens);
+        let words = crate::lexer::token_word_refs(clean);
+        let words = words.strip_prefix(&["if"]).unwrap_or(&words);
+        if let Some(designation) = words.strip_prefix(&[
+            "you", "have", "activated", "each", "of", "this", "permanent's",
+            "activated", "abilities", "with", "designation",
+        ]) && !designation.is_empty()
+            && designation.iter().all(|word| word.chars().all(|ch| ch.is_alphabetic()))
+        {
+            crate::word_claims::claim_tokens(clean);
+            return Ok(PredicateAst::Source(SourcePredicateAst::EachCurrentDesignatedAbilityActivatedByYou {
+                designation: designation.join(" "),
+            }));
+        }
+    }
+    if let Some(predicate)=crate::object_filters::source_noted_names::predicate(tokens){return Ok(predicate);}
+    {
+        let clean=crate::util::trim_edge_punctuation_tokens(tokens);let view=crate::lexer::TokenWordView::new(clean);let words=view.word_refs();
+        if let Some(was)=words.windows(5).position(|part|part==["was","spent","to","perform","the"])
+            && words.last()==Some(&"action") && was+6<words.len() {
+            let end=view.token_start_indices()[was];
+            let payment_tokens=if clean.first().is_some_and(|token|token.is_word("if")){&clean[1..end]}else{&clean[..end]};
+            if let Ok(required_cost)=crate::grammar::values::parse_mana_cost_tokens(payment_tokens)
+                && !required_cost.pips().is_empty() && required_cost.pips().iter().all(|pip|pip.len()==1)
+                && required_cost.pips().iter().all(|pip|matches!(pip[0],crate::mana::ManaSymbol::White|crate::mana::ManaSymbol::Blue|crate::mana::ManaSymbol::Black|crate::mana::ManaSymbol::Red|crate::mana::ManaSymbol::Green|crate::mana::ManaSymbol::Colorless|crate::mana::ManaSymbol::Generic(_))) {
+                let required=required_cost.pips().iter().map(|pip|pip[0]).collect();
+                crate::word_claims::claim_tokens(clean);
+                return Ok(PredicateAst::Triggering(TriggeringPredicateAst::TriggeringNamedActionPaidMana {label:words[was+5..words.len()-1].join(" "),required}));
+            }
+        }
+    }
+
+    {
+        let words=crate::lexer::token_word_refs(tokens);let words=words.strip_prefix(&["if"]).unwrap_or(&words);
+        if let Some(label)=words.strip_prefix(&["the"]).and_then(|words|words.strip_suffix(&["was","failed"]))
+            && !label.is_empty() && label.iter().all(|word|word.chars().all(|ch|ch.is_alphabetic()))
+        {crate::word_claims::claim_tokens(tokens);return Ok(PredicateAst::NamedPaymentOutcome {label:label.join(" "),paid:false,payer:None});}
+        if let Some(failed)=words.iter().position(|word|*word=="failed")
+            && words.get(failed+1)==Some(&"the") && failed+2<words.len()
+        {
+            let payer=match &words[..failed] {
+                ["that","creature's","controller"]|["that","creatures","controller"]=>Some(PlayerAst::ItsController),
+                ["that","player"]=>Some(PlayerAst::That),
+                _=>None,
+            };
+            if let Some(payer)=payer {crate::word_claims::claim_tokens(tokens);return Ok(PredicateAst::NamedPaymentOutcome {label:words[failed+2..].join(" "),paid:false,payer:Some(payer)});}
+        }
+    }
+
+    if let Some(predicate) = spell_mana_spending::read(tokens) { return Ok(predicate); }
     if let Some(condition) = crate::effect_sentences::quality_choice::parse_condition(tokens) { return Ok(condition); }
     if let Some(condition) = crate::custom_status::source_condition(tokens) { return Ok(condition); }
     let clean = crate::util::trim_edge_punctuation_tokens(tokens);
@@ -7637,5 +7704,64 @@ mod chosen_name_predicate_tests {
         }
         let tokens = crate::lexer::lex_line("that card has the chosen type", 0).unwrap();
         assert!(parse_tagged_chosen_name_shape(&tokens).is_none());
+    }
+}
+
+/// A complete typed player/action/window clause; the action label is an operand.
+fn parse_player_named_action_history(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    use ironsmith_core::value_model::PlayerActionWindow;
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    let performed = words.iter().position(|word| *word == "performed")?;
+    if performed == 0 { return None; }
+    let (player, negative) = match &words[..performed] {
+        ["you've"] | ["youve"] | ["you", "ve"] => (PlayerAst::You, false),
+        ["you've", "not"] | ["youve", "not"] | ["you", "ve", "not"] => (PlayerAst::You, true),
+        _ => {
+            let mut subject_end = performed;
+            let explicit_not = words.get(subject_end-1) == Some(&"not");
+            if explicit_not { subject_end -= 1; }
+            let verb = *words.get(subject_end.checked_sub(1)?)?;
+            if !matches!(verb, "have" | "has" | "haven't" | "havent" | "hasn't" | "hasnt") { return None; }
+            let negative = explicit_not || matches!(verb, "haven't" | "havent" | "hasn't" | "hasnt");
+            let player = comparison_player_subject_clause(clause.between_words_trimmed(0, subject_end-1))?;
+            (player, negative)
+        }
+    };
+    let ["the", tail @ ..] = &words[performed+1..] else { return None; };
+    let action = tail.iter().rposition(|word| *word == "action")?;
+    if action == 0 { return None; }
+    let mut suffix = &tail[action+1..];
+    let minimum_amount = if suffix.len() >= 7 && suffix[..4] == ["with", "an", "amount", "of"] && suffix[5..7] == ["or", "more"] {
+        let amount = suffix[4].parse::<u32>().ok()?;
+        suffix = &suffix[7..]; amount
+    } else { 0 };
+    let minimum = if suffix.len() >= 4 && suffix[suffix.len()-4..suffix.len()-2] == ["at", "least"] && suffix.last() == Some(&"times") {
+        let value = suffix[suffix.len()-2].parse::<u32>().ok()?;
+        suffix = &suffix[..suffix.len()-4]; value
+    } else { 1 };
+    let window = match suffix {
+        ["this", "turn"] => PlayerActionWindow::ThisTurn,
+        ["this", "combat"] => PlayerActionWindow::ThisCombat,
+        ["during", "your" | "their", "last", "turn"] => PlayerActionWindow::LastOwnTurn,
+        _ => return None,
+    };
+    let label = tail[..action].join(" ");
+    let predicate = PredicateAst::Player(PlayerPredicateAst::PlayerNamedActionHistory { player, label, window, minimum, minimum_amount });
+    crate::word_claims::claim_tokens(tokens);
+    Some(if negative { PredicateAst::Not(Box::new(predicate)) } else { predicate })
+}
+
+#[cfg(test)]
+mod named_payment_word_ownership_tests {
+    use super::*;
+    #[test]
+    fn named_outcome_consumers_claim_only_their_complete_typed_predicate() {
+        for text in ["the silver trial was failed","that creature's controller failed the silver trial","that player failed the silver trial"] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let (parsed,claims)=crate::word_claims::scoped(||parse_predicate(&tokens));
+            assert!(matches!(parsed.unwrap(),PredicateAst::NamedPaymentOutcome {label,paid:false,..}if label=="silver trial"));
+            assert!(crate::word_claims::unclaimed_words(&tokens,&claims).is_empty(),"{text}: {claims:?}");
+        }
     }
 }

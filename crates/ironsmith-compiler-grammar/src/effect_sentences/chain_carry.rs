@@ -168,6 +168,9 @@ fn parse_choose_land_of_each_basic_land_type_segment(
         Subtype::Mountain,
         Subtype::Forest,
     ];
+    // Every slot contributes to one chosen set. The implicit `it` tag
+    // replaces earlier choices, so it cannot represent this quantifier.
+    let chosen = crate::util::helper_tag_for_tokens(tokens, "chosen");
     Some(
         basic_land_types
             .into_iter()
@@ -179,7 +182,7 @@ fn parse_choose_land_of_each_basic_land_type_segment(
                     count: ChoiceCount::exactly(1),
                     count_value: None,
                     player: PlayerAst::Implicit,
-                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                    tag: chosen.clone(),
                 })
             })
             .collect(),
@@ -494,6 +497,24 @@ pub(crate) fn parse_coordinated_loyalty_action(tokens: &[OwnedLexToken]) -> Resu
 }
 
 pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(program)=super::document_readings::parse_bounded_foreach_program(tokens)? {
+        return Ok(program);
+    }
+    // A merge's explicit order/state-transfer tail is one atomic operation;
+    // its coordinating "and" is not a sibling effect, including under may.
+    if let Some(effect) = super::dispatch_entry::parse_merge_permanents(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if tokens.first().is_some_and(|token|token.is_word("maintain"))
+        && let Some(effect)=super::clause_primitives::parse_until_duration_triggered_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect)=super::dispatch_entry::parse_linked_face_token(tokens)? {return Ok(vec![effect]);}
+    if crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(tokens)
+        .is_some_and(|shape| !shape.participant_is_actor && shape.inner_tokens.first().is_some_and(|token| token.is_word("you")))
+        && let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_player_clause(tokens)?
+    { return Ok(vec![effect]); }
+    if let Some(effects)=super::face_state_actions::parse(tokens)?{return Ok(effects);}
     if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? { return Ok(vec![effect]); }
     if let Some(effects) = parse_coordinated_delayed_followup(tokens)? { return Ok(effects); }
     if let Some(effects) = parse_coordinated_loyalty_action(tokens)? { return Ok(effects); }
@@ -851,6 +872,11 @@ mod chain_entry_readings;
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A merge's explicit order/state-transfer tail is one atomic operation;
+    // its coordinating "and" is not a sibling effect, including under may.
+    if let Some(effect) = super::dispatch_entry::parse_merge_permanents(tokens)? {
+        return Ok(vec![effect]);
+    }
     // A casting permission's mana-spending rider belongs to that permission,
     // including inside a die-result row. Splitting its coordinating "and"
     // would leave a standalone spend-mana instruction with no permission.
@@ -1510,16 +1536,22 @@ pub fn parse_or_action_clause_lexed(
             super::replace_it_target_in_effects(&mut second_effects, &primary_target);
         }
 
+        let decision_label = |tokens: &[OwnedLexToken]| {
+            let text = crate::lexer::render_token_slice(tokens);
+            let text = text.trim().trim_end_matches('.');
+            let mut chars = text.chars();
+            chars.next().map(|first| first.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
+        };
         return Ok(Some(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
                 chooser: crate::target::PlayerFilter::You,
                 modes: vec![
                     crate::cards::builders::ChooseOneModeAst {
-                        description: String::new(),
+                        description: decision_label(first),
                         effects: first_effects,
                     },
                     crate::cards::builders::ChooseOneModeAst {
-                        description: String::new(),
+                        description: decision_label(second),
                         effects: second_effects,
                     },
                 ],
@@ -4722,5 +4754,46 @@ fn bind_singular_sacrifice_after_mass_move_to_source(effects: &mut [EffectAst]) 
                 *target = None;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod nested_merge_chain_regressions {
+    use super::*;
+    #[test]
+    fn player_may_keeps_the_complete_merge_transfer_clause() {
+        for text in [
+            "You may merge this permanent with another creature you control, choosing which is on top and moving all counters and attachments to the merged permanent.",
+            "You may merge that permanent with this permanent, choosing which is on top and moving all counters and attachments to the merged permanent.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let effects = parse_effect_chain_lexed(&tokens).expect("optional merge parses atomically");
+            let debug = format!("{effects:?}");
+            assert!(debug.contains("MergePermanents"), "{debug}");
+            assert!(debug.contains("transfer_counters: true"), "{debug}");
+            assert!(debug.contains("transfer_attachments: true"), "{debug}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod nested_bounded_player_instruction {
+    use super::*;
+    #[test]
+    fn target_player_program_is_one_clause_under_an_ordinary_conditional() {
+        let body="For each target player, do the following: [If this permanent's back face is a Wizard, create a token that's a copy of its back face attached to that player].";
+        let tokens=crate::lexer::lex_line(body,0).unwrap();
+        let parsed=parse_effect_chain_lexed(&tokens).unwrap();
+        assert!(matches!(parsed.as_slice(),[EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTargetPlayers{effects,..})] if matches!(effects.as_slice(),[EffectAst::CreateLinkedFaceToken{..}])));
+        let text=format!("If you have three or more experience counters, {body}");
+        let tokens=crate::lexer::lex_line(&text,0).unwrap();
+        let parsed=crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        assert_eq!(parsed.len(),1,"the complete guarded player loop stays inside the condition");
+        assert!(matches!(parsed.as_slice(), [EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::Conditional { if_true, if_false, .. })]
+            if if_false.is_empty() && matches!(if_true.as_slice(), [EffectAst::ForEach(
+                crate::cards::builders::ForEachEffectAst::ForEachTargetPlayers { effects, .. })]
+                if matches!(effects.as_slice(), [EffectAst::CreateLinkedFaceToken { .. }]))),
+            "the outer guard retains the complete inner player loop and linked-face instruction");
     }
 }

@@ -99,8 +99,18 @@ pub fn derive_tag_key_walk(input: TokenStream) -> TokenStream {
     } else {
         quote!()
     };
+    let execution_body = map_body.to_string().replace("map_tag_keys", "map_execution_nodes")
+        .parse::<proc_macro2::TokenStream>().expect("derived typed execution traversal");
+    let execution_hook = if has_type_flag(&input.attrs, "execution_node") {
+        quote!(if f(&mut *self as &mut dyn ::std::any::Any) { return; })
+    } else { quote!() };
     quote! {
         impl #impl_generics ::ironsmith_core::tag::TagKeyWalk for #name #type_generics #where_clause {
+            fn map_execution_nodes(&mut self, f: &mut dyn FnMut(&mut dyn ::std::any::Any) -> bool) {
+                let _ = &f;
+                #execution_hook
+                #execution_body
+            }
             fn for_each_tag_key(&self, f: &mut dyn FnMut(&::ironsmith_core::tag::TagKey)) {
                 let _ = &f;
                 #visit_body

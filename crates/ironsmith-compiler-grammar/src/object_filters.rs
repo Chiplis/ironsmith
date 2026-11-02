@@ -1,3 +1,7 @@
+pub(crate) mod source_noted_names;
+mod named_action_object_names;
+pub(crate) use named_action_object_names::split_clause as split_named_action_object_name_clause;
+mod related_exile;
 use crate::word_primitives::WordWindows as _;
 use crate::cards::builders::CardTextError;
 #[cfg(test)]
@@ -2094,17 +2098,56 @@ fn parse_status_flag_union(
 
 /// Explicit source-relative mana values survive costs that move the source:
 /// resolution evaluates Source through the ability's retained snapshot.
+fn parse_text_addition_source_filter(words:&[&str],other:bool)->Option<Result<ObjectFilter,CardTextError>>{
+    let marker=["with","text","added","from"];
+    let start=words.windows(marker.len()).position(|part|part==marker)?;
+    if !crate::util::is_source_reference_words(&words[start+marker.len()..]){return None;}
+    let base=&words[..start];
+    let parsed=if matches!(base,["sources"]|["source"]){Ok(ObjectFilter::default())}else{parse_object_filter_words(base,other)};
+    Some(parsed.map(|mut filter|{filter.text_added_from_source=true;crate::word_claims::claim_words(words);filter}))
+}
+
+pub(crate) fn parse_custom_identity_filter(tokens:&[OwnedLexToken],other:bool)->Option<Result<ObjectFilter,CardTextError>> {
+    static FILTER_TRACE:std::sync::atomic::AtomicUsize=std::sync::atomic::AtomicUsize::new(0);
+    if tokens.iter().any(|token|token.is_word("custom")) && FILTER_TRACE.fetch_add(1,std::sync::atomic::Ordering::Relaxed)<40 {
+        eprintln!("IDENTITY_FILTER_TRACE text={:?} tokens={:?}",crate::lexer::render_token_slice(tokens),tokens.iter().map(|token|(&token.kind,token.as_word())).collect::<Vec<_>>());
+    }
+    let (base,name,negative)=crate::custom_identity_filters::filter_clause(tokens)?;
+    eprintln!("IDENTITY_FILTER_TRACE matched name={name:?} negative={negative}");
+    if crate::custom_identity_filters::has_unquoted_union(tokens)
+        && let Some(filter)=parse_branch_scoped_object_filter_union_lexed(tokens,other) {
+        eprintln!("IDENTITY_FILTER_TRACE union markers={:?} branches={:?}",filter.ability_markers,filter.any_of.iter().map(|branch|(&branch.card_types,&branch.subtypes,&branch.ability_markers)).collect::<Vec<_>>());
+        return Some(Ok(filter));
+    }
+    Some(parse_object_filter(&base,other).map(|filter|
+        if negative {filter.without_ability_marker(name)} else {filter.with_ability_marker(name)}))
+}
+
 fn parse_source_mana_value_filter(words: &[&str], other: bool) -> Option<Result<ObjectFilter, CardTextError>> {
-    for marker in [&["with", "the", "same", "mana", "value", "as"][..], &["with", "same", "mana", "value", "as"][..]] {
+    use crate::filter::Comparison;
+    let markers: &[(&[&str], u8)] = &[
+        (&["with", "the", "same", "mana", "value", "as"], 0),
+        (&["with", "same", "mana", "value", "as"], 0),
+        (&["with", "mana", "value", "less", "than"], 1),
+        (&["with", "mana", "value", "greater", "than"], 2),
+    ];
+    for &(marker, kind) in markers {
         if let Some(start) = words.windows(marker.len()).position(|part| part == marker)
             && start > 0
-            && crate::util::is_source_reference_words(&words[start + marker.len()..])
         {
+            let rhs = &words[start + marker.len()..];
+            let source = rhs.strip_suffix(&["mana", "value"]).unwrap_or(rhs);
+            if !crate::util::is_source_reference_words(source) {
+                continue;
+            }
             return Some(parse_object_filter_words(&words[..start], other).map(|mut filter| {
                 crate::word_claims::claim_words(&words[start..]);
-                filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
-                    crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
-                )));
+                let value = Box::new(crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)));
+                filter.mana_value = Some(match kind {
+                    1 => Comparison::LessThanExpr(value),
+                    2 => Comparison::GreaterThanExpr(value),
+                    _ => Comparison::EqualExpr(value),
+                });
                 filter
             }));
         }
@@ -2178,6 +2221,20 @@ fn parse_object_filter_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base,owner))=source_noted_names::split_clause(tokens){
+        let mut filter=if base.is_empty(){ObjectFilter::default()}else{parse_object_filter(&base,other)?};
+        filter.name_noted_for=Some(Box::new(owner));return Ok(filter);
+    }
+    if let Some((base,history))=split_named_action_object_name_clause(tokens) {
+        let mut filter=parse_object_filter(&base,other)?;
+        filter.shares_name_with_named_action_objects=Some(history);
+        return Ok(filter);
+    }
+    if let Some(result)=crate::util::payment_receipt_references::negative_tap_filter(tokens,other){return result;}
+    if let Some(filter)=parse_named_action_role_filter(tokens){return Ok(filter);}
+    if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
+    if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
+    if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }
     if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
         let mut filter = parse_object_filter(&base, other)?;
         if negative {
@@ -2185,6 +2242,7 @@ fn parse_object_filter_unaudited(
         } else { filter.custom_statuses.push(name); }
         return Ok(filter);
     }
+    if let Some(result)=parse_text_addition_source_filter(&crate::lexer::token_word_refs(tokens),other){return result;}
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(base) = strip_resolution_time_suffix(tokens) {
         let filter = parse_object_filter(base, other)?;
@@ -2651,6 +2709,23 @@ fn parse_object_filter_words_unaudited(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if word_refs.contains(&"linked") {
+        let tokens = crate::lexer::synthetic_word_tokens(word_refs.iter().copied());
+        if let Some(filter) = related_exile::read(&tokens, other)? { return Ok(filter); }
+    }
+    if let Some(result)=parse_text_addition_source_filter(word_refs,other){return result;}
+    for (phrase,same) in [(&["in","group","owned","by"][..],false),(&["in","the","same","group","as"][..],true)] {
+        if let Some(split)=word_refs.windows(phrase.len()).rposition(|words|words==phrase) {
+            if split==0||split+phrase.len()==word_refs.len(){continue}
+            let mut filter=parse_object_filter_words(&word_refs[..split],other)?;
+            let owner=parse_object_filter_words(&word_refs[split+phrase.len()..],false)?;
+            let reference=if owner.source{crate::target::ChooseSpec::Source}else{crate::target::ChooseSpec::Object(owner)};
+            crate::word_claims::claim_words(&word_refs[split..split+phrase.len()]);
+            if same{filter.same_group_as=Some(Box::new(reference))}else{filter.group_member_of=Some(Box::new(reference))}
+            return Ok(filter)
+        }
+    }
+
     if let Some(result) = parse_source_mana_value_filter(word_refs, other) { return result; }
     if let Some(result) = parse_exiled_with_cards_named_filter_words(word_refs, other) {
         return result;
@@ -2775,6 +2850,37 @@ fn parse_object_filter_lexed_unaudited(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some((base,owner))=source_noted_names::split_clause(tokens){
+        let mut filter=if base.is_empty(){ObjectFilter::default()}else{parse_object_filter_lexed(&base,other)?};
+        filter.name_noted_for=Some(Box::new(owner));return Ok(filter);
+    }
+    if let Some((base,history))=split_named_action_object_name_clause(tokens) {
+        let mut filter=parse_object_filter_lexed(&base,other)?;
+        filter.shares_name_with_named_action_objects=Some(history);
+        return Ok(filter);
+    }
+    if let Some(filter)=parse_named_action_role_filter(tokens){return Ok(filter);}
+    if let Some(filter)=related_exile::read(tokens,other)? {return Ok(filter);}
+    if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
+    if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }
+    if let Some(group)=tokens.windows(2).rposition(|pair|pair[0].is_word("in")&&pair[1].is_word("group")) {
+        let tail=&tokens[group+2..];
+        if let Some((_,owner))=crate::grammar::primitives::parse_prefix(tail,crate::grammar::primitives::phrase(&["owned","by"])) {
+            let owner=crate::util::parse_target_phrase(owner)?;
+            let mut filter=parse_object_filter_lexed(&tokens[..group],other)?;
+            filter.group_member_of=Some(Box::new(crate::model::ast::choose_spec_for_target(&owner)));
+            crate::word_claims::claim_tokens(&tokens[group..group+4]);
+            return Ok(filter);
+        }
+    }
+    if let Some(group)=tokens.windows(5).rposition(|tail|tail[0].is_word("in")&&tail[1].is_word("the")&&tail[2].is_word("same")&&tail[3].is_word("group")&&tail[4].is_word("as")) {
+        let owner=crate::util::parse_target_phrase(&tokens[group+5..])?;
+        let mut filter=parse_object_filter_lexed(&tokens[..group],other)?;
+        filter.same_group_as=Some(Box::new(crate::model::ast::choose_spec_for_target(&owner)));
+        crate::word_claims::claim_tokens(&tokens[group..group+5]);
+        return Ok(filter);
+    }
+
     if let Some((base, name, negative)) = crate::custom_status::filter_clause(tokens) {
         let mut filter = parse_object_filter_lexed(&base, other)?;
         if negative {
@@ -2782,6 +2888,7 @@ fn parse_object_filter_lexed_unaudited(
         } else { filter.custom_statuses.push(name); }
         return Ok(filter);
     }
+    if let Some(result)=parse_text_addition_source_filter(&crate::lexer::token_word_refs(tokens),other){return result;}
     if let Some(result) = parse_source_mana_value_filter(&crate::lexer::token_word_refs(tokens), other) { return result; }
     if let Some(base) = strip_resolution_time_suffix(tokens) {
         let filter = parse_object_filter_lexed(base, other)?;
@@ -2890,6 +2997,19 @@ fn parse_object_filter_lexed_inner(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let link_words = crate::lexer::parser_token_word_refs(tokens);
+    if let Some(index)=link_words.windows(2).position(|words|words==["linked","by"]) {
+        if index>0 && link_words.ends_with(&["to","this","permanent"]) && index+2<link_words.len()-3 {
+            let relation=&link_words[index+2..link_words.len()-3];
+            if relation.iter().all(|word|!word.is_empty() && word.chars().all(|ch|ch.is_ascii_alphabetic()||matches!(ch,'-'|'\''))) {
+                let end=crate::lexer::LexedClause::new(tokens).token_index_after_words(index).unwrap_or(index);
+                let mut filter=parse_object_filter_lexed(&tokens[..end],other)?;
+                filter.linked_from_source=Some(relation.join(" "));
+                crate::word_claims::claim_words(&link_words[index..]);
+                return Ok(filter);
+            }
+        }
+    }
     let input = lexed_filter_shape_readings::FilterPhrase {
         tokens,
         other,
@@ -2995,6 +3115,7 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.chosen_color
         || filter.colors_chosen_while_drafting_named.is_some()
         || filter.name_noted_while_drafting_named.is_some()
+        || filter.name_noted_for.is_some()
         || filter.creature_types_noted_while_drafting_named.is_some()
         || filter.chosen_creature_type
         || filter.chosen_card_type
@@ -3020,6 +3141,7 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.owner.is_some()
         || filter.zone.is_some()
         || filter.name.is_some()
+        || filter.shares_name_with_named_action_objects.is_some()
         || filter.name_originally_printed_in_set.is_some()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
@@ -3035,6 +3157,8 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
 }
 
 pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
+    if base.shares_name_with_named_action_objects.is_none(){base.shares_name_with_named_action_objects=extra.shares_name_with_named_action_objects.clone();}
+
     for card_type in extra.card_types {
         push_unique(&mut base.card_types, card_type);
     }
@@ -3087,6 +3211,7 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     if base.colors_chosen_while_drafting_named.is_none() {
         base.colors_chosen_while_drafting_named = extra.colors_chosen_while_drafting_named;
     }
+    if base.name_noted_for.is_none(){base.name_noted_for=extra.name_noted_for;base.noted_name_pair=extra.noted_name_pair;}
     if base.name_noted_while_drafting_named.is_none() {
         base.name_noted_while_drafting_named = extra.name_noted_while_drafting_named;
     }
@@ -3332,6 +3457,21 @@ mod tests {
             .expect("hyphenated compound subtype should remain typed");
         assert!(filter.attacking, "{filter:#?}");
         assert_eq!(filter.subtypes, [Subtype::AssemblyWorker], "{filter:#?}");
+    }
+
+    #[test]
+    fn leading_tap_state_stays_in_its_independent_zone_domain() {
+        for (word, tapped) in [("untapped", false), ("tapped", true)] {
+            let tokens = tokenize_line(&format!("{word} creatures you control or cards from your graveyard"), 0);
+            let filter = parse_object_filter(&tokens, false).unwrap();
+            assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+            let battlefield = filter.any_of.iter().find(|branch| branch.zone == Some(Zone::Battlefield)).unwrap();
+            let graveyard = filter.any_of.iter().find(|branch| branch.zone == Some(Zone::Graveyard)).unwrap();
+            assert_eq!(battlefield.tapped, tapped);
+            assert_eq!(battlefield.untapped, !tapped);
+            assert!(!graveyard.tapped && !graveyard.untapped, "{filter:#?}");
+            assert_eq!(graveyard.owner, Some(PlayerFilter::You));
+        }
     }
 
     #[test]
@@ -3787,6 +3927,22 @@ mod tests {
         assert_eq!(filter.any_of[0].card_types, vec![CardType::Creature]);
         assert_eq!(filter.any_of[1].card_types, vec![CardType::Creature]);
         assert!(filter.any_of[1].other);
+    }
+
+    #[test]
+    fn card_filters_keep_only_authored_zone_restrictions() {
+        for (phrase, zone) in [
+            ("a creature card", None),
+            ("an artifact card", None),
+            ("a creature", Some(Zone::Battlefield)),
+            ("an artifact", Some(Zone::Battlefield)),
+            ("a creature card in your graveyard", Some(Zone::Graveyard)),
+            ("an artifact card in your hand", Some(Zone::Hand)),
+        ] {
+            let filter = parse_object_filter_lexed(&tokenize_line(phrase, 0), false)
+                .expect("card or permanent filter");
+            assert_eq!(filter.zone, zone, "{phrase}: {filter:?}");
+        }
     }
 
     #[test]
@@ -4918,5 +5074,149 @@ mod indefinite_enchanted_filter_tests {
         let tokens = crate::lexer::lex_line("enchanted creature", 0).unwrap();
         let filter = parse_object_filter_lexed(&tokens, false).unwrap();
         assert!(filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == "enchanted"));
+    }
+}
+
+#[cfg(test)]
+mod source_mana_value_comparison_tests {
+    use super::*;
+    #[test]
+    fn strict_source_relative_mana_value_filters_preserve_card_type_and_direction() {
+        for (direction, lesser) in [("less",true),("greater",false)] {
+            let tokens=crate::lexer::lex_line(&format!("creature card with mana value {direction} than this creature"),0).unwrap();
+            let filter=parse_object_filter_lexed(&tokens,false).unwrap();
+            assert_eq!(filter.card_types,vec![crate::types::CardType::Creature]);
+            let value=match filter.mana_value.as_ref().unwrap() {
+                crate::filter::Comparison::LessThanExpr(value) if lesser => value,
+                crate::filter::Comparison::GreaterThanExpr(value) if !lesser => value,
+                other => panic!("incorrect strict comparator {other:?}"),
+            };
+            assert!(matches!(value.unhinted(),crate::effect::Value::ManaValueOf(source) if matches!(source.unhinted(),crate::target::ChooseSpec::Source)));
+        }
+    }
+    #[test]
+    fn arbitrary_comparison_rhs_is_not_silently_bound_to_source() {
+        assert!(parse_source_mana_value_filter(&["creature","card","with","mana","value","less","than","target","artifact"],false).is_none());
+    }
+}
+
+#[cfg(test)]
+mod explicit_custom_identity_filter_tests {
+    use super::*;
+    #[test]
+    fn recipient_keyword_membership_is_separate_from_granting_the_program() {
+        for (relation,negative) in [("with",false),("without",true)] {
+            let tokens=crate::lexer::lex_line(&format!("spell {relation} custom keyword \"moon compose\""),0).unwrap();
+            let filter=parse_object_filter_lexed(&tokens,false).unwrap();
+            assert_eq!(filter.stack_kind,Some(crate::filter::StackObjectKind::Spell));
+            if negative {assert_eq!(filter.excluded_ability_markers,["moon compose"]);assert!(filter.ability_markers.is_empty());}
+            else {assert_eq!(filter.ability_markers,["moon compose"]);assert!(filter.excluded_ability_markers.is_empty());}
+        }
+    }
+}
+
+pub(crate) fn parse_entry_reference_filter(tokens: &[OwnedLexToken], other: bool) -> Option<Result<ObjectFilter, CardTextError>> {
+    let original=tokens;
+    let (tokens,label)=crate::util::split_entry_exile_designation(tokens)?;
+    let reference_tag=crate::util::entry_exiled_tag(label.as_deref(),false);
+    let entry_view = crate::lexer::TokenWordView::new(tokens);
+    let entry_words = entry_view.word_refs();
+    if crate::util::is_entry_exiled_reference_words(&entry_words) {
+        crate::word_claims::claim_tokens(tokens);
+        crate::word_claims::claim_tokens(&original[tokens.len()..]);
+        return Some(Ok(crate::util::entry_exiled_filter_for_tag(reference_tag)));
+    }
+    for relation in [
+        &["that", "share", "a", "type", "with"][..],
+        &["that", "share", "a", "card", "type", "with"],
+        &["that", "shares", "a", "card", "type", "with"],
+    ] {
+        if let Some(index) = entry_words.windows(relation.len()).position(|part| part == relation)
+            && index > 0
+            && crate::util::is_entry_exiled_reference_words(&entry_words[index+relation.len()..])
+        {
+            let boundary = entry_view.token_start_indices()[index];
+            let mut filter = match parse_object_filter_lexed(&tokens[..boundary], other) { Ok(filter) => filter, Err(error) => return Some(Err(error)) };
+            crate::word_claims::claim_tokens(&tokens[boundary..]);
+            filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                tag: reference_tag.clone(),
+                relation: TaggedOpbjectRelation::SharesCardType,
+            });
+            crate::word_claims::claim_tokens(&original[tokens.len()..]);
+            return Some(Ok(filter));
+        }
+    }
+    if let Some(index) = entry_words.windows(2).position(|part| part == ["exiled", "as"])
+        && index > 0 && entry_words.last() == Some(&"entered")
+        && crate::util::is_source_reference_words(&entry_words[index+2..entry_words.len()-1])
+        && matches!(entry_words.get(index-1),Some(&"card" | &"cards"))
+    {
+        let boundary=entry_view.token_start_indices()[index];
+        let mut filter=match parse_object_filter_lexed(&tokens[..boundary],other) {
+            Ok(filter)=>filter,Err(error)=>return Some(Err(error)),
+        };
+        crate::word_claims::claim_tokens(&tokens[boundary..]);
+        filter.zone=Some(crate::zone::Zone::Exile);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag:reference_tag.clone(),relation:TaggedOpbjectRelation::SameObjectId,
+        });
+        crate::word_claims::claim_tokens(&original[tokens.len()..]);
+        return Some(Ok(filter));
+    }
+    None
+}
+
+#[cfg(test)]
+mod entry_reference_filter_tests {
+    use super::*;
+    #[test]
+    fn exact_entry_noun_and_type_comparison_are_independent_operands() {
+        let tokens=crate::lexer::lex_line("the card exiled as this creature entered",0).unwrap();
+        for filter in [parse_object_filter(&tokens,false).unwrap(),parse_object_filter_lexed(&tokens,false).unwrap()] {
+            assert_eq!(filter.zone,Some(crate::zone::Zone::Exile));
+            assert_eq!(filter.tagged_constraints[0].tag.as_str(),crate::util::ENTRY_EXILED_REFERENCE_TAG);
+            assert_eq!(filter.tagged_constraints[0].relation,TaggedOpbjectRelation::SameObjectId);
+        }
+        let tokens=crate::lexer::lex_line("spells you cast that share a type with the card exiled as this permanent entered",0).unwrap();
+        let filter=parse_object_filter_lexed(&tokens,false).unwrap();
+        assert_ne!(filter.zone,Some(crate::zone::Zone::Exile));
+        assert_eq!(filter.tagged_constraints[0].relation,TaggedOpbjectRelation::SharesCardType);
+        for text in ["the card exiled as another creature entered","the card exiled as this creature attacks","a creature card exiled as this creature entered"] {
+            assert!(!crate::util::is_entry_exiled_reference_words(&crate::lexer::token_word_refs(&crate::lexer::lex_line(text,0).unwrap())));
+        }
+    }
+}
+
+/// Event role nouns are bounded references also in filter-only positions
+/// (pump subjects, counter recipients and prohibition subjects).
+pub(crate) fn parse_named_action_role_filter(tokens:&[OwnedLexToken])->Option<ObjectFilter> {
+    let words=crate::lexer::parser_token_word_refs(tokens);
+    let tag=match words.as_slice() {
+        ["the","performer","of","this","action"]|["the","action","performer"]=>"__named_action_source",
+        ["the","participant"|"participants","in","this","action"]=>"__named_action_objects",
+        _=>return None,
+    };
+    crate::word_claims::claim_tokens(tokens);
+    Some(ObjectFilter::default().match_tagged(tag,TaggedOpbjectRelation::SameObjectId))
+}
+#[cfg(test)]
+mod named_action_role_filter_tests {
+    use super::*;
+    #[test]
+    fn event_role_nouns_keep_exact_identity_in_both_filter_front_doors() {
+        for (text,tag) in [("the performer of this action","__named_action_source"),("the participants in this action","__named_action_objects")] {
+            let tokens=crate::util::tokenize_line(text,0);
+            for filter in [parse_object_filter(&tokens,false).unwrap(),parse_object_filter_lexed(&tokens,false).unwrap()] {
+                assert!(filter.zone.is_none());assert_eq!(filter.tagged_constraints.len(),1);
+                assert_eq!(filter.tagged_constraints[0].tag.as_str(),tag);
+                assert_eq!(filter.tagged_constraints[0].relation,TaggedOpbjectRelation::SameObjectId);
+            }
+        }
+    }
+    #[test]
+    fn first_participant_reference_is_claimed_in_a_complete_named_action_program() {
+        let text="Type: Creature — Human\nPower/Toughness: 1/1\nWhenever another creature you control attacks, you may tap this creature. If this creature was tapped this way, have the first creature perform the cadence action with objects tapped this way.";
+        let (result,loss)=crate::parse_loss::capture(||crate::word_claims::with_enforcement_options(true,true,||crate::compile_card_text(ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::CardId::new(),"Role witness"),text,false)));
+        assert!(result.is_ok(),"{result:?}");assert!(!loss.is_lossy(),"{}",loss.reasons_text());
     }
 }

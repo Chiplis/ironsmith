@@ -198,7 +198,14 @@ fn build_token_copy_object(
         token.card_types = card_types.clone().into();
     }
     if let Some(subtypes) = &effect.set_subtypes {
-        token.subtypes = subtypes.clone().into();
+        if effect.preserve_noncreature_subtypes {
+            token.subtypes.retain(|subtype| !subtype.is_creature_type());
+            for subtype in subtypes {
+                if !token.subtypes.contains(subtype) { token.subtypes.push(*subtype); }
+            }
+        } else {
+            token.subtypes = subtypes.clone().into();
+        }
     }
     for card_type in &effect.added_card_types {
         if !token.card_types.contains(card_type) {
@@ -224,15 +231,36 @@ fn build_token_copy_object(
     if let Some(name) = &effect.set_name {
         token.name = name.clone().into();
     }
-    if effect.loses_soulbond {
-        // "except it ... loses soulbond": the copy is created without the
-        // soulbond pairing ability.
-        token
-            .abilities_mut()
-            .retain(|ability| !ability_is_soulbond_pairing(ability));
+    if effect.loses_soulbond || !effect.removed_ability_designations.is_empty() {
+        // Compute one mask from original slots. Sequential removals would
+        // reindex abilities before their parallel labels were filtered.
+        let keep=token.abilities.iter().map(|ability|
+            !(effect.loses_soulbond && ability_is_soulbond_pairing(ability))
+                && !effect.removed_ability_designations.iter().any(|name|ability.has_designation(name))
+        ).collect::<Vec<_>>();
+        let mut index=0usize;
+        token.abilities_mut().retain(|_|{let retained=keep[index];index+=1;retained});
+        let mut index=0usize;
+        token.ability_labels.retain(|_|{let retained=keep.get(index).copied().unwrap_or(true);index+=1;retained});
     }
+    // Resolve declared creation parameters after mana-cost exceptions. Fixed
+    // numbers survive subsequent copies without sampling the new object.
+    let creation_mana_value = token.mana_cost.as_ref().map_or(0, |cost| cost.mana_value());
     for static_ability in static_abilities_to_grant {
-        push_copy_exception_ability(&mut token, Ability::static_ability(static_ability.clone()), None);
+        let bound = if let Some(model) = static_ability.canonical_model() {
+            let bound = model.try_map(
+                |trigger| Ok::<_, std::convert::Infallible>(trigger),
+                |effect| Ok::<_, std::convert::Infallible>(effect),
+                |cost| Ok::<_, std::convert::Infallible>(cost),
+                |condition| Ok::<_, std::convert::Infallible>(condition.bind_copy_creation_parameters(creation_mana_value)),
+            ).unwrap_or_else(|never| match never {});
+            StaticAbility::from_model(bound)
+        } else {
+            // Native abilities without a model contain no supplied creation
+            // recipe. Keep their native executable definition intact.
+            static_ability.clone()
+        };
+        push_copy_exception_ability(&mut token, Ability::static_ability(bound), None);
     }
     // "except it has haste and 'At the beginning of the end step, sacrifice
     // this token.'" (Kindle the Inner Flame): the copy exception grants a
@@ -293,6 +321,7 @@ fn grants_end_step_sacrifice_ability(effect: &CreateTokenCopyEffect) -> bool {
 /// creation and completion without charging a sibling as a nested instruction.
 struct TokenCopyProposal {
     effect: CreateTokenCopyEffect,
+    token_grants: Vec<super::NamedActionTokenGrant>,
     token_preview: Option<Object>,
     additional_copies: Vec<crate::events::tokens::CopyTokenGroup>,
     controller: PlayerId,
@@ -304,6 +333,7 @@ struct TokenCopyProposal {
     original_attack_targets: Vec<Option<AttackTarget>>,
     additional_attack_targets: Vec<Option<AttackTarget>>,
     prepared: Option<crate::events::processing::PreparedTokenCreation>,
+    entry_attachment_plan: Option<super::lifecycle::TokenEntryAttachmentPlan>,
     charge_instruction: bool,
     instruction: Option<super::resources::TokenInstructionPermit>,
 }
@@ -366,6 +396,7 @@ fn prepare_single_token_copy_proposal(
     {
         return Ok(TokenCopyProposal {
             effect: effect.clone(),
+            token_grants: Vec::new(),
             token_preview: None,
             additional_copies: Vec::new(),
             controller: controller_id,
@@ -377,6 +408,7 @@ fn prepare_single_token_copy_proposal(
             original_attack_targets: Vec::new(),
             additional_attack_targets: Vec::new(),
             prepared: None,
+            entry_attachment_plan: None,
             charge_instruction: false,
             instruction: None,
         });
@@ -531,7 +563,7 @@ fn prepare_single_token_copy_proposal(
             effect.set_base_power_toughness
         };
 
-    let token_preview = build_token_copy_object(
+    let mut token_preview = build_token_copy_object(
         effect,
         ObjectId::from_raw(0),
         controller_id,
@@ -543,6 +575,11 @@ fn prepare_single_token_copy_proposal(
         resolved_base_power_toughness,
         &static_abilities_to_grant,
     )?;
+    let token_grants = match &ctx.named_action_token_scope {
+        Some((label, player)) if base_count > 0 => super::capture_named_action_token_grants(game, label, *player)?,
+        _ => Vec::new(),
+    };
+    super::apply_named_action_grants_to_object(&mut token_preview, &token_grants);
     // CR 111.5: an effect that would create a token copy of an instant or
     // sorcery card creates no token.
     let base_count = if token_preview.card_types.iter().any(|card_type| {
@@ -554,6 +591,7 @@ fn prepare_single_token_copy_proposal(
     };
     Ok(TokenCopyProposal {
         effect: effect.clone(),
+        token_grants,
         token_preview: Some(token_preview),
         additional_copies: Vec::new(),
         controller: controller_id,
@@ -565,6 +603,7 @@ fn prepare_single_token_copy_proposal(
         original_attack_targets: Vec::new(),
         additional_attack_targets: Vec::new(),
         prepared: None,
+        entry_attachment_plan: None,
         charge_instruction: false,
         instruction: None,
     })
@@ -684,6 +723,28 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
                 }
             }
         }
+        if (ctx.pending_entry_attachment.is_some() || self.effect.ability_loss_until.is_some())
+            && let crate::events::processing::PreparedTokenCreation::Proceed { event, provenance, .. } = &prepared
+        {
+            let mut counters = Vec::new();
+            for counter in &self.effect.entry_counters {
+                if counter.condition.is_some() || counter.object_filter.is_some() {
+                    return Err(ExecutionError::InternalError("conditional token entry counters are not a token-creation instruction".into()));
+                }
+                let amount = resolve_value(game, &counter.amount, ctx)?.max(0) as u32;
+                if amount > 0 { counters.push((counter.counter_type, amount)); }
+            }
+            let previous_provenance = std::mem::replace(&mut ctx.provenance, *provenance);
+            let entry_modifications=self.effect.ability_loss_until.as_ref().map(|duration|
+                (crate::continuous::Modification::RemoveAllAbilities,duration.clone())).into_iter().collect::<Vec<_>>();
+            let planned = super::lifecycle::prepare_token_entry_attachments(
+                game, ctx, event, &counters, self.effect.enters_tapped, &self.token_grants, &entry_modifications,
+                !self.effect.suppress_aura_attachment_choice,
+            );
+            ctx.provenance = previous_provenance;
+            self.entry_attachment_plan = planned?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        }
         self.prepared = Some(prepared);
         Ok(())
     }
@@ -799,6 +860,10 @@ fn commit_token_copy_original(
         .or(proposal.token_preview.take())
         .ok_or_else(|| ExecutionError::InternalError("copy original lost its template".into()))?;
     let count = replacement.count as usize;
+    let mut entry_attachment_plan = proposal.entry_attachment_plan.take();
+    if (ctx.pending_entry_attachment.is_some() || effect.ability_loss_until.is_some()) && entry_attachment_plan.is_none() {
+        return Err(ExecutionError::IncompleteEvidence("authored token-copy attachment lost its prepared entry owner".into()));
+    }
     // CR 122.6: counters a token copy "enters with" are part of its entry
     // event ("The token enters with half that many +1/+1 counters on it").
     let mut initial_counters = Vec::with_capacity(effect.entry_counters.len());
@@ -827,25 +892,37 @@ fn commit_token_copy_original(
     let mut created_ids = super::resources::buffer(count)?;
     let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
+    let mut attachment_receipts = Vec::new();
     let mut lifecycle_children = Vec::new();
     let mut entry_outputs = Vec::new();
 
     for index in 0..count {
-        let id = game.new_object_id();
-        let mut token = Object::token_copy_of(&token_preview, id, controller_id);
-        token.zone = Zone::Command;
-        token.token_creation_method = effect.creation_method;
-        let token_is_creature = token.is_creature();
-        game.commit_token_resource_slot()?;
-        game.add_object(token);
-        let entry_result = game.move_created_token_with_entry_instructions(
-            id,
-            ctx.cause.clone(),
-            &mut ctx.decision_maker,
-            effect.enters_tapped,
-            !effect.suppress_aura_attachment_choice,
-            initial_counters.clone(),
-        )?;
+        let (id, token_is_creature, entry_result) = if let Some(plan) = &mut entry_attachment_plan {
+            let prepared = plan.take(crate::events::tokens::TokenGroupKey::Original, index)?;
+            let id = prepared.id; let is_creature = prepared.is_creature;
+            let result = prepared.commit(game, ctx)?;
+            (id, is_creature, result)
+        } else {
+            let id = game.new_object_id();
+            let mut token = Object::token_copy_of(&token_preview, id, controller_id);
+            token.zone = Zone::Command;
+            token.token_creation_method = effect.creation_method;
+            let token_is_creature = token.is_creature();
+            game.commit_token_resource_slot()?;
+            game.add_object(token);
+            let attachment = None;
+            let entry_result = game.move_created_token_with_entry_instructions(
+                id,
+                ctx.cause.clone(),
+                &mut ctx.decision_maker,
+                effect.enters_tapped,
+                !effect.suppress_aura_attachment_choice,
+                initial_counters.clone(),
+                attachment,
+                ctx.pending_entry_attachment.is_some(),
+            )?;
+            (id, token_is_creature, entry_result)
+        };
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
                 crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -854,6 +931,8 @@ fn commit_token_copy_original(
         let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(
             game,
             id,
+            ctx.provenance,
+            &mut attachment_receipts,
             entry_result,
             &mut entry_outputs,
             &mut entry_receipts,
@@ -912,6 +991,7 @@ fn commit_token_copy_original(
         controller_id,
         &mut actual_creation,
         &super::lifecycle::AdditionalTokenInstructions {
+            entry_attachment_plan: entry_attachment_plan.clone(),
             enters_tapped: effect.enters_tapped,
             suppress_aura_attachment_choice: effect.suppress_aura_attachment_choice,
             entry: entry_options,
@@ -919,10 +999,12 @@ fn commit_token_copy_original(
                 || proposal.configured_attack_player.is_some())
             .then_some(proposal.additional_attack_targets),
             blocking_attacker,
+            operation_grants: proposal.token_grants.clone(),
             ..Default::default()
         },
         &mut events,
         &mut entry_receipts,
+        &mut attachment_receipts,
         &mut lifecycle_children,
         &mut entry_outputs,
     )?;
@@ -963,12 +1045,13 @@ fn commit_token_copy_original(
     } else {
         Vec::new()
     };
-    let mut outcome = super::lifecycle::compose_token_original(
-        EffectOutcome::with_objects(created_ids.clone())
-            .with_result_objects(created_ids)
-            .with_events(events),
-        lifecycle_children,
-    );
+    super::capture_named_action_created_objects(game, ctx, &created_ids)?;
+    let mut original = EffectOutcome::with_objects(created_ids.clone())
+        .with_result_objects(created_ids).with_events(events);
+    if ctx.pending_entry_attachment.is_some() {
+        original.execution_facts.push(crate::effect::ExecutionFact::EntryAttachments(attachment_receipts));
+    }
+    let mut outcome = super::lifecycle::compose_token_original(original, lifecycle_children);
     outcome.retain_published_references(entry_outputs);
     Ok(crate::effects::SimultaneousEffectCommit {
         outcome,
@@ -2144,4 +2227,82 @@ mod simultaneous_copy_resource_contract {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod combined_designation_copy_removal_tests {
+    use super::*;
+    use crate::{Effect,PlayerFilter};
+    #[test]
+    fn combined_pairing_and_designation_removal_uses_original_slots_and_exact_identity() {
+        use crate::card::PowerToughness;
+        use crate::cards::CardDefinitionBuilder;
+        let player=PlayerId::from_index(0);
+        let definition=CardDefinitionBuilder::new(crate::ids::CardId::new(),"Explicitly designated source")
+            .card_types(vec![crate::types::CardType::Creature]).power_toughness(PowerToughness::fixed(4,4))
+            .with_ability(Ability::triggered(crate::triggers::Trigger::this_enters_battlefield(),vec![Effect::new(crate::effects::SoulbondPairEffect::new())]))
+            .with_ability(Ability::static_ability(StaticAbility::flying()).with_designation("steady craft"))
+            .with_ability(Ability::static_ability(StaticAbility::haste()).with_designation("steady crafting"))
+            .with_ability(Ability::static_ability(StaticAbility::trample()).with_designation("craft"))
+            .build();
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);let host=game.create_object_from_definition(&definition,player,Zone::Battlefield);
+        game.object_mut(host).unwrap().ability_labels=vec!["pairing".into(),"excluded".into(),"near name".into(),"short name".into()].into();
+        let mut effect=CreateTokenCopyEffect::new(ChooseSpec::SpecificObject(host),1,PlayerFilter::You).loses_soulbond(true);
+        effect.removed_ability_designations=vec!["STEADY CRAFT".into()];
+        let copy=build_token_copy_object(&effect,ObjectId::from_raw(900000),player,game.object(host),None,host,4,4,None,&[]).unwrap();
+        assert_eq!(copy.abilities.len(),2);assert_eq!(copy.ability_labels.as_slice(),["near name","short name"]);
+        assert!(copy.abilities.iter().any(|ability|ability.has_designation("steady crafting")));assert!(copy.abilities.iter().any(|ability|ability.has_designation("craft")));assert!(!copy.abilities.iter().any(|ability|ability.has_designation("steady craft")));
+    }
+}
+
+#[cfg(test)]
+mod retained_entry_proposal_owner_tests {
+    use super::*;
+    use crate::effects::SimultaneousEffectProposal;
+    use crate::target::PlayerFilter;
+    use crate::effects::tokens::lifecycle::retained_token_entry_attachment_tests::{source_and_creation, bind_hosts, HostChoices};
+    #[test]
+    fn proposal_prepares_every_exact_entry_before_any_original_and_commit_does_not_prompt() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0); let bob = crate::ids::PlayerId::from_index(1);
+        let (source, creation) = source_and_creation(&mut game, alice);
+        let (root, meter) = game.begin_token_resource_scope();
+        let guard = super::super::resources::TokenInstructionGuard::enter(meter.clone()).unwrap();
+        let mut decisions = HostChoices { calls: 0, pending: false, suspend: false };
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions); bind_hosts(&mut ctx, alice, bob);
+        let mut effect = CreateTokenCopyEffect::new(ChooseSpec::Source, 2, PlayerFilter::You);
+        effect.suppress_aura_attachment_choice = true;
+        let mut proposal = prepare_token_copy_proposal(&effect, &game, &mut ctx).unwrap();
+        proposal.prepare_original(&mut game, &mut ctx).unwrap();
+        assert!(proposal.entry_attachment_plan.is_some());
+        assert_eq!(game.battlefield, vec![source], "entry preparation has not committed any original token");
+        let receipt = Box::new(proposal).commit_original_with_outputs(&mut game, &mut ctx).unwrap();
+        let completed = crate::effects::composition::complete_standalone_original_with_outputs(&mut game, &mut ctx, receipt).unwrap();
+        let entries = completed.outcome.entry_attachments().expect("genuine instruction entry facts");
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| entry.choice.performed && entry.choice.target == Some(crate::object::AttachmentTarget::Player(bob))));
+        assert_eq!(game.battlefield.len(), 3);
+        drop(ctx); assert_eq!(decisions.calls, 2, "original commit consumes host receipts, it never asks again");
+        drop(guard); game.end_token_resource_scope(root, &meter);
+    }
+    #[test]
+    fn timed_copy_ability_loss_preserves_the_copiable_text_and_expires() {
+        use crate::card::PowerToughness;
+        use crate::cards::builders::CardDefinitionBuilder;
+        use crate::ids::CardId;
+        let mut game=crate::tests::test_helpers::setup_two_player_game();let player=PlayerId::from_index(0);
+        let card=CardDefinitionBuilder::new(CardId::new(),"Independent flying donor")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2,2))
+            .with_ability(Ability::static_ability(StaticAbility::flying())).build();
+        let source=game.create_object_from_definition(&card,player,Zone::Battlefield);
+        let mut effect=CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(source));
+        effect.ability_loss_until=Some(crate::effect::Until::EndOfTurn);
+        let result=effect.execute(&mut game,&mut ExecutionContext::new_default(source,player)).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids)=result.value else {panic!("actual token receipt")};let token=ids[0];
+        assert!(game.current_abilities(token).unwrap().is_empty());
+        assert_eq!(game.calculated_copiable_values(token).unwrap().abilities.len(),1);
+        crate::turn::execute_cleanup_step(&mut game);
+        assert!(game.object_has_static_ability_id(token,crate::static_abilities::StaticAbilityId::Flying));
+    }
+
 }

@@ -233,6 +233,28 @@ fn brood_birthing_uses_authored_spawn_on_both_branches_and_retains_its_mana_abil
 }
 
 #[test]
+fn quoted_mana_rule_has_one_owner_for_inline_and_followup_reused_prototypes() {
+    for body in [
+        "If you control an Eldrazi Spawn, create three 0/1 colorless Eldrazi Spawn creature tokens with \"Sacrifice this token: Add {C}.\" Otherwise, create one of those tokens.",
+        "If you control an Eldrazi Spawn, create three 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this token: Add {C}.\" Otherwise, create one of those tokens.",
+    ] {
+        for definition in definitions_text("Quoted prototype owner",&format!("Mana cost: {{0}}\nType: Sorcery\n{body}")) {
+            for (subtype,expected) in [("Goblin",1),("Eldrazi Spawn",3)] {
+                let mut game=game();let mut choices=Choices::default();
+                let host=probe_definition("Existing prototype witness",&format!("Type: Creature — {subtype}\nPower/Toughness: 1/1"));
+                game.create_object_from_definition(&host,A,Zone::Battlefield);
+                cast(&mut game,&definition,Zone::Hand,CastingMethod::Normal,&mut choices);settle(&mut game,&mut choices);
+                let spawned=tokens(&game,Subtype::Spawn);assert_eq!(spawned.len(),expected);
+                for id in &spawned {assert_eq!(game.object(*id).unwrap().abilities.iter().filter(|ability|matches!(ability.kind,AbilityKind::Activated(_))).count(),1,"one complete executable mana rule, never a dropped rule or duplicate grant");}
+                let token=spawned[0];let index=game.object(token).unwrap().abilities.iter().position(|ability|matches!(ability.kind,AbilityKind::Activated(_))).unwrap();
+                let mana=game.player(A).unwrap().mana_pool.total();activate(&mut game,token,index,&mut choices);settle(&mut game,&mut choices);
+                assert_eq!(tokens(&game,Subtype::Spawn).len(),expected-1);assert_eq!(game.player(A).unwrap().mana_pool.total(),mana+1);
+            }
+        }
+    }
+}
+
+#[test]
 fn swarming_goblins_native_dice_rows_share_the_first_rows_unexecuted_definition() {
     for definition in definitions("Swarming Goblins") { for (roll, expected) in [(1,1),(9,1),(10,2),(19,2),(20,3)] {
         let mut game = game(); let mut choices = Choices::default();

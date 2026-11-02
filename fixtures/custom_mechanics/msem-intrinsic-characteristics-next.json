@@ -1,0 +1,2688 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact original IDs/reminders retained; selected-price characteristics plus static paid action permissions. Full sources require parent verification."
+  },
+  "mechanics": [
+    {
+      "id": "msem-809",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {5}{U}{U} to cast this as a 4/4, or once it is in play to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Animus Channeler"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Animus Channeler_AVX",
+          "name": "Animus Channeler",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Elemental Wizard\nPower/Toughness: 1/3\nFlash\nRhapsody {5}{U}{U} *(Pay {5}{U}{U} to cast this as a 4/4, or once it is in play to make it become a 4/4.)*\nAnimus Channeler's rhapsody cost can be paid any time you could cast an instant.",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Elemental Wizard\nPower/Toughness: 1/3\nFlash\nYou may cast this spell for {5}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you have priority, you may pay {5}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Elemental Wizard",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Animus Channeler_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Animus Channeler",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Elemental Wizard\nPower/Toughness: 1/3\nFlash\nRhapsody {5}{U}{U} *(Pay {5}{U}{U} to cast this as a 4/4, or once it is in play to make it become a 4/4.)*\nAnimus Channeler's rhapsody cost can be paid any time you could cast an instant."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Animus Channeler",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Elemental Wizard\nPower/Toughness: 1/3\nFlash\nYou may cast this spell for {5}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you have priority, you may pay {5}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\nRhapsody {5}{U}{U}\nAnimus Channeler's rhapsody cost can be paid any time you could cast an instant."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\nRhapsody {5}{U}{U}\nAnimus Channeler's rhapsody cost can be paid any time you could cast an instant.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-810",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {3}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Aspiring Guardian"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aspiring Guardian_AVX",
+          "name": "Aspiring Guardian",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/3\nRhapsody {3}{W}{W} *(Pay {3}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nLifelink",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/3\nYou may cast this spell for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {3}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nLifelink",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Elemental Soldier",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Aspiring Guardian_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aspiring Guardian",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/3\nRhapsody {3}{W}{W} *(Pay {3}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nLifelink"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aspiring Guardian",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/3\nYou may cast this spell for {3}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {3}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nLifelink",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {3}{W}{W}\nLifelink"
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {3}{W}{W}\nLifelink",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-811",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {4}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Attuned Slayer"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Attuned Slayer_AVX",
+          "name": "Attuned Slayer",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 1/3\nRhapsody {4}{R}{R} *(Pay {4}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nTrample\nWhenever Attuned Slayer deals combat damage to a player, exile that many cards from the top of your library. You may play those cards this turn.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 1/3\nYou may cast this spell for {4}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4.\nTrample\nWhenever Attuned Slayer deals combat damage to a player, exile that many cards from the top of your library. You may play those cards this turn.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Elemental Warrior",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Attuned Slayer_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Attuned Slayer",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 1/3\nRhapsody {4}{R}{R} *(Pay {4}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nTrample\nWhenever Attuned Slayer deals combat damage to a player, exile that many cards from the top of your library. You may play those cards this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Attuned Slayer",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Elemental Warrior\nPower/Toughness: 1/3\nYou may cast this spell for {4}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4.\nTrample\nWhenever Attuned Slayer deals combat damage to a player, exile that many cards from the top of your library. You may play those cards this turn.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {4}{R}{R}\nTrample\nWhenever Attuned Slayer deals combat damage to a player, exile that many cards from the top of your library. You may play those cards this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {4}{R}{R}\nTrample\nWhenever Attuned Slayer deals combat damage to a player, exile that many cards from the top of your library. You may play those cards this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-812",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {5}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Corrupted Guardian"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Corrupted Guardian_AVX",
+          "name": "Corrupted Guardian",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Elemental Berserker\nPower/Toughness: 2/3\nRhapsody {5}{R}{R} *(Pay {5}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhen Corrupted Guardian enters, it deals damage equal to its power to up to one target player or planeswalker.",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Elemental Berserker\nPower/Toughness: 2/3\nYou may cast this spell for {5}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {5}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhen Corrupted Guardian enters, it deals damage equal to its power to up to one target player or planeswalker.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Elemental Berserker",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Corrupted Guardian_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Corrupted Guardian",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Elemental Berserker\nPower/Toughness: 2/3\nRhapsody {5}{R}{R} *(Pay {5}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhen Corrupted Guardian enters, it deals damage equal to its power to up to one target player or planeswalker."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Corrupted Guardian",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Elemental Berserker\nPower/Toughness: 2/3\nYou may cast this spell for {5}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {5}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhen Corrupted Guardian enters, it deals damage equal to its power to up to one target player or planeswalker.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {5}{R}{R}\nWhen Corrupted Guardian enters, it deals damage equal to its power to up to one target player or planeswalker."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {5}{R}{R}\nWhen Corrupted Guardian enters, it deals damage equal to its power to up to one target player or planeswalker.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-813",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {5}{R}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Kan, Triumvirate Tactician"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Kan, Triumvirate Tactician_AVX",
+          "name": "Kan, Triumvirate Tactician",
+          "original_text": "Mana cost: {1}{R}{W}\nType: Legendary Creature — Elemental\nPower/Toughness: 3/3\nRhapsody {5}{R}{W} *(Pay {5}{R}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever a creature you control with power 4 or greater attacks, look at the top four cards of your library. You may cast a nonland card with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+          "executable_text": "Mana cost: {1}{R}{W}\nType: Legendary Creature — Elemental\nPower/Toughness: 3/3\nYou may cast this spell for {5}{R}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {5}{R}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever a creature you control with power 4 or greater attacks, look at the top four cards of your library. You may cast a nonland card with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+          "mana_cost": "{1}{R}{W}",
+          "type_line": "Legendary Creature — Elemental",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Kan, Triumvirate Tactician_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kan, Triumvirate Tactician",
+              "original_text": "Mana cost: {1}{R}{W}\nType: Legendary Creature — Elemental\nPower/Toughness: 3/3\nRhapsody {5}{R}{W} *(Pay {5}{R}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever a creature you control with power 4 or greater attacks, look at the top four cards of your library. You may cast a nonland card with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Kan, Triumvirate Tactician",
+              "executable_text": "Mana cost: {1}{R}{W}\nType: Legendary Creature — Elemental\nPower/Toughness: 3/3\nYou may cast this spell for {5}{R}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {5}{R}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever a creature you control with power 4 or greater attacks, look at the top four cards of your library. You may cast a nonland card with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {5}{R}{W}\nWhenever a creature you control with power 4 or greater attacks, look at the top four cards of your library. You may cast a nonland card with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {5}{R}{W}\nWhenever a creature you control with power 4 or greater attacks, look at the top four cards of your library. You may cast a nonland card with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-814",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {5}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Kan's Faithful"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Kan's Faithful_AVX",
+          "name": "Kan's Faithful",
+          "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nRhapsody {5}{W}{W} *(Pay {5}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhen Kan's Faithful enters, exile up to one target nonland permanent with mana value X or less until Kan's Faithful leaves the battlefield, where X is Kan's Faithful's power.",
+          "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nYou may cast this spell for {5}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {5}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhen Kan's Faithful enters, exile up to one target nonland permanent with mana value X or less until Kan's Faithful leaves the battlefield, where X is Kan's Faithful's power.",
+          "mana_cost": "{2}{W}{W}",
+          "type_line": "Creature — Elemental",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Kan's Faithful_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Kan's Faithful",
+              "original_text": "Mana cost: {2}{W}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nRhapsody {5}{W}{W} *(Pay {5}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhen Kan's Faithful enters, exile up to one target nonland permanent with mana value X or less until Kan's Faithful leaves the battlefield, where X is Kan's Faithful's power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Kan's Faithful",
+              "executable_text": "Mana cost: {2}{W}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nYou may cast this spell for {5}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {5}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhen Kan's Faithful enters, exile up to one target nonland permanent with mana value X or less until Kan's Faithful leaves the battlefield, where X is Kan's Faithful's power.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {5}{W}{W}\nWhen Kan's Faithful enters, exile up to one target nonland permanent with mana value X or less until Kan's Faithful leaves the battlefield, where X is Kan's Faithful's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {5}{W}{W}\nWhen Kan's Faithful enters, exile up to one target nonland permanent with mana value X or less until Kan's Faithful leaves the battlefield, where X is Kan's Faithful's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-815",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {4}{U}{U} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "This Is Not Our Fate"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "This Is Not Our Fate_AVX",
+          "name": "This Is Not Our Fate",
+          "original_text": "Mana cost: {2}{U}\nType: Enchantment\nRhapsody {4}{U}{U} *(Pay {4}{U}{U} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever you draw a card, any number of target players mill two cards.\nWhenever This Is Not Our Fate deals combat damage to a player, for each player, you may cast an instant or sorcery card from that player's graveyard without paying its mana cost.",
+          "executable_text": "Mana cost: {2}{U}\nType: Enchantment\nYou may cast this spell for {4}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever you draw a card, any number of target players mill two cards.\nWhenever This Is Not Our Fate deals combat damage to a player, for each player, you may cast an instant or sorcery card from that player's graveyard without paying its mana cost.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "This Is Not Our Fate_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "This Is Not Our Fate",
+              "original_text": "Mana cost: {2}{U}\nType: Enchantment\nRhapsody {4}{U}{U} *(Pay {4}{U}{U} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever you draw a card, any number of target players mill two cards.\nWhenever This Is Not Our Fate deals combat damage to a player, for each player, you may cast an instant or sorcery card from that player's graveyard without paying its mana cost."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "This Is Not Our Fate",
+              "executable_text": "Mana cost: {2}{U}\nType: Enchantment\nYou may cast this spell for {4}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever you draw a card, any number of target players mill two cards.\nWhenever This Is Not Our Fate deals combat damage to a player, for each player, you may cast an instant or sorcery card from that player's graveyard without paying its mana cost.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {4}{U}{U}\nWhenever you draw a card, any number of target players mill two cards.\nWhenever This Is Not Our Fate deals combat damage to a player, for each player, you may cast an instant or sorcery card from that player's graveyard without paying its mana cost."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {4}{U}{U}\nWhenever you draw a card, any number of target players mill two cards.\nWhenever This Is Not Our Fate deals combat damage to a player, for each player, you may cast an instant or sorcery card from that player's graveyard without paying its mana cost.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-816",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {4}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Triumvirate Strategist"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Triumvirate Strategist_AVX",
+          "name": "Triumvirate Strategist",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/1\nRhapsody {4}{W}{W} *(Pay {4}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nTriumvirate Strategist has first strike as long as it's attacking.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/1\nYou may cast this spell for {4}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nTriumvirate Strategist has first strike as long as it's attacking.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Elemental Soldier",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Triumvirate Strategist_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Triumvirate Strategist",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/1\nRhapsody {4}{W}{W} *(Pay {4}{W}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nTriumvirate Strategist has first strike as long as it's attacking."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Triumvirate Strategist",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/1\nYou may cast this spell for {4}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nTriumvirate Strategist has first strike as long as it's attacking.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {4}{W}{W}\nTriumvirate Strategist has first strike as long as it's attacking."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {4}{W}{W}\nTriumvirate Strategist has first strike as long as it's attacking.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-817",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {4}{R}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Upbeat Vanguard"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Upbeat Vanguard_AVX",
+          "name": "Upbeat Vanguard",
+          "original_text": "Mana cost: {R}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nRhapsody {4}{R}{W} *(Pay {4}{R}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nLifelink, haste",
+          "executable_text": "Mana cost: {R}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nYou may cast this spell for {4}{R}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{R}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nLifelink, haste",
+          "mana_cost": "{R}{W}",
+          "type_line": "Creature — Elemental",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Upbeat Vanguard_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Upbeat Vanguard",
+              "original_text": "Mana cost: {R}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nRhapsody {4}{R}{W} *(Pay {4}{R}{W} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nLifelink, haste"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Upbeat Vanguard",
+              "executable_text": "Mana cost: {R}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nYou may cast this spell for {4}{R}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {4}{R}{W} to take a special action. If you do, this permanent has base power and toughness 4/4.\nLifelink, haste",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {4}{R}{W}\nLifelink, haste"
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {4}{R}{W}\nLifelink, haste",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-818",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {3}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Vindictive Guardian"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Vindictive Guardian_AVX",
+          "name": "Vindictive Guardian",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/2\nRhapsody {3}{R}{R} *(Pay {3}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever Vindictive Guardian or another creature you control enters, if that creature's power is 4 or greater, create a Treasure token.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/2\nYou may cast this spell for {3}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {3}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever Vindictive Guardian or another creature you control enters, if that creature's power is 4 or greater, create a Treasure token.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Elemental Soldier",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Vindictive Guardian_AVX",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Vindictive Guardian",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/2\nRhapsody {3}{R}{R} *(Pay {3}{R}{R} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever Vindictive Guardian or another creature you control enters, if that creature's power is 4 or greater, create a Treasure token."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Vindictive Guardian",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Elemental Soldier\nPower/Toughness: 2/2\nYou may cast this spell for {3}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {3}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever Vindictive Guardian or another creature you control enters, if that creature's power is 4 or greater, create a Treasure token.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {3}{R}{R}\nWhenever Vindictive Guardian or another creature you control enters, if that creature's power is 4 or greater, create a Treasure token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {3}{R}{R}\nWhenever Vindictive Guardian or another creature you control enters, if that creature's power is 4 or greater, create a Treasure token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-819",
+      "keyword": "Rhapsody",
+      "original_reminder": "Pay {3}{G}{G} to cast this as a 4/4, or as a sorcery to make it become a 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4.",
+      "source_cards": [
+        "Scarred Fantassin"
+      ],
+      "rule_reference": "702.274.",
+      "rule_text": [
+        {
+          "name": "702.274a",
+          "rule": "Rhapsody is a keyword ability that represents two static abilities, one that functions while the spell with rhapsody is on the stack, and another that functions while the permanent with rhapsody is on the battlefield. “Rhapsody [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4” and “Any time you could cast a sorcery, you may pay [cost]. If you do, this permanent has base power and toughness 4/4.”",
+          "custom": true
+        },
+        {
+          "name": "702.274b",
+          "rule": "The second ability of rhapsody is a special action, and can only be modified by abilities that explicitly modify the rhapsody action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Scarred Fantassin_HQZ",
+          "name": "Scarred Fantassin",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 2/2\nRhapsody {3}{G}{G} *(Pay {3}{G}{G} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever Scarred Fantassin attacks, double its power and toughness until end of turn.",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 2/2\nYou may cast this spell for {3}{G}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {3}{G}{G} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever Scarred Fantassin attacks, double its power and toughness until end of turn.",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Mercenary",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Scarred Fantassin_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scarred Fantassin",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 2/2\nRhapsody {3}{G}{G} *(Pay {3}{G}{G} to cast this as a 4/4, or as a sorcery to make it become a 4/4.)*\nWhenever Scarred Fantassin attacks, double its power and toughness until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scarred Fantassin",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 2/2\nYou may cast this spell for {3}{G}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {3}{G}{G} to take a special action. If you do, this permanent has base power and toughness 4/4.\nWhenever Scarred Fantassin attacks, double its power and toughness until end of turn.",
+              "custom_keyword_identities": [
+                "rhapsody"
+              ],
+              "custom_keyword_payments": [
+                "rhapsody"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Rhapsody {3}{G}{G}\nWhenever Scarred Fantassin attacks, double its power and toughness until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rhapsody"
+          ],
+          "custom_keyword_payments": [
+            "rhapsody"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Rhapsody {3}{G}{G}\nWhenever Scarred Fantassin attacks, double its power and toughness until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Rhapsody",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4.\nAny time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification"
+    },
+    {
+      "id": "msem-948",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {5} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Aethershell Holo"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aethershell Holo_AEK",
+          "name": "Aethershell Holo",
+          "original_text": "Mana cost: {3}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 3/2\nStardom {5} *(Pay {5} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nYou may spend mana as though it were mana of any color.",
+          "executable_text": "Mana cost: {3}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 3/2\nYou may cast this spell for {5} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {5} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nYou may spend mana as though it were mana of any color.",
+          "mana_cost": "{3}",
+          "type_line": "Enchantment Creature — Avatar Artist",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Aethershell Holo_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aethershell Holo",
+              "original_text": "Mana cost: {3}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 3/2\nStardom {5} *(Pay {5} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nYou may spend mana as though it were mana of any color."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aethershell Holo",
+              "executable_text": "Mana cost: {3}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 3/2\nYou may cast this spell for {5} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {5} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nYou may spend mana as though it were mana of any color.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {5}\nYou may spend mana as though it were mana of any color."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {5}\nYou may spend mana as though it were mana of any color.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-949",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{B}{B} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Beloved Antihero"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Beloved Antihero_AEK",
+          "name": "Beloved Antihero",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Nephilim Artist\nPower/Toughness: 2/1\nStardom {3}{B}{B} *(Pay {3}{B}{B} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhen Beloved Antihero enters, you draw a card and lose 1 life. If you control a legendary creature or planeswalker, you may repeat this process once.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Nephilim Artist\nPower/Toughness: 2/1\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{B}{B} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhen Beloved Antihero enters, you draw a card and lose 1 life. If you control a legendary creature or planeswalker, you may repeat this process once.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Nephilim Artist",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Beloved Antihero_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Beloved Antihero",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Nephilim Artist\nPower/Toughness: 2/1\nStardom {3}{B}{B} *(Pay {3}{B}{B} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhen Beloved Antihero enters, you draw a card and lose 1 life. If you control a legendary creature or planeswalker, you may repeat this process once."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Beloved Antihero",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Nephilim Artist\nPower/Toughness: 2/1\nYou may cast this spell for {3}{B}{B} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{B}{B} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhen Beloved Antihero enters, you draw a card and lose 1 life. If you control a legendary creature or planeswalker, you may repeat this process once.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{B}{B}\nWhen Beloved Antihero enters, you draw a card and lose 1 life. If you control a legendary creature or planeswalker, you may repeat this process once."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{B}{B}\nWhen Beloved Antihero enters, you draw a card and lose 1 life. If you control a legendary creature or planeswalker, you may repeat this process once.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-950",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Brazen Delinquent"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Brazen Delinquent_AEK",
+          "name": "Brazen Delinquent",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Reveler\nPower/Toughness: 2/2\nStardom {3}{G} *(Pay {3}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nTrample",
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Reveler\nPower/Toughness: 2/2\nYou may cast this spell for {3}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nTrample",
+          "mana_cost": "{1}{G}",
+          "type_line": "Creature — Human Reveler",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Brazen Delinquent_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Brazen Delinquent",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Reveler\nPower/Toughness: 2/2\nStardom {3}{G} *(Pay {3}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nTrample"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Brazen Delinquent",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Reveler\nPower/Toughness: 2/2\nYou may cast this spell for {3}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nTrample",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "reveler",
+                  "plural": "revelers",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{G}\nTrample"
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "reveler",
+              "plural": "revelers",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{G}\nTrample",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-951",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {2}{R}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Chaos Conductor"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Chaos Conductor_AEK",
+          "name": "Chaos Conductor",
+          "original_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 2/1\nStardom {2}{R}{R} *(Pay {2}{R}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nAs long as you control another Artist or Reveler, Chaos Conductor has menace and haste.\nWhenever Chaos Conductor attacks, add {R}.\n{R}: Target Artist or Reveler creature you control gets +1/+0 until end of turn.",
+          "executable_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 2/1\nYou may cast this spell for {2}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nAs long as you control another Artist or Reveler, Chaos Conductor has menace and haste.\nWhenever Chaos Conductor attacks, add {R}.\n{R}: Target Artist or Reveler creature you control gets +1/+0 until end of turn.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Enchantment Creature — Avatar Artist",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Chaos Conductor_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chaos Conductor",
+              "original_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 2/1\nStardom {2}{R}{R} *(Pay {2}{R}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nAs long as you control another Artist or Reveler, Chaos Conductor has menace and haste.\nWhenever Chaos Conductor attacks, add {R}.\n{R}: Target Artist or Reveler creature you control gets +1/+0 until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Chaos Conductor",
+              "executable_text": "Mana cost: {1}{R}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 2/1\nYou may cast this spell for {2}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nAs long as you control another Artist or Reveler, Chaos Conductor has menace and haste.\nWhenever Chaos Conductor attacks, add {R}.\n{R}: Target Artist or Reveler creature you control gets +1/+0 until end of turn.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                },
+                {
+                  "singular": "reveler",
+                  "plural": "revelers",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {2}{R}{R}\nAs long as you control another Artist or Reveler, Chaos Conductor has menace and haste.\nWhenever Chaos Conductor attacks, add {R}.\n{R}: Target Artist or Reveler creature you control gets +1/+0 until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            },
+            {
+              "singular": "reveler",
+              "plural": "revelers",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {2}{R}{R}\nAs long as you control another Artist or Reveler, Chaos Conductor has menace and haste.\nWhenever Chaos Conductor attacks, add {R}.\n{R}: Target Artist or Reveler creature you control gets +1/+0 until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-952",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {4}{G}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Chroma Prodigy"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Chroma Prodigy_AEK",
+          "name": "Chroma Prodigy",
+          "original_text": "Mana cost: {G}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nStardom {4}{G}{U} *(Pay {4}{G}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nVigilance\n{T}: Add X mana of any one color, where X is Chroma Prodigy's power.",
+          "executable_text": "Mana cost: {G}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nYou may cast this spell for {4}{G}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{G}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nVigilance\n{T}: Add X mana of any one color, where X is Chroma Prodigy's power.",
+          "mana_cost": "{G}{U}",
+          "type_line": "Creature — Human Artist",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Chroma Prodigy_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Chroma Prodigy",
+              "original_text": "Mana cost: {G}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nStardom {4}{G}{U} *(Pay {4}{G}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nVigilance\n{T}: Add X mana of any one color, where X is Chroma Prodigy's power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Chroma Prodigy",
+              "executable_text": "Mana cost: {G}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nYou may cast this spell for {4}{G}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{G}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nVigilance\n{T}: Add X mana of any one color, where X is Chroma Prodigy's power.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {4}{G}{U}\nVigilance\n{T}: Add X mana of any one color, where X is Chroma Prodigy's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {4}{G}{U}\nVigilance\n{T}: Add X mana of any one color, where X is Chroma Prodigy's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-953",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {G}{G}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Fallen Icon"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Fallen Icon_AEK",
+          "name": "Fallen Icon",
+          "original_text": "Mana cost: {6}{G}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 8/8\nStardom {G}{G}{G} *(Pay {G}{G}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*",
+          "executable_text": "Mana cost: {6}{G}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 8/8\nYou may cast this spell for {G}{G}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {G}{G}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+          "mana_cost": "{6}{G}",
+          "type_line": "Enchantment Creature — Avatar Artist",
+          "power": "8",
+          "toughness": "8",
+          "source_card_key": "Fallen Icon_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Fallen Icon",
+              "original_text": "Mana cost: {6}{G}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 8/8\nStardom {G}{G}{G} *(Pay {G}{G}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Fallen Icon",
+              "executable_text": "Mana cost: {6}{G}\nType: Enchantment Creature — Avatar Artist\nPower/Toughness: 8/8\nYou may cast this spell for {G}{G}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {G}{G}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {G}{G}{G}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {G}{G}{G}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-954",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {W}{U}{B}{R}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Firework Reveler"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Firework Reveler_AEK",
+          "name": "Firework Reveler",
+          "original_text": "Mana cost: {G}\nType: Creature — Human Reveler\nPower/Toughness: 2/1\nStardom {W}{U}{B}{R}{G} *(Pay {W}{U}{B}{R}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nAs long as Firework Reveler is legendary, creatures you control get +2/+2.\n{5}: Sightsee. *(Conjure the basic land of your choice into your hand.)*",
+          "executable_text": "Mana cost: {G}\nType: Creature — Human Reveler\nPower/Toughness: 2/1\nYou may cast this spell for {W}{U}{B}{R}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {W}{U}{B}{R}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nAs long as Firework Reveler is legendary, creatures you control get +2/+2.\n{5}: Sightsee.",
+          "mana_cost": "{G}",
+          "type_line": "Creature — Human Reveler",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Firework Reveler_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Firework Reveler",
+              "original_text": "Mana cost: {G}\nType: Creature — Human Reveler\nPower/Toughness: 2/1\nStardom {W}{U}{B}{R}{G} *(Pay {W}{U}{B}{R}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nAs long as Firework Reveler is legendary, creatures you control get +2/+2.\n{5}: Sightsee. *(Conjure the basic land of your choice into your hand.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Firework Reveler",
+              "executable_text": "Mana cost: {G}\nType: Creature — Human Reveler\nPower/Toughness: 2/1\nYou may cast this spell for {W}{U}{B}{R}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {W}{U}{B}{R}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nAs long as Firework Reveler is legendary, creatures you control get +2/+2.\n{5}: Sightsee.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "reveler",
+                  "plural": "revelers",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {W}{U}{B}{R}{G}\nAs long as Firework Reveler is legendary, creatures you control get +2/+2.\n{5}: Sightsee."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "reveler",
+              "plural": "revelers",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {W}{U}{B}{R}{G}\nAs long as Firework Reveler is legendary, creatures you control get +2/+2.\n{5}: Sightsee.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-955",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{U/B}{U/B} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Flawless Favorite"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Flawless Favorite_AEK",
+          "name": "Flawless Favorite",
+          "original_text": "Mana cost: {2}{U/B}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nStardom {3}{U/B}{U/B} *(Pay {3}{U/B}{U/B} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nAt the beginning of combat on your turn, if you control a legendary creature or planeswalker, up to one target creature you control can't be blocked this turn.",
+          "executable_text": "Mana cost: {2}{U/B}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nYou may cast this spell for {3}{U/B}{U/B} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{U/B}{U/B} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nAt the beginning of combat on your turn, if you control a legendary creature or planeswalker, up to one target creature you control can't be blocked this turn.",
+          "mana_cost": "{2}{U/B}",
+          "type_line": "Creature — Human Artist",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Flawless Favorite_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Flawless Favorite",
+              "original_text": "Mana cost: {2}{U/B}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nStardom {3}{U/B}{U/B} *(Pay {3}{U/B}{U/B} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nAt the beginning of combat on your turn, if you control a legendary creature or planeswalker, up to one target creature you control can't be blocked this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Flawless Favorite",
+              "executable_text": "Mana cost: {2}{U/B}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nYou may cast this spell for {3}{U/B}{U/B} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{U/B}{U/B} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nAt the beginning of combat on your turn, if you control a legendary creature or planeswalker, up to one target creature you control can't be blocked this turn.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{U/B}{U/B}\nAt the beginning of combat on your turn, if you control a legendary creature or planeswalker, up to one target creature you control can't be blocked this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{U/B}{U/B}\nAt the beginning of combat on your turn, if you control a legendary creature or planeswalker, up to one target creature you control can't be blocked this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-956",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {4}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Joyous Princeling"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Joyous Princeling_AEK",
+          "name": "Joyous Princeling",
+          "original_text": "Mana cost: {1}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/3\nStardom {4}{U}{U} *(Pay {4}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nVigilance\n{T}: Draw a card. Then discard a card unless Joyous Princeling is legendary.",
+          "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/3\nYou may cast this spell for {4}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nVigilance\n{T}: Draw a card. Then discard a card unless Joyous Princeling is legendary.",
+          "mana_cost": "{1}{U}",
+          "type_line": "Creature — Human Artist",
+          "power": "1",
+          "toughness": "3",
+          "source_card_key": "Joyous Princeling_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Joyous Princeling",
+              "original_text": "Mana cost: {1}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/3\nStardom {4}{U}{U} *(Pay {4}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nVigilance\n{T}: Draw a card. Then discard a card unless Joyous Princeling is legendary."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Joyous Princeling",
+              "executable_text": "Mana cost: {1}{U}\nType: Creature — Human Artist\nPower/Toughness: 1/3\nYou may cast this spell for {4}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nVigilance\n{T}: Draw a card. Then discard a card unless Joyous Princeling is legendary.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {4}{U}{U}\nVigilance\n{T}: Draw a card. Then discard a card unless Joyous Princeling is legendary."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {4}{U}{U}\nVigilance\n{T}: Draw a card. Then discard a card unless Joyous Princeling is legendary.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-957",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Lunar Contessa"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Lunar Contessa_AEK",
+          "name": "Lunar Contessa",
+          "original_text": "Mana cost: {W}\nType: Enchantment Creature — Avatar Noble\nPower/Toughness: 1/1\nStardom {3}{W} *(Pay {3}{W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhen Lunar Contessa enters, you gain life equal to its power.",
+          "executable_text": "Mana cost: {W}\nType: Enchantment Creature — Avatar Noble\nPower/Toughness: 1/1\nYou may cast this spell for {3}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{W} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhen Lunar Contessa enters, you gain life equal to its power.",
+          "mana_cost": "{W}",
+          "type_line": "Enchantment Creature — Avatar Noble",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Lunar Contessa_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lunar Contessa",
+              "original_text": "Mana cost: {W}\nType: Enchantment Creature — Avatar Noble\nPower/Toughness: 1/1\nStardom {3}{W} *(Pay {3}{W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhen Lunar Contessa enters, you gain life equal to its power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lunar Contessa",
+              "executable_text": "Mana cost: {W}\nType: Enchantment Creature — Avatar Noble\nPower/Toughness: 1/1\nYou may cast this spell for {3}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{W} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhen Lunar Contessa enters, you gain life equal to its power.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{W}\nWhen Lunar Contessa enters, you gain life equal to its power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{W}\nWhen Lunar Contessa enters, you gain life equal to its power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-958",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {4}{G}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Mistencharm Resplendant"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Mistencharm Resplendant_AEK",
+          "name": "Mistencharm Resplendant",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nStardom {4}{G}{G} *(Pay {4}{G}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhenever Mistencharm Resplendant or another creature you control enters, both draw a card and put two +1/+1 counters on the entering creature if that creature has power 4 or greater.",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nYou may cast this spell for {4}{G}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{G}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhenever Mistencharm Resplendant or another creature you control enters, both draw a card and put two +1/+1 counters on the entering creature if that creature has power 4 or greater.",
+          "mana_cost": "{1}{G}{G}",
+          "type_line": "Creature — Human Artist",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Mistencharm Resplendant_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mistencharm Resplendant",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nStardom {4}{G}{G} *(Pay {4}{G}{G} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhenever Mistencharm Resplendant or another creature you control enters, both draw a card and put two +1/+1 counters on the entering creature if that creature has power 4 or greater."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mistencharm Resplendant",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Human Artist\nPower/Toughness: 3/2\nYou may cast this spell for {4}{G}{G} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{G}{G} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhenever Mistencharm Resplendant or another creature you control enters, both draw a card and put two +1/+1 counters on the entering creature if that creature has power 4 or greater.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {4}{G}{G}\nWhenever Mistencharm Resplendant or another creature you control enters, both draw a card and put two +1/+1 counters on the entering creature if that creature has power 4 or greater."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {4}{G}{G}\nWhenever Mistencharm Resplendant or another creature you control enters, both draw a card and put two +1/+1 counters on the entering creature if that creature has power 4 or greater.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-959",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Neon City Racer"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Neon City Racer_AEK",
+          "name": "Neon City Racer",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Pilot\nPower/Toughness: 1/1\nStardom {3}{R} *(Pay {3}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nHaste",
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Pilot\nPower/Toughness: 1/1\nYou may cast this spell for {3}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nHaste",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Human Pilot",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Neon City Racer_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Neon City Racer",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Pilot\nPower/Toughness: 1/1\nStardom {3}{R} *(Pay {3}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nHaste"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Neon City Racer",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Pilot\nPower/Toughness: 1/1\nYou may cast this spell for {3}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nHaste",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{R}\nHaste"
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{R}\nHaste",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-960",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{U}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Neon Streetracer"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Neon Streetracer_AEK",
+          "name": "Neon Streetracer",
+          "original_text": "Mana cost: {U}{R}\nType: Creature — Human Pilot\nPower/Toughness: 2/1\nStardom {3}{U}{R} *(Pay {3}{U}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nProwess\nAt the beginning of combat, if Neon Streetracer has power 4 or greater, it gains flying and haste until end of turn.",
+          "executable_text": "Mana cost: {U}{R}\nType: Creature — Human Pilot\nPower/Toughness: 2/1\nYou may cast this spell for {3}{U}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{U}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nProwess\nAt the beginning of combat, if Neon Streetracer has power 4 or greater, it gains flying and haste until end of turn.",
+          "mana_cost": "{U}{R}",
+          "type_line": "Creature — Human Pilot",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Neon Streetracer_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Neon Streetracer",
+              "original_text": "Mana cost: {U}{R}\nType: Creature — Human Pilot\nPower/Toughness: 2/1\nStardom {3}{U}{R} *(Pay {3}{U}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nProwess\nAt the beginning of combat, if Neon Streetracer has power 4 or greater, it gains flying and haste until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Neon Streetracer",
+              "executable_text": "Mana cost: {U}{R}\nType: Creature — Human Pilot\nPower/Toughness: 2/1\nYou may cast this spell for {3}{U}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{U}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nProwess\nAt the beginning of combat, if Neon Streetracer has power 4 or greater, it gains flying and haste until end of turn.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{U}{R}\nProwess\nAt the beginning of combat, if Neon Streetracer has power 4 or greater, it gains flying and haste until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{U}{R}\nProwess\nAt the beginning of combat, if Neon Streetracer has power 4 or greater, it gains flying and haste until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-961",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {2}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Otherworld Egotist"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Otherworld Egotist_AEK",
+          "name": "Otherworld Egotist",
+          "original_text": "Mana cost: {U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nStardom {2}{U}{U} *(Pay {2}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhenever you activate a loyalty ability, put a +1/+1 counter on Otherworld Egotist. Then if Otherworld Egotist has power 4 or greater, you may copy that loyalty ability. You may choose new targets for the copy.",
+          "executable_text": "Mana cost: {U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nYou may cast this spell for {2}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhenever you activate a loyalty ability, put a +1/+1 counter on Otherworld Egotist. Then if Otherworld Egotist has power 4 or greater, you may copy that loyalty ability. You may choose new targets for the copy.",
+          "mana_cost": "{U}",
+          "type_line": "Creature — Human Artist",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Otherworld Egotist_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Otherworld Egotist",
+              "original_text": "Mana cost: {U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nStardom {2}{U}{U} *(Pay {2}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhenever you activate a loyalty ability, put a +1/+1 counter on Otherworld Egotist. Then if Otherworld Egotist has power 4 or greater, you may copy that loyalty ability. You may choose new targets for the copy."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Otherworld Egotist",
+              "executable_text": "Mana cost: {U}\nType: Creature — Human Artist\nPower/Toughness: 1/2\nYou may cast this spell for {2}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhenever you activate a loyalty ability, put a +1/+1 counter on Otherworld Egotist. Then if Otherworld Egotist has power 4 or greater, you may copy that loyalty ability. You may choose new targets for the copy.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {2}{U}{U}\nWhenever you activate a loyalty ability, put a +1/+1 counter on Otherworld Egotist. Then if Otherworld Egotist has power 4 or greater, you may copy that loyalty ability. You may choose new targets for the copy."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {2}{U}{U}\nWhenever you activate a loyalty ability, put a +1/+1 counter on Otherworld Egotist. Then if Otherworld Egotist has power 4 or greater, you may copy that loyalty ability. You may choose new targets for the copy.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-962",
+      "keyword": "Stardom",
+      "original_reminder": "Pay its stardom cost to cast this as a legendary 4/4, or while its attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Reclusive Cynic"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Reclusive Cynic_AEK",
+          "name": "Reclusive Cynic",
+          "original_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Coward\nPower/Toughness: 2/2\nStardom—{2}{W}{B}, Pay 4 life. *(Pay its stardom cost to cast this as a legendary 4/4, or while its attacking to make it become a legendary 4/4.)*\nWhen Reclusive Cynic dies during your turn, draw cards equal to its power.\nYou may cast Reclusive Cynic from your graveyard for its stardom cost.",
+          "executable_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Coward\nPower/Toughness: 2/2\nYou may cast this spell for {2}{W}{B}, Pay 4 life rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{W}{B}, Pay 4 life to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhen Reclusive Cynic dies during your turn, draw cards equal to its power.\nYou may cast this spell from your graveyard for {2}{W}{B}, Pay 4 life rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.",
+          "mana_cost": "{1}{W}{B}",
+          "type_line": "Creature — Human Coward",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Reclusive Cynic_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reclusive Cynic",
+              "original_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Coward\nPower/Toughness: 2/2\nStardom—{2}{W}{B}, Pay 4 life. *(Pay its stardom cost to cast this as a legendary 4/4, or while its attacking to make it become a legendary 4/4.)*\nWhen Reclusive Cynic dies during your turn, draw cards equal to its power.\nYou may cast Reclusive Cynic from your graveyard for its stardom cost."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Reclusive Cynic",
+              "executable_text": "Mana cost: {1}{W}{B}\nType: Creature — Human Coward\nPower/Toughness: 2/2\nYou may cast this spell for {2}{W}{B}, Pay 4 life rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{W}{B}, Pay 4 life to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhen Reclusive Cynic dies during your turn, draw cards equal to its power.\nYou may cast this spell from your graveyard for {2}{W}{B}, Pay 4 life rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom—{2}{W}{B}, Pay 4 life.\nWhen Reclusive Cynic dies during your turn, draw cards equal to its power.\nYou may cast Reclusive Cynic from your graveyard for its stardom cost."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom—{2}{W}{B}, Pay 4 life.\nWhen Reclusive Cynic dies during your turn, draw cards equal to its power.\nYou may cast Reclusive Cynic from your graveyard for its stardom cost.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-963",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {4}{R}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Roaring Songstress"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Roaring Songstress_AEK",
+          "name": "Roaring Songstress",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Human Artist\nPower/Toughness: 2/1\nStardom {4}{R}{R} *(Pay {4}{R}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nMenace\nWhen Roaring Songstress leaves the battlefield, it deals X damage to each opponent, where X is its power.",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Artist\nPower/Toughness: 2/1\nYou may cast this spell for {4}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nMenace\nWhen Roaring Songstress leaves the battlefield, it deals X damage to each opponent, where X is its power.",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Human Artist",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Roaring Songstress_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Roaring Songstress",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Human Artist\nPower/Toughness: 2/1\nStardom {4}{R}{R} *(Pay {4}{R}{R} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nMenace\nWhen Roaring Songstress leaves the battlefield, it deals X damage to each opponent, where X is its power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Roaring Songstress",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Human Artist\nPower/Toughness: 2/1\nYou may cast this spell for {4}{R}{R} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{R}{R} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nMenace\nWhen Roaring Songstress leaves the battlefield, it deals X damage to each opponent, where X is its power.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {4}{R}{R}\nMenace\nWhen Roaring Songstress leaves the battlefield, it deals X damage to each opponent, where X is its power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {4}{R}{R}\nMenace\nWhen Roaring Songstress leaves the battlefield, it deals X damage to each opponent, where X is its power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-964",
+      "keyword": "Stardom",
+      "original_reminder": "You may pay {3}{G}{U} to cast it as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Serin, Exponent Mage"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Serin, Exponent Mage_AEK",
+          "name": "Serin, Exponent Mage",
+          "original_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Human Artificer\nPower/Toughness: 0/0\nSerin enters with three +1/+1 counters on her.\nCreature cards in your hand and attacking creatures you control have stardom {3}{G}{U}. *(You may pay {3}{G}{U} to cast it as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*",
+          "executable_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Human Artificer\nPower/Toughness: 0/0\nSerin enters with three +1/+1 counters on her.\nCreature cards in your hand have the alternative casting cost \"You may cast this spell for {3}{G}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\".\nattacking creatures you control have \"Any time you have priority and this permanent is attacking, you may pay {3}{G}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\".",
+          "mana_cost": "{1}{G}{U}",
+          "type_line": "Legendary Creature — Human Artificer",
+          "power": "0",
+          "toughness": "0",
+          "source_card_key": "Serin, Exponent Mage_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Serin, Exponent Mage",
+              "original_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Human Artificer\nPower/Toughness: 0/0\nSerin enters with three +1/+1 counters on her.\nCreature cards in your hand and attacking creatures you control have stardom {3}{G}{U}. *(You may pay {3}{G}{U} to cast it as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Serin, Exponent Mage",
+              "executable_text": "Mana cost: {1}{G}{U}\nType: Legendary Creature — Human Artificer\nPower/Toughness: 0/0\nSerin enters with three +1/+1 counters on her.\nCreature cards in your hand have the alternative casting cost \"You may cast this spell for {3}{G}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\".\nattacking creatures you control have \"Any time you have priority and this permanent is attacking, you may pay {3}{G}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Serin enters with three +1/+1 counters on her.\nCreature cards in your hand and attacking creatures you control have stardom {3}{G}{U}."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Serin enters with three +1/+1 counters on her.\nCreature cards in your hand and attacking creatures you control have stardom {3}{G}{U}."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-965",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {4}{G/W}{G/W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Starving Artist"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Starving Artist_AEK",
+          "name": "Starving Artist",
+          "original_text": "Mana cost: {G/W}\nType: Creature — Human Artist\nPower/Toughness: 1/1\nStardom {4}{G/W}{G/W} *(Pay {4}{G/W}{G/W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhenever a creature you control attacks alone, that creature gets +X/+X until end of turn, where X is Starving Artist's power.",
+          "executable_text": "Mana cost: {G/W}\nType: Creature — Human Artist\nPower/Toughness: 1/1\nYou may cast this spell for {4}{G/W}{G/W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{G/W}{G/W} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhenever a creature you control attacks alone, that creature gets +X/+X until end of turn, where X is Starving Artist's power.",
+          "mana_cost": "{G/W}",
+          "type_line": "Creature — Human Artist",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Starving Artist_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Starving Artist",
+              "original_text": "Mana cost: {G/W}\nType: Creature — Human Artist\nPower/Toughness: 1/1\nStardom {4}{G/W}{G/W} *(Pay {4}{G/W}{G/W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nWhenever a creature you control attacks alone, that creature gets +X/+X until end of turn, where X is Starving Artist's power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Starving Artist",
+              "executable_text": "Mana cost: {G/W}\nType: Creature — Human Artist\nPower/Toughness: 1/1\nYou may cast this spell for {4}{G/W}{G/W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {4}{G/W}{G/W} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nWhenever a creature you control attacks alone, that creature gets +X/+X until end of turn, where X is Starving Artist's power.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {4}{G/W}{G/W}\nWhenever a creature you control attacks alone, that creature gets +X/+X until end of turn, where X is Starving Artist's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {4}{G/W}{G/W}\nWhenever a creature you control attacks alone, that creature gets +X/+X until end of turn, where X is Starving Artist's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-966",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {3}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Sudden Star"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sudden Star_AEK",
+          "name": "Sudden Star",
+          "original_text": "Mana cost: {2}{U}\nType: Creature — Human Artist\nPower/Toughness: 2/3\nStardom {3}{U}{U} *(Pay {3}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nFlash\nWhen Sudden Star enters, up to one target creature gets -X/-0 until end of turn, where X is Sudden Star's power.",
+          "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Artist\nPower/Toughness: 2/3\nYou may cast this spell for {3}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nFlash\nWhen Sudden Star enters, up to one target creature gets -X/-0 until end of turn, where X is Sudden Star's power.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Creature — Human Artist",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Sudden Star_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sudden Star",
+              "original_text": "Mana cost: {2}{U}\nType: Creature — Human Artist\nPower/Toughness: 2/3\nStardom {3}{U}{U} *(Pay {3}{U}{U} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nFlash\nWhen Sudden Star enters, up to one target creature gets -X/-0 until end of turn, where X is Sudden Star's power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sudden Star",
+              "executable_text": "Mana cost: {2}{U}\nType: Creature — Human Artist\nPower/Toughness: 2/3\nYou may cast this spell for {3}{U}{U} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {3}{U}{U} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nFlash\nWhen Sudden Star enters, up to one target creature gets -X/-0 until end of turn, where X is Sudden Star's power.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {3}{U}{U}\nFlash\nWhen Sudden Star enters, up to one target creature gets -X/-0 until end of turn, where X is Sudden Star's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {3}{U}{U}\nFlash\nWhen Sudden Star enters, up to one target creature gets -X/-0 until end of turn, where X is Sudden Star's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    },
+    {
+      "id": "msem-967",
+      "keyword": "Stardom",
+      "original_reminder": "Pay {2}{W}{W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.",
+      "executable_reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.",
+      "source_cards": [
+        "Thunder Stage Star"
+      ],
+      "rule_reference": "702.307.",
+      "rule_text": [
+        {
+          "name": "702.307a",
+          "rule": "Stardom is a keyword ability that represents two static abilities, one that functions while the spell with stardom is on the stack, and another that functions while the permanent with stardom is on the battlefield. “Stardom [cost]” means “You may choose to pay [cost] rather than pay this spell's mana cost. If you do, it has base power and toughness 4/4 and is legendary” and “Any time you have priority and this creature is attacking, you may pay [cost]. If you do, this permanent has base power and toughness 4/4 and is legendary. Take this action only once.”",
+          "custom": true
+        },
+        {
+          "name": "702.307b",
+          "rule": "The second ability of stardom is a special action, and its cost can only be modified by abilities that explicitly modify the stardom action.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Thunder Stage Star_AEK",
+          "name": "Thunder Stage Star",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Artist\nPower/Toughness: 2/2\nStardom {2}{W}{W} *(Pay {2}{W}{W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nLifelink\nSpells your opponents cast during your turn cost {X} more to cast, where X is Thunder Stage Star's power.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Artist\nPower/Toughness: 2/2\nYou may cast this spell for {2}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nLifelink\nSpells your opponents cast during your turn cost {X} more to cast, where X is Thunder Stage Star's power.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Artist",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Thunder Stage Star_AEK",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Thunder Stage Star",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Artist\nPower/Toughness: 2/2\nStardom {2}{W}{W} *(Pay {2}{W}{W} to cast this as a legendary 4/4, or while it's attacking to make it become a legendary 4/4.)*\nLifelink\nSpells your opponents cast during your turn cost {X} more to cast, where X is Thunder Stage Star's power."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Thunder Stage Star",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Artist\nPower/Toughness: 2/2\nYou may cast this spell for {2}{W}{W} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {2}{W}{W} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once.\nLifelink\nSpells your opponents cast during your turn cost {X} more to cast, where X is Thunder Stage Star's power.",
+              "custom_keyword_identities": [
+                "stardom"
+              ],
+              "custom_keyword_payments": [
+                "stardom"
+              ],
+              "custom_subtypes": [
+                {
+                  "singular": "artist",
+                  "plural": "artists",
+                  "family": "Creature"
+                }
+              ],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stardom {2}{W}{W}\nLifelink\nSpells your opponents cast during your turn cost {X} more to cast, where X is Thunder Stage Star's power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "stardom"
+          ],
+          "custom_keyword_payments": [
+            "stardom"
+          ],
+          "custom_subtypes": [
+            {
+              "singular": "artist",
+              "plural": "artists",
+              "family": "Creature"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stardom {2}{W}{W}\nLifelink\nSpells your opponents cast during your turn cost {X} more to cast, where X is Thunder Stage Star's power.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Stardom",
+          "template": "{Cost}",
+          "reminder": "You may cast this spell for {Cost} rather than pay its mana cost. If you cast this spell this way, it has base power and toughness 4/4. If you cast this spell this way, it is legendary.\nAny time you have priority and this permanent is attacking, you may pay {Cost} to take a special action. If you do, this permanent has base power and toughness 4/4. This permanent becomes legendary. Take this action only once."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_full_source_native_verification",
+      "rule_correction": "Original reminder omits once-only; executable includes mandatory formal-rule use limit."
+    }
+  ]
+}

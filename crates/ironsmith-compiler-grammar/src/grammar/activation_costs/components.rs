@@ -12,7 +12,6 @@ use super::super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, render_token_slice, token_slice_at_is,
     token_slice_first_is,
 };
-use super::super::super::token_primitives::locate_index as locate_token_index;
 use super::super::super::util::{is_source_reference_words, source_reference_surface_for_words};
 use super::super::activated_lines::{
     ActivatedLoyaltyShorthand, parse_loyalty_shorthand_activation_tokens,
@@ -90,11 +89,12 @@ fn cost_segment_preserves_source_identity(segment: &ActivationCostSegmentCst) ->
 }
 
 fn activation_cost_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if let Some(colon_idx) = locate_token_index(tokens, OwnedLexToken::is_colon) {
-        &tokens[..colon_idx]
-    } else {
-        tokens
+    let mut quoted = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote { quoted = !quoted; }
+        else if token.is_colon() && !quoted { return &tokens[..index]; }
     }
+    tokens
 }
 
 fn parse_loyalty_shorthand_activation_cost_tokens(
@@ -148,10 +148,81 @@ fn parse_controlled_or_revealed_payment(tokens: &[OwnedLexToken]) -> Option<Acti
         .then_some(ActivationCostSegmentCst::ChooseControlledOrReveal { subtype })
 }
 
+fn parse_characteristic_conversion_cost(tokens: &[OwnedLexToken]) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    if !tokens.first().is_some_and(|t| t.is_word("have")) { return None; }
+    use crate::grammar::choices::{parse_typed_choice_object_clause_tokens, TypedChoiceObjectClauseKind};
+    let mut quoted = false;
+    let mut candidate = None;
+    for (index, token) in tokens.iter().enumerate().skip(1) {
+        if token.kind == TokenKind::Quote { quoted = !quoted; continue; }
+        if quoted || !token.is_word("become") || index + 1 >= tokens.len() { continue; }
+        let mut choice = vec![OwnedLexToken::synthetic_word("choose")];
+        choice.extend_from_slice(&tokens[1..index]);
+        if let Ok(Some(TypedChoiceObjectClauseKind::Object(selected))) = parse_typed_choice_object_clause_tokens(&choice) {
+            if selected.count_source.is_none() && selected.filter.zone.is_none_or(|zone| zone == crate::zone::Zone::Battlefield) {
+                candidate = Some((index, selected)); break;
+            }
+        }
+    }
+    let (conversion_boundary, selected) = candidate?;
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let positions = view.token_start_indices();
+    let completion_at = words.windows(3).enumerate().rev().find_map(|(index, words)| {
+        (words == ["and", "perform", "the"] && tokens[..positions[index]].iter()
+            .filter(|token| token.kind == TokenKind::Quote).count() % 2 == 0).then_some(index)
+    });
+    let (descriptor_end, completion) = if let Some(index) = completion_at {
+        if words.last() != Some(&"action") || index + 4 >= words.len() { return None; }
+        let label = words[index + 3..words.len() - 1].join(" ");
+        crate::word_claims::claim_tokens(&tokens[positions[index]..]);
+        (positions[index], Some(label))
+    } else { (tokens.len(), None) };
+    crate::word_claims::claim_tokens(&tokens[..=conversion_boundary]);
+    Some(Ok(ActivationCostSegmentCst::ConvertObjects {
+        count: selected.count, filter: selected.filter,
+        descriptor: tokens[conversion_boundary + 1..descriptor_end].to_vec(), completion,
+    }))
+}
+
+/// A quoted program is one bounded cost, regardless of its commas or clauses.
+pub fn parse_quoted_cost_program_tokens(tokens: &[OwnedLexToken]) -> Option<Result<Vec<crate::cards::builders::EffectAst>, CardTextError>> {
+    let mut tokens = tokens;
+    while tokens.first().is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon)) { tokens = &tokens[1..]; }
+    while tokens.last().is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon)) { tokens = &tokens[..tokens.len()-1]; }
+    if tokens.len() < 6 || !tokens[..3].iter().zip(["pay", "the", "cost"]).all(|(token, word)| token.is_word(word))
+        || tokens[3].kind != TokenKind::Quote || tokens.last()?.kind != TokenKind::Quote { return None; }
+    let inner = &tokens[4..tokens.len()-1];
+    if inner.iter().any(|token| token.kind == TokenKind::Quote) { return Some(Err(CardTextError::ParseError("a quoted cost program cannot nest quotation marks".into()))); }
+    // A disjunction of complete actions is one atomic alternative price.
+    // Give its existing choice owner the whole inner program before a broad
+    // discard reader can retain only its first action. Child readers still
+    // own every operand/word; this does not blanket-claim an unknown tail.
+    // Punctuated sequences retain the ordinary bounded program owner; an
+    // operand-list comma must not become a new alternative-action boundary.
+    let single_instruction = !inner.iter().any(|token| matches!(token.kind,
+        TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon | TokenKind::Colon
+        | TokenKind::LBracket | TokenKind::RBracket));
+    let choice = if single_instruction {crate::effect_sentences::parse_or_action_clause_lexed(inner)} else {Ok(None)};
+    let program = match choice {
+        Ok(Some(choice)) => Ok(vec![choice]),
+        Ok(None) => crate::effect_sentences::parse_bounded_program(inner),
+        Err(error) => Err(error),
+    };
+    Some(program.and_then(|effects| {
+        if effects.is_empty() { return Err(CardTextError::ParseError("a quoted cost program must contain an action".into())); }
+        crate::word_claims::claim_tokens(&tokens[..4]);
+        crate::word_claims::claim_tokens(&tokens[tokens.len()-1..]);
+        Ok(effects)
+    }))
+}
+
 fn parse_activation_cost_segment_tokens(
     tokens: &[OwnedLexToken],
     named_source: &impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    if let Some(conversion) = parse_characteristic_conversion_cost(tokens) { return Some(conversion); }
+    if let Some(result) = parse_quoted_cost_program_tokens(tokens) { return Some(result.map(ActivationCostSegmentCst::EffectProgram)); }
     if matches!(render_token_slice(tokens).trim().to_ascii_lowercase().as_str(),
         "return an unblocked attacker you control to hand" | "return an unblocked attacker you control to its owner's hand") {
         crate::word_claims::claim_tokens(tokens);
@@ -355,7 +426,7 @@ fn parse_activation_cost_segment_head_lexed<'a>(input: &mut LexStream<'a>) -> WR
         alt((
             alt((
                 alt((primitives::kw("collect"), primitives::kw("tap"))),
-                primitives::kw("t"),
+                alt((primitives::kw("t"), primitives::kw("have"))),
                 primitives::kw("untap"),
                 primitives::kw("q"),
                 primitives::kw("pay"),
@@ -399,9 +470,12 @@ fn split_activation_cost_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<Vec<Ow
     let mut segments = Vec::new();
     let mut start = 0usize;
     let mut inside_named_card = false;
+    let mut quoted = false;
     let mut idx = 0usize;
 
     while idx < tokens.len() {
+        if tokens[idx].kind == TokenKind::Quote { quoted = !quoted; }
+        if quoted { idx += 1; continue; }
         if !inside_named_card
             && tokens[idx].is_word("card")
             && tokens
@@ -498,6 +572,10 @@ fn parse_activation_cost_cst_tokens(
     named_source: &impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Result<ActivationCostCst, CardTextError> {
     let trimmed_raw = raw.trim();
+    if let Some(program)=parse_quoted_cost_program_tokens(tokens){
+        return Ok(ActivationCostCst{raw:trimmed_raw.to_owned(),segments:vec![ActivationCostSegmentCst::EffectProgram(program?)],alternative_branches:Vec::new(),is_loyalty_shorthand:false,waterbend_cost:None});
+    }
+
     if let Some(mana) = parse_artifact_creature_tap_price(tokens)? {
         return Ok(ActivationCostCst { raw: trimmed_raw.to_owned(), segments: vec![ActivationCostSegmentCst::Mana(mana)],
             alternative_branches: Vec::new(), is_loyalty_shorthand: false, waterbend_cost: None });
@@ -657,3 +735,19 @@ pub fn parse_activation_cost_rewrite(raw: &str) -> Result<ActivationCostCst, Car
 #[cfg(test)]
 #[path = "program_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod quoted_alternative_cost_program_tests {
+    use super::*;
+    #[test]
+    fn explicit_quoted_price_keeps_both_actions_and_excluded_antecedent() {
+        for reference in ["that creature", "this creature", "it"] {
+            let text=format!("Pay the cost \"Discard a nonland card or sacrifice a creature other than {reference}\".");
+            let tokens=crate::lexer::lex_line(&text,0).unwrap();
+            let effects=parse_quoted_cost_program_tokens(&tokens).unwrap().unwrap();
+            let [crate::cards::builders::EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf{modes,..})]=effects.as_slice() else{panic!("whole alternative cost must remain a choice: {effects:?}")};
+            assert_eq!(modes.len(),2);assert!(!modes[0].effects.is_empty());assert!(!modes[1].effects.is_empty());
+            let second=format!("{:?}",modes[1].effects);assert!(second.contains("Sacrifice"),"{second}");
+        }
+    }
+}

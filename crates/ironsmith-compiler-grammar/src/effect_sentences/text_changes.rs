@@ -4,6 +4,20 @@ use crate::lexer::{LexedClause, OwnedLexToken};
 use crate::util::{parse_subtype_flexible, parse_target_phrase};
 use ironsmith_core::{TextChangeSelection, Until};
 
+pub(super) fn parse_optional_text_fragment_removal(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let clause = LexedClause::new(tokens); let words = clause.word_refs();
+    if !words.starts_with(&["remove", "one", "bracketed", "text", "fragment", "from"]) { return Ok(None); }
+    let start = clause.token_index_after_words(6).ok_or_else(||CardTextError::ParseError("optional-text removal needs an object".into()))?;
+    let (object, duration) = if words.ends_with(&["until","end","of","turn"]) {
+        let end = clause.token_index_after_words(words.len()-4).ok_or_else(||CardTextError::ParseError("missing optional-text target".into()))?;
+        crate::word_claims::claim_tokens(&tokens[end..]); (&tokens[start..end], Until::EndOfTurn)
+    } else {(&tokens[start..], Until::Forever)};
+    let target = parse_target_phrase(object)?;
+    crate::word_claims::claim_tokens(&tokens[..start]);
+    Ok(Some(EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor,crate::cards::builders::PlayerAst::Implicit,
+        crate::cards::builders::SubjectVerbActionAst::Characteristics(crate::cards::builders::CharacteristicActionAst::RemoveOptionalTextFragment { target, duration }))))
+}
+
 pub(super) fn parse_text_change(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();

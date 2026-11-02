@@ -94,6 +94,8 @@ pub enum PlayerPredicateAst {
     PlayerHasEnduringStory {
         player: PlayerAst,
     },
+    PlayerHasDesignation { player: PlayerAst, designation: String },
+    PlayerSpentManaToCastSpellsThisTurnAtLeast { player: PlayerAst, amount: ironsmith_core::FrozenNumericParameter },
     PlayerRingTemptedThisGameOrMore {
         player: PlayerAst,
         count: u32,
@@ -197,4 +199,6 @@ pub enum PlayerPredicateAst {
         counter_type: crate::object::CounterType,
         count: u32,
     },
+    PlayerNamedActionHistory { player: PlayerAst, label: String, window: ironsmith_core::value_model::PlayerActionWindow, minimum: u32, minimum_amount: u32 },
+
 }

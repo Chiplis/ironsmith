@@ -791,6 +791,10 @@ fn describe_turn_history_value_comparison_prose(
                 ))
             }
         }
+        // This helper's quantified prose appends "this turn". Whole-game
+        // movement uses the full value/comparison renderer, which already
+        // preserves both zones, the filter and "during this game".
+        ironsmith_core::TurnHistoryCount::MovedZonesEver { .. } => None,
         ironsmith_core::TurnHistoryCount::MovedZones { filter, from, to } => {
             let default_subject = if *from == Some(Zone::Battlefield) {
                 "permanent"
@@ -3245,6 +3249,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let subject = describe_player_filter(player);
             format!("{} {} the initiative", subject, player_verb(&subject, "have", "has"))
         }
+        Condition::PlayerNamedActionHistory { player, label, window, minimum, minimum_amount } => {
+            let subject = describe_player_filter(player);
+            let suffix = if *minimum == 1 { String::new() } else { format!(" at least {minimum} times") };
+            let amount = if *minimum_amount == 0 { String::new() } else { format!(" with an amount of {minimum_amount} or more") };
+            let window = if subject == "you" { window.surface().to_string() } else { window.surface().replace("your", "their") };
+            format!("{subject} {} performed the {label} action{amount} {window}{suffix}", player_verb(&subject, "have", "has"))
+        }
+        Condition::PlayerHasDesignation { player, designation } => {
+            let subject = describe_player_filter(player);
+            format!("{} {} in {} {}", subject, player_verb(&subject, "are", "is"), if subject == "you" { "your" } else { "their" }, designation)
+        }
         Condition::PlayerHasEnduringStory { player } => {
             let subject = describe_player_filter(player);
             format!(
@@ -3595,6 +3610,8 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "this creature is {} Ring-bearer",
             describe_possessive_player_filter(player)
         ),
+        Condition::PlayerSpentManaToCastSpellsThisTurnAtLeast { player, amount } => format!(
+            "{} spent at least {} mana to cast spells this turn", describe_player_filter(player), amount),
         Condition::PlayerRingTemptedThisGameOrMore { player, count } => {
             let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
@@ -3614,10 +3631,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::ItIsNight => "it's night".to_string(),
+        Condition::InEndingPhase => "it's an ending phase".to_string(),
         Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
         Condition::FirstEndStepOfTurn => "it's the first end step of the turn".to_string(),
         Condition::FirstUpkeepStepOfTurn => "it's the first upkeep of the turn".to_string(),
         Condition::SecondMainPhaseOfTurn => "it's the second main phase of the turn".to_string(),
+        Condition::FirstMainPhaseOfTurn => "it's the first main phase of the turn".to_string(),
         Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
         Condition::SourceControllersCombatPhase => "it's your combat phase".to_string(),
         Condition::SourceControllersEndStep => "during your end step".to_string(),
@@ -3637,6 +3656,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::TriggeringSpellWasKicked => "that spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
+        Condition::NamedPaymentOutcome {label,paid,payer}=>{
+            let status=if *paid {"paid"}else{"not paid"};
+            match payer {Some(player)=>format!("the {label} payment was {status} by {}",player.description()),None=>format!("the {label} payment was {status}")}
+        },
         Condition::ThisSpellPaidLabel(label) => {
             if label.requires_current_turn() {
                 let mut unrestricted = label.clone();
@@ -5540,6 +5563,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "it's being declared as an attacker".to_string()
         }
         Condition::TriggeringObjectWasSacrificed => "it was sacrificed".to_string(),
+        Condition::TriggeringNamedActionPaidMana {label,required} => format!("{} was spent to perform the {label} action",required.iter().map(|symbol|describe_mana_symbol(*symbol)).collect::<String>()),
         Condition::TriggeringKeywordActionIs(action) => match action {
             crate::events::KeywordActionKind::ArtSticker => "it's an art sticker".to_string(),
             crate::events::KeywordActionKind::AbilitySticker => {
@@ -5721,6 +5745,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 timing => timing.step_window_phrase().unwrap_or("any time"),
             };
             format!("timing restriction: {label}")
+        }
+        Condition::EachCurrentDesignatedAbilityActivatedByYou { designation } => {
+            format!("you have activated each of this permanent's activated abilities with designation {designation}")
         }
         Condition::MaxActivationsPerObject(limit) => {
             format!("this ability has been activated fewer than {limit} times on this object")
@@ -10479,4 +10506,29 @@ fn negate_simple_self_state_condition(positive: &str) -> Option<String> {
         _ => return None,
     };
     Some(format!("{subject} {negated_verb} {rest_text}"))
+}
+
+#[cfg(test)]
+mod whole_game_movement_condition_tests {
+    use super::*;
+    #[test]
+    fn whole_game_zone_history_keeps_its_window_and_comparison_in_the_full_renderer() {
+        let query=ironsmith_core::TurnHistoryCount::MovedZonesEver {
+            filter:ObjectFilter::creature(),from:Some(Zone::Graveyard),to:Some(Zone::Hand),
+        };
+        for (operator,threshold) in [
+            (crate::effect::ValueComparisonOperator::GreaterThan,0),
+            (crate::effect::ValueComparisonOperator::GreaterThanOrEqual,3),
+        ] {
+            assert!(describe_turn_history_value_comparison_prose(&query,operator,&Value::Fixed(threshold)).is_none());
+            let condition=Condition::ValueComparison {
+                left:Value::TurnHistoryCount(query.clone()),operator,right:Value::Fixed(threshold),
+            };
+            let rendered=describe_condition(&condition);
+            assert!(rendered.contains("during this game"),"{rendered}");
+            assert!(rendered.contains("graveyard")&&rendered.contains("hand"),"{rendered}");
+            assert!(!rendered.contains("this turn"),"{rendered}");
+            assert!(rendered.contains(&threshold.to_string()),"{rendered}");
+        }
+    }
 }

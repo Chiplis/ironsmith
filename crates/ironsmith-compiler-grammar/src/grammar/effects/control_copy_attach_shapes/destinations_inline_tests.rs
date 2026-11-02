@@ -127,3 +127,14 @@ fn battlefield_destination_retains_relative_controller_and_unknown_tail() {
     let tokens = lex_line("battlefield under the control of that card's owner {R}", 0).unwrap();
     assert!(parse_onto_battlefield_destination_shape(&tokens).is_none());
 }
+
+
+#[test]
+fn bare_owner_library_choice_and_implicit_top_have_the_same_existing_destination_shapes() {
+ for text in ["it on the top or bottom of their library", "it on their choice of the top or bottom of their library"] {
+  assert!(parse_library_choice_destination_shape(&lex_line(text,0).unwrap()).is_some(),"{text}");
+ }
+ let top=lex_line("it back on top",0).unwrap();
+ assert!(parse_library_placement_destination_shape(&top).is_some());
+ assert!(parse_library_choice_destination_shape(&lex_line("it on top of their library",0).unwrap()).is_none());
+}

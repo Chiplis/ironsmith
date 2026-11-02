@@ -1388,7 +1388,7 @@ fn implicit_become_object_template_with_abilities(
     if choice || grants.is_empty() {
         return Ok(None);
     }
-    Ok(Some(EffectAst::subject_verb_become_object_template(
+    let mut effect = EffectAst::subject_verb_become_object_template(
         shape.base_power_toughness.clone(),
         target.clone(),
         shape.card_types,
@@ -1404,7 +1404,28 @@ fn implicit_become_object_template_with_abilities(
         None,
         None,
         Until::Forever,
-    )))
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
+            crate::cards::builders::CharacteristicActionAst::BecomeBasePtCreature {
+                name_override,
+                add_supertypes,
+                remove_other_abilities,
+                remove_other_supertypes,
+                remove_other_card_types,
+                remove_other_subtypes,
+                ..
+            },
+        ) = &mut subject.action
+    {
+        *name_override = shape.name_override;
+        *add_supertypes = shape.supertypes;
+        *remove_other_abilities = shape.remove_other_abilities;
+        *remove_other_supertypes = shape.remove_other_supertypes;
+        *remove_other_card_types = shape.remove_other_card_types;
+        *remove_other_subtypes = shape.remove_other_subtypes;
+    }
+    Ok(Some(effect))
 }
 
 pub fn parse_sentence_implicit_become_clause(

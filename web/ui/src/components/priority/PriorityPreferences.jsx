@@ -86,6 +86,12 @@ export default function PriorityPreferences() {
             <Button variant="ghost" onClick={() => execute(() => startPriorityYield('until', { key, player: player.id }))}>Yield until here</Button>
           </div>)}</div>)}
       </details>
+      <label className="priority-check">Coin flip choice
+        <select aria-label="Remembered coin flip choice" value={status.coinChoice || ''}
+          onChange={event => priorityPolicy.setCoinChoice(event.target.value || null, state)}>
+          <option value="">Ask every time</option><option value="Heads">Heads</option><option value="Tails">Tails</option>
+        </select>
+      </label>
       <label className="priority-check">Keyboard preset <select value={preset} onChange={event => {
         setPreset(event.target.value); setShortcutPreset(event.target.value);
       }}><option value="mtgo">MTGO numbers</option><option value="classic">Classic hand numbers / Alt + number for yields</option></select></label>

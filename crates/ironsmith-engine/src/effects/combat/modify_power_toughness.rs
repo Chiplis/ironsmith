@@ -4,8 +4,8 @@ use crate::continuous::EffectTarget;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::continuous::ResolvedPowerToughness;
-use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::types::CardType;
@@ -37,6 +37,20 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.target_assignments.iter().any(|assignment| {
+            assignment.spec.base() == self.target.base() && assignment.range.len() > 1
+        }) {
+
+        let values =
+            ResolvedPowerToughness::resolve_modifier(game, ctx, &self.power, &self.toughness)?;
+
+        let mut apply = values.additive(EffectTarget::AllPermanents, self.duration.clone());
+
+        apply.target_spec = Some(self.target.clone());
+        apply.require_creature_target = true;
+        return execute_effect(game, &Effect::new(apply), ctx);
+        }
+
         let values =
             ResolvedPowerToughness::resolve_modifier(game, ctx, &self.power, &self.toughness)?;
 
@@ -68,6 +82,26 @@ impl EffectExecutor for ModifyPowerToughnessEffect {
 
         execute_effect(game, &Effect::new(apply), ctx)
     }
+
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        self.target.is_target().then(|| self.target.clone()).into_iter().collect()
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool { true }
+
+    fn prepare_simultaneous_player_action(
+        &self, game: &GameState, ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Freeze each scalar recipient's own contextual quantities before any
+        // sibling continuous original can change those characteristics.
+        let values = ResolvedPowerToughness::resolve_modifier(game, ctx, &self.power, &self.toughness)?;
+        let mut apply = values.additive(EffectTarget::AllPermanents, self.duration.clone());
+        apply.target_spec = Some(self.target.clone());
+        apply.require_creature_target = true;
+        apply.prepare_simultaneous_player_action(game, ctx)
+    }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
@@ -318,5 +352,33 @@ mod tests {
                 .get(&crate::object::CounterType::PlusOnePlusOne),
             Some(&1)
         );
+    }
+
+    #[test]
+    fn widened_target_packet_registers_one_frozen_modifier_for_both_creatures() {
+        let mut game = setup_game(); let alice = PlayerId::from_index(0);
+        let left = create_creature(&mut game, "Left", 2, 2, alice);
+        let right = create_creature(&mut game, "Right", 3, 3, alice);
+        let source = game.new_object_id(); let spec = ChooseSpec::target_creature();
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![ResolvedTarget::Object(left), ResolvedTarget::Object(right)]);
+        ctx.target_assignments = vec![crate::game_state::TargetAssignment { spec: spec.clone(), range: 0..2 }];
+        let effect = ModifyPowerToughnessEffect::new(spec, 2, 1, crate::effect::Until::EndOfTurn);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.current_power(left), Some(4)); assert_eq!(game.current_power(right), Some(5));
+        assert_eq!(game.current_toughness(left), Some(3)); assert_eq!(game.current_toughness(right), Some(4));
+    }
+
+    #[test]
+    fn widened_scalar_pt_freezes_each_recipients_own_characteristic() {
+        let mut game = setup_game(); let alice = PlayerId::from_index(0);
+        let left = create_creature(&mut game, "Left", 2, 2, alice);
+        let right = create_creature(&mut game, "Right", 3, 3, alice);
+        let source = game.new_object_id(); let spec = ChooseSpec::target_creature();
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![ResolvedTarget::Object(left), ResolvedTarget::Object(right)]);
+        ctx.target_assignments = vec![crate::game_state::TargetAssignment { spec: spec.clone(), range: 0..2 }];
+        let effect = ModifyPowerToughnessEffect::new(spec.clone(), Value::PowerOf(Box::new(spec)), 0, Until::EndOfTurn);
+        execute_effect(&mut game, &Effect::new(effect), &mut ctx).unwrap();
+        assert_eq!(game.current_power(left), Some(4));
+        assert_eq!(game.current_power(right), Some(6));
     }
 }

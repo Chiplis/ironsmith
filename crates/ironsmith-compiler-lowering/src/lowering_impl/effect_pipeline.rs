@@ -175,6 +175,7 @@ pub struct NormalizedCardAst {
     pub items: Vec<NormalizedCardItem>,
     pub overload_branch: Option<NormalizedOverloadBranch>,
     pub cleave_branch: Option<NormalizedCleaveBranch>,
+    pub optional_text_variants: Option<crate::model::OptionalTextVariants<NormalizedCardItem>>,
     pub allow_unsupported: bool,
 }
 

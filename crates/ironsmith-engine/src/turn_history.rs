@@ -204,6 +204,9 @@ pub type PileOrGuessInstructionKey =
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
+    /// Completed operations by player; copied with the ordinary last-own-turn ledger.
+    pub player_named_actions: HashMap<(PlayerId, String), u32>,
+    pub player_named_actions_by_combat: HashMap<(u32, PlayerId, String), u32>,
     /// Exact public holder when this turn began. Fresh games have no monarch;
     /// authoritative restore requires a presence-bearing carrier for this fact.
     pub monarch_at_turn_start: Option<PlayerId>,
@@ -310,6 +313,8 @@ impl TurnHistory {
     pub fn clear_for_new_turn(&mut self) -> u32 {
         let spells_cast_last_turn_total = self.total_spells_cast_this_turn();
 
+        self.player_named_actions.clear();
+        self.player_named_actions_by_combat.clear();
         self.monarch_at_turn_start = None;
         self.activated_abilities_this_turn.clear();
         self.ability_activation_counts = Some(HashMap::new());
@@ -1550,11 +1555,12 @@ impl TurnHistory {
         &self,
         dealer: PlayerId,
         subtype: Subtype,
+        game: &GameState,
     ) -> Result<bool, crate::effects::ExecutionError> {
         self.combat_damage_source_qualified_this_turn(|snapshot| {
             snapshot.controller == dealer
                 && snapshot.card_types.contains(&CardType::Creature)
-                && snapshot_had_subtype(snapshot, subtype)
+                && snapshot_had_subtype(snapshot, subtype, game)
         })
     }
 
@@ -1564,12 +1570,13 @@ impl TurnHistory {
         &self,
         dealer: PlayerId,
         subtypes: &[Subtype],
+        game: &GameState,
     ) -> Result<bool, crate::effects::ExecutionError> {
         self.combat_damage_source_qualified_this_turn(|snapshot| {
             snapshot.controller == dealer
                 && subtypes
                     .iter()
-                    .any(|subtype| snapshot_had_subtype(snapshot, *subtype))
+                    .any(|subtype| snapshot_had_subtype(snapshot, *subtype, game))
         })
     }
 
@@ -1577,11 +1584,12 @@ impl TurnHistory {
         &self,
         dealer: PlayerId,
         subtype: Subtype,
+        game: &GameState,
     ) -> Result<bool, crate::effects::ExecutionError> {
         self.combat_damage_source_qualified_this_turn(|snapshot| {
             snapshot.controller == dealer
                 && snapshot.card_types.contains(&CardType::Creature)
-                && (snapshot_had_subtype(snapshot, subtype) || snapshot.is_commander)
+                && (snapshot_had_subtype(snapshot, subtype, game) || snapshot.is_commander)
         })
     }
 
@@ -2428,6 +2436,18 @@ pub(crate) fn resolve_turn_history_count(
             .flat_map(ZoneChangeEvent::snapshots)
             .filter(|snapshot| owner.matches_player(snapshot.owner, filter_ctx))
             .count() as i32,
+        TurnHistoryCount::MovedZonesEver { filter, from, to } => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            let mut seen = std::collections::HashSet::new();
+            game.retained_action_observations()
+                .filter_map(|record| record.downcast::<ZoneChangeEvent>())
+                .filter(|event| from.is_none_or(|zone|zone==event.from) && to.is_none_or(|zone|zone==event.to))
+                .flat_map(|event|event.snapshots().iter())
+                .filter(|snapshot|seen.insert(snapshot.object_id))
+                .filter(|snapshot|historical_filter.matches_snapshot(snapshot,filter_ctx,game))
+                .count().min(i32::MAX as usize) as i32
+        }
         TurnHistoryCount::MovedZones { filter, from, to } => {
             let mut historical_filter = filter.clone();
             historical_filter.zone = None;
@@ -3361,9 +3381,9 @@ mod tests {
 
 /// Whether a last-known snapshot had `subtype`, counting changeling: a
 /// creature with changeling is every creature type (CR 702.73a).
-fn snapshot_had_subtype(snapshot: &ObjectSnapshot, subtype: Subtype) -> bool {
+fn snapshot_had_subtype(snapshot: &ObjectSnapshot, subtype: Subtype, game: &GameState) -> bool {
     snapshot.subtypes.contains(&subtype)
-        || (subtype.is_creature_type()
+        || (game.admitted_subtype(subtype).is_creature_type()
             && snapshot.card_types.contains(&CardType::Creature)
             && snapshot.has_static_ability_id(crate::static_abilities::StaticAbilityId::Changeling))
 }
@@ -3642,5 +3662,52 @@ mod draw_scalar_tests {
         assert!(matches!(game.try_current_characteristics(source),
             Err(StaticEffectDiscoveryError::ScalarRange { value, .. })
                 if value == i128::from(exact)), "checked CDA queries must reject the provisional scalar");
+    }
+}
+
+#[cfg(test)]
+mod scoped_combat_subtype_history_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::ids::CardId;
+    use crate::static_abilities::StaticAbility;
+    use crate::types::SubtypeFamily;
+    use ironsmith_core::custom_subtypes::CustomSubtype;
+
+    #[test]
+    fn combat_history_uses_game_local_family_associations_and_event_time_changeling() {
+        let narrow = Subtype::Custom(CustomSubtype::new("Archive", SubtypeFamily::Artifact).unwrap());
+        let creature = Subtype::Custom(CustomSubtype::new("Archive", SubtypeFamily::Creature).unwrap());
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut artifact_game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let mut creature_game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let artifact = CardDefinitionBuilder::new(CardId::new(), "Artifact vocabulary")
+            .card_types(vec![CardType::Artifact]).subtypes(vec![narrow]).build();
+        let creature_card = CardDefinitionBuilder::new(CardId::new(), "Creature vocabulary")
+            .card_types(vec![CardType::Creature]).subtypes(vec![creature]).build();
+        artifact_game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
+        creature_game.create_object_from_definition(&creature_card, alice, Zone::Battlefield);
+        let dealer = CardDefinitionBuilder::new(CardId::new(), "Event-time changeling")
+            .card_types(vec![CardType::Creature])
+            .with_ability(Ability::static_ability(StaticAbility::changeling())).build();
+        let source = artifact_game.create_object_from_definition(&dealer, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(artifact_game.object(source).unwrap(), &artifact_game);
+        let event = TriggerEvent::new_with_provenance(DamageEvent::with_cause(
+            source, DamageTarget::Player(bob), 1, true, crate::events::EventCause::effect()), ProvNodeId::default());
+        let mut history = TurnHistory::default();
+        history.record_event(&event, None, Some(snapshot.clone()));
+        assert!(!history.player_dealt_combat_damage_to_player_with_subtype_this_turn(alice, narrow, &artifact_game).unwrap());
+        assert!(history.player_dealt_combat_damage_to_player_with_subtype_this_turn(alice, narrow, &creature_game).unwrap());
+        assert!(history.player_dealt_combat_damage_to_player_with_any_subtype_this_turn(alice, &[narrow], &creature_game).unwrap());
+        assert!(history.player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(alice, narrow, &creature_game).unwrap());
+        artifact_game.create_object_from_definition(&creature_card, alice, Zone::Battlefield);
+        artifact_game.move_object(source, Zone::Graveyard, crate::events::EventCause::effect()).unwrap();
+        assert!(history.player_dealt_combat_damage_to_player_with_subtype_this_turn(alice, narrow, &artifact_game).unwrap());
+        // The current family universe cannot invent an event-time creature.
+        let mut artifact_snapshot = snapshot;
+        artifact_snapshot.card_types = vec![CardType::Artifact];
+        assert!(!snapshot_had_subtype(&artifact_snapshot, narrow, &creature_game));
     }
 }

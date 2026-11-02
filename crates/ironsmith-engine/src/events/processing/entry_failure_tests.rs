@@ -2716,6 +2716,7 @@ fn transformed_entry_face_does_not_overwrite_resolved_copy_or_characteristics() 
             let copy_source = game.create_object_from_card(&template, alice, Zone::Battlefield);
             let replacement = if copy_mode == 0 {
                 ReplacementAction::EnterWithCharacteristics {
+                    face_down: false,
                     added_card_types: vec![crate::types::CardType::Artifact],
                     added_subtypes: vec![crate::types::Subtype::Zombie],
                     set_base_power_toughness: Some((7, 8)),

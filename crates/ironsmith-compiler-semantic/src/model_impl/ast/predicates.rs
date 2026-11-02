@@ -45,6 +45,7 @@ pub enum PredicateAst {
     FirstEndStepOfTurn,
     FirstUpkeepStepOfTurn,
     SecondMainPhaseOfTurn,
+    FirstMainPhaseOfTurn,
     ItIsLandCard,
     ItIsSoulbondPaired,
     UnpairedCreaturesCanPair,
@@ -100,6 +101,7 @@ pub enum PredicateAst {
     ThisSpellEscaped,
     ThisSpellWasKicked,
     ThisSpellPaidLabel(OptionalCostRef),
+    NamedPaymentOutcome {label:String,paid:bool,payer:Option<PlayerAst>},
     /// A condition that arrived already bound.
     ///
     /// The spell-cost model states its conditions in the resolved vocabulary
@@ -211,6 +213,8 @@ pub enum PredicateAst {
     Or(Box<PredicateAst>, Box<PredicateAst>),
     /// The source spell was the Nth spell cast by this controller this game.
     ThisSpellCastOrderThisGame(u32),
+    /// Any player's whole ending phase, including its cleanup step.
+    InEndingPhase,
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
@@ -342,6 +346,7 @@ impl PredicateAst {
     /// `it`/`that object` reference supplied by the surrounding effect.
     pub fn uses_implicit_object_reference(&self) -> bool {
         match self {
+            PredicateAst::NamedPaymentOutcome {payer:Some(PlayerAst::ItsController|PlayerAst::ItsOwner),..}=>true,
             PredicateAst::ItIsLandCard
             | PredicateAst::UnpairedCreaturesCanPair
         | PredicateAst::ItIsSoulbondPaired
@@ -388,6 +393,7 @@ impl PredicateAst {
             | PredicateAst::ThisSpellEscaped
             | PredicateAst::ThisSpellWasKicked
             | PredicateAst::ThisSpellPaidLabel(_)
+            | PredicateAst::NamedPaymentOutcome {payer:None,..}
             | PredicateAst::ThisSpellWasCastFromZone(_)
             | PredicateAst::ThisSpellWasCastFromNonHand
             | PredicateAst::ThisSpellWasForetold

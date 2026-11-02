@@ -21,6 +21,26 @@ fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
     let tokens = crate::util::trim_statement_separators(&lowered);
     let words = crate::lexer::token_word_refs(tokens);
     let rendered = crate::lexer::render_token_slice(tokens);
+    if let Some(rest)=rendered.to_ascii_lowercase().trim_end_matches('.').strip_prefix("you may activate abilities designated ") {
+        if let Some((designation,rest))=rest.split_once(" of cards in your ") {
+            if let Some((from,to))=rest.split_once(" as though they were in your ") {
+                fn zone(text:&str)->Option<ironsmith_core::Zone>{match text.trim(){"hand"=>Some(ironsmith_core::Zone::Hand),"graveyard"=>Some(ironsmith_core::Zone::Graveyard),"exile"=>Some(ironsmith_core::Zone::Exile),"library"=>Some(ironsmith_core::Zone::Library),_=>None}}
+                if let (Some(from),Some(as_though))=(zone(from),zone(to)) {
+                    if as_though!=ironsmith_core::Zone::Hand {return None;}
+                    if !designation.is_empty() && designation.split_whitespace().all(|word|word.chars().all(|ch|ch.is_ascii_alphabetic()||ch=='-'||ch=='\'')) {
+                        crate::word_claims::claim_tokens(tokens);
+                        let mut filter=crate::target::ObjectFilter::default();filter.owner=Some(crate::target::PlayerFilter::You);filter.zone=Some(from);
+                        return Some(vec![StaticAbilityAst::Static(StaticAbility {
+                            id:None,label:rendered.clone(),payload:ironsmith_core::StaticAbilityPayload::ActivateAbilitiesAsThoughZone {
+                                filter,designation:designation.to_string(),from,as_though,display:rendered.clone(),
+                            },
+                        })]);
+                    }
+                }
+            }
+        }
+    }
+
     if rendered.to_ascii_lowercase().trim_end_matches('.') == "as this creature attacks, you may tap up to one untapped creature you control that you didn't choose to attack with and that either has haste or has been under your control continuously since this turn began. when you do, this creature gets +x/+0 until end of turn, where x is the tapped creature's power" {
         let trigger = ironsmith_core::TriggeredAbility {
             trigger: crate::model::ast::TriggerSpec::ThisAttacks,
@@ -36,6 +56,15 @@ fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
         let mut ability = StaticAbility::enlist_attack(trigger, rendered.clone());
         ability.id = None;
         return Some(vec![StaticAbilityAst::Static(ability)]);
+    }
+    if let ["damage", "dealt", "to", subject @ .., "also", "causes", "its", "controller", "to", "lose", "that", "much", "life"] = words.as_slice()
+        && source(subject)
+    {
+        // This reader owns the complete recipient-damage consequence. Claim
+        // its connective and recipient relation as well as the life operation.
+        crate::word_claims::claim_tokens(tokens);
+        return Some(vec![StaticAbilityAst::Static(StaticAbility::keyword_marker(
+            "Damage dealt to this creature also causes its controller to lose that much life."))]);
     }
     let lower = rendered.to_ascii_lowercase();
     if let Some(rest) = lower.strip_prefix("before the game begins, you may reveal this card from outside the game as your chosen companion if ")
@@ -111,7 +140,9 @@ fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
                 ironsmith_core::CounterType::Charge, crate::effect::Value::ColorsOfManaSpentToCastThisSpell)),
         ]);
     }
-    if matches!(ironsmith_core::keyword_marker_mechanic(&rendered), Some(ironsmith_core::KeywordMarkerMechanic::RevealSharedTypesForEntryCounters { .. } | ironsmith_core::KeywordMarkerMechanic::CastBothSplitHalvesFromHand | ironsmith_core::KeywordMarkerMechanic::LinkOnGraveyardArrival | ironsmith_core::KeywordMarkerMechanic::RecurringCopyOnFirstNameResolution | ironsmith_core::KeywordMarkerMechanic::EntryCountersAndFollowingAbilities { .. } | ironsmith_core::KeywordMarkerMechanic::CombatBandsAndDamageChoice | ironsmith_core::KeywordMarkerMechanic::AssignCreatureSectors | ironsmith_core::KeywordMarkerMechanic::InitializeControllerSpeed | ironsmith_core::KeywordMarkerMechanic::ChooseSagaEntryChapter | ironsmith_core::KeywordMarkerMechanic::AnotherPlayerPaysGeneric | ironsmith_core::KeywordMarkerMechanic::DayNightTransformDefinition { .. } | ironsmith_core::KeywordMarkerMechanic::EntryLoyaltyReductionPerLifePip | ironsmith_core::KeywordMarkerMechanic::ExileOnStackExitIfCastFrom { .. } | ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { .. } | ironsmith_core::KeywordMarkerMechanic::AttachWhileCreature | ironsmith_core::KeywordMarkerMechanic::DestroyAttachmentInstead)) {
+    if matches!(ironsmith_core::keyword_marker_mechanic(&rendered), Some(ironsmith_core::KeywordMarkerMechanic::PrecombatLoreProgression { .. } | ironsmith_core::KeywordMarkerMechanic::ClassTriggerChoiceAdjustment { .. } | ironsmith_core::KeywordMarkerMechanic::ClassTriggerMultiplication { .. } | ironsmith_core::KeywordMarkerMechanic::FinalChapterResolutionRemovesCounters { .. } | ironsmith_core::KeywordMarkerMechanic::RevealSharedTypesForEntryCounters { .. } | ironsmith_core::KeywordMarkerMechanic::CastBothSplitHalvesFromHand | ironsmith_core::KeywordMarkerMechanic::LinkOnGraveyardArrival | ironsmith_core::KeywordMarkerMechanic::RecurringCopyOnFirstNameResolution | ironsmith_core::KeywordMarkerMechanic::EntryCountersAndFollowingAbilities { .. } | ironsmith_core::KeywordMarkerMechanic::CombatBandsAndDamageChoice | ironsmith_core::KeywordMarkerMechanic::AssignCreatureSectors | ironsmith_core::KeywordMarkerMechanic::InitializeControllerSpeed | ironsmith_core::KeywordMarkerMechanic::ChooseSagaEntryChapter | ironsmith_core::KeywordMarkerMechanic::AnotherPlayerPaysGeneric | ironsmith_core::KeywordMarkerMechanic::DayNightTransformDefinition { .. } | ironsmith_core::KeywordMarkerMechanic::EntryLoyaltyReductionPerLifePip | ironsmith_core::KeywordMarkerMechanic::ExileOnStackExitIfCastFrom { .. } | ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { .. } | ironsmith_core::KeywordMarkerMechanic::AttachWhileCreature | ironsmith_core::KeywordMarkerMechanic::DestroyAttachmentInstead)) {
+        crate::word_claims::claim_tokens(tokens);
+        crate::word_claims::claim_tokens(tokens);
         return Some(vec![StaticAbilityAst::Static(StaticAbility::keyword_marker(rendered))]);
     }
 

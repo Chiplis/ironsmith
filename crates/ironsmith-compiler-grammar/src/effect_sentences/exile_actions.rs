@@ -306,6 +306,7 @@ fn parse_independent_exile_pair(
         crate::lexer::token_word_refs(branch)
             .first()
             .is_some_and(|word| matches!(*word, "a" | "an"))
+            || crate::util::parse_choice_count_token_prefix_consumed(branch).is_some()
     };
     if !starts_with_indefinite_article(first_tokens)
         || !starts_with_indefinite_article(second_tokens)
@@ -317,7 +318,7 @@ fn parse_independent_exile_pair(
     let mut second = parse_target_phrase(second_tokens)?;
     let is_non_target_object = |target: &TargetAst| match target {
         TargetAst::Object(_, explicit_target_span, _) => explicit_target_span.is_none(),
-        TargetAst::WithCount(inner, count) if count.is_single() => {
+        TargetAst::WithCount(inner, _) => {
             matches!(
                 inner.as_ref(),
                 TargetAst::Object(_, explicit_target_span, _)
@@ -330,6 +331,28 @@ fn parse_independent_exile_pair(
         return Ok(None);
     }
 
+    // A trailing source zone scopes independently counted card operands:
+    // "up to one instant card and up to one sorcery card from your graveyard".
+    // Explicit earlier sources and permanent operands keep their own domains.
+    fn card_filter(target: &mut TargetAst) -> Option<&mut ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, ..) => Some(filter),
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => card_filter(inner),
+            _ => None,
+        }
+    }
+    if !first_tokens.iter().any(|token| token.is_word("from"))
+        && first_tokens.iter().any(|token| token.is_word("card") || token.is_word("cards"))
+        && second_tokens.iter().any(|token| token.is_word("from"))
+        && let Some(right) = card_filter(&mut second)
+        && right.zone.is_some_and(|zone| matches!(zone, Zone::Hand | Zone::Graveyard | Zone::Exile | Zone::Library))
+    {
+        let (zone, owner) = (right.zone, right.owner.clone());
+        if let Some(left) = card_filter(&mut first) && left.zone.is_none() {
+            left.zone = zone;
+            if left.owner.is_none() { left.owner = owner; }
+        }
+    }
     apply_exile_subject_hand_owner_context(&mut first, subject);
     apply_exile_subject_hand_owner_context(&mut second, subject);
     let exile = |target| {
@@ -625,6 +648,66 @@ pub fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    // A lifetime spanning this spell's normal resolution is one duration,
+    // independent of the action's selected object and of any custom keyword.
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    const CAST_LIFETIME: &[&str] = &["until", "this", "spell", "leaves", "the", "stack", "without", "entering", "the", "battlefield", "or", "the", "permanent", "it", "becomes", "leaves", "the", "battlefield"];
+    if words.ends_with(CAST_LIFETIME) {
+        let split = view.token_start_indices()[words.len() - CAST_LIFETIME.len()];
+        let mut target = parse_target_phrase(&tokens[..split])?;
+        apply_exile_subject_hand_owner_context(&mut target, subject);
+        crate::word_claims::claim_tokens(&tokens[split..]);
+        return Ok(EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::ExileUntilSourceLeaves {
+                target,
+                duration: ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield,
+                leave_watcher: None, face_down: false, all: false, explicit_return_surface: false,
+            }),
+        ));
+    }
+    // A nontargeted union of personal zones is one selection. Reuse the
+    // independent cost-selector grammar for its count, qualities and union;
+    // the same AST remains an ordinary action outside a payment context.
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let union = words.ends_with(&["from", "your", "hand", "and", "or", "graveyard"])
+        || words.ends_with(&["from", "your", "hand", "and", "or", "from", "your", "graveyard"]);
+    if union && !words.contains(&"target")
+        && matches!(subject, None | Some(SubjectAst::Player(PlayerAst::You)))
+    {
+        let full: Vec<_> = std::iter::once(OwnedLexToken::synthetic_word("exile"))
+            .chain(tokens.iter().cloned()).collect();
+        if let crate::grammar::activation_costs::ActivationCostSegmentCst::ExileChosen {
+            filter, choice_count, count_value, ..
+        } = crate::grammar::activation_costs::parse_exile_segment_tokens(&full, |_| false)? {
+            let tag = helper_tag_for_tokens(tokens, "exiled");
+            let sequence = EffectAst::Sequence { effects: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    optional_search_zones: false, filter: filter.clone(), count: choice_count,
+                    count_value: count_value.clone(), player: PlayerAst::You,
+                    tag: tag.clone(), zones: vec![Zone::Hand, Zone::Graveyard], search_mode: None,
+                }),
+                EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+            ] };
+            // Exact fixed selection of unfiltered cards requires the complete
+            // set. Its availability uses public zone sizes, never identities.
+            let unfiltered = filter.any_of.iter().all(|arm| {
+                let mut bare = arm.clone(); bare.zone = None; bare.owner = None;
+                bare == ObjectFilter::default()
+            });
+            if words.first() == Some(&"exactly") && count_value.is_none() && unfiltered {
+                return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::ValueComparison {
+                        left: Value::Count(filter), operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: Value::Fixed(choice_count.min as i32),
+                    }, if_true: vec![sequence], if_false: vec![],
+                }));
+            }
+            return Ok(sequence);
+        }
+    }
     // "[target opponent exiles] ... and a card at random from their hand"
     // (Crabomination): a player's random exile from their own zone is a
     // distinct result that a following "cards exiled this way" names.
@@ -802,7 +885,12 @@ fn parse_exile_inner(
                 tag: helper_tag_for_tokens(segment, "exiled"),
             });
         }
-        return Ok(EffectAst::Sequence { effects });
+        // These are several recipients of ONE distributed exile instruction.
+        // All parse routes must retain that owner, so reference resolution's
+        // existing coordinated-result union reaches every exact exile receipt.
+        return Ok(EffectAst::Coordinated {
+            effects, leading_duration: false, result_conjunction: false,
+        });
     }
     if subject.is_none()
         && let Some(effect) = parse_exile_source_or_up_to_one_target(tokens)?
@@ -974,6 +1062,28 @@ fn parse_exile_inner(
     let mut target =
         expand_hand_or_graveyard_target(parse_target_phrase(target_tokens)?, target_tokens);
     apply_exile_subject_hand_owner_context(&mut target, subject);
+    // An explicitly exact, nontargeted selection is an indivisible operation.
+    // Ordinary "exile two cards" still follows the usual do-as-much-as-possible
+    // rule; "exile exactly two" cannot select a smaller set.
+    if target_tokens.iter().any(|token| token.is_word("exactly"))
+        && !target_tokens.iter().any(|token| token.is_word("target"))
+        && !until_source_leaves && !source_top_only && !source_bottom_only
+        && let TargetAst::WithCount(inner, count) = &target
+        && count.min > 0
+        && count.max == Some(count.min)
+        && let TargetAst::Object(filter, ..) = inner.as_ref()
+    {
+        let effect = EffectAst::subject_verb_exile(target.clone(), face_down);
+        return Ok(with_exile_actor(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left: Value::Count(filter.clone()),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(count.min as i32),
+            },
+            if_true: vec![effect],
+            if_false: vec![],
+        }), subject));
+    }
     let plural_surface = cca_shapes::is_plural_tagged_object_reference(target_tokens);
     Ok(with_exile_actor(
         if until_source_leaves {
@@ -1156,6 +1266,7 @@ fn parse_except_then_additional_exile_all_filter(
     }
     for relation in &mut inverse_relations {
         relation.kind = match relation.kind {
+            ObjectCharacteristicRelationKind::HasUnrepresentedSubtype => return Ok(None),
             ObjectCharacteristicRelationKind::SharesAny => {
                 ObjectCharacteristicRelationKind::SharesNone
             }
@@ -1879,5 +1990,38 @@ mod tests {
             scope_types_away_from_requantified_bare_card_domains(&tokens, filter.clone()),
             filter
         );
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn exile_until_demonstrative_leaves_retains_a_distinct_watcher() {
+    let tokens = crate::lexer::lex_line("a card from your graveyard until that creature leaves the battlefield", 0).unwrap();
+    let effect = parse_exile(&tokens, None).unwrap();
+    assert!(matches!(effect, EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+            crate::cards::builders::ZoneMoveActionAst::ExileUntilSourceLeaves { leave_watcher: Some(_), .. }), .. })));
+    let tokens = crate::lexer::lex_line("a card from your graveyard until this creature leaves the battlefield", 0).unwrap();
+    let effect = parse_exile(&tokens, None).unwrap();
+    assert!(matches!(effect, EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+            crate::cards::builders::ZoneMoveActionAst::ExileUntilSourceLeaves { leave_watcher: None, .. }), .. })));
+}
+
+#[cfg(test)]
+#[test]
+fn independently_counted_exile_cards_share_only_the_trailing_source_domain() {
+    let tokens=crate::lexer::lex_line("up to one instant card and up to one sorcery card from your graveyard",0).unwrap();
+    let effect=parse_independent_exile_pair(&tokens,None,false,false).unwrap().unwrap();
+    let EffectAst::Coordinated { effects, .. }=effect else {panic!("independent operands")};
+    assert_eq!(effects.len(),2);
+    for effect in effects {
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: crate::cards::builders::SubjectVerbActionAst::ZoneMoves(
+                crate::cards::builders::ZoneMoveActionAst::Exile { target, .. }), .. })=effect else {panic!("exile operand")};
+        let TargetAst::WithCount(inner,count)=target else {panic!("independent optional count")};
+        assert_eq!(count.min,0);assert_eq!(count.max,Some(1));
+        let TargetAst::Object(filter,None,_)=*inner else {panic!("ordinary nontargeted card selection")};
+        assert_eq!(filter.zone,Some(Zone::Graveyard));assert_eq!(filter.owner,Some(PlayerFilter::You));
     }
 }

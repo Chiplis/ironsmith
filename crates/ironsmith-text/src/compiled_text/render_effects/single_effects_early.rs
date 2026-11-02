@@ -6891,6 +6891,14 @@ pub(super) fn describe_correlated_created_token_fight(
 }
 
 pub(crate) fn describe_effect(effect: &Effect) -> String {
+    if let Some(note)=effect.downcast_ref::<ironsmith_core::NoteObjectNamesEffect>(){
+        let subject=match note.object.base(){crate::target::ChooseSpec::Tagged(tag) if tag.as_str()=="triggering"=>"the triggering card's name",crate::target::ChooseSpec::Source=>"this permanent's name",_=>"the referenced object's name"};
+        let owner=match note.for_object.base(){crate::target::ChooseSpec::Source=>"this permanent",_=>"the referenced permanent"};
+        return format!("Note {subject} for {owner}");
+    }
+    if let Some(scope)=effect.downcast_ref::<crate::effects::cards::CardDefinitionScopeEffect>() {
+        return describe_effect(&scope.effect);
+    }
     // An authored ability word on a conditional instruction ("Fateful hour —
     // If you have 5 or less life, ...") prefixes the rendered instruction.
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>()
@@ -9092,7 +9100,7 @@ pub(crate) fn describe_next_spell_grant_sequence(effects: &[Effect]) -> Option<S
     let [first, rest @ ..] = grants.as_slice() else {
         return None;
     };
-    if rest.is_empty()
+    if first.repeat_for_turn || rest.iter().any(|grant|grant.repeat_for_turn) || rest.is_empty()
         || rest
             .iter()
             .any(|grant| grant.player != first.player || grant.filter != first.filter)

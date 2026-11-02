@@ -215,11 +215,28 @@ impl EffectExecutor for ironsmith_core::SetPermanentDesignationEffect {
             let mut changed = Vec::new();
             let mut events = Vec::new();
             for id in targets {
+                if ctx.replacement.entry_counter_source == Some(id) {
+                    // Entry programs apply permanent facts to the resulting
+                    // incarnation after its zone change commits. Source-zone
+                    // cards cannot acquire battlefield designations.
+                    ctx.replacement.entry_designations.push(self.designation.clone());
+                    changed.push(id);
+                    continue;
+                }
                 if game.is_phased_out(id) { continue; }
                 match &self.designation {
                     ironsmith_core::PermanentDesignation::Harnessed => if game.harness(id) { changed.push(id); },
-                    ironsmith_core::PermanentDesignation::CustomStatus { name, until_end_of_turn } => {
-                        if game.apply_custom_status(id, name, *until_end_of_turn) {
+                    ironsmith_core::PermanentDesignation::CustomStatusInZone { name, zone, present, carry_to_stack } => {
+                        if game.set_custom_status_in_zone_with_cast_continuation(id, name, *zone, *present, *carry_to_stack) { changed.push(id); }
+                    },
+                    ironsmith_core::PermanentDesignation::CustomStatus { name, .. }
+                    | ironsmith_core::PermanentDesignation::CustomStatusUntilEvent { name, .. } => {
+                        let fresh = match &self.designation {
+                            ironsmith_core::PermanentDesignation::CustomStatus { until_end_of_turn, .. } => game.apply_custom_status(id, name, *until_end_of_turn),
+                            ironsmith_core::PermanentDesignation::CustomStatusUntilEvent { event, .. } => game.apply_custom_status_until_event(id, name, *event),
+                            _ => unreachable!(),
+                        };
+                        if fresh {
                             changed.push(id);
                             let controller = game.current_controller(id).unwrap_or(ctx.controller);
                             let mut event = KeywordActionEvent::new(KeywordActionKind::CustomStatusGained, controller, id, 1);
@@ -237,4 +254,66 @@ impl EffectExecutor for ironsmith_core::SetPermanentDesignationEffect {
         })
     }
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> { Some(&self.target) }
+}
+
+impl EffectExecutor for ironsmith_core::RecordSourceCollectionEffect {
+    fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{
+        let sources=match &self.source_tag {Some(tag)=>ctx.get_tagged_all(tag.as_str()).into_iter().flatten().map(|snapshot|snapshot.object_id).collect::<Vec<_>>(),None=>vec![ctx.source]};
+        // A bookkeeping relation records the exact selected incarnation.
+        // Ordinary effect reference resolution may follow a tagged card across
+        // zones; that would incorrectly attach a later reincarnation here.
+        let targets=if !self.target.is_target() {
+            if let crate::target::ChooseSpec::Tagged(tag)=self.target.base() {
+                ctx.get_tagged_all(tag.as_str()).into_iter().flatten().map(|snapshot|snapshot.object_id).collect()
+            } else {crate::effects::helpers::resolve_objects_for_effect(game,ctx,&self.target)?}
+        } else {crate::effects::helpers::resolve_objects_for_effect(game,ctx,&self.target)?};
+        let mut changed=Vec::new();
+        for source in sources {
+            let members=targets.iter().copied().filter(|id|game.object(*id).is_some_and(|object|object.zone==self.member_zone && game.find_object_by_stable_id(object.stable_id)==Some(*id))).collect::<Vec<_>>();
+            if game.note_source_collection(source,self.source_zone,&self.name,self.member_zone,&members) {changed.extend(members);}
+        }
+        changed.sort();changed.dedup();Ok(EffectOutcome::with_objects(changed))
+    }
+    fn get_target_spec(&self)->Option<&crate::target::ChooseSpec>{Some(&self.target)}
+}
+
+impl EffectExecutor for ironsmith_core::GrantExileControllerInspectionEffect {
+    fn execute(&self,game:&mut GameState,ctx:&mut ExecutionContext)->Result<EffectOutcome,ExecutionError>{
+        let cards=crate::effects::helpers::resolve_objects_for_effect(game,ctx,&self.target)?;
+        let sources=crate::effects::helpers::resolve_objects_for_effect(game,ctx,&self.sources)?;
+        let mut count=0;
+        for card in cards {
+            if !game.object(card).is_some_and(|object|object.zone==crate::zone::Zone::Exile){continue;}
+            for source in &sources {
+                game.grant_face_down_exile_source_controller_view(card,*source);count+=1;
+            }
+        }
+        Ok(EffectOutcome::count(count))
+    }
+    fn get_target_spec(&self)->Option<&crate::target::ChooseSpec>{Some(&self.target)}
+}
+
+impl EffectExecutor for ironsmith_core::effect::RememberOriginalMovementArrivalsEffect {
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+        let outcome = ctx.get_outcome(self.from).ok_or_else(|| ExecutionError::IncompleteEvidence("remembered movement has no exact producer receipt".into()))?;
+        let mut known = false;
+        let mut snapshots = Vec::new();
+        for fact in &outcome.instruction_result().execution_facts {
+            if let crate::effect::ExecutionFact::OriginalZoneMoveObjects(moves) = fact {
+                known = true;
+                snapshots.extend(moves.iter().filter(|(_, _, arrival)| arrival.zone == self.zone).map(|(_, _, arrival)| arrival.clone()));
+            }
+            if let crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) = fact {
+                known = true;
+                snapshots.extend(cards.iter().filter(|arrival| arrival.zone == self.zone).cloned());
+            }
+        }
+        if !known { return Err(ExecutionError::IncompleteEvidence("remembered movement lacks original arrival evidence".into())); }
+        let mut seen = std::collections::HashSet::new();
+        snapshots.retain(|snapshot| seen.insert(snapshot.object_id) && game.object(snapshot.object_id).is_some_and(|object| object.zone == self.zone && object.stable_id == snapshot.stable_id && game.find_object_by_stable_id(snapshot.stable_id) == Some(snapshot.object_id)));
+        let ids = snapshots.iter().map(|snapshot| snapshot.object_id).collect();
+        ctx.set_tagged_objects(self.tag.clone(), snapshots);
+        ctx.exact_object_reference_tags.insert(self.tag.clone());
+        Ok(EffectOutcome::with_objects(ids))
+    }
 }

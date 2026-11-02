@@ -275,6 +275,7 @@ fn matching_cost_candidate_count(
     filter: &ObjectFilter,
     source: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
+    destination: Zone,
 ) -> usize {
     let filter_ctx = FilterContext::new(controller).with_source(source);
     let Some(zone) = filter.zone else {
@@ -289,6 +290,7 @@ fn matching_cost_candidate_count(
         Vec::new()
     };
     game.zone_ids(zone)
+        .filter(|id| !game.zone_move_is_prohibited(*id, destination))
         .filter(|id| {
             (placeholders.contains(id) && *id != source)
                 || game
@@ -306,7 +308,7 @@ struct PreparedMoveSelection {
     lookback: Vec<ObjectSnapshot>,
     counters:
         std::collections::HashMap<crate::ids::ObjectId, Vec<(crate::object::CounterType, u32)>>,
-    attachment: Option<crate::object::AttachmentTarget>,
+    attachment_destinations: Option<Vec<crate::object::AttachmentTarget>>,
     attack_player: Option<PlayerId>,
     /// CR 506.3c / 508.4a: the specified defending player is gone.
     attack_player_unavailable: bool,
@@ -495,7 +497,7 @@ fn prepare_move_zone_proposals(
                 effect,
                 game, ctx, object,
                 prepared.counters.get(&object).cloned().unwrap_or_default(),
-                prepared.attachment,
+                prepared.attachment_destinations.clone(),
             );
             prepared.entry_ids.push(object);
             entry_requests.push((object, options));
@@ -525,7 +527,7 @@ fn move_entry_options(
     ctx: &ExecutionContext,
     object: crate::ids::ObjectId,
     counters: Vec<(crate::object::CounterType, u32)>,
-    attachment: Option<crate::object::AttachmentTarget>,
+    attachment_destinations: Option<Vec<crate::object::AttachmentTarget>>,
 ) -> BattlefieldEntryOptions {
     // "If a land enters this way, it enters tapped": a per-object entry
     // status inside the one simultaneous move.
@@ -563,12 +565,16 @@ fn move_entry_options(
     };
     let mut options = options
         .with_initial_counters(counters)
-        .with_entry_attachment(attachment)
+        .with_entry_attachment(None)
         .transformed(effect.enters_transformed)
         .face_down(effect.enters_face_down);
+    options.entry_attachment_candidates = attachment_destinations;
     options.entry_attachment_specified |= ctx.pending_entry_attachment.is_some();
     let mut modifications = effect.entry_modifications.clone();
     if let Some(changes) = &effect.entry_type_changes {
+        if let Some(types) = &changes.set_card_types {
+            modifications.push(crate::continuous::Modification::SetCardTypes(types.clone()));
+        }
         modifications.extend(changes.color_changes.iter().map(|change| match change {
             ironsmith_core::effect::BattlefieldEntryColorChange::Add(colors) => crate::continuous::Modification::AddColors(*colors),
             ironsmith_core::effect::BattlefieldEntryColorChange::Set(colors) => crate::continuous::Modification::SetColors(*colors),
@@ -607,6 +613,8 @@ fn move_entry_options(
 }
 
 impl EffectExecutor for MoveToZoneEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
+
     fn visit_resolution_child_effects(&self, _visitor: &mut dyn FnMut(&crate::effect::Effect)) {}
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
@@ -826,6 +834,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             // the same event sees every other object leave.
             let pinned_lookback = (self.zone != Zone::Battlefield
                 && (!self.target.is_single()
+                    || crate::effects::target_packets::multiple(ctx,&self.target)
                     || matches!(self.target.base(), ChooseSpec::Tagged(_))))
                 && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
             let mut draws = prepared
@@ -1110,15 +1119,13 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let mut battlefield_entries = Vec::new();
         // "... onto the battlefield attached to X" (the attach instruction
         // that follows this move names X).
-        let entry_attachment = if let Some(prepared) = &prepared {
-            prepared.attachment
+        let entry_attachment_destinations = if let Some(prepared) = &prepared {
+            prepared.attachment_destinations.clone()
         } else if self.zone == Zone::Battlefield {
-            ctx.pending_entry_attachment.clone().and_then(|spec| {
-                crate::effects::permanents::resolve_entry_attachment_target(game, &spec, ctx)
-            })
-        } else {
-            None
-        };
+            ctx.pending_entry_attachment.as_ref().map(|spec|
+                crate::effects::permanents::attachment_destinations(game, spec, ctx)
+            ).transpose()?
+        } else { None };
         // CR 303.4h: a permanent entering as a non-Aura or face down is
         // neither Aura, Equipment nor Fortification, so it enters unattached
         // whatever its card was in the old zone.
@@ -1204,7 +1211,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             selection.snapshots = original_snapshots;
             selection.lookback = pre_event_lookback;
             selection.counters = authored_counters;
-            selection.attachment = entry_attachment;
+            selection.attachment_destinations = entry_attachment_destinations;
             selection.attack_player = configured_attack_player;
             selection.attack_player_unavailable = attack_player_unavailable;
             selection.selected = true;
@@ -1214,6 +1221,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let original_order = object_ids.clone();
         let mut zone_receipts = Vec::new();
         let mut authored_facts = Vec::new();
+        let mut attachment_receipts = Vec::new();
         let mut arrival_counter_programs = Vec::new();
         let mut original_arrivals = Vec::new();
         let mut original_object_moves = Vec::new();
@@ -1249,7 +1257,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     self,
                     game, ctx, object_id,
                     authored_counters.remove(&object_id).unwrap_or_default(),
-                    entry_attachment.filter(|_| !enters_without_attachment_role),
+                    (!enters_without_attachment_role).then(|| entry_attachment_destinations.clone()).flatten(),
                 );
                 battlefield_entries.push((
                     object_id,
@@ -1335,7 +1343,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         self,
                         game, ctx, object_id,
                         authored_counters.remove(&object_id).unwrap_or_default(),
-                        entry_attachment.filter(|_| !enters_without_attachment_role),
+                        (!enters_without_attachment_role).then(|| entry_attachment_destinations.clone()).flatten(),
                     );
                     zone_entry_proposals.insert(object_id, proposal);
                     battlefield_entries.push((
@@ -1697,6 +1705,14 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 battlefield_entries.into_iter().zip(entry_outcomes)
             {
                 let entry_outcome = receipt.outcome.clone();
+                if let (Some(choice), BattlefieldEntryOutcome::Moved(entered_object)) =
+                    (receipt.entry_attachment, &entry_outcome)
+                {
+                    attachment_receipts.push(crate::effect::EntryAttachmentReceipt {
+                        original_object: object_id, entered_object: *entered_object,
+                        choice, provenance: ctx.provenance,
+                    });
+                }
                 let (receipt_object, zone_receipt) = draws.retain_entry_receipt(receipt);
                 if receipt_object != object_id {
                     return Err(ExecutionError::InternalError(
@@ -1829,6 +1845,12 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             apply_library_placement_order(game, &ordered_library_results, self.to_top);
         }
 
+        if self.remember_as_chosen_object && let [chosen] = moved_ids.as_slice()
+            && let Some(object) = game.object(*chosen) && object.zone == self.zone
+        {
+            let snapshot = crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)?;
+            game.set_chosen_object(ctx.source, snapshot);
+        }
         let mut original = (|| -> EffectOutcome {
             if !moved_ids.is_empty() {
                 let mut outcome =
@@ -1855,6 +1877,9 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             }
             EffectOutcome::target_invalid()
         })();
+        if ctx.pending_entry_attachment.is_some() {
+            original.execution_facts.push(crate::effect::ExecutionFact::EntryAttachments(attachment_receipts));
+        }
         original.execution_facts.append(&mut authored_facts);
         original.execution_facts.push(crate::effect::ExecutionFact::OriginalZoneMoveObjects(original_object_moves));
         original
@@ -1920,11 +1945,13 @@ impl CostExecutableEffect for MoveToZoneEffect {
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
         if matches!(self.target.base(), ChooseSpec::Source) && game.object(source).is_some() {
-            return Ok(());
+            return if game.zone_move_is_prohibited(source, self.zone) {
+                Err(CostValidationError::Other("source cannot leave its zone for the cost".into()))
+            } else { Ok(()) };
         }
 
         if let Some((filter, count)) = fixed_cost_filter(self) {
-            let matching = matching_cost_candidate_count(game, filter, source, controller);
+            let matching = matching_cost_candidate_count(game, filter, source, controller, self.zone);
             if matching >= count {
                 return Ok(());
             }

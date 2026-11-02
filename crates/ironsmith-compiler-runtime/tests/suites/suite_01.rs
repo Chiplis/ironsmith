@@ -20,6 +20,9 @@ mod r#command_zone_surfaces;
 #[path = "../counted_number_references.rs"]
 mod r#counted_number_references;
 
+#[path = "../custom_named_action_source_zones_next.rs"]
+mod r#custom_named_action_source_zones_next;
+
 #[path = "../dungeon_game_noun_alias.rs"]
 mod r#dungeon_game_noun_alias;
 

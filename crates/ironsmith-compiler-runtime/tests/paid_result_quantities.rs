@@ -550,6 +550,7 @@ fn borrow_bishop_triggers(game: &mut GameState, host: ObjectId, donor: ObjectId)
     use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(host, A,
         EffectTarget::Specific(host), Modification::CopyTriggeredAbilities {
+            excluded_ability_designations: Vec::new(),
             filter: ironsmith::target::ObjectFilter::specific(donor),
             exclude_source_name: false, exclude_source_id: true,
         }));
@@ -574,6 +575,7 @@ fn bishop_borrowed_plain_exile_neither_boosts_the_linked_reader_nor_returns_on_d
         let donor = game.create_object_from_definition(&donor, A, Zone::Exile);
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(source, A,
             EffectTarget::Specific(source), Modification::CopyActivatedAbilities {
+                excluded_ability_designations: Vec::new(),
                 filter: ironsmith::target::ObjectFilter::specific(donor), counter: None,
                 include_mana: true, only_loyalty: false, exclude_source_name: false,
                 exclude_source_id: true, force_once_each_turn: false,

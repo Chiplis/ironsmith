@@ -395,6 +395,10 @@ pub struct Ability<SA, T, E, C, Cond = Condition> {
     pub kind: AbilityKind<SA, T, E, C, Cond>,
     /// Resolved source zones. Conversion and loading must preserve these exactly.
     pub functional_zones: Vec<Zone>,
+    /// Authored ability-group designations. These identify semantic groups,
+    /// independently of current slot, presentation labels, or effect shape.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub designations: Vec<String>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -716,6 +720,11 @@ pub struct TriggeredAbility<T, E, C = Condition> {
     pub presentation_label: Option<PresentationLabel>,
 }
 
+/// Reusable activation-history policies for acquired groups of abilities.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ActivationGroupRule { Once, Sequential, Exclusive }
+
 /// Gameplay keyword identity, independent of labels or effect resemblance.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
@@ -732,15 +741,34 @@ pub enum ActivatedAbilityKeyword {
     Craft,
     Encore,
     Fortify,
+    Grouped { family: u32, group: u32, step: u32, rule: ActivationGroupRule },
 }
 
 impl ActivatedAbilityKeyword {
+    /// A generic authored group label binds history independently of its
+    /// display keyword and independently of any effect text.
+    pub fn from_group_label(label: &str) -> Option<Self> {
+        let normalized = label.to_ascii_lowercase();
+        let words: Vec<_> = normalized.split_whitespace().collect();
+        let (family, words) = if let ["family", family, rest @ ..] = words.as_slice() {
+            (family.parse().ok()?, rest)
+        } else { (0, words.as_slice()) };
+        let [policy, "group", group, "step", step] = words else { return None; };
+        let rule = match policy.to_ascii_lowercase().as_str() {
+            "once" => ActivationGroupRule::Once,
+            "sequential" => ActivationGroupRule::Sequential,
+            "exclusive" => ActivationGroupRule::Exclusive,
+            _ => return None,
+        };
+        Some(Self::Grouped { family, group: group.parse().ok()?, step: step.parse().ok()?, rule })
+    }
+
     /// The official keyword ability this identity names (CR 702), if any.
     pub fn official_keyword(self) -> Option<&'static str> {
         Some(match self {
             Self::Equip => "equip",
             Self::PowerUp => "power-up",
-            Self::ClassLevel(_) => return None,
+            Self::ClassLevel(_) | Self::Grouped { .. } => return None,
             Self::Cycling => "cycling",
             Self::Ninjutsu => "ninjutsu",
             Self::Boast => "boast",
@@ -798,6 +826,18 @@ where
     E: Clone,
     C: CoreCostComponent,
 {
+    pub fn with_designation(mut self, designation: impl Into<String>) -> Self {
+        let designation = designation.into().trim().to_ascii_lowercase();
+        if !designation.is_empty() && !self.designations.contains(&designation) {
+            self.designations.push(designation);
+        }
+        self
+    }
+
+    pub fn has_designation(&self, designation: &str) -> bool {
+        self.designations.iter().any(|name| name.eq_ignore_ascii_case(designation))
+    }
+
     pub fn static_ability(effect: SA) -> Self
     where
         SA: crate::functional_zones::StaticAbilityFunctionalZones,
@@ -805,6 +845,7 @@ where
         let functional_zones = effect.default_functional_zones();
         Self {
             kind: AbilityKind::Static(effect),
+            designations: Default::default(),
             functional_zones,
         }
     }
@@ -818,6 +859,7 @@ where
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
     }
@@ -849,6 +891,7 @@ where
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
     }
@@ -874,6 +917,7 @@ where
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
     }
@@ -897,6 +941,7 @@ where
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
     }
@@ -918,6 +963,7 @@ where
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
     }
@@ -934,6 +980,7 @@ where
 
         Some(Self {
             kind: AbilityKind::Activated(ActivatedAbility::basic_mana(symbol)),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         })
     }
@@ -1011,6 +1058,7 @@ where
 
         Ok(Ability {
             kind,
+            designations: self.designations.clone(),
             functional_zones: self.functional_zones,
         })
     }
@@ -1443,5 +1491,43 @@ mod tests {
         inferred.mana_cost = TotalCost::from_cost(Cost::add_counters(CounterType::Loyalty, 1));
         assert!(inferred.is_loyalty_ability());
         assert!(!inferred.is_mana_ability());
+    }
+}
+
+#[cfg(test)]
+mod designation_transport_tests {
+    use super::*;
+    #[test]
+    fn designation_identity_is_exact_through_model_mapping() {
+        // Even a static fixture uses an actual core cost component: mapping
+        // preserves the ability model's ordinary activation-cost contract.
+        let ability: Ability<u8, u8, u8, crate::Cost<()>> = Ability {
+            kind: AbilityKind::Static(7),
+            designations: vec!["steady craft".into()],
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let mapped = ability.try_map(
+            |x| Ok::<_, ()>(u16::from(x)), |x| Ok(u16::from(x)),
+            |x| Ok(u16::from(x)), |cost| Ok(cost), |condition| Ok(condition),
+        ).unwrap();
+        assert!(matches!(mapped.kind, AbilityKind::Static(7u16)));
+        assert_eq!(mapped.functional_zones, vec![Zone::Battlefield]);
+        assert!(mapped.has_designation("STEADY CRAFT"));
+        assert!(!mapped.has_designation("craft"));
+        assert!(!mapped.has_designation("steady crafting"));
+        #[cfg(feature = "serde")]
+        {
+            let encoded = serde_json::to_value(&mapped).unwrap();
+            let restored: Ability<u16, u16, u16, crate::Cost<()>> =
+                serde_json::from_value(encoded.clone()).unwrap();
+            assert_eq!(restored, mapped);
+            let mut legacy = encoded;
+            legacy.as_object_mut().unwrap().remove("designations");
+            let restored: Ability<u16, u16, u16, crate::Cost<()>> =
+                serde_json::from_value(legacy).unwrap();
+            assert!(restored.designations.is_empty());
+            assert_eq!(restored.kind, mapped.kind);
+            assert_eq!(restored.functional_zones, mapped.functional_zones);
+        }
     }
 }

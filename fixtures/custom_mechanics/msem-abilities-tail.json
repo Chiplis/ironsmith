@@ -1,0 +1,1490 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Remaining existing-operation ability source variants",
+  "notes": [
+    "Source identities and faces retained exactly. Native verification pending; materialization alone does not certify behavior."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-409",
+      "keyword": "Experience",
+      "original_reminder": "Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+      "executable_reminder": "Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+      "source_cards": [
+        "Alenil Bladerunner"
+      ],
+      "rule_reference": "702.198.",
+      "rule_text": [
+        {
+          "name": "702.198a",
+          "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.198b",
+          "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+          "custom": true
+        },
+        {
+          "name": "702.198c",
+          "rule": "Level experience is a variant of the experience ability. “Level experience” means “Whenever this creature attacks, if it has two or fewer level counters on it, put a level counter on it.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Alenil Bladerunner_SOR",
+          "name": "Alenil Bladerunner",
+          "original_text": "Mana cost: {1}{R}\nType: Creature — Goblin Warrior\nPower/Toughness: 0/1\nHaste\nExperience *(Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Creature — Goblin Warrior\nPower/Toughness: 0/1\nHaste\nexperience — Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it",
+          "mana_cost": "{1}{R}",
+          "type_line": "Creature — Goblin Warrior",
+          "power": "0",
+          "toughness": "1",
+          "source_card_key": "Alenil Bladerunner_SOR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Alenil Bladerunner",
+              "original_text": "Mana cost: {1}{R}\nType: Creature — Goblin Warrior\nPower/Toughness: 0/1\nHaste\nExperience *(Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Alenil Bladerunner",
+              "executable_text": "Mana cost: {1}{R}\nType: Creature — Goblin Warrior\nPower/Toughness: 0/1\nHaste\nexperience — Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it",
+              "custom_keyword_identities": [
+                "experience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nExperience",
+              "original_printed_rules_text": "Haste\nExperience (Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "experience"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Haste\nExperience",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Haste\nExperience (Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Experience",
+          "reminder": "Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+          "abilityDesignation": "experience"
+        }
+      ]
+    },
+    {
+      "id": "msem-410",
+      "keyword": "Experience",
+      "original_reminder": "Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+      "executable_reminder": "Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+      "source_cards": [
+        "Grinding"
+      ],
+      "rule_reference": "702.198.",
+      "rule_text": [
+        {
+          "name": "702.198a",
+          "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.198b",
+          "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+          "custom": true
+        },
+        {
+          "name": "702.198c",
+          "rule": "Level experience is a variant of the experience ability. “Level experience” means “Whenever this creature attacks, if it has two or fewer level counters on it, put a level counter on it.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Grinding_MON",
+          "name": "Grinding",
+          "original_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has experience. *(Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*",
+          "executable_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has custom keyword \"experience\", and \"experience — Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.\".",
+          "mana_cost": "{G}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Grinding_MON",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Grinding",
+              "original_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has experience. *(Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Grinding",
+              "executable_text": "Mana cost: {G}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has custom keyword \"experience\", and \"experience — Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has experience.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has experience. (Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Enchant creature\nEnchanted creature has experience.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Enchant creature\nEnchanted creature has experience. (Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Experience",
+          "reminder": "Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+          "abilityDesignation": "experience"
+        }
+      ]
+    },
+    {
+      "id": "msem-411",
+      "keyword": "Experience",
+      "original_reminder": "Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.",
+      "executable_reminder": "Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.",
+      "source_cards": [
+        "Copperhide Calf//Verdigris Behemoth"
+      ],
+      "rule_reference": "702.198.",
+      "rule_text": [
+        {
+          "name": "702.198a",
+          "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.198b",
+          "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+          "custom": true
+        },
+        {
+          "name": "702.198c",
+          "rule": "Level experience is a variant of the experience ability. “Level experience” means “Whenever this creature attacks, if it has two or fewer level counters on it, put a level counter on it.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Copperhide Calf//Verdigris Behemoth_OTH",
+          "name": "Copperhide Calf",
+          "original_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nLevel experience *(Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)*\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it. [2/2]\n[level 1-3] Prevent the first 1 damage that would be dealt to Copperhide Calf each turn. [3/3]",
+          "executable_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nPower/Toughness: 2/2\nlevel experience — Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+          "mana_cost": "{G}{W}",
+          "type_line": "Artifact Creature — Elephant Construct",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Copperhide Calf//Verdigris Behemoth_OTH",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Copperhide Calf",
+              "original_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nLevel experience *(Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)*\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it. [2/2]\n[level 1-3] Prevent the first 1 damage that would be dealt to Copperhide Calf each turn. [3/3]"
+            },
+            {
+              "face": "back",
+              "name": "Verdigris Behemoth",
+              "original_text": "Type: Artifact Creature — Elephant Construct\nLevel experience, vigilance, trample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn. [5/5]\n[level 3+] Whenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls. [7/7]"
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Copperhide Calf",
+              "executable_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nPower/Toughness: 2/2\nlevel experience — Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+              "custom_keyword_identities": [
+                "level experience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Level experience\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+              "original_printed_rules_text": "Level experience (Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3"
+            },
+            {
+              "name": "Verdigris Behemoth",
+              "executable_text": "Type: Artifact Creature — Elephant Construct\nPower/Toughness: 5/5\nlevel experience — Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it\nvigilance\ntrample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn.\nLEVEL 3+\nWhenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls.\n7/7",
+              "custom_keyword_identities": [
+                "level experience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Level experience, vigilance, trample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn.\nLEVEL 3+\nWhenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls.\n7/7",
+              "original_printed_rules_text": "Level experience, vigilance, trample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn.\nLEVEL 3+\nWhenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls.\n7/7"
+            }
+          ],
+          "custom_keyword_identities": [
+            "level experience"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Level experience\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Level experience (Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3"
+        }
+      ],
+      "executable_keyword": "Level experience",
+      "executable_definitions": [
+        {
+          "keyword": "Level experience",
+          "reminder": "Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.",
+          "abilityDesignation": "level experience"
+        }
+      ]
+    },
+    {
+      "id": "msem-921",
+      "keyword": "Derange",
+      "original_reminder": "You may mill three cards as you cast this spell.",
+      "executable_reminder": "You may mill {Number} cards as you cast this spell.",
+      "source_cards": [
+        "Nayando Found"
+      ],
+      "rule_reference": "702.296.",
+      "rule_text": [
+        {
+          "name": "702.296a",
+          "rule": "Derange is a static ability that functions while the spell with derange is on the stack. “Derange N” means “As you cast this spell, you may mill exactly N cards.”",
+          "custom": true
+        },
+        {
+          "name": "702.296b",
+          "rule": "A player with fewer than N cards in their library won't be able to mill any cards.",
+          "custom": true
+        },
+        {
+          "name": "702.296c",
+          "rule": "A copy of a spell with derange won't be able to mill cards, unless the effect specifically casts a copy.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Nayando Found_HQZ",
+          "name": "Nayando Found",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Human Druid\nPower/Toughness: ★/★\nDerange 3 *(You may mill three cards as you cast this spell.)*\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Druid\nPower/Toughness: ★/★\nYou may mill 3 cards as you cast this spell.\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Human Druid",
+          "power": "★",
+          "toughness": "★",
+          "source_card_key": "Nayando Found_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nayando Found",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Human Druid\nPower/Toughness: ★/★\nDerange 3 *(You may mill three cards as you cast this spell.)*\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Nayando Found",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Human Druid\nPower/Toughness: ★/★\nYou may mill 3 cards as you cast this spell.\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard.",
+              "custom_keyword_identities": [
+                "derange"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Derange 3\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard.",
+              "original_printed_rules_text": "Derange 3 (You may mill three cards as you cast this spell.)\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [
+            "derange"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Derange 3\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Derange 3 (You may mill three cards as you cast this spell.)\nNayando Found's power and toughness are each equal to the number of creature cards in your graveyard."
+        }
+      ]
+    },
+    {
+      "id": "msem-937",
+      "keyword": "Figment",
+      "original_reminder": "At the beginning of your combat, you may tap other creatures you control with total power 3 or more to create a token copy of this with haste. Sacrifice it at end of turn.",
+      "executable_reminder": "At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power {Number} or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.",
+      "source_cards": [
+        "Ambivalence"
+      ],
+      "rule_reference": "702.301.",
+      "rule_text": [
+        {
+          "name": "702.301a",
+          "rule": "Figment is a triggered ability. \"Figment N\" means \"At the beginning of combat on your turn, you may tap any number of other creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice the token at the beginning of the next end step.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ambivalence_G5L",
+          "name": "Ambivalence",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Horror Incarnation\nPower/Toughness: 3/3\nFigment 3 *(At the beginning of your combat, you may tap other creatures you control with total power 3 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control.",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Horror Incarnation\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control.",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Legendary Creature — Horror Incarnation",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Ambivalence_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ambivalence",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Horror Incarnation\nPower/Toughness: 3/3\nFigment 3 *(At the beginning of your combat, you may tap other creatures you control with total power 3 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ambivalence",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Horror Incarnation\nPower/Toughness: 3/3\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control.",
+              "custom_keyword_identities": [
+                "figment"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Figment 3\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control.",
+              "original_printed_rules_text": "Figment 3 (At the beginning of your combat, you may tap other creatures you control with total power 3 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "figment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Figment 3\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Figment 3 (At the beginning of your combat, you may tap other creatures you control with total power 3 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nYou may have Ambivalence enter as a copy of another creature you control, except its name is Ambivalence, it's legendary in addition to its other types, and has Ambivalence's other abilities.\nThe “legend rule” doesn't apply to permanents you control."
+        }
+      ]
+    },
+    {
+      "id": "msem-938",
+      "keyword": "Figment",
+      "original_reminder": "At the beginning of your combat, you may tap other creatures you control with total power 4 or more to create a token copy of this with haste. Sacrifice it at end of turn.",
+      "executable_reminder": "At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power {Number} or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.",
+      "source_cards": [
+        "Blinded Stomper"
+      ],
+      "rule_reference": "702.301.",
+      "rule_text": [
+        {
+          "name": "702.301a",
+          "rule": "Figment is a triggered ability. \"Figment N\" means \"At the beginning of combat on your turn, you may tap any number of other creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice the token at the beginning of the next end step.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Blinded Stomper_G5L",
+          "name": "Blinded Stomper",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Beast\nPower/Toughness: 3/4\nFigment 4 *(At the beginning of your combat, you may tap other creatures you control with total power 4 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn.",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Beast\nPower/Toughness: 3/4\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 4 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn.",
+          "mana_cost": "{1}{G}{G}",
+          "type_line": "Creature — Beast",
+          "power": "3",
+          "toughness": "4",
+          "source_card_key": "Blinded Stomper_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blinded Stomper",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Beast\nPower/Toughness: 3/4\nFigment 4 *(At the beginning of your combat, you may tap other creatures you control with total power 4 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blinded Stomper",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Beast\nPower/Toughness: 3/4\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 4 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn.",
+              "custom_keyword_identities": [
+                "figment"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Figment 4\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn.",
+              "original_printed_rules_text": "Figment 4 (At the beginning of your combat, you may tap other creatures you control with total power 4 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "figment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Figment 4\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Figment 4 (At the beginning of your combat, you may tap other creatures you control with total power 4 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nTrample\nWhenever Blinded Stomper attacks, another target attacking creature you control can't be blocked by more than one creature this turn."
+        }
+      ]
+    },
+    {
+      "id": "msem-939",
+      "keyword": "Figment",
+      "original_reminder": "At the beginning of your combat, you may tap other creatures you control with total power 6 or more to create a token copy of this with haste. Sacrifice it at end of turn.",
+      "executable_reminder": "At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power {Number} or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.",
+      "source_cards": [
+        "Hadak's Gilded Guard"
+      ],
+      "rule_reference": "702.301.",
+      "rule_text": [
+        {
+          "name": "702.301a",
+          "rule": "Figment is a triggered ability. \"Figment N\" means \"At the beginning of combat on your turn, you may tap any number of other creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice the token at the beginning of the next end step.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hadak's Gilded Guard_G5L",
+          "name": "Hadak's Gilded Guard",
+          "original_text": "Mana cost: {1}{R}{W}{B}\nType: Creature — Ogre Knight\nPower/Toughness: 4/4\nFigment 6 *(At the beginning of your combat, you may tap other creatures you control with total power 6 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked.",
+          "executable_text": "Mana cost: {1}{R}{W}{B}\nType: Creature — Ogre Knight\nPower/Toughness: 4/4\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 6 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked.",
+          "mana_cost": "{1}{R}{W}{B}",
+          "type_line": "Creature — Ogre Knight",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Hadak's Gilded Guard_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hadak's Gilded Guard",
+              "original_text": "Mana cost: {1}{R}{W}{B}\nType: Creature — Ogre Knight\nPower/Toughness: 4/4\nFigment 6 *(At the beginning of your combat, you may tap other creatures you control with total power 6 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hadak's Gilded Guard",
+              "executable_text": "Mana cost: {1}{R}{W}{B}\nType: Creature — Ogre Knight\nPower/Toughness: 4/4\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 6 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked.",
+              "custom_keyword_identities": [
+                "figment"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Figment 6\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked.",
+              "original_printed_rules_text": "Figment 6 (At the beginning of your combat, you may tap other creatures you control with total power 6 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked."
+            }
+          ],
+          "custom_keyword_identities": [
+            "figment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Figment 6\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Figment 6 (At the beginning of your combat, you may tap other creatures you control with total power 6 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nHadak's Gilded Guard attacking causes abilities of creature cards in your graveyard to trigger as though they attacked."
+        }
+      ]
+    },
+    {
+      "id": "msem-940",
+      "keyword": "Figment",
+      "original_reminder": "At the beginning of your combat, you may tap other creatures you control with total power X or more to create a token copy of this with haste. Sacrifice it at end of turn.",
+      "executable_reminder": "At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power {Number} or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.",
+      "source_cards": [
+        "Mirages of Dunesea"
+      ],
+      "rule_reference": "702.301.",
+      "rule_text": [
+        {
+          "name": "702.301a",
+          "rule": "Figment is a triggered ability. \"Figment N\" means \"At the beginning of combat on your turn, you may tap any number of other creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice the token at the beginning of the next end step.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Mirages of Dunesea_G5L",
+          "name": "Mirages of Dunesea",
+          "original_text": "Mana cost: {R}{G}{W}\nType: Enchantment\nNontoken creatures you control have figment X, where X is their power. *(At the beginning of your combat, you may tap other creatures you control with total power X or more to create a token copy of this with haste. Sacrifice it at end of turn.)*",
+          "executable_text": "Mana cost: {R}{G}{W}\nType: Enchantment\nNontoken creatures you control have custom keyword \"figment\", and \"At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power X or greater, where X is this creature's power. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\".",
+          "mana_cost": "{R}{G}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Mirages of Dunesea_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mirages of Dunesea",
+              "original_text": "Mana cost: {R}{G}{W}\nType: Enchantment\nNontoken creatures you control have figment X, where X is their power. *(At the beginning of your combat, you may tap other creatures you control with total power X or more to create a token copy of this with haste. Sacrifice it at end of turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mirages of Dunesea",
+              "executable_text": "Mana cost: {R}{G}{W}\nType: Enchantment\nNontoken creatures you control have custom keyword \"figment\", and \"At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power X or greater, where X is this creature's power. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Nontoken creatures you control have figment X, where X is their power.",
+              "original_printed_rules_text": "Nontoken creatures you control have figment X, where X is their power. (At the beginning of your combat, you may tap other creatures you control with total power X or more to create a token copy of this with haste. Sacrifice it at end of turn.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Nontoken creatures you control have figment X, where X is their power.",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Nontoken creatures you control have figment X, where X is their power. (At the beginning of your combat, you may tap other creatures you control with total power X or more to create a token copy of this with haste. Sacrifice it at end of turn.)"
+        }
+      ]
+    },
+    {
+      "id": "msem-941",
+      "keyword": "Figment",
+      "original_reminder": "At the beginning of your combat, you may tap other creatures you control with total power 5 or more to create a token copy of this with haste. Sacrifice it at end of turn.",
+      "executable_reminder": "At the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power {Number} or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.",
+      "source_cards": [
+        "Sunshroud Coil"
+      ],
+      "rule_reference": "702.301.",
+      "rule_text": [
+        {
+          "name": "702.301a",
+          "rule": "Figment is a triggered ability. \"Figment N\" means \"At the beginning of combat on your turn, you may tap any number of other creatures you control with total power 3 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice the token at the beginning of the next end step.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sunshroud Coil_G5L",
+          "name": "Sunshroud Coil",
+          "original_text": "Mana cost: {U}{U}{R}{R}{W}{W}\nType: Creature — Snake\nPower/Toughness: 5/5\nFigment 5 *(At the beginning of your combat, you may tap other creatures you control with total power 5 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nLifelink\nWhen Sunshroud Coil dies, draw a card.",
+          "executable_text": "Mana cost: {U}{U}{R}{R}{W}{W}\nType: Creature — Snake\nPower/Toughness: 5/5\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 5 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nLifelink\nWhen Sunshroud Coil dies, draw a card.",
+          "mana_cost": "{U}{U}{R}{R}{W}{W}",
+          "type_line": "Creature — Snake",
+          "power": "5",
+          "toughness": "5",
+          "source_card_key": "Sunshroud Coil_G5L",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sunshroud Coil",
+              "original_text": "Mana cost: {U}{U}{R}{R}{W}{W}\nType: Creature — Snake\nPower/Toughness: 5/5\nFigment 5 *(At the beginning of your combat, you may tap other creatures you control with total power 5 or more to create a token copy of this with haste. Sacrifice it at end of turn.)*\nLifelink\nWhen Sunshroud Coil dies, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sunshroud Coil",
+              "executable_text": "Mana cost: {U}{U}{R}{R}{W}{W}\nType: Creature — Snake\nPower/Toughness: 5/5\nAt the beginning of combat on your turn, you may tap any number of other untapped creatures you control with total power 5 or greater. If you do, create a token that's a copy of this permanent, except it has haste. Sacrifice that token at the beginning of the next end step.\nLifelink\nWhen Sunshroud Coil dies, draw a card.",
+              "custom_keyword_identities": [
+                "figment"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Figment 5\nLifelink\nWhen Sunshroud Coil dies, draw a card.",
+              "original_printed_rules_text": "Figment 5 (At the beginning of your combat, you may tap other creatures you control with total power 5 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nLifelink\nWhen Sunshroud Coil dies, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "figment"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Figment 5\nLifelink\nWhen Sunshroud Coil dies, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Figment 5 (At the beginning of your combat, you may tap other creatures you control with total power 5 or more to create a token copy of this with haste. Sacrifice it at end of turn.)\nLifelink\nWhen Sunshroud Coil dies, draw a card."
+        }
+      ]
+    },
+    {
+      "id": "msem-944",
+      "keyword": "Husk",
+      "original_reminder": "When this enters, create a 2/2 black Zombie creature token with decayed and attach this to it. Decayed creatures can't block. When they attack, sacrifice them at end of combat.",
+      "executable_reminder": "When this Equipment enters, create a 2/2 black Zombie creature token with decayed, then attach this Equipment to it.",
+      "source_cards": [
+        "Skull Splice"
+      ],
+      "rule_reference": "702.303.",
+      "rule_text": [
+        {
+          "name": "702.303a",
+          "rule": "Husk is a triggered ability. “Husk” means “When this Equipment enters, create a 2/2 black Zombie creature token with decayed, then attach this Equipment to it.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Skull Splice_MSY",
+          "name": "Skull Splice",
+          "original_text": "Mana cost: {1}{B}\nType: Artifact — Equipment\nHusk *(When this enters, create a 2/2 black Zombie creature token with decayed and attach this to it. Decayed creatures can't block. When they attack, sacrifice them at end of combat.)*\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}",
+          "executable_text": "Mana cost: {1}{B}\nType: Artifact — Equipment\nWhen this Equipment enters, create a 2/2 black Zombie creature token with decayed, then attach this Equipment to it\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}",
+          "mana_cost": "{1}{B}",
+          "type_line": "Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Skull Splice_MSY",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Skull Splice",
+              "original_text": "Mana cost: {1}{B}\nType: Artifact — Equipment\nHusk *(When this enters, create a 2/2 black Zombie creature token with decayed and attach this to it. Decayed creatures can't block. When they attack, sacrifice them at end of combat.)*\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Skull Splice",
+              "executable_text": "Mana cost: {1}{B}\nType: Artifact — Equipment\nWhen this Equipment enters, create a 2/2 black Zombie creature token with decayed, then attach this Equipment to it\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}",
+              "custom_keyword_identities": [
+                "husk"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Husk\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}",
+              "original_printed_rules_text": "Husk (When this enters, create a 2/2 black Zombie creature token with decayed and attach this to it. Decayed creatures can't block. When they attack, sacrifice them at end of combat.)\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "husk"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Husk\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Husk (When this enters, create a 2/2 black Zombie creature token with decayed and attach this to it. Decayed creatures can't block. When they attack, sacrifice them at end of combat.)\nEquipped creature gets +1/+0.\nWhenever equipped creature dies, draw a card.\nEquip {1}"
+        }
+      ]
+    },
+    {
+      "id": "msem-946",
+      "keyword": "Practiced",
+      "original_reminder": "That spell costs {1} less to cast for each creature you've attacked with this turn.",
+      "executable_reminder": "This spell costs {1} less to cast for each creature you attacked with this turn.",
+      "source_cards": [
+        "Mistress of Cats"
+      ],
+      "rule_reference": "702.305.",
+      "rule_text": [
+        {
+          "name": "702.305a",
+          "rule": "Practiced is a static ability that functions while the spell with practiced is on the stack. \"Practiced\" means \"This spell costs {X} less to cast, where X is the number of creatures you've attacked with this turn.\"",
+          "custom": true
+        },
+        {
+          "name": "702.305b",
+          "rule": "Practiced discounts the spell for each individual permanent you have declared an attack with this turn. That permanent does not need to be under your control or on the battlefield anymore. If it attacked multiple times in a turn, it is only counted once.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Mistress of Cats_MSY",
+          "name": "Mistress of Cats",
+          "original_text": "Mana cost: {2}{R}{G}\nType: Creature — Human Druid\nPower/Toughness: 2/2\nHaste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains practiced as you cast it. *(That spell costs {1} less to cast for each creature you've attacked with this turn.)*",
+          "executable_text": "Mana cost: {2}{R}{G}\nType: Creature — Human Druid\nPower/Toughness: 2/2\nHaste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains custom keyword \"practiced\", and \"This spell costs {1} less to cast for each creature you attacked with this turn.\" as you cast it.",
+          "mana_cost": "{2}{R}{G}",
+          "type_line": "Creature — Human Druid",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Mistress of Cats_MSY",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mistress of Cats",
+              "original_text": "Mana cost: {2}{R}{G}\nType: Creature — Human Druid\nPower/Toughness: 2/2\nHaste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains practiced as you cast it. *(That spell costs {1} less to cast for each creature you've attacked with this turn.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mistress of Cats",
+              "executable_text": "Mana cost: {2}{R}{G}\nType: Creature — Human Druid\nPower/Toughness: 2/2\nHaste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains custom keyword \"practiced\", and \"This spell costs {1} less to cast for each creature you attacked with this turn.\" as you cast it.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Haste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains practiced as you cast it.",
+              "original_printed_rules_text": "Haste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains practiced as you cast it. (That spell costs {1} less to cast for each creature you've attacked with this turn.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Haste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains practiced as you cast it.",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Haste\nWhen this creature enters, create a 2/2 red Cat creature token.\n{T}: The next creature spell you cast this turn gains practiced as you cast it. (That spell costs {1} less to cast for each creature you've attacked with this turn.)"
+        }
+      ]
+    },
+    {
+      "id": "msem-924",
+      "keyword": "Living ritual",
+      "original_reminder": "When this Equipment enters, create a 1/0 red Devil creature token or a token copy of Sulmina, the Final Age, then attach this to it.",
+      "executable_reminder": "When this Equipment enters, choose one —\n• Create a 1/0 red Devil creature token, then attach this Equipment to it.\n• Create Sulmina, the Final Age, a legendary 3/2 black Demon creature token with flying, indestructible, and \"When there aren’t exactly three different names among Implements you control, exile this token.\", then attach this Equipment to it.",
+      "source_cards": [
+        "Black Tesseract"
+      ],
+      "rule_reference": "702.299.",
+      "rule_text": [
+        {
+          "name": "702.299a",
+          "rule": "Living ritual is a triggered ability found on Implement cards. \"Living ritual\" means \"When this Equipment enters, create a 1/0 red Devil creature token or Sulmina, the Final Age, a legendary 3/2 black Demon creature with flying, indestructible, and \"When there aren’t exactly three different names among Implements you control, exile this token.\" Then attach this Equipment to that token.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Black Tesseract_HQZ",
+          "name": "Black Tesseract",
+          "original_text": "Mana cost: {3}\nType: Artifact — Equipment Implement\nLiving ritual *(When this Equipment enters, create a 1/0 red Devil creature token or a token copy of Sulmina, the Final Age, then attach this to it.)*\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon.\n---\n**Sulmina, the Final Age**\nToken Legendary Creature — Demon\nFlying, indestructible\nWhen there aren't exactly three different names among Implements you control, exile Sulmina, the Final Age.\n**3/2**",
+          "executable_text": "Mana cost: {3}\nType: Artifact — Equipment Implement\nWhen this Equipment enters, choose one —\n• Create a 1/0 red Devil creature token, then attach this Equipment to it.\n• Create Sulmina, the Final Age, a legendary 3/2 black Demon creature token with flying, indestructible, and \"When there aren’t exactly three different names among Implements you control, exile this token.\", then attach this Equipment to it\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon.",
+          "mana_cost": "{3}",
+          "type_line": "Artifact — Equipment Implement",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Black Tesseract_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Black Tesseract",
+              "original_text": "Mana cost: {3}\nType: Artifact — Equipment Implement\nLiving ritual *(When this Equipment enters, create a 1/0 red Devil creature token or a token copy of Sulmina, the Final Age, then attach this to it.)*\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon.\n---\n**Sulmina, the Final Age**\nToken Legendary Creature — Demon\nFlying, indestructible\nWhen there aren't exactly three different names among Implements you control, exile Sulmina, the Final Age.\n**3/2**"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Black Tesseract",
+              "executable_text": "Mana cost: {3}\nType: Artifact — Equipment Implement\nWhen this Equipment enters, choose one —\n• Create a 1/0 red Devil creature token, then attach this Equipment to it.\n• Create Sulmina, the Final Age, a legendary 3/2 black Demon creature token with flying, indestructible, and \"When there aren’t exactly three different names among Implements you control, exile this token.\", then attach this Equipment to it\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon.",
+              "custom_keyword_identities": [
+                "living ritual"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [
+                {
+                  "singular": "implement",
+                  "plural": "implements",
+                  "family": "Artifact"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "source_auxiliary_tokens": [
+                {
+                  "name": "Sulmina, the Final Age",
+                  "original_text": "**Sulmina, the Final Age**\nToken Legendary Creature — Demon\nFlying, indestructible\nWhen there aren't exactly three different names among Implements you control, exile Sulmina, the Final Age.\n**3/2**",
+                  "executable_text": "Type: Legendary Creature — Demon\nPower/Toughness: 3/2\nFlying, indestructible\nWhen there aren't exactly three different names among Implements you control, exile Sulmina, the Final Age.",
+                  "token": true
+                }
+              ],
+              "original_display_text": "Living ritual\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon.",
+              "original_printed_rules_text": "Living ritual (When this Equipment enters, create a 1/0 red Devil creature token or a token copy of Sulmina, the Final Age, then attach this to it.)\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon."
+            }
+          ],
+          "custom_keyword_identities": [
+            "living ritual"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Living ritual\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [
+            {
+              "singular": "implement",
+              "plural": "implements",
+              "family": "Artifact"
+            }
+          ],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "source_auxiliary_tokens": [
+            {
+              "name": "Sulmina, the Final Age",
+              "original_text": "**Sulmina, the Final Age**\nToken Legendary Creature — Demon\nFlying, indestructible\nWhen there aren't exactly three different names among Implements you control, exile Sulmina, the Final Age.\n**3/2**",
+              "executable_text": "Type: Legendary Creature — Demon\nPower/Toughness: 3/2\nFlying, indestructible\nWhen there aren't exactly three different names among Implements you control, exile Sulmina, the Final Age.",
+              "token": true
+            }
+          ],
+          "original_printed_rules_text": "Living ritual (When this Equipment enters, create a 1/0 red Devil creature token or a token copy of Sulmina, the Final Age, then attach this to it.)\nEquipped creature gets +2/+2 and has “Whenever this creature deals damage to a player, it deals that much damage to up to one nonplayer target.”\nEquip {3}. This ability costs {3} less to activate if it targets a Demon."
+        }
+      ]
+    },
+    {
+      "id": "msem-401",
+      "keyword": "Distorted",
+      "original_reminder": "This creature can be blocked by tapped creatures but not untapped creatures.",
+      "executable_reminder": "Tapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures.",
+      "source_cards": [
+        "Ada, the Free",
+        "Duela Duelist",
+        "Mirrorform",
+        "Relitian Renegade"
+      ],
+      "rule_reference": "702.195.",
+      "rule_text": [
+        {
+          "name": "702.195a",
+          "rule": "Distorted is an evasion ability. A creature with distorted can't be blocked by untapped creatures. Tapped creatures can block creatures with distorted. This is an exception to rule 509.1a.",
+          "custom": true
+        },
+        {
+          "name": "702.195b",
+          "rule": "A creature with distorted can still only block creatures without distorted if it is untapped.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ada, the Free_OPH",
+          "name": "Ada, the Free",
+          "original_text": "Mana cost: {2}{R}{R}{R}\nType: Legendary Creature — Reflection\nPower/Toughness: 3/2\nDistorted *(This creature can be blocked by tapped creatures but not untapped creatures.)*\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn.",
+          "executable_text": "Mana cost: {2}{R}{R}{R}\nType: Legendary Creature — Reflection\nPower/Toughness: 3/2\nTapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn.",
+          "mana_cost": "{2}{R}{R}{R}",
+          "type_line": "Legendary Creature — Reflection",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Ada, the Free_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ada, the Free",
+              "original_text": "Mana cost: {2}{R}{R}{R}\nType: Legendary Creature — Reflection\nPower/Toughness: 3/2\nDistorted *(This creature can be blocked by tapped creatures but not untapped creatures.)*\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ada, the Free",
+              "executable_text": "Mana cost: {2}{R}{R}{R}\nType: Legendary Creature — Reflection\nPower/Toughness: 3/2\nTapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn.",
+              "custom_keyword_identities": [
+                "distorted"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Distorted\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn.",
+              "original_printed_rules_text": "Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "distorted"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Distorted\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)\nAs you choose targets for an instant or sorcery spell, choose up to one additional target.\nAt the beginning of combat on your turn, gain control of another target creature until end of turn. Untap that creature. It gains haste until end of turn."
+        },
+        {
+          "id": "Duela Duelist_ORP",
+          "name": "Duela Duelist",
+          "original_text": "Mana cost: {3}\nType: Artifact Creature — Golem Warrior\nPower/Toughness: 2/2\n{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains distorted until end of turn. (This creature can be blocked by tapped creatures but not untapped creatures.)",
+          "executable_text": "Mana cost: {3}\nType: Artifact Creature — Golem Warrior\nPower/Toughness: 2/2\n{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\" until end of turn.",
+          "mana_cost": "{3}",
+          "type_line": "Artifact Creature — Golem Warrior",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Duela Duelist_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Duela Duelist",
+              "original_text": "Mana cost: {3}\nType: Artifact Creature — Golem Warrior\nPower/Toughness: 2/2\n{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains distorted until end of turn. (This creature can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Duela Duelist",
+              "executable_text": "Mana cost: {3}\nType: Artifact Creature — Golem Warrior\nPower/Toughness: 2/2\n{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\" until end of turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains distorted until end of turn.",
+              "original_printed_rules_text": "{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains distorted until end of turn. (This creature can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains distorted until end of turn.",
+          "original_printed_rules_text": "{2}: Duela Duelist gains first strike until end of turn.\n{3}: Duela Duelist gains distorted until end of turn. (This creature can be blocked by tapped creatures but not untapped creatures.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mirrorform_ORP",
+          "name": "Mirrorform",
+          "original_text": "Mana cost: {2}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has distorted. (This creature can be blocked by tapped creatures but not untapped creatures.)\n{1}{W}: Tap enchanted creature.",
+          "executable_text": "Mana cost: {2}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\n{1}{W}: Tap enchanted creature.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Mirrorform_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mirrorform",
+              "original_text": "Mana cost: {2}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has distorted. (This creature can be blocked by tapped creatures but not untapped creatures.)\n{1}{W}: Tap enchanted creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mirrorform",
+              "executable_text": "Mana cost: {2}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\n{1}{W}: Tap enchanted creature.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has distorted.\n{1}{W}: Tap enchanted creature.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has distorted. (This creature can be blocked by tapped creatures but not untapped creatures.)\n{1}{W}: Tap enchanted creature."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nEnchanted creature has distorted.\n{1}{W}: Tap enchanted creature.",
+          "original_printed_rules_text": "Enchant creature\nEnchanted creature has distorted. (This creature can be blocked by tapped creatures but not untapped creatures.)\n{1}{W}: Tap enchanted creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Relitian Renegade_OTH",
+          "name": "Relitian Renegade",
+          "original_text": "Mana cost: {W}{U}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may upgrade Relitian Renegade. (Give it one of the listed counters it doesn't already have.)\n• +1/+1\n• Ward {2}\n• Flying \n• Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)",
+          "executable_text": "Mana cost: {W}{U}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may Choose a kind of counter that Relitian Renegade doesn't have on it from among +1/+1, ward {2}, flying and distorted. Put a counter of that kind on Relitian Renegade.\n",
+          "mana_cost": "{W}{U}",
+          "type_line": "Artifact Creature — Human Soldier",
+          "power": "2",
+          "toughness": "2",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Relitian Renegade_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Relitian Renegade",
+              "original_text": "Mana cost: {W}{U}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may upgrade Relitian Renegade. (Give it one of the listed counters it doesn't already have.)\n• +1/+1\n• Ward {2}\n• Flying \n• Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Relitian Renegade",
+              "executable_text": "Mana cost: {W}{U}\nType: Artifact Creature — Human Soldier\nPower/Toughness: 2/2\nWhenever another creature you control enters, you may Choose a kind of counter that Relitian Renegade doesn't have on it from among +1/+1, ward {2}, flying and distorted. Put a counter of that kind on Relitian Renegade.\n",
+              "custom_keyword_identities": [
+                "upgrade"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [
+                {
+                  "name": "distorted",
+                  "reminder": "Tapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures."
+                }
+              ],
+              "original_display_text": "Whenever another creature you control enters, you may upgrade Relitian Renegade.\n• +1/+1\n• Ward {2}\n• Flying\n• Distorted",
+              "original_printed_rules_text": "Whenever another creature you control enters, you may upgrade Relitian Renegade. (Give it one of the listed counters it doesn't already have.)\n• +1/+1\n• Ward {2}\n• Flying \n• Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "upgrade"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [
+            {
+              "name": "distorted",
+              "reminder": "Tapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures."
+            }
+          ],
+          "original_display_text": "Whenever another creature you control enters, you may upgrade Relitian Renegade.\n• +1/+1\n• Ward {2}\n• Flying\n• Distorted",
+          "original_printed_rules_text": "Whenever another creature you control enters, you may upgrade Relitian Renegade. (Give it one of the listed counters it doesn't already have.)\n• +1/+1\n• Ward {2}\n• Flying \n• Distorted (This creature can be blocked by tapped creatures but not untapped creatures.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "msem-402",
+      "keyword": "Distorted",
+      "original_reminder": "It can be blocked by tapped creatures but not untapped creatures.",
+      "executable_reminder": "Tapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures.",
+      "source_cards": [
+        "Better Half",
+        "Lusterform",
+        "Mirrorwalk",
+        "Seeker's Garment",
+        "Shard Sword"
+      ],
+      "rule_reference": "702.195.",
+      "rule_text": [
+        {
+          "name": "702.195a",
+          "rule": "Distorted is an evasion ability. A creature with distorted can't be blocked by untapped creatures. Tapped creatures can block creatures with distorted. This is an exception to rule 509.1a.",
+          "custom": true
+        },
+        {
+          "name": "702.195b",
+          "rule": "A creature with distorted can still only block creatures without distorted if it is untapped.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Better Half_OPH",
+          "name": "Better Half",
+          "original_text": "Mana cost: {2}{W}{U}\nType: Creature — Reflection\nPower/Toughness: 0/0\nYou may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has distorted. *(It can be blocked by tapped creatures but not untapped creatures.)*",
+          "executable_text": "Mana cost: {2}{W}{U}\nType: Creature — Reflection\nPower/Toughness: 0/0\nYou may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".",
+          "mana_cost": "{2}{W}{U}",
+          "type_line": "Creature — Reflection",
+          "power": "0",
+          "toughness": "0",
+          "source_card_key": "Better Half_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Better Half",
+              "original_text": "Mana cost: {2}{W}{U}\nType: Creature — Reflection\nPower/Toughness: 0/0\nYou may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has distorted. *(It can be blocked by tapped creatures but not untapped creatures.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Better Half",
+              "executable_text": "Mana cost: {2}{W}{U}\nType: Creature — Reflection\nPower/Toughness: 0/0\nYou may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "You may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has distorted.",
+              "original_printed_rules_text": "You may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has distorted. (It can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "You may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has distorted.",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "You may have Better Half enter as a copy of any creature on the battlefield, except it's a Reflection in addition to its other creature types and it has distorted. (It can be blocked by tapped creatures but not untapped creatures.)"
+        },
+        {
+          "id": "Lusterform_OPH",
+          "name": "Lusterform",
+          "original_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\n{1}{B}: Enchanted creature can't block this turn.",
+          "executable_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\n{1}{B}: Enchanted creature can't block this turn.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Enchantment — Aura",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Lusterform_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lusterform",
+              "original_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\n{1}{B}: Enchanted creature can't block this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lusterform",
+              "executable_text": "Mana cost: {2}{B}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\n{1}{B}: Enchanted creature can't block this turn.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has distorted.\n{1}{B}: Enchanted creature can't block this turn.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\n{1}{B}: Enchanted creature can't block this turn."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Enchant creature\nEnchanted creature has distorted.\n{1}{B}: Enchanted creature can't block this turn.",
+          "original_printed_rules_text": "Enchant creature\nEnchanted creature has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\n{1}{B}: Enchanted creature can't block this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Mirrorwalk_OPH",
+          "name": "Mirrorwalk",
+          "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature gets +1/+1 and gains distorted until end of turn. (It can be blocked by tapped creatures but not untapped creatures.)\nPut the bottom card of your library into your hand.",
+          "executable_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature gets +1/+1 and gains custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\" until end of turn.\nPut the bottom card of your library into your hand.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Instant",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Mirrorwalk_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mirrorwalk",
+              "original_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature gets +1/+1 and gains distorted until end of turn. (It can be blocked by tapped creatures but not untapped creatures.)\nPut the bottom card of your library into your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mirrorwalk",
+              "executable_text": "Mana cost: {1}{W}\nType: Instant\nTarget creature gets +1/+1 and gains custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\" until end of turn.\nPut the bottom card of your library into your hand.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +1/+1 and gains distorted until end of turn.\nPut the bottom card of your library into your hand.",
+              "original_printed_rules_text": "Target creature gets +1/+1 and gains distorted until end of turn. (It can be blocked by tapped creatures but not untapped creatures.)\nPut the bottom card of your library into your hand."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +1/+1 and gains distorted until end of turn.\nPut the bottom card of your library into your hand.",
+          "original_printed_rules_text": "Target creature gets +1/+1 and gains distorted until end of turn. (It can be blocked by tapped creatures but not untapped creatures.)\nPut the bottom card of your library into your hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Seeker's Garment_OPH",
+          "name": "Seeker's Garment",
+          "original_text": "Mana cost: {4}\nType: Artifact — Equipment\nEquipped creature has hexproof and distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}",
+          "executable_text": "Mana cost: {4}\nType: Artifact — Equipment\nEquipped creature has hexproof, custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\nEquip {1}",
+          "mana_cost": "{4}",
+          "type_line": "Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Seeker's Garment_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Seeker's Garment",
+              "original_text": "Mana cost: {4}\nType: Artifact — Equipment\nEquipped creature has hexproof and distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Seeker's Garment",
+              "executable_text": "Mana cost: {4}\nType: Artifact — Equipment\nEquipped creature has hexproof, custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\nEquip {1}",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Equipped creature has hexproof and distorted.\nEquip {1}",
+              "original_printed_rules_text": "Equipped creature has hexproof and distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Equipped creature has hexproof and distorted.\nEquip {1}",
+          "original_printed_rules_text": "Equipped creature has hexproof and distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Shard Sword_ORP",
+          "name": "Shard Sword",
+          "original_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 and has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}",
+          "executable_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 and has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\nEquip {1}",
+          "mana_cost": "{2}",
+          "type_line": "Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Shard Sword_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shard Sword",
+              "original_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 and has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Shard Sword",
+              "executable_text": "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 and has custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".\nEquip {1}",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Equipped creature gets +1/+1 and has distorted.\nEquip {1}",
+              "original_printed_rules_text": "Equipped creature gets +1/+1 and has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Equipped creature gets +1/+1 and has distorted.\nEquip {1}",
+          "original_printed_rules_text": "Equipped creature gets +1/+1 and has distorted. (It can be blocked by tapped creatures but not untapped creatures.)\nEquip {1}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    },
+    {
+      "id": "msem-403",
+      "keyword": "Distorted",
+      "original_reminder": "They can be blocked by tapped creatures but not untapped creatures.",
+      "executable_reminder": "Tapped creatures can block this creature as though they were untapped. This creature can't be blocked by untapped creatures.",
+      "source_cards": [
+        "Hall of Mirrors",
+        "Twisted Legacy"
+      ],
+      "rule_reference": "702.195.",
+      "rule_text": [
+        {
+          "name": "702.195a",
+          "rule": "Distorted is an evasion ability. A creature with distorted can't be blocked by untapped creatures. Tapped creatures can block creatures with distorted. This is an exception to rule 509.1a.",
+          "custom": true
+        },
+        {
+          "name": "702.195b",
+          "rule": "A creature with distorted can still only block creatures without distorted if it is untapped.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Hall of Mirrors_OPH",
+          "name": "Hall of Mirrors",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment\nCreatures you control have distorted. *(They can be blocked by tapped creatures but not untapped creatures.)*",
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nCreatures you control have custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".",
+          "mana_cost": "{1}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Hall of Mirrors_OPH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hall of Mirrors",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment\nCreatures you control have distorted. *(They can be blocked by tapped creatures but not untapped creatures.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Hall of Mirrors",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nCreatures you control have custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Creatures you control have distorted.",
+              "original_printed_rules_text": "Creatures you control have distorted. (They can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Creatures you control have distorted.",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Creatures you control have distorted. (They can be blocked by tapped creatures but not untapped creatures.)"
+        },
+        {
+          "id": "Twisted Legacy_ORP",
+          "name": "Twisted Legacy",
+          "original_text": "Mana cost: {2}{W}\nType: Enchantment\nCreature tokens you control get +1/+1 and have distorted. (They can be blocked by tapped creatures but not untapped creatures.)",
+          "executable_text": "Mana cost: {2}{W}\nType: Enchantment\nCreature tokens you control get +1/+1 and have custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".",
+          "mana_cost": "{2}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "loyalty": "",
+          "defense": "",
+          "source_card_key": "Twisted Legacy_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Twisted Legacy",
+              "original_text": "Mana cost: {2}{W}\nType: Enchantment\nCreature tokens you control get +1/+1 and have distorted. (They can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Twisted Legacy",
+              "executable_text": "Mana cost: {2}{W}\nType: Enchantment\nCreature tokens you control get +1/+1 and have custom keyword \"distorted\", and \"Tapped creatures can block this creature as though they were untapped.\", and \"This creature can't be blocked by untapped creatures.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Creature tokens you control get +1/+1 and have distorted.",
+              "original_printed_rules_text": "Creature tokens you control get +1/+1 and have distorted. (They can be blocked by tapped creatures but not untapped creatures.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Creature tokens you control get +1/+1 and have distorted.",
+          "original_printed_rules_text": "Creature tokens you control get +1/+1 and have distorted. (They can be blocked by tapped creatures but not untapped creatures.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ]
+    }
+  ]
+}

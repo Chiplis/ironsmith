@@ -1619,6 +1619,21 @@ pub fn parse_negated_object_restriction_clause(
 
     let player_subject = player_negated_restriction_subject(&subject_words);
     if let Some(player) = player_subject {
+        // Losing control is another player's acquisition of the same
+        // permanent, including a reversion when a control effect expires.
+        if remainder_words.starts_with(&["lose", "control", "of"]) {
+            let mut objects = parse_object_filter(&remainder_tokens[3..], false)?;
+            if objects.controller.is_some() && objects.controller != Some(player.clone()) {
+                return Ok(None);
+            }
+            objects.controller = Some(player.clone());
+            crate::word_claims::claim_tokens(&tokens[neg_start..]);
+            return Ok(Some(ParsedCantRestriction {
+                restriction: Restriction::gain_control(objects,PlayerFilter::Excluding {
+                    base:Box::new(PlayerFilter::Any),excluded:Box::new(player),
+                }),target:None,
+            }));
+        }
         // A player can sacrifice only permanents they control. Preserve both
         // that player scope and the printed object filter (including token).
         if remainder_tokens.first().is_some_and(|token| token.is_word("sacrifice"))
@@ -1694,6 +1709,25 @@ pub fn parse_negated_object_restriction_clause(
     if subject_tokens.is_empty() && is_supported_untap_restriction_tail(&remainder_words) {
         filter = ObjectFilter::source();
         target = None;
+    }
+
+    if remainder_words.starts_with(&["attack","players","with"])
+        && remainder_words.last()==Some(&"life") {
+        // Use the ordinary bounded quantity grammar, then require the whole
+        // operand. The player-only target class is independent of the bound.
+        let view=crate::lexer::TokenWordView::new(&remainder_tokens);
+        let Some(range)=view.token_span_for_words(3,remainder_words.len()-1) else {return Ok(None);};
+        let quantity=&remainder_tokens[range];
+        if let Ok((comparison,consumed))=crate::util::parse_quantity_comparison_prefix(quantity,false,false,"attacked player life")
+            && consumed==quantity.len()
+            && let Some((comparison,threshold))=crate::util::comparison_to_value_comparison_operator(comparison) {
+            crate::word_claims::claim_tokens(&remainder_tokens);
+            return Ok(Some(ParsedCantRestriction {
+                restriction:Restriction::object_rule(filter,ironsmith_core::ObjectRule::CantAttackPlayersWithLife {comparison,threshold}),
+                target,
+            }));
+        }
+        return Ok(None);
     }
 
     let damage_subject = matches!(
@@ -2037,6 +2071,7 @@ pub fn parse_activated_ability_subject(
     if matches!(
         words.as_slice(),
         ["its", "activated", "abilities"] | ["their", "activated", "abilities"]
+            | ["its", "abilities"] | ["their", "abilities"]
     ) {
         // The referenced object's activated abilities, read whole.
         crate::word_claims::claim_tokens(tokens);
@@ -2524,5 +2559,31 @@ mod zero_life_loss_tests {
             parsed.restriction,
             crate::effect::Restriction::LoseGame(PlayerFilter::You)
         );
+    }
+}
+
+#[cfg(test)]
+mod actual_player_life_restriction_tests {
+    use super::*;
+    #[test]
+    fn threshold_is_typed_and_the_attack_target_class_stays_player_only() {
+        for (text,threshold) in [
+            ("This creature can't attack players with 10 or more life.",10),
+            ("This creature can't attack players with 17 or more life.",17),
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            let parsed=parse_cant_restriction_clause(&tokens).unwrap().unwrap();
+            let crate::effect::Restriction::ObjectRule {rule:ironsmith_core::ObjectRule::CantAttackPlayersWithLife {comparison,threshold:bound},..}=parsed.restriction else {panic!("wrong attack-target scope");};
+            assert_eq!(comparison,ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual);
+            assert_eq!(bound,threshold);
+        }
+        for text in [
+            "This creature can't attack players with 10 or more life tomorrow.",
+            "This creature can't attack players with 10 or more cards.",
+            "This creature can't attack players with nonsense life.",
+        ] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(!matches!(parse_cant_restriction_clause(&tokens),Ok(Some(_))),"{text}");
+        }
     }
 }

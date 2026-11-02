@@ -9,6 +9,7 @@ pub use ironsmith_registry::{
 };
 pub use ironsmith_compiler::cards::CardDefinition as CompilerCardDefinition;
 pub use ironsmith_compiler::with_custom_tokens;
+pub use ironsmith_compiler::{with_supplied_card_definitions,compile_supplied_card_definition,compile_supplied_card_definition_bundle,SuppliedCardDefinitionSource,SuppliedCardDefinitionBundle};
 /// Strict compilation for authored cards: unread filter words fail the card.
 pub use ironsmith_compiler::word_claims::with_enforcement as with_word_claim_enforcement;
 pub use ironsmith_compiler::word_claims::with_enforcement_options;
@@ -117,3 +118,19 @@ mod tests {
 }
 
 pub use ironsmith_compiler::with_custom_subtypes;
+
+/// Native compatibility entry point for a source with finite lexical dependencies.
+pub fn compile_builder_with_supplied_graph(
+    builder: CompilerCardDefinitionBuilder,
+    text: &str,
+    sources: &[SuppliedCardDefinitionSource],
+    real_card: bool,
+) -> Result<ironsmith::cards::CardDefinition, String> {
+    let declared = builder.clone().card_builder.build();
+    let bundle = compile_supplied_card_definition_bundle(declared.id, &declared.name, text, real_card, sources, || {
+        ironsmith_compiler::CompilerFacade::new().compile_definition(builder, text,
+            ironsmith_compiler::CompilePolicy { allow_unsupported: false })
+            .map(|compiled| compiled.definition).map_err(|error| error.to_string())
+    })?;
+    ironsmith_registry::into_runtime_definition_bundle(bundle).map_err(|error| error.to_string())
+}

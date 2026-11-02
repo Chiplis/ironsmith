@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'keyword_static::attached_static_line_migration_tests::attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program' panicked at crates/ironsmith-compiler-grammar/src/keyword_static/attached_object_static_lines/attached_static_line_migration_tests.rs:84:10:
+public static ownership must preserve the compound: ParseError("unsupported static condition clause (clause: 'its a detective you control otherwise it has base power and toughness 1/1 and cant block detectives')")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test keyword_static::attached_static_line_migration_tests::attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program ... FAILED
+
+failures:
+
+failures:
+    keyword_static::attached_static_line_migration_tests::attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.98s
+

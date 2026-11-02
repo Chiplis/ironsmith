@@ -267,7 +267,7 @@ fn copy_exception_type_removal(input: &mut LexStream<'_>) -> WResult<usize> {
 pub fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbShape> {
     let be = parse_animation_copula(tokens)?;
     let tail = &tokens[be.token + 1..];
-    let relative_has = first_token_word(tail, &["have", "has"])?;
+    let relative_has = first_outer_token_word(tail, &["have", "has"])?;
     Some(AnimationVerbShape {
         be,
         has: TokenBoundary {
@@ -277,7 +277,7 @@ pub fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbSh
 }
 
 pub fn parse_animation_copula(tokens: &[OwnedLexToken]) -> Option<TokenBoundary> {
-    first_token_word(tokens, &["is", "are", "it's", "it’s", "its"])
+    first_outer_token_word(tokens, &["is", "are", "it's", "it’s", "its"])
 }
 
 pub fn parse_animation_creature_word(words: &[&str]) -> Option<WordBoundary> {
@@ -347,6 +347,26 @@ fn parse_conditional_spell_keyword_lexed<'a>(
         keyword,
         condition_tokens,
     })
+}
+
+/// A verb in a quoted ability (or a quoted identity) belongs to that
+/// nested grammar. It cannot delimit the subject of an outer animation.
+/// Preserve token offsets so existing subject/descriptor readers own exactly
+/// the same outer slices. Unlike contractions/possessives, standalone single
+/// quotes have their own token kind and may delimit a nested granted ability.
+fn first_outer_token_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<TokenBoundary> {
+    let mut quotes = Vec::<TokenKind>::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe) {
+            if quotes.last() == Some(&token.kind) { quotes.pop(); }
+            else { quotes.push(token.kind); }
+            continue;
+        }
+        if quotes.is_empty() && token.as_word().is_some_and(|word|expected.contains(&word)) {
+            return Some(TokenBoundary {token:index});
+        }
+    }
+    None
 }
 
 fn first_token_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<TokenBoundary> {
@@ -509,4 +529,32 @@ mod tests {
         assert_eq!(parsed.keyword, ConditionalSpellKeyword::Cascade);
         assert_eq!(parsed.condition_tokens.len(), 4);
     }
+    #[test]
+    fn quoted_granted_programs_never_supply_outer_animation_verbs() {
+        let source = r###"Each instant and sorcery card you own that isn't on the battlefield has custom keyword "inscribe", and "Pay this card's mana cost, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains 'Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.' for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword 'Inscribe'. Activate only if this card is in your hand. Activate only as a sorcery.", and "This card is an Inscription in addition to its other types."."###;
+        let tokens=crate::lexer::lex_line(source,0).unwrap();
+        assert!(parse_animation_verbs(&tokens).is_none(),"quoted program is not an outer animation");
+        assert!(parse_animation_copula(&tokens).is_none(),"an inner copula cannot own an outer subject");
+        let source = r###"Each instant and sorcery card with mana value 3 or less in your hand has custom keyword "inscribe", and "Pay this card's mana cost, {1}{U/R}, Reveal this card from your hand: Choose a creature you control. If you do, exile this card from your hand. If you do, Record that creature in the inscribed host collection of the exiled card while that source remains in exile and those members remain on the battlefield. If you do, that creature gains 'Whenever this creature attacks, you may cast a copy of the exiled card without paying its mana cost.' for as long as this card remains exiled and that creature remains on the battlefield only while the exiled card has custom keyword 'Inscribe'. Activate only if this card is in your hand. Activate only as a sorcery.", and "This card is an Inscription in addition to its other types."."###;
+        let tokens=crate::lexer::lex_line(source,0).unwrap();
+        assert!(parse_animation_verbs(&tokens).is_none(),"quoted program is not an outer animation");
+        assert!(parse_animation_copula(&tokens).is_none(),"an inner copula cannot own an outer subject");
+        for source in [
+            "Creatures you control have \"This creature is a Wizard and has flying.\".",
+            "Creatures you control have 'This creature is a Wizard and has flying.'.",
+            "Creatures you control are 2/2 creatures in addition to their other types and have \"Whenever this creature attacks, it is blocked if able.\".",
+        ] {
+            let tokens=crate::lexer::lex_line(source,0).unwrap();
+            let verbs=parse_animation_verbs(&tokens);
+            if source.contains(" are 2/2") {assert!(verbs.is_some());}
+            else {assert!(verbs.is_none());}
+        }
+        let source="Creatures named \"What It Is\" are 2/2 creatures in addition to their other types and have flying.";
+        let tokens=crate::lexer::lex_line(source,0).unwrap();
+        let verbs=parse_animation_verbs(&tokens).expect("a quoted name does not hide the real outer animation");
+        assert!(tokens[verbs.be.token].is_word("are"));assert!(tokens[verbs.has.token].is_word("have"));
+        let source="This artifact is a creature with \"This creature has flying.\".";
+        let tokens=crate::lexer::lex_line(source,0).unwrap();assert!(parse_animation_verbs(&tokens).is_none(),"inner has cannot complete an outer copula");
+    }
+
 }

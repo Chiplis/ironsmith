@@ -69,6 +69,8 @@ fn counter_kind_resolved_from_trigger(
 }
 
 impl EffectExecutor for PutCountersEffect {
+    fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
+
     fn supports_replacement_draw_continuation(&self) -> bool {
         true
     }
@@ -1054,6 +1056,12 @@ impl CostExecutableEffect for PutCountersEffect {
                         "source must be on the battlefield".to_string(),
                     ))
                 }
+            }
+            ChooseSpec::SpecificObject(id) => {
+                if game.object(*id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                    && !game.is_phased_out(*id)
+                    && (zero_amount || game.can_have_counter_type_placed(*id, self.counter_type))
+                { Ok(()) } else { Err(crate::effects::CostValidationError::Other("chosen counter-cost object is unavailable".into())) }
             }
             ChooseSpec::Object(filter) => {
                 let filter_ctx = FilterContext::new(controller).with_source(source);

@@ -101,7 +101,8 @@ fn try_candidates_inner(
 fn request_shape_is_supported(request: &ManaPaymentRequest) -> bool {
     // A simple bipartite matching does not represent the X/base allocation
     // or shared per-color caps. Let the complete assignment owner decide.
-    if request.cost.has_x_spending_restriction() || request.assist_completion.is_some() { return false; }
+    if request.cost.has_x_spending_restriction() || request.assist_completion.is_some()
+        || request.cost.spending_restrictions().iter().any(|rule| matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::AtLeastColors(_) | ironsmith_core::mana::ManaSpendingRestriction::GenericManaByMinusOneCounters)) { return false; }
     if !request.allow_mana_abilities {
         return false;
     }

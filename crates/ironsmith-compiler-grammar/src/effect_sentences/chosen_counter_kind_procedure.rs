@@ -77,9 +77,12 @@ fn for_each_kind_source(sentence: &SentenceInput) -> Option<ObjectFilter> {
 }
 
 struct RandomKindChoice {
+    actor: PlayerAst,
+    player_choice: bool,
     kinds: Vec<crate::object::CounterType>,
     /// Words naming the object whose existing kinds are excluded.
     excluded_holder: Option<Vec<String>>,
+    excluded_holder_tokens: Option<Vec<OwnedLexToken>>,
 }
 
 fn split_list_items(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
@@ -112,16 +115,40 @@ fn split_list_items(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
 /// "choose a kind of counter at random [that <holder> doesn't have on it]
 /// from among <kind>, <kind>, ..., and <kind>"
 fn random_kind_choice(sentence: &SentenceInput) -> Option<RandomKindChoice> {
+    random_kind_choice_tokens(trim(sentence.lowered()))
+}
+
+fn for_each_fixed_kind_choice(sentence: &SentenceInput) -> Option<(ObjectFilter, RandomKindChoice)> {
     let tokens = trim(sentence.lowered());
-    let (_, rest) = primitives::parse_prefix(
-        tokens,
-        primitives::phrase(&["choose", "a", "kind", "of", "counter", "at", "random"]),
-    )?;
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["for", "each"]))?;
+    let comma = rest.iter().position(|token| token.is_comma())?;
+    let filter = primitives::probe_shape(crate::object_filters::parse_object_filter_lexed(&rest[..comma], false))?;
+    let choice = random_kind_choice_tokens(trim(&rest[comma + 1..]))?;
+    Some((on_battlefield(filter), choice))
+}
+
+fn random_kind_choice_tokens(tokens: &[OwnedLexToken]) -> Option<RandomKindChoice> {
+    let (actor, tokens) = if let Some((_, rest)) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["that", "player", "chooses"])) {
+        (PlayerAst::That, rest)
+    } else if let Some((_, rest)) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["you", "choose"])) {
+        (PlayerAst::You, rest)
+    } else {
+        let (_, rest) = primitives::parse_prefix(tokens, primitives::kw("choose"))?;
+        (PlayerAst::Implicit, rest)
+    };
+    let (_, rest) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["a", "kind", "of", "counter"]))?;
+    let (player_choice, rest) = if let Some((_, tail)) = primitives::parse_prefix(rest, primitives::phrase(&["at", "random"])) {
+        (false, tail)
+    } else { (true, rest) };
     let from = rest.windows(2).position(|pair| {
         pair[0].is_word("from") && pair[1].is_word("among")
     })?;
     let qualifier = trim(&rest[..from]);
     let list = trim(&rest[from + 2..]);
+    let mut excluded_holder_tokens = None;
     let excluded_holder = if qualifier.is_empty() {
         None
     } else {
@@ -142,10 +169,11 @@ fn random_kind_choice(sentence: &SentenceInput) -> Option<RandomKindChoice> {
                 .filter(|start| *start > 0 && holder[*start..] == **suffix)
                 .map(|start| &holder[..start])
         })?;
+        excluded_holder_tokens = Some(qualifier[1..1 + holder.len()].to_vec());
         Some(holder.iter().map(|word| word.to_string()).collect())
     };
     let items = split_list_items(list);
-    if items.len() < 2 {
+    if items.is_empty() {
         return None;
     }
     let kinds = items
@@ -153,8 +181,11 @@ fn random_kind_choice(sentence: &SentenceInput) -> Option<RandomKindChoice> {
         .map(crate::grammar::filters::parse_counter_type_from_tokens)
         .collect::<Option<Vec<_>>>()?;
     Some(RandomKindChoice {
+        actor,
+        player_choice,
         kinds,
         excluded_holder,
+        excluded_holder_tokens,
     })
 }
 
@@ -182,11 +213,18 @@ fn put_random_kind(
             return Ok(None);
         }
     }
-    let target: TargetAst = crate::util::parse_target_phrase(recipient)?;
+    let target: TargetAst = if matches!(crate::lexer::token_word_refs(recipient).as_slice(), ["it"])
+        && choice.excluded_holder.as_ref().is_some_and(|holder| holder.first().is_some_and(|word| word == "target"))
+    {
+        crate::util::parse_target_phrase(choice.excluded_holder_tokens.as_ref().unwrap())?
+    } else {
+        crate::util::parse_target_phrase(recipient)?
+    };
     let put = EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
-        PlayerAst::Implicit,
+        choice.actor,
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind {
+            player_choice: choice.player_choice,
             kinds: choice.kinds.clone(),
             target,
             only_absent_kinds: choice.excluded_holder.is_some(),
@@ -355,6 +393,9 @@ pub(super) fn open(
     let (kind_source, for_each) = if let Some(choice) = random_kind_choice(choice) {
         random_kinds = Some(choice);
         (ObjectFilter::default(), None)
+    } else if let Some((filter, choice)) = for_each_fixed_kind_choice(choice) {
+        random_kinds = Some(choice);
+        (ObjectFilter::default(), Some(filter))
     } else if let Some(kind_source) = kind_source(choice) {
         (kind_source, None)
     } else if let Some(for_each) = for_each_kind_source(choice) {
@@ -366,6 +407,9 @@ pub(super) fn open(
     if put_that_kind_prefix(trim(next.lowered())).is_none() {
         return Ok(None);
     }
+    // This procedure has structurally read the counter menu, exclusion
+    // qualifier, and any enclosing object scope, including its pronouns.
+    crate::word_claims::claim_tokens(choice.lowered());
     Ok(Some(ChosenCounterKindGroup {
         kind_source,
         for_each,
@@ -396,6 +440,7 @@ pub(super) fn continue_with(
     let Some(effect) = effect else {
         return Ok(false);
     };
+    crate::word_claims::claim_tokens(sentence.lowered());
     group.effects.push(effect);
     group.closed = true;
     group.consumed += 1;

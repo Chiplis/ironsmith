@@ -28,6 +28,19 @@ fn effect_zones(effect: &TagMatchingObjectsEffect) -> Vec<Zone> {
 }
 
 impl EffectExecutor for TagMatchingObjectsEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        let required = if self.source_tags.is_empty() {
+            crate::effects::CostChoiceBindings::from_spec(&ChooseSpec::All(self.filter.clone())).required
+        } else {
+            self.source_tags.clone()
+        };
+        crate::effects::CostChoiceBindings { required, published: vec![self.tag.clone()] }
+    }
+    fn is_object_selection_prelude(&self) -> bool { true }
+    fn visit_prepared_selection_bindings(&self, visitor: &mut dyn FnMut(crate::effects::PreparedSelectionBinding)) {
+        visitor(crate::effects::PreparedSelectionBinding::ObjectTag(self.tag.clone()));
+    }
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> { Some(self) }
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         if !self.source_tags.is_empty() {
             return Vec::new();
@@ -57,6 +70,7 @@ impl EffectExecutor for TagMatchingObjectsEffect {
             excluded_stable_ids.extend(captured.iter().map(|snapshot| snapshot.stable_id));
         }
         if !self.source_tags.is_empty() {
+            let exact_sources=self.source_tags.iter().all(|tag|ctx.exact_object_reference_tags.contains(tag));
             let mut snapshots = Vec::new();
             let filter_ctx = ctx.filter_context(game);
             for source_tag in &self.source_tags {
@@ -79,7 +93,7 @@ impl EffectExecutor for TagMatchingObjectsEffect {
                     }
                     if !snapshots
                         .iter()
-                        .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
+                        .any(|existing: &ObjectSnapshot| if self.filter_source_snapshots || exact_sources {existing.object_id==snapshot.object_id}else{existing.stable_id == snapshot.stable_id})
                     {
                         snapshots.push(snapshot.clone());
                     }
@@ -90,6 +104,7 @@ impl EffectExecutor for TagMatchingObjectsEffect {
                 .map(|snapshot| snapshot.object_id)
                 .collect::<Vec<_>>();
             ctx.set_tagged_objects(self.tag.clone(), snapshots);
+            if exact_sources {ctx.exact_object_reference_tags.insert(self.tag.clone());}
             return Ok(EffectOutcome::with_objects(object_ids));
         }
 
@@ -143,6 +158,82 @@ impl EffectExecutor for TagMatchingObjectsEffect {
     }
 }
 
+impl crate::effects::CostExecutableEffect for TagMatchingObjectsEffect {
+    fn preview_payment_bindings(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        // A pure capture constrained by an already selected packet is also a
+        // deterministic binding. Publish its exact filtered subset before a
+        // later cost asks for it; no action or player choice is performed.
+        if self.source_tags.is_empty() {
+            let required = self.cost_choice_bindings().required;
+            if required.is_empty() {
+                return Ok(());
+            }
+            for tag in required {
+                if ctx.get_tagged_all(&tag).is_none() {
+                    return Err(ExecutionError::IncompleteEvidence(format!(
+                        "filtered capture has no selected-card tag {tag}")));
+                }
+            }
+            let mut ids = Vec::new();
+            for zone in effect_zones(self) {
+                let mut filter = self.filter.clone();
+                filter.zone = Some(zone);
+                for id in resolve_objects_from_spec(game, &ChooseSpec::All(filter), ctx)? {
+                    if !ids.contains(&id) { ids.push(id); }
+                }
+            }
+            let mut excluded = Vec::new();
+            for tag in &self.excluded_stable_card_tags {
+                let snapshots = ctx.get_tagged_all(tag).ok_or_else(||
+                    ExecutionError::IncompleteEvidence(format!("collection complement has no selected-card tag {tag}")))?;
+                excluded.extend(snapshots.iter().map(|snapshot| snapshot.stable_id));
+            }
+            let snapshots = ids.into_iter().filter_map(|id| game.object(id))
+                .filter(|object| !excluded.contains(&object.stable_id))
+                .map(|object| ObjectSnapshot::from_object(object, game)).collect();
+            ctx.set_tagged_objects(self.tag.clone(), snapshots);
+            return Ok(());
+        }
+        let exact_sources=self.source_tags.iter().all(|tag|ctx.exact_object_reference_tags.contains(tag));
+        let mut excluded = Vec::new();
+        for tag in &self.excluded_stable_card_tags {
+            let snapshots = ctx.get_tagged_all(tag).ok_or_else(||
+                ExecutionError::IncompleteEvidence(format!("collection complement has no selected-card tag {tag}")))?;
+            excluded.extend(snapshots.iter().map(|snapshot| snapshot.stable_id));
+        }
+        let mut snapshots: Vec<ObjectSnapshot> = Vec::new();
+        let filter_ctx = ctx.filter_context(game);
+        for tag in &self.source_tags {
+            let Some(source) = ctx.get_tagged_all(tag) else {
+                if self.filter_source_snapshots {
+                    return Err(ExecutionError::IncompleteEvidence(
+                        "filtered tagged capture has no producer collection".into()));
+                }
+                continue;
+            };
+            for snapshot in source {
+                if excluded.contains(&snapshot.stable_id)
+                    || (self.filter_source_snapshots
+                        && !self.filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    || snapshots.iter().any(|item| if self.filter_source_snapshots || exact_sources {item.object_id==snapshot.object_id}else{item.stable_id == snapshot.stable_id})
+                {
+                    continue;
+                }
+                snapshots.push(snapshot.clone());
+            }
+        }
+        ctx.set_tagged_objects(self.tag.clone(), snapshots);
+        if exact_sources {ctx.exact_object_reference_tags.insert(self.tag.clone());}
+        Ok(())
+    }
+
+    fn can_execute_as_cost(&self, _: &GameState, _: crate::ids::ObjectId, _: crate::ids::PlayerId) -> Result<(), crate::effects::CostValidationError> { Ok(()) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +249,33 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
             .card_types(vec![CardType::Creature])
             .build()
+    }
+
+    #[test]
+    fn cost_preview_publishes_a_zone_subset_and_known_empty_subset_without_actions() {
+        use crate::effects::CostExecutableEffect;
+        use crate::filter::ObjectFilter;
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(&make_card("Source"), alice, Zone::Battlefield);
+        let chosen = game.create_object_from_card(&make_card("Chosen"), alice, Zone::Battlefield);
+        let outsider = game.create_object_from_card(&make_card("Unchosen"), alice, Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("selected", vec![ObjectSnapshot::from_object_id(&game, chosen).unwrap()]);
+        let capture = TagMatchingObjectsEffect::new(
+            ObjectFilter::tagged("selected").in_zone(Zone::Battlefield), "subset");
+        assert_eq!(capture.cost_choice_bindings().required, vec![crate::tag::TagKey::from("selected")]);
+        capture.preview_payment_bindings(&game, &mut ctx).unwrap();
+        let subset = ctx.get_tagged_all("subset").unwrap();
+        assert_eq!(subset.iter().map(|object| object.object_id).collect::<Vec<_>>(), vec![chosen]);
+        assert!(game.object(chosen).is_some());
+        assert!(game.object(outsider).is_some());
+        TagMatchingObjectsEffect::new(ObjectFilter::tagged("selected").in_zone(Zone::Graveyard), "empty")
+            .preview_payment_bindings(&game, &mut ctx).unwrap();
+        assert!(ctx.get_tagged_all("empty").unwrap().is_empty());
+        let missing = TagMatchingObjectsEffect::new(ObjectFilter::tagged("absent"), "unproven");
+        assert!(matches!(missing.preview_payment_bindings(&game, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+        assert!(ctx.get_tagged_all("unproven").is_none());
     }
 
     #[test]
@@ -355,4 +473,17 @@ mod tests {
         assert_eq!(tagged.len(), 1);
         assert_eq!(tagged[0].object_id, creature_id);
     }
+    #[test]
+    fn exact_parent_capture_alias_preserves_incarnations_and_local_writes_shadow_its_policy(){
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);let actor=crate::ids::PlayerId(0);
+        let source=game.create_object_from_card(&make_card("Captured card"),actor,Zone::Exile);
+        let first=ObjectSnapshot::from_object_id(&game,source).unwrap();let mut second=first.clone();second.object_id=crate::ids::ObjectId::from_raw(991_000_001);
+        let mut ctx=ExecutionContext::new_default(source,actor);ctx.set_tagged_objects("parent",vec![first.clone(),second]);ctx.exact_object_reference_tags.insert("parent".into());
+        let effect=TagMatchingObjectsEffect::new(crate::target::ObjectFilter::default(),"alias").from_tagged_sources(vec!["parent".into()]);
+        effect.execute(&mut game,&mut ctx).unwrap();assert_eq!(ctx.get_tagged_all("alias").unwrap().len(),2);assert!(ctx.exact_object_reference_tags.contains(&crate::tag::TagKey::from("alias")));
+        ctx.set_tagged_objects("alias",vec![first]);assert!(!ctx.exact_object_reference_tags.contains(&crate::tag::TagKey::from("alias")),"an ordinary local producer shadows the imported alias and its policy");
+        crate::effects::CostExecutableEffect::preview_payment_bindings(&effect,&game,&mut ctx).unwrap();assert_eq!(ctx.get_tagged_all("alias").unwrap().len(),2);assert!(ctx.exact_object_reference_tags.contains(&crate::tag::TagKey::from("alias")));
+        ctx.exact_object_reference_tags.clear();effect.execute(&mut game,&mut ctx).unwrap();assert_eq!(ctx.get_tagged_all("alias").unwrap().len(),1,"ordinary physical-card unions preserve their existing stable identity semantics");
+    }
+
 }

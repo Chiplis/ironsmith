@@ -1,0 +1,40 @@
+   Compiling ironsmith-core v0.1.0 (/Users/chiplis/ironsmith/crates/ironsmith-core)
+   Compiling ironsmith-compiled-artifact v0.1.0 (/Users/chiplis/ironsmith/crates/ironsmith-compiled-artifact)
+    Finished `test-fast` profile [unoptimized] target(s) in 24.14s
+     Running unittests src/lib.rs (/tmp/ironsmith-goal-native/test-fast/deps/ironsmith_compiled_artifact-e293ba0a89f47561)
+
+running 31 tests
+test supplied_source_metadata_admission_tests::normal_real_source_metadata_and_provenance_remain_admitted ... ok
+test supplied_source_metadata_admission_tests::executable_dependencies_cannot_be_silently_discarded ... ok
+test tests::compiler_version_is_not_provenance_and_cannot_admit_the_previous_cache ... ok
+test tests::ambiguous_next_turn_permissions_require_recompilation ... ok
+test tests::current_format_with_previous_schema_is_rejected_even_with_a_fresh_checksum ... ok
+test tests::custom_status_artifacts_retain_nonempty_filter_predicates ... ok
+test tests::current_golden_matches_the_integrated_source ... ok
+test tests::historical_v19_golden_is_immutable_and_rejected_by_coherent_v20_admission ... ok
+test tests::historical_v3_golden_keeps_original_evidence_and_is_refused ... ok
+test tests::pre_prepared_artifacts_require_recompilation_even_with_valid_checksums ... ok
+test tests::preceding_duration_player_artifacts_require_recompilation ... ok
+test tests::pre_activation_combat_class_artifacts_require_source_regeneration ... ok
+test tests::preceding_oct8_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::pre_protection_artifacts_require_recompilation_even_with_valid_checksums ... ok
+test tests::preceding_v17_descriptor_keeps_exact_historical_identity ... ok
+test tests::preceding_v16_descriptor_keeps_exact_historical_identity ... ok
+test tests::published_first_series_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::previous_program_schema_is_rejected_without_rewriting_historical_bytes ... ok
+test tests::published_second_series_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::published_third_series_descriptor_keeps_its_exact_original_bytes ... ok
+test tests::pre_custom_status_artifacts_keep_their_filter_checksum ... ok
+test tests::previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata ... ok
+test tests::published_v12_envelopes_require_regeneration_even_with_a_current_payload ... ok
+test tests::round_trip_validates_checksum ... ok
+test tests::rewritten_format_hash_and_checksum_are_not_artifact_authentication ... ok
+test tests::tampering_is_rejected ... ok
+test tests::staged_numeric_counter_schema_without_token_roles_is_rejected ... ok
+test tests::terminal_recipe_boundary_rejects_the_previous_epoch_and_schema ... ok
+test tests::previous_artifacts_require_source_regeneration_even_with_fresh_checksums ... ok
+test tests::current_descriptor_matches_the_declared_schema_fingerprint ... ok
+test tests::coherent_descriptor_binds_all_model_extensions_not_only_terminal_recipes ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+

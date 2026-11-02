@@ -759,6 +759,10 @@ pub fn split_labeled_effect_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<&[O
 }
 
 fn is_labeled_ability_prefix_tokens(prefix: &[OwnedLexToken]) -> bool {
+    if ironsmith_core::ActivatedAbilityKeyword::from_group_label(&crate::lexer::render_token_slice(prefix)).is_some() {
+        crate::word_claims::claim_tokens(prefix);
+        return true;
+    }
     is_labeled_ability_prefix_words(&parser_token_word_refs(prefix))
 }
 

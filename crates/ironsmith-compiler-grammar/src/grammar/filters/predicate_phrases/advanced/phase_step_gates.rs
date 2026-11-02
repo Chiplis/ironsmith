@@ -1271,6 +1271,34 @@ fn parse_source_state_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
 fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
 
+    // Past departure predicates without an authored time window read retained
+    // full-game receipts. A stated this-turn window keeps the existing owner.
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let unwindowed = words.strip_suffix(&["left", "the", "battlefield", "without", "dying"]);
+    let windowed = words.strip_suffix(&["left", "the", "battlefield", "without", "dying", "this", "turn"])
+        .or_else(||words.strip_suffix(&["left", "the", "battlefield", "this", "turn", "without", "dying"]));
+    if let Some(subject) = unwindowed.or(windowed) {
+        let [amount, "or", "more", descriptor @ ..] = subject else { return None; };
+        let amount = crate::util::parse_number_word_u32(amount)?;
+        let (descriptor, controlled) = descriptor.strip_suffix(&["you", "controlled"])
+            .map_or((descriptor, false), |head|(head,true));
+        if descriptor.is_empty() { return None; }
+        let span = view.token_span_for_words(3,3+descriptor.len())?;
+        let mut filter = parse_object_filter_lexed(&tokens[span],false).ok()?;
+        filter.zone = None;
+        if controlled { filter.controller = Some(PlayerFilter::You); }
+        let movement = |to| if windowed.is_some() {
+            TurnHistoryCount::MovedZones {filter:filter.clone(),from:Some(Zone::Battlefield),to}
+        } else {
+            TurnHistoryCount::MovedZonesEver {filter:filter.clone(),from:Some(Zone::Battlefield),to}
+        };
+        let value = Value::Add(Box::new(Value::TurnHistoryCount(movement(None))),
+            Box::new(Value::Scaled(Box::new(Value::TurnHistoryCount(movement(Some(Zone::Graveyard)))),-1)));
+        crate::word_claims::claim_tokens(tokens);
+        return Some(value_at_least(value, i32::try_from(amount).ok()?));
+    }
+
     // Count historical arrivals, using their last-known characteristics even
     // when those cards have since left the graveyard.
     let words = clause.word_refs();

@@ -120,4 +120,4 @@ use reference_programs::{
 mod core_programs;
 use core_programs::preserve_flat_leading_then_for_each_surface;
 
-pub(crate) use lines::{parse_descriptive_static_program, parse_optional_payment_modifier_program};
+pub(crate) use lines::{parse_descriptive_static_program, parse_optional_payment_modifier_program, parse_optional_tap_power_granted_policy};

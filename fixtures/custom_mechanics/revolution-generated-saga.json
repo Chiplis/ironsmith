@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "scope": "Generated Time loop Saga exact source variant, scratch generic readers pending integration"
+  },
+  "mechanics": [
+    {
+      "id": "rev-time-loop-236",
+      "keyword": "Time loop",
+      "scope": "revolution",
+      "rule_reference": "702.222.",
+      "rule_text": {
+        "name": "702.222.",
+        "rule": "Time loop",
+        "subrules": [
+          {
+            "name": "702.222a",
+            "rule": "Time loop is a keyword found on some Saga cards. \"Time loop\" means \"As this Saga's final chapter ability resolves, remove all lore counters from it.\" If lore counters are removed this way, the Saga will not be sacrificed as it normally would be (see rule 714.4).",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Ayeshi, Time's Jailer",
+          "Confronting Time's Jailer",
+          "Portal to the Spirit Realm",
+          "Revolt at the Palace",
+          "Shigane Manor Burns",
+          "The Inferno Gate Opens",
+          "Saga"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Remove all lore counters after r3 without sacrificing the Saga.",
+      "executable_reminder": "As this Saga's final chapter ability resolves, remove all lore counters from it.",
+      "semantic_equivalence": {
+        "status": "pending_native_verification",
+        "evidence": "Generated Saga token gains current static final-chapter removal separately from its chapterIII effect program; source r3 chapter icon is a chapter-three notation, not a separate mechanic."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Ayeshi, Time's Jailer_KDT",
+          "name": "Ayeshi, Time's Jailer",
+          "original_text": "Type: Legendary Planeswalker \u2014 Ayeshi\nMana cost: {2}{G}{W}{U}\nLoyalty: 4\n[+1]: Draw a card for each different mana value among spells you've cast this turn.\n[-X]: Exile target nonland, nontoken permanent with mana value X or less. You create a colorless Saga enchantment token with time loop and \u201cr3\u2014 You may cast a copy of the exiled card without paying its mana cost.\u201d *(Remove all lore counters after r3 without sacrificing the Saga.)*\n[-8]: You take an extra turn after this one, and each opponent takes an extra turn after the last extra turn. You gain control of each opponent during that player's next turn.",
+          "executable_text": null
+        }
+      ],
+      "source_cards": [
+        "Ayeshi, Time's Jailer"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "generated-saga-cycle",
+          "status": "pending",
+          "test_reference": "custom_revolution_late_results::generated_saga_quoted_chapter_and_live_resolution_instruction_repeat",
+          "observable": "Generated Saga token executes chapterIII and resets lore at resolution; cycle can repeat."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Time loop",
+          "reminder": "As this Saga's final chapter ability resolves, remove all lore counters from it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    }
+  ]
+}

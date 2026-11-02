@@ -16,6 +16,10 @@ pub struct RawEvent {
     /// Snapshot enrichment can replace `inner` while retained aliases still
     /// refer to this same occurrence.
     occurrence: Arc<()>,
+    /// Internal invocation context, never a reported game occurrence. It
+    /// cannot prove that one triggered ability triggered another ability.
+    direct_trigger_invocation: bool,
+    trigger_entry_announced: bool,
     provenance: ProvNodeId,
     /// Branch-local proof of the requested observer families. Ordinary-only
     /// matching must not suppress a later request for delayed observers.
@@ -43,6 +47,15 @@ pub struct RawEvent {
 }
 
 impl RawEvent {
+    pub(crate) fn with_direct_trigger_invocation(mut self) -> Self {
+        self.direct_trigger_invocation = true;
+        self
+    }
+    pub(crate) fn is_direct_trigger_invocation(&self) -> bool { self.direct_trigger_invocation }
+    pub(crate) fn trigger_entry_announced(&self) -> bool { self.trigger_entry_announced }
+    pub(crate) fn mark_trigger_entry_announced(&mut self) { self.trigger_entry_announced = true; }
+
+
     /// Physical departure evidence for this exact incarnation. Contextual
     /// source decorations are not departure receipts; phasing is not departure.
     pub(crate) fn source_departure_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
@@ -69,6 +82,8 @@ impl RawEvent {
         Self {
             inner: Arc::new(event),
             occurrence: Arc::new(()),
+            direct_trigger_invocation: false,
+            trigger_entry_announced: false,
             provenance,
             ordinary_triggers_captured: false,
             delayed_triggers_captured: false,
@@ -86,6 +101,8 @@ impl RawEvent {
         Self {
             inner: Arc::from(event),
             occurrence: Arc::new(()),
+            direct_trigger_invocation: false,
+            trigger_entry_announced: false,
             provenance,
             ordinary_triggers_captured: false,
             delayed_triggers_captured: false,
@@ -392,6 +409,8 @@ impl RawEvent {
         Self {
             inner: Arc::new(event),
             occurrence: self.occurrence.clone(),
+            direct_trigger_invocation: self.direct_trigger_invocation,
+            trigger_entry_announced: self.trigger_entry_announced,
             provenance: self.provenance,
             ordinary_triggers_captured: self.ordinary_triggers_captured,
             delayed_triggers_captured: self.delayed_triggers_captured,
@@ -414,6 +433,8 @@ impl std::fmt::Debug for RawEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RawEvent")
             .field("kind", &self.kind())
+            .field("direct_trigger_invocation", &self.direct_trigger_invocation)
+            .field("trigger_entry_announced", &self.trigger_entry_announced)
             .field("provenance", &self.provenance)
             .field(
                 "ordinary_triggers_captured",

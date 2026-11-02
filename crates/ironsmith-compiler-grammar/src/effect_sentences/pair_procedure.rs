@@ -73,6 +73,8 @@ mod relative_power_choices;
 mod per_counter_delayed_removal;
 #[path = "pair_procedure/damaged_by_creature_riders.rs"]
 mod damaged_by_creature_riders;
+#[path = "pair_procedure/tap_prestate.rs"]
+mod tap_prestate;
 #[path = "pair_procedure/same_way_balance.rs"]
 pub(super) mod same_way_balance;
 #[path = "pair_procedure/moved_entry.rs"]
@@ -1560,6 +1562,14 @@ const PAIR_SHAPES: &[Shape] = &[
         consumed: 6,
         read: |sentences, sentence_idx| {
             statements(sentences, sentence_idx, life_bid::read_two_player(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("tap-then-preexisting-tapped-state"),
+        head: HeadDiscriminator::words(&["tap"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, tap_prestate::read(sentences, sentence_idx))
         },
     },
     Shape {

@@ -1,0 +1,2196 @@
+{
+  "schema_version": 1,
+  "scope": "msem+revolution",
+  "cohort": "Multitude alternative total price and conditional cast copy",
+  "notes": [
+    "All24 exact source rows (12 MSEM+12 Revolution) retained independently, including distinct source representatives.",
+    "Candidate named payment predicate uses generic existing paid-label reader, not an official keyword alias. No additional-cost or printed-price subtraction substitution.",
+    "Pending actual strict frontend/native proof: cast-trigger self reference, payment attribution and post-counter stack LKI copy must all preserve semantics."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-925",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {5}{G}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Outerworld Witness"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Outerworld Witness_HQZ",
+          "name": "Outerworld Witness",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Alien Druid\nPower/Toughness: 4/4\nMultitude {5}{G}{G} *(You may cast this for {5}{G}{G}. When you do, copy it.)*\nWhen Outerworld Witness enters, return target card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Alien Druid\nPower/Toughness: 4/4\nYou may pay {5}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Outerworld Witness enters, return target card from your graveyard to your hand.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Alien Druid",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Outerworld Witness_HQZ",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Outerworld Witness",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Alien Druid\nPower/Toughness: 4/4\nMultitude {5}{G}{G} *(You may cast this for {5}{G}{G}. When you do, copy it.)*\nWhen Outerworld Witness enters, return target card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Outerworld Witness",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Alien Druid\nPower/Toughness: 4/4\nYou may pay {5}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Outerworld Witness enters, return target card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{G}{G}\nWhen Outerworld Witness enters, return target card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{G}{G}\nWhen Outerworld Witness enters, return target card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-926",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {3}{W}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Binding Whisper"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Binding Whisper_BLR",
+          "name": "Binding Whisper",
+          "original_text": "Mana cost: {W}\nType: Creature — Spirit\nPower/Toughness: 1/2\nFlash\nMultitude {3}{W}{W} *(You may cast this for {3}{W}{W}. When you do, copy it.)*\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+          "executable_text": "Mana cost: {W}\nType: Creature — Spirit\nPower/Toughness: 1/2\nFlash\nYou may pay {3}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+          "mana_cost": "{W}",
+          "type_line": "Creature — Spirit",
+          "power": "1",
+          "toughness": "2",
+          "source_card_key": "Binding Whisper_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Binding Whisper",
+              "original_text": "Mana cost: {W}\nType: Creature — Spirit\nPower/Toughness: 1/2\nFlash\nMultitude {3}{W}{W} *(You may cast this for {3}{W}{W}. When you do, copy it.)*\nFlying\nWhen Binding Whisper enters, tap target creature you don't control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Binding Whisper",
+              "executable_text": "Mana cost: {W}\nType: Creature — Spirit\nPower/Toughness: 1/2\nFlash\nYou may pay {3}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Flash\nMultitude {3}{W}{W}\nFlying\nWhen Binding Whisper enters, tap target creature you don't control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Flash\nMultitude {3}{W}{W}\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-927",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {4}{G}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Collector of the Lost"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Collector of the Lost_BLR",
+          "name": "Collector of the Lost",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nMultitude {4}{G}{W} *(You may cast this for {4}{G}{W}. When you do, copy it.)*\nCreature tokens you control get +1/+1 and have vigilance.",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nYou may pay {4}{G}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nCreature tokens you control get +1/+1 and have vigilance.",
+          "mana_cost": "{1}{G}{W}",
+          "type_line": "Creature — Elemental",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Collector of the Lost_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Collector of the Lost",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nMultitude {4}{G}{W} *(You may cast this for {4}{G}{W}. When you do, copy it.)*\nCreature tokens you control get +1/+1 and have vigilance."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Collector of the Lost",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Creature — Elemental\nPower/Toughness: 2/2\nYou may pay {4}{G}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nCreature tokens you control get +1/+1 and have vigilance.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{G}{W}\nCreature tokens you control get +1/+1 and have vigilance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{G}{W}\nCreature tokens you control get +1/+1 and have vigilance.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-928",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {4}{W}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Drift Off"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Drift Off_BLR",
+          "name": "Drift Off",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Enchantment\nMultitude {4}{W}{W} *(You may cast this for {4}{W}{W}. When you do, copy it.)*\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Enchantment\nYou may pay {4}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+          "mana_cost": "{1}{W}{W}",
+          "type_line": "Enchantment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Drift Off_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Drift Off",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Enchantment\nMultitude {4}{W}{W} *(You may cast this for {4}{W}{W}. When you do, copy it.)*\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Drift Off",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Enchantment\nYou may pay {4}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{W}{W}\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{W}{W}\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-929",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {2}{W}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Lichbane Forerunner"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Lichbane Forerunner_BLR",
+          "name": "Lichbane Forerunner",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nMultitude {2}{W}{W} *(You may cast this for {2}{W}{W}. When you do, copy it.)*\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nYou may pay {2}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Human Soldier",
+          "power": "3",
+          "toughness": "1",
+          "source_card_key": "Lichbane Forerunner_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Lichbane Forerunner",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nMultitude {2}{W}{W} *(You may cast this for {2}{W}{W}. When you do, copy it.)*\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Lichbane Forerunner",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/1\nYou may pay {2}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {2}{W}{W}\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {2}{W}{W}\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-930",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {5}{U}{U}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Matron of Lost Glades"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Matron of Lost Glades_BLR",
+          "name": "Matron of Lost Glades",
+          "original_text": "Mana cost: {3}{U}\nType: Creature — Elemental\nPower/Toughness: 3/3\nMultitude {5}{U}{U} *(You may cast this for {5}{U}{U}. When you do, copy it.)*\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+          "executable_text": "Mana cost: {3}{U}\nType: Creature — Elemental\nPower/Toughness: 3/3\nYou may pay {5}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+          "mana_cost": "{3}{U}",
+          "type_line": "Creature — Elemental",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Matron of Lost Glades_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Matron of Lost Glades",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Elemental\nPower/Toughness: 3/3\nMultitude {5}{U}{U} *(You may cast this for {5}{U}{U}. When you do, copy it.)*\nMatron of Lost Glades can't be blocked as long as you control another attacking creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Matron of Lost Glades",
+              "executable_text": "Mana cost: {3}{U}\nType: Creature — Elemental\nPower/Toughness: 3/3\nYou may pay {5}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{U}{U}\nMatron of Lost Glades can't be blocked as long as you control another attacking creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{U}{U}\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-931",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {4}{G}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Scion of the Wildcourt"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Scion of the Wildcourt_BLR",
+          "name": "Scion of the Wildcourt",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 3/4\nMultitude {4}{G}{G} *(You may cast this for {4}{G}{G}. When you do, copy it.)*\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 3/4\nYou may pay {4}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+          "mana_cost": "{1}{G}{G}",
+          "type_line": "Creature — Elemental",
+          "power": "3",
+          "toughness": "4",
+          "source_card_key": "Scion of the Wildcourt_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scion of the Wildcourt",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 3/4\nMultitude {4}{G}{G} *(You may cast this for {4}{G}{G}. When you do, copy it.)*\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scion of the Wildcourt",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 3/4\nYou may pay {4}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{G}{G}\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{G}{G}\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-932",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {6}{G}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Stalwart Grovekeepers"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Stalwart Grovekeepers_BLR",
+          "name": "Stalwart Grovekeepers",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 5/4\nMultitude {6}{G}{G} *(You may cast this for {6}{G}{G}. When you do, copy it.)*\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 5/4\nYou may pay {6}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+          "mana_cost": "{3}{G}{G}",
+          "type_line": "Creature — Elemental",
+          "power": "5",
+          "toughness": "4",
+          "source_card_key": "Stalwart Grovekeepers_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Stalwart Grovekeepers",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 5/4\nMultitude {6}{G}{G} *(You may cast this for {6}{G}{G}. When you do, copy it.)*\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Stalwart Grovekeepers",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Elemental\nPower/Toughness: 5/4\nYou may pay {6}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {6}{G}{G}\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {6}{G}{G}\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-933",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {5}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Sylph of the Tugae"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sylph of the Tugae_BLR",
+          "name": "Sylph of the Tugae",
+          "original_text": "Mana cost: {2}{W}\nType: Creature — Elemental\nPower/Toughness: 3/2\nMultitude {5}{W} *(You may cast this for {5}{W}. When you do, copy it.)*\nVigilance",
+          "executable_text": "Mana cost: {2}{W}\nType: Creature — Elemental\nPower/Toughness: 3/2\nYou may pay {5}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nVigilance",
+          "mana_cost": "{2}{W}",
+          "type_line": "Creature — Elemental",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Sylph of the Tugae_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sylph of the Tugae",
+              "original_text": "Mana cost: {2}{W}\nType: Creature — Elemental\nPower/Toughness: 3/2\nMultitude {5}{W} *(You may cast this for {5}{W}. When you do, copy it.)*\nVigilance"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sylph of the Tugae",
+              "executable_text": "Mana cost: {2}{W}\nType: Creature — Elemental\nPower/Toughness: 3/2\nYou may pay {5}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nVigilance",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{W}\nVigilance"
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{W}\nVigilance",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-934",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {5}{B}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Tugae Corpsemaker"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Tugae Corpsemaker_BLR",
+          "name": "Tugae Corpsemaker",
+          "original_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental Rogue\nPower/Toughness: 3/2\nMultitude {5}{B}{G} *(You may cast this for {5}{B}{G}. When you do, copy it.)*\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+          "executable_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental Rogue\nPower/Toughness: 3/2\nYou may pay {5}{B}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+          "mana_cost": "{2}{B}{G}",
+          "type_line": "Creature — Elemental Rogue",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Tugae Corpsemaker_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Tugae Corpsemaker",
+              "original_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental Rogue\nPower/Toughness: 3/2\nMultitude {5}{B}{G} *(You may cast this for {5}{B}{G}. When you do, copy it.)*\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Tugae Corpsemaker",
+              "executable_text": "Mana cost: {2}{B}{G}\nType: Creature — Elemental Rogue\nPower/Toughness: 3/2\nYou may pay {5}{B}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{B}{G}\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{B}{G}\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-935",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {4}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Wildcourt Wishgiver"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Wildcourt Wishgiver_BLR",
+          "name": "Wildcourt Wishgiver",
+          "original_text": "Mana cost: {1}{W}\nType: Creature — Elemental\nPower/Toughness: 1/1\nMultitude {4}{W} *(You may cast this for {4}{W}. When you do, copy it.)*\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+          "executable_text": "Mana cost: {1}{W}\nType: Creature — Elemental\nPower/Toughness: 1/1\nYou may pay {4}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+          "mana_cost": "{1}{W}",
+          "type_line": "Creature — Elemental",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Wildcourt Wishgiver_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wildcourt Wishgiver",
+              "original_text": "Mana cost: {1}{W}\nType: Creature — Elemental\nPower/Toughness: 1/1\nMultitude {4}{W} *(You may cast this for {4}{W}. When you do, copy it.)*\n{W}, {T}: Put a +1/+1 counter on another target creature."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wildcourt Wishgiver",
+              "executable_text": "Mana cost: {1}{W}\nType: Creature — Elemental\nPower/Toughness: 1/1\nYou may pay {4}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{W}\n{W}, {T}: Put a +1/+1 counter on another target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{W}\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "msem-936",
+      "keyword": "Multitude",
+      "original_reminder": "You may cast this for {4}{U}{U}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "source_cards": [
+        "Wildkin Imposter"
+      ],
+      "rule_reference": "702.300.",
+      "rule_text": [
+        {
+          "name": "702.300a",
+          "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Wildkin Imposter_BLR",
+          "name": "Wildkin Imposter",
+          "original_text": "Mana cost: {3}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 0/0\nFlash\nMultitude {4}{U}{U} *(You may cast this for {4}{U}{U}. When you do, copy it.)*\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+          "executable_text": "Mana cost: {3}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 0/0\nFlash\nYou may pay {4}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+          "mana_cost": "{3}{U}",
+          "type_line": "Creature — Elemental Shapeshifter",
+          "power": "0",
+          "toughness": "0",
+          "source_card_key": "Wildkin Imposter_BLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Wildkin Imposter",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 0/0\nFlash\nMultitude {4}{U}{U} *(You may cast this for {4}{U}{U}. When you do, copy it.)*\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Wildkin Imposter",
+              "executable_text": "Mana cost: {3}{U}\nType: Creature — Elemental Shapeshifter\nPower/Toughness: 0/0\nFlash\nYou may pay {4}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Flash\nMultitude {4}{U}{U}\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Flash\nMultitude {4}{U}{U}\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-165",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {3}{W}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Binding Whisper_BLR",
+          "name": "Binding Whisper",
+          "original_text": "Type: Creature — Spirit \nMana cost: {W}\nPower/Toughness: 1/2\nFlash\nMultitude {3}{W}{W} *(You may cast this for {3}{W}{W}. When you do, copy it.)*\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+          "executable_text": "Type: Creature — Spirit \nMana cost: {W}\nPower/Toughness: 1/2\nFlash\nYou may pay {3}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+          "executable_faces": [
+            {
+              "name": "Binding Whisper",
+              "executable_text": "Type: Creature — Spirit \nMana cost: {W}\nPower/Toughness: 1/2\nFlash\nYou may pay {3}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Flash\nMultitude {3}{W}{W}\nFlying\nWhen Binding Whisper enters, tap target creature you don't control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Flash\nMultitude {3}{W}{W}\nFlying\nWhen Binding Whisper enters, tap target creature you don't control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Binding Whisper"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-166",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {4}{G}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Collector of the Lost_BLR",
+          "name": "Collector of the Lost",
+          "original_text": "Type: Creature — Elemental \nMana cost: {1}{G}{W}\nPower/Toughness: 2/2\nMultitude {4}{G}{W} *(You may cast this for {4}{G}{W}. When you do, copy it.)*\nCreature tokens you control get +1/+1 and have vigilance.",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {1}{G}{W}\nPower/Toughness: 2/2\nYou may pay {4}{G}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nCreature tokens you control get +1/+1 and have vigilance.",
+          "executable_faces": [
+            {
+              "name": "Collector of the Lost",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {1}{G}{W}\nPower/Toughness: 2/2\nYou may pay {4}{G}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nCreature tokens you control get +1/+1 and have vigilance.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{G}{W}\nCreature tokens you control get +1/+1 and have vigilance."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{G}{W}\nCreature tokens you control get +1/+1 and have vigilance.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Collector of the Lost"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-167",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {4}{W}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Drift Off_BLR",
+          "name": "Drift Off",
+          "original_text": "Type: Enchantment\nMana cost: {1}{W}{W}\nMultitude {4}{W}{W} *(You may cast this for {4}{W}{W}. When you do, copy it.)*\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+          "executable_text": "Type: Enchantment\nMana cost: {1}{W}{W}\nYou may pay {4}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+          "executable_faces": [
+            {
+              "name": "Drift Off",
+              "executable_text": "Type: Enchantment\nMana cost: {1}{W}{W}\nYou may pay {4}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{W}{W}\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{W}{W}\nWhen Drift Off enters, exile target nonland permanent you don't control until Drift Off leaves the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Drift Off"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-168",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {2}{W}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Lichbane Forerunner_BLR",
+          "name": "Lichbane Forerunner",
+          "original_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nMultitude {2}{W}{W} *(You may cast this for {2}{W}{W}. When you do, copy it.)*\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+          "executable_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nYou may pay {2}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Lichbane Forerunner",
+              "executable_text": "Type: Creature — Human Soldier \nMana cost: {1}{W}\nPower/Toughness: 3/1\nYou may pay {2}{W}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {2}{W}{W}\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {2}{W}{W}\nWhenever Lichbane Forerunner attacks, another target attacking Soldier you control gains indestructible until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Lichbane Forerunner"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-169",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {5}{U}{U}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Matron of Lost Glades_BLR",
+          "name": "Matron of Lost Glades",
+          "original_text": "Type: Creature — Elemental \nMana cost: {3}{U}\nPower/Toughness: 3/3\nMultitude {5}{U}{U} *(You may cast this for {5}{U}{U}. When you do, copy it.)*\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {3}{U}\nPower/Toughness: 3/3\nYou may pay {5}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+          "executable_faces": [
+            {
+              "name": "Matron of Lost Glades",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {3}{U}\nPower/Toughness: 3/3\nYou may pay {5}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{U}{U}\nMatron of Lost Glades can't be blocked as long as you control another attacking creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{U}{U}\nMatron of Lost Glades can't be blocked as long as you control another attacking creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Matron of Lost Glades"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-170",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {4}{G}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Scion of the Wildcourt_BLR",
+          "name": "Scion of the Wildcourt",
+          "original_text": "Type: Creature — Elemental \nMana cost: {1}{G}{G}\nPower/Toughness: 3/4\nMultitude {4}{G}{G} *(You may cast this for {4}{G}{G}. When you do, copy it.)*\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {1}{G}{G}\nPower/Toughness: 3/4\nYou may pay {4}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+          "executable_faces": [
+            {
+              "name": "Scion of the Wildcourt",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {1}{G}{G}\nPower/Toughness: 3/4\nYou may pay {4}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{G}{G}\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{G}{G}\nTrample\nAs long as you control five or more creatures, Scion of the Wildcourt gets +2/+2.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Scion of the Wildcourt"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-171",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {6}{G}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Stalwart Grovekeepers_BLR",
+          "name": "Stalwart Grovekeepers",
+          "original_text": "Type: Creature — Elemental \nMana cost: {3}{G}{G}\nPower/Toughness: 5/4\nMultitude {6}{G}{G} *(You may cast this for {6}{G}{G}. When you do, copy it.)*\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {3}{G}{G}\nPower/Toughness: 5/4\nYou may pay {6}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+          "executable_faces": [
+            {
+              "name": "Stalwart Grovekeepers",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {3}{G}{G}\nPower/Toughness: 5/4\nYou may pay {6}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {6}{G}{G}\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {6}{G}{G}\nStalwart Grovekeepers can't be blocked by creatures with power 2 or less.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Stalwart Grovekeepers"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-172",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {5}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Sylph of the Tugae_BLR",
+          "name": "Sylph of the Tugae",
+          "original_text": "Type: Creature — Elemental \nMana cost: {2}{W}\nPower/Toughness: 3/2\nMultitude {5}{W} *(You may cast this for {5}{W}. When you do, copy it.)*\nVigilance",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {2}{W}\nPower/Toughness: 3/2\nYou may pay {5}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nVigilance",
+          "executable_faces": [
+            {
+              "name": "Sylph of the Tugae",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {2}{W}\nPower/Toughness: 3/2\nYou may pay {5}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nVigilance",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{W}\nVigilance"
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{W}\nVigilance",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Sylph of the Tugae"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-173",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {5}{B}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Tugae Corpsemaker_BLR",
+          "name": "Tugae Corpsemaker",
+          "original_text": "Type: Creature — Elemental Rogue \nMana cost: {2}{B}{G}\nPower/Toughness: 3/2\nMultitude {5}{B}{G} *(You may cast this for {5}{B}{G}. When you do, copy it.)*\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+          "executable_text": "Type: Creature — Elemental Rogue \nMana cost: {2}{B}{G}\nPower/Toughness: 3/2\nYou may pay {5}{B}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+          "executable_faces": [
+            {
+              "name": "Tugae Corpsemaker",
+              "executable_text": "Type: Creature — Elemental Rogue \nMana cost: {2}{B}{G}\nPower/Toughness: 3/2\nYou may pay {5}{B}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{B}{G}\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{B}{G}\nTrample\nWhen Tugae Corpsemaker enters, each opponent sacrifices a creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Tugae Corpsemaker"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-174",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {5}{G}{G}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Tugae Rallier_BLR",
+          "name": "Tugae Rallier",
+          "original_text": "Type: Creature — Elemental \nMana cost: {1}{G}\nPower/Toughness: 2/1\nMultitude {5}{G}{G} *(You may cast this for {5}{G}{G}. When you do, copy it.)*\nWhen Tugae Rallier enters, create a 1/1 green Elf creature token. If you control five or more creatures, you may instead put a +1/+1 counter on each creature you control.",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {1}{G}\nPower/Toughness: 2/1\nYou may pay {5}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Tugae Rallier enters, create a 1/1 green Elf creature token. If you control five or more creatures, you may instead put a +1/+1 counter on each creature you control.",
+          "executable_faces": [
+            {
+              "name": "Tugae Rallier",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {1}{G}\nPower/Toughness: 2/1\nYou may pay {5}{G}{G} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nWhen Tugae Rallier enters, create a 1/1 green Elf creature token. If you control five or more creatures, you may instead put a +1/+1 counter on each creature you control.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {5}{G}{G}\nWhen Tugae Rallier enters, create a 1/1 green Elf creature token. If you control five or more creatures, you may instead put a +1/+1 counter on each creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {5}{G}{G}\nWhen Tugae Rallier enters, create a 1/1 green Elf creature token. If you control five or more creatures, you may instead put a +1/+1 counter on each creature you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Tugae Rallier"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-175",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {4}{W}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Wildcourt Wishgiver_BLR",
+          "name": "Wildcourt Wishgiver",
+          "original_text": "Type: Creature — Elemental \nMana cost: {1}{W}\nPower/Toughness: 1/1\nMultitude {4}{W} *(You may cast this for {4}{W}. When you do, copy it.)*\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+          "executable_text": "Type: Creature — Elemental \nMana cost: {1}{W}\nPower/Toughness: 1/1\nYou may pay {4}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+          "executable_faces": [
+            {
+              "name": "Wildcourt Wishgiver",
+              "executable_text": "Type: Creature — Elemental \nMana cost: {1}{W}\nPower/Toughness: 1/1\nYou may pay {4}{W} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Multitude {4}{W}\n{W}, {T}: Put a +1/+1 counter on another target creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Multitude {4}{W}\n{W}, {T}: Put a +1/+1 counter on another target creature.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Wildcourt Wishgiver"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    },
+    {
+      "id": "rev-multitude-176",
+      "keyword": "Multitude",
+      "scope": "revolution",
+      "rule_reference": "702.211.",
+      "rule_text": {
+        "name": "702.211.",
+        "rule": "Multitude",
+        "subrules": [
+          {
+            "name": "702.211a",
+            "rule": "Multitude is a keyword that represents a static ability and a triggered ability that function while the spell with multitude is on the stack. “Multitude (cost)” means “You may choose to pay (cost) rather than this spell's mana cost,” and “When you cast this spell, if you paid its multitude cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Binding Whisper",
+          "Collector of the Lost",
+          "Drift Off",
+          "Glimpse of Something Great",
+          "Lichbane Forerunner",
+          "Matron of Lost Glades",
+          "Scion of the Wildcourt",
+          "Stalwart Grovekeepers",
+          "Sylph of the Tugae",
+          "Tugae Corpsemaker",
+          "Tugae Rallier",
+          "Unending Chant",
+          "Wildcourt Conserver",
+          "Wildcourt Wishgiver",
+          "Wildkin Imposter"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast this for {4}{U}{U}. When you do, copy it.",
+      "executable_reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.",
+      "semantic_equivalence": {
+        "status": "unreviewed"
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Wildkin Imposter_BLR",
+          "name": "Wildkin Imposter",
+          "original_text": "Type: Creature — Elemental Shapeshifter \nMana cost: {3}{U}\nPower/Toughness: 0/0\nFlash\nMultitude {4}{U}{U} *(You may cast this for {4}{U}{U}. When you do, copy it.)*\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+          "executable_text": "Type: Creature — Elemental Shapeshifter \nMana cost: {3}{U}\nPower/Toughness: 0/0\nFlash\nYou may pay {4}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+          "executable_faces": [
+            {
+              "name": "Wildkin Imposter",
+              "executable_text": "Type: Creature — Elemental Shapeshifter \nMana cost: {3}{U}\nPower/Toughness: 0/0\nFlash\nYou may pay {4}{U}{U} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy.\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+              "custom_keyword_identities": [
+                "multitude"
+              ],
+              "custom_keyword_payments": [
+                "multitude"
+              ],
+              "original_display_text": "Flash\nMultitude {4}{U}{U}\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield."
+            }
+          ],
+          "custom_keyword_identities": [
+            "multitude"
+          ],
+          "custom_keyword_payments": [
+            "multitude"
+          ],
+          "original_display_text": "Flash\nMultitude {4}{U}{U}\nYou may have Wildkin Imposter enter as a copy of any creature on the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Wildkin Imposter"
+      ],
+      "behavioral_assertions": [],
+      "parameters": [
+        "Cost"
+      ],
+      "equivalence_basis": "Authoritative keyword rule 702.300a: total alternative price, selected-price cast trigger, optional new targets; source reminder omits target clause.",
+      "rewrite_status": "candidate_pending_native_binding",
+      "semantic_status": "pending",
+      "scenario_tests": [
+        "custom_multitude::selected_total_price_only_creates_a_cast_copy_trigger",
+        "custom_multitude::permanent_copy_resolves_as_token_and_cast_trigger_survives_original_counter"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Multitude {Cost}",
+          "reminder": "You may pay {Cost} rather than pay this spell's mana cost. When you cast this spell, if its Multitude cost was paid, copy this spell. You may choose new targets for the copy."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "candidate_status": "frontend_candidate_pending_behavior",
+      "notes": [
+        "Generic named receipt reference is retained in paid predicate; selected-method attribution and gameplay remain unverified."
+      ]
+    }
+  ]
+}

@@ -111,8 +111,7 @@ pub(crate) fn selected_face(game: &GameState, player: PlayerId, spell: &Object, 
         let method = face.alternative_casts.get(index).filter(|method| method.cast_from_zone() == Zone::Hand)
             .cloned().ok_or_else(|| ExecutionError::IncompleteEvidence("selected permission has no printed alternative from hand".into()))?;
         if method.is_bestow() { face.apply_bestow_cast_overlay(); }
-        if let Some(power_toughness) = method.prototype_power_toughness()
-            && let Some(cost) = method.mana_cost() { face.apply_prototype_cast_overlay(cost.clone(), power_toughness); }
+        if let Some((cost, power_toughness)) = method.casting_characteristics() { face.apply_cast_characteristic_overlay(cost.clone(), power_toughness); }
     }
     Ok((face, source, zone))
 }

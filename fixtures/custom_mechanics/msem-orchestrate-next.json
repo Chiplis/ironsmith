@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "policy": "Exact source ids/reminders retained; existing ordinary operations with one-shot successful-resolution trigger."
+  },
+  "mechanics": [
+    {
+      "id": "msem-591",
+      "keyword": "Orchestrate",
+      "original_reminder": "You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.",
+      "executable_reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+      "source_cards": [
+        "Ardy's Invocation",
+        "Blessing of Valor",
+        "Bloated Keystone",
+        "Crystal Conjuration",
+        "Shatter Facade",
+        "Sprout Thought",
+        "Stormsurge",
+        "Surge of the Leylines",
+        "Thunderous Charge",
+        "Defying Gravity",
+        "Evigian Crusher",
+        "Malign Growth",
+        "Return to Form",
+        "Strike the Stage"
+      ],
+      "rule_reference": "702.221.",
+      "rule_text": [
+        {
+          "name": "702.221a",
+          "rule": "Orchestrate represents a static ability of a card in your hand that creates a delayed triggered ability. “Orchestrate (cost)” means “At any time you could cast a sorcery, you may pay (cost) and exile this card from your hand. If you do, when you next resolve a spell, cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.221b",
+          "rule": "Exiling a card for its orchestrate cost is a special action and can't be countered.",
+          "custom": true
+        },
+        {
+          "name": "702.221c",
+          "rule": "If the triggered ability created by orchestrate is countered, the card will remain in exile and the ability allowing you to cast it won't trigger anymore.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ardy's Invocation_CAC",
+          "name": "Ardy's Invocation",
+          "original_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nYou may pay {R}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "mana_cost": "{R}{G}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Ardy's Invocation_CAC",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ardy's Invocation",
+              "original_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ardy's Invocation",
+              "executable_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nYou may pay {R}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G}",
+              "original_printed_rules_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "original_display_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Orchestrate",
+          "template": "{Cost}",
+          "reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_native_verification",
+      "semantic_note": "Corrected shortened reminder discrepancy: original reminder says may cast; formal rule 702.221a requires casting. Original reminder remains immutable evidence; executable uses mandatory cast and preserves the counterable one-shot delayed trigger."
+    },
+    {
+      "id": "msem-592",
+      "keyword": "Orchestrate",
+      "original_reminder": "You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.",
+      "executable_reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+      "source_cards": [
+        "Losing My Religion"
+      ],
+      "rule_reference": "702.221.",
+      "rule_text": [
+        {
+          "name": "702.221a",
+          "rule": "Orchestrate represents a static ability of a card in your hand that creates a delayed triggered ability. “Orchestrate (cost)” means “At any time you could cast a sorcery, you may pay (cost) and exile this card from your hand. If you do, when you next resolve a spell, cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.221b",
+          "rule": "Exiling a card for its orchestrate cost is a special action and can't be countered.",
+          "custom": true
+        },
+        {
+          "name": "702.221c",
+          "rule": "If the triggered ability created by orchestrate is countered, the card will remain in exile and the ability allowing you to cast it won't trigger anymore.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Losing My Religion_OTH",
+          "name": "Losing My Religion",
+          "original_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} *(You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "mana_cost": "{2}{W}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Losing My Religion_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Losing My Religion",
+              "original_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} *(You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Losing My Religion",
+              "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W}",
+              "original_printed_rules_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} (You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "original_display_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W}",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} (You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Orchestrate",
+          "template": "{Cost}",
+          "reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_native_verification",
+      "semantic_note": "Corrected shortened reminder discrepancy: original reminder says may cast; formal rule 702.221a requires casting. Original reminder remains immutable evidence; executable uses mandatory cast and preserves the counterable one-shot delayed trigger."
+    },
+    {
+      "id": "msem-593",
+      "keyword": "Orchestrate",
+      "original_reminder": "You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.",
+      "executable_reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+      "source_cards": [
+        "Reytali, Song of the Sand//Reytali of Endless Muses"
+      ],
+      "rule_reference": "702.221.",
+      "rule_text": [
+        {
+          "name": "702.221a",
+          "rule": "Orchestrate represents a static ability of a card in your hand that creates a delayed triggered ability. “Orchestrate (cost)” means “At any time you could cast a sorcery, you may pay (cost) and exile this card from your hand. If you do, when you next resolve a spell, cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.221b",
+          "rule": "Exiling a card for its orchestrate cost is a special action and can't be countered.",
+          "custom": true
+        },
+        {
+          "name": "702.221c",
+          "rule": "If the triggered ability created by orchestrate is countered, the card will remain in exile and the ability allowing you to cast it won't trigger anymore.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Reytali, Song of the Sand//Reytali of Endless Muses_MSL",
+          "name": "Reytali, Song of the Sand",
+          "original_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. *(You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)*\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "executable_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has \"You may pay its mana cost reduced by {2} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost. This is the orchestrate preparation ability.\".\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Legendary Creature — Human Citizen",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Reytali, Song of the Sand//Reytali of Endless Muses_MSL",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reytali, Song of the Sand",
+              "original_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. *(You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)*\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed."
+            },
+            {
+              "face": "back",
+              "name": "Reytali of Endless Muses",
+              "original_text": "Type: Legendary Planeswalker — Reytali\nLoyalty: 4\nWhenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste."
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Reytali, Song of the Sand",
+              "executable_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has \"You may pay its mana cost reduced by {2} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost. This is the orchestrate preparation ability.\".\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "reytali",
+                  "plural": "reytalis",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}.\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+              "original_printed_rules_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. (You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed."
+            },
+            {
+              "name": "Reytali of Endless Muses",
+              "executable_text": "Type: Legendary Planeswalker — Reytali\nLoyalty: 4\nWhenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "reytali",
+                  "plural": "reytalis",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste.",
+              "original_printed_rules_text": "Whenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "original_display_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}.\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "reytali",
+              "plural": "reytalis",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. (You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Orchestrate",
+          "template": "{Cost}",
+          "reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_native_verification",
+      "semantic_note": "Corrected shortened reminder discrepancy: original reminder says may cast; formal rule 702.221a requires casting. Original reminder remains immutable evidence; executable uses mandatory cast and preserves the counterable one-shot delayed trigger."
+    }
+  ]
+}

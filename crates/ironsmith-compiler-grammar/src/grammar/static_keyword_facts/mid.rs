@@ -97,6 +97,7 @@ pub enum SpellCastActorFact {
 pub struct SpellCostBetweenFact<'a> {
     pub actor: Option<SpellCastActorFact>,
     pub from_your_graveyard: bool,
+    pub from_anywhere_other_than_your_hand: bool,
     pub descriptor_segments: Vec<&'a [OwnedLexToken]>,
     pub target_tokens: Option<&'a [OwnedLexToken]>,
 }
@@ -578,6 +579,12 @@ pub fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCostBetwe
     };
     let from_your_graveyard =
         primitives::parse_word_sequence_span(&words, &["from", "your", "graveyard"]).is_some();
+    let from_anywhere_other_than_your_hand = primitives::parse_word_sequence_span(
+        &words, &["from", "anywhere", "other", "than", "your", "hand"],
+    ).is_some();
+    if from_anywhere_other_than_your_hand {
+        crate::word_claims::claim_words(&["from", "anywhere", "other", "than", "your", "hand"]);
+    }
     let target_tokens = ["target", "targets"].into_iter().find_map(|target_word| {
         let span = primitives::parse_word_sequence_span(&words, &["that", target_word])?;
         let target_start_word = span.start + span.len;
@@ -611,6 +618,7 @@ pub fn parse_spell_cost_between_fact(tokens: &[OwnedLexToken]) -> SpellCostBetwe
     SpellCostBetweenFact {
         actor,
         from_your_graveyard,
+        from_anywhere_other_than_your_hand,
         descriptor_segments,
         target_tokens,
     }

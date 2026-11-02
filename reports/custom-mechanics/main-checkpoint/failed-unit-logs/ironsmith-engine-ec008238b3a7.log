@@ -1,0 +1,17 @@
+
+running 1 test
+
+thread 'triggers::class_event_choice::tests::official_class_uses_owned_program_identity_not_presentation_or_body_similarity' panicked at crates/ironsmith-engine/src/triggers/class_event_choice.rs:388:3:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test triggers::class_event_choice::tests::official_class_uses_owned_program_identity_not_presentation_or_body_similarity ... FAILED
+
+failures:
+
+failures:
+    triggers::class_event_choice::tests::official_class_uses_owned_program_identity_not_presentation_or_body_similarity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5639 filtered out; finished in 0.04s
+

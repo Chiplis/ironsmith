@@ -7,6 +7,18 @@ pub fn parse_can_block_as_though_untapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let clean = trim_edge_punctuation_tokens(tokens);
+    if let Some((subject, ())) = crate::grammar::primitives::split_lexed_once_before_suffix(clean, 1, || {
+        crate::grammar::primitives::phrase(&[
+            "can", "block", "this", "creature", "as", "though", "they", "were", "untapped",
+        ])
+    }) {
+        let filter = crate::object_filters::parse_object_filter_lexed(subject, false)?;
+        if !filter.card_types.contains(&crate::types::CardType::Creature) { return Ok(None); }
+        return Ok(Some(StaticAbilityAst::Static(
+            StaticAbility::can_be_blocked_as_though_blockers_were_untapped(filter),
+        )));
+    }
+
     let Some((subject, ())) = crate::grammar::primitives::split_lexed_once_before_suffix(clean, 1, || {
         crate::grammar::primitives::phrase(&[
             "can", "block", "as", "though", "they", "were", "untapped",

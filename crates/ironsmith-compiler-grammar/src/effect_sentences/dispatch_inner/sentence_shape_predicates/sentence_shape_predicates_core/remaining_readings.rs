@@ -395,8 +395,10 @@ fn read_delayed_this_turn(
     // Claim it before broad payload recognizers (notably quantified player
     // fanout) inspect the outer sentence and try to parse only the trigger
     // header as a recurring ability.
-    if effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some()
-        && let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)?
+    // This reader also owns explicit unbounded one-shot forms (`when you
+    // next cast ...` / `when that ... dies`). A this-turn-only prefilter
+    // strands those complete delayed sentences in broad conditional readers.
+    if let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)?
     {
         return Ok(Some(effects));
     }

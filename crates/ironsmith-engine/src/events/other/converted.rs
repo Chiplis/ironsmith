@@ -14,6 +14,8 @@ pub struct ConvertedEvent {
     pub permanent: ObjectId,
     /// Completed post-change characteristics of this exact incarnation.
     pub snapshot: Option<ObjectSnapshot>,
+    /// A complete producer packet freezes all event-time trigger sources.
+    pub complete_source_lookback: bool,
 }
 
 impl ConvertedEvent {
@@ -22,7 +24,12 @@ impl ConvertedEvent {
         Self {
             permanent,
             snapshot: None,
+            complete_source_lookback: false,
         }
+    }
+    pub fn with_complete_source_lookback(mut self) -> Self {
+        self.complete_source_lookback = true;
+        self
     }
     pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
         self.snapshot = snapshot;

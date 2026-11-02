@@ -1,0 +1,1431 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "scope": "All12Teachoriginalreminder variants with directmatchingactualsourcefaces; compoundconditional/repeatbindingsremainpending."
+  },
+  "mechanics": [
+    {
+      "id": "rev-teach-019",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach menace, put a menace counter on it. If it already has menace, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Goldpeak Gateway_PLANE",
+          "name": "Goldpeak Gateway",
+          "original_text": "Type: Plane — Nylin\nGoldpeak Gateway is red.\nWhen you planeswalk to Goldpeak Gateway and at the beginning of your upkeep, make a pledge. *(Create any red Clique enchantment token. If you already control a Clique, instead activate its Pledge without paying its cost.)*\nWhenever chaos ensues, teach target creature you control menace. *(To teach menace, put a menace counter on it. If it already has menace, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Plane — Nylin\nGoldpeak Gateway is red.\nWhen you planeswalk to Goldpeak Gateway and at the beginning of your upkeep, make a pledge.\nWhenever chaos ensues, Choose target creature you control. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it.",
+          "source_layout": "planar",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Goldpeak Gateway",
+              "executable_text": "Type: Plane — Nylin\nGoldpeak Gateway is red.\nWhen you planeswalk to Goldpeak Gateway and at the beginning of your upkeep, make a pledge.\nWhenever chaos ensues, Choose target creature you control. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Goldpeak Gateway is red.\nWhen you planeswalk to Goldpeak Gateway and at the beginning of your upkeep, make a pledge.\nWhenever chaos ensues, teach target creature you control menace."
+            }
+          ],
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Goldpeak Gateway is red.\nWhen you planeswalk to Goldpeak Gateway and at the beginning of your upkeep, make a pledge.\nWhenever chaos ensues, teach target creature you control menace."
+        },
+        {
+          "id": "rev:Corporate Mentor_CNY",
+          "name": "Corporate Mentor",
+          "original_text": "Type: Creature — Human Noble \nMana cost: {3}{R}\nPower/Toughness: 4/2\nMenace\nWhenever Corporate Mentor attacks, teach target attacking creature with lesser power menace. *(To teach menace, put a menace counter on it. If it already has menace, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Noble \nMana cost: {3}{R}\nPower/Toughness: 4/2\nMenace\nWhenever Corporate Mentor attacks, Choose target attacking creature with lesser power. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Menace\nWhenever Corporate Mentor attacks, teach target attacking creature with lesser power menace.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Corporate Mentor",
+              "executable_text": "Type: Creature — Human Noble \nMana cost: {3}{R}\nPower/Toughness: 4/2\nMenace\nWhenever Corporate Mentor attacks, Choose target attacking creature with lesser power. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Menace\nWhenever Corporate Mentor attacks, teach target attacking creature with lesser power menace."
+            }
+          ]
+        },
+        {
+          "id": "rev:Night Squad_CNY",
+          "name": "Night Squad",
+          "original_text": "Type: Creature — Human Assassin \nMana cost: {3}{B}\nPower/Toughness: 4/2\nWhen Night Squad enters, teach target creature menace. If you put a +1/+1 counter on it this way, it can't be blocked this turn. *(To teach menace, put a menace counter on it. If it already has menace, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Assassin \nMana cost: {3}{B}\nPower/Toughness: 4/2\nWhen Night Squad enters, Choose target creature. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it. If you put a +1/+1 counter on it this way, it can't be blocked this turn.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Night Squad enters, teach target creature menace. If you put a +1/+1 counter on it this way, it can't be blocked this turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Night Squad",
+              "executable_text": "Type: Creature — Human Assassin \nMana cost: {3}{B}\nPower/Toughness: 4/2\nWhen Night Squad enters, Choose target creature. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it. If you put a +1/+1 counter on it this way, it can't be blocked this turn.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Night Squad enters, teach target creature menace. If you put a +1/+1 counter on it this way, it can't be blocked this turn."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Goldpeak Gateway",
+        "Corporate Mentor",
+        "Night Squad"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-020",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach a keyword, put a keyword counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "unreviewed",
+        "evidence": "Generic typed action operand binding added in reminder-action-parameters.js. Concrete modal actions can bind object/ability. Adaptive Hydra choice/repeat-X and Genome Project independently conditioned same-is-true clauses remain unexpanded and pending full-card strict behavioral proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Adaptive Hydra_CNY",
+          "name": "Adaptive Hydra",
+          "original_text": "Type: Artifact Creature — Hydra \nMana cost: {X}{B}{R}{G}\nPower/Toughness: 3/3\nWhen Adaptive Hydra enters, teach it your choice of haste, menace, or vigilance. Then repeat this process X times. *(To teach a keyword, put a keyword counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Artifact Creature — Hydra \nMana cost: {X}{B}{R}{G}\nPower/Toughness: 3/3\nWhen Adaptive Hydra enters, teach it your choice of haste, menace, or vigilance. Then repeat this process X times. (To teach a keyword, put a keyword counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)",
+          "source_layout": "normal",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread",
+          "executable_faces": [
+            {
+              "name": "Adaptive Hydra",
+              "executable_text": "Type: Artifact Creature — Hydra \nMana cost: {X}{B}{R}{G}\nPower/Toughness: 3/3\nWhen Adaptive Hydra enters, teach it your choice of haste, menace, or vigilance. Then repeat this process X times. (To teach a keyword, put a keyword counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Adaptive Hydra"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Teach {Object} {Ability}",
+        "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-021",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach lifelink, put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Anesthesiologist_CNY",
+          "name": "Anesthesiologist",
+          "original_text": "Type: Creature — Human Artificer \nMana cost: {1}{G}\nPower/Toughness: 2/1\nWhenever Anesthesiologist attacks, teach Anesthesiologist lifelink if you control a white permanent. Otherwise, you gain 2 life. *(To teach lifelink, put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Artificer \nMana cost: {1}{G}\nPower/Toughness: 2/1\nWhenever Anesthesiologist attacks, teach Anesthesiologist lifelink if you control a white permanent. Otherwise, you gain 2 life. (To teach lifelink, put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.)",
+          "source_layout": "normal",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread",
+          "executable_faces": [
+            {
+              "name": "Anesthesiologist",
+              "executable_text": "Type: Creature — Human Artificer \nMana cost: {1}{G}\nPower/Toughness: 2/1\nWhenever Anesthesiologist attacks, teach Anesthesiologist lifelink if you control a white permanent. Otherwise, you gain 2 life. (To teach lifelink, put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ]
+        },
+        {
+          "id": "rev:Charity Match_CNY",
+          "name": "Charity Match",
+          "original_text": "Type: Instant\nMana cost: {G}{W}\nTeach target creature you control lifelink. It fights up to one target creature you don't control. *(To teach lifelink, put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Instant\nMana cost: {G}{W}\nChoose target creature you control. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it. It fights up to one target creature you don't control.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Teach target creature you control lifelink. It fights up to one target creature you don't control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Charity Match",
+              "executable_text": "Type: Instant\nMana cost: {G}{W}\nChoose target creature you control. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it. It fights up to one target creature you don't control.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Teach target creature you control lifelink. It fights up to one target creature you don't control."
+            }
+          ]
+        },
+        {
+          "id": "rev:Laboratory Mentor_CNY",
+          "name": "Laboratory Mentor",
+          "original_text": "Type: Creature — Vedalken Artificer \nMana cost: {2}{W}\nPower/Toughness: 3/1\nLifelink\nWhenever Laboratory Mentor attacks, teach target attacking creature with lesser power lifelink. *(To teach lifelink, put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Vedalken Artificer \nMana cost: {2}{W}\nPower/Toughness: 3/1\nLifelink\nWhenever Laboratory Mentor attacks, Choose target attacking creature with lesser power. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Lifelink\nWhenever Laboratory Mentor attacks, teach target attacking creature with lesser power lifelink.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Laboratory Mentor",
+              "executable_text": "Type: Creature — Vedalken Artificer \nMana cost: {2}{W}\nPower/Toughness: 3/1\nLifelink\nWhenever Laboratory Mentor attacks, Choose target attacking creature with lesser power. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Lifelink\nWhenever Laboratory Mentor attacks, teach target attacking creature with lesser power lifelink."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Anesthesiologist",
+        "Charity Match",
+        "Laboratory Mentor"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-022",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach flying, put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Arsenal Mentor_CNY",
+          "name": "Arsenal Mentor",
+          "original_text": "Type: Creature — Human Soldier \nMana cost: {4}{B}\nPower/Toughness: 3/3\nFlying\nWhenever Arsenal Mentor attacks, teach target attacking creature with lesser power flying. *(To teach flying, put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Soldier \nMana cost: {4}{B}\nPower/Toughness: 3/3\nFlying\nWhenever Arsenal Mentor attacks, Choose target attacking creature with lesser power. If it has flying, put a +1/+1 counter on it. Otherwise, put a flying counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhenever Arsenal Mentor attacks, teach target attacking creature with lesser power flying.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Arsenal Mentor",
+              "executable_text": "Type: Creature — Human Soldier \nMana cost: {4}{B}\nPower/Toughness: 3/3\nFlying\nWhenever Arsenal Mentor attacks, Choose target attacking creature with lesser power. If it has flying, put a +1/+1 counter on it. Otherwise, put a flying counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhenever Arsenal Mentor attacks, teach target attacking creature with lesser power flying."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Arsenal Mentor"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-023",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Put a menace counter on it. If it already has menace, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Battlefield Tactician_CNY",
+          "name": "Battlefield Tactician",
+          "original_text": "Type: Creature — Human Soldier \nMana cost: {3}{R}\nPower/Toughness: 4/3\n{2}, Sacrifice a creature: Teach target creature menace. *(Put a menace counter on it. If it already has menace, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Soldier \nMana cost: {3}{R}\nPower/Toughness: 4/3\n{2}, Sacrifice a creature: Choose target creature. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "{2}, Sacrifice a creature: Teach target creature menace.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Battlefield Tactician",
+              "executable_text": "Type: Creature — Human Soldier \nMana cost: {3}{R}\nPower/Toughness: 4/3\n{2}, Sacrifice a creature: Choose target creature. If it has menace, put a +1/+1 counter on it. Otherwise, put a menace counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "{2}, Sacrifice a creature: Teach target creature menace."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Battlefield Tactician"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-024",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach vigilance, put a vigilance counter on it. If it already has vigilance, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Bureau Mentor_CNY",
+          "name": "Bureau Mentor",
+          "original_text": "Type: Creature — Human Scout \nMana cost: {2}{U}\nPower/Toughness: 3/2\nVigilance\nWhenever Bureau Mentor attacks, teach target attacking creature with lesser power vigilance. Untap that creature. *(To teach vigilance, put a vigilance counter on it. If it already has vigilance, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Scout \nMana cost: {2}{U}\nPower/Toughness: 3/2\nVigilance\nWhenever Bureau Mentor attacks, Choose target attacking creature with lesser power. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it. Untap that creature.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nWhenever Bureau Mentor attacks, teach target attacking creature with lesser power vigilance. Untap that creature.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Bureau Mentor",
+              "executable_text": "Type: Creature — Human Scout \nMana cost: {2}{U}\nPower/Toughness: 3/2\nVigilance\nWhenever Bureau Mentor attacks, Choose target attacking creature with lesser power. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it. Untap that creature.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nWhenever Bureau Mentor attacks, teach target attacking creature with lesser power vigilance. Untap that creature."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Bureau Mentor"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-025",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Civic Copterist_CNY",
+          "name": "Civic Copterist",
+          "original_text": "Type: Creature — Human Soldier \nMana cost: {3}{U}\nPower/Toughness: 2/2\nFlying\nWhen Civic Copterist enters, teach target creature flying. *(Put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Soldier \nMana cost: {3}{U}\nPower/Toughness: 2/2\nFlying\nWhen Civic Copterist enters, Choose target creature. If it has flying, put a +1/+1 counter on it. Otherwise, put a flying counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nWhen Civic Copterist enters, teach target creature flying.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Civic Copterist",
+              "executable_text": "Type: Creature — Human Soldier \nMana cost: {3}{U}\nPower/Toughness: 2/2\nFlying\nWhen Civic Copterist enters, Choose target creature. If it has flying, put a +1/+1 counter on it. Otherwise, put a flying counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nWhen Civic Copterist enters, teach target creature flying."
+            }
+          ]
+        },
+        {
+          "id": "rev:Presidential Pardon_CNY",
+          "name": "Presidential Pardon",
+          "original_text": "Type: Instant\nMana cost: {B}\nUntil end of turn, target creature gains “When this creature dies, return it to the battlefield tapped under its owner's control and teach it flying.” *(Put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Instant\nMana cost: {B}\nUntil end of turn, target creature gains “When this creature dies, return it to the battlefield tapped under its owner's control and teach it flying.” (Put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.)",
+          "source_layout": "normal",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread",
+          "executable_faces": [
+            {
+              "name": "Presidential Pardon",
+              "executable_text": "Type: Instant\nMana cost: {B}\nUntil end of turn, target creature gains “When this creature dies, return it to the battlefield tapped under its owner's control and teach it flying.” (Put a flying counter on it. If it already has flying, put a +1/+1 counter on it instead.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Civic Copterist",
+        "Presidential Pardon"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-026",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach trample, put a trample counter on it. If it already has trample, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Demolition Team_CNY",
+          "name": "Demolition Team",
+          "original_text": "Type: Creature — Human Artificer \nMana cost: {4}{G}\nPower/Toughness: 5/5\nWhen Demolition Team enters, teach target creature trample. If you put a +1/+1 counter on it this way, it must be blocked this turn if able. *(To teach trample, put a trample counter on it. If it already has trample, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Artificer \nMana cost: {4}{G}\nPower/Toughness: 5/5\nWhen Demolition Team enters, Choose target creature. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it. If you put a +1/+1 counter on it this way, it must be blocked this turn if able.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "When Demolition Team enters, teach target creature trample. If you put a +1/+1 counter on it this way, it must be blocked this turn if able.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Demolition Team",
+              "executable_text": "Type: Creature — Human Artificer \nMana cost: {4}{G}\nPower/Toughness: 5/5\nWhen Demolition Team enters, Choose target creature. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it. If you put a +1/+1 counter on it this way, it must be blocked this turn if able.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "When Demolition Team enters, teach target creature trample. If you put a +1/+1 counter on it this way, it must be blocked this turn if able."
+            }
+          ]
+        },
+        {
+          "id": "rev:Insurgency Mentor_CNY",
+          "name": "Insurgency Mentor",
+          "original_text": "Type: Creature — Human Rebel\nMana cost: {4}{G}\nPower/Toughness: 5/4\nTrample\nWhenever Insurgency Mentor attacks, teach target attacking creature with lesser power trample. *(To teach trample, put a trample counter on it. If it already has trample, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Rebel\nMana cost: {4}{G}\nPower/Toughness: 5/4\nTrample\nWhenever Insurgency Mentor attacks, Choose target attacking creature with lesser power. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Trample\nWhenever Insurgency Mentor attacks, teach target attacking creature with lesser power trample.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Insurgency Mentor",
+              "executable_text": "Type: Creature — Human Rebel\nMana cost: {4}{G}\nPower/Toughness: 5/4\nTrample\nWhenever Insurgency Mentor attacks, Choose target attacking creature with lesser power. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Trample\nWhenever Insurgency Mentor attacks, teach target attacking creature with lesser power trample."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Demolition Team",
+        "Insurgency Mentor"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-027",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Put a vigilance counter on it. If it already has vigilance, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Evasive Tactics_CNY",
+          "name": "Evasive Tactics",
+          "original_text": "Type: Instant\nMana cost: {U}\nTarget creature gains hexproof until end of turn. Teach it vigilance. *(Put a vigilance counter on it. If it already has vigilance, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Instant\nMana cost: {U}\nTarget creature gains hexproof until end of turn. Choose it. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Target creature gains hexproof until end of turn. Teach it vigilance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Evasive Tactics",
+              "executable_text": "Type: Instant\nMana cost: {U}\nTarget creature gains hexproof until end of turn. Choose it. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Target creature gains hexproof until end of turn. Teach it vigilance."
+            }
+          ]
+        },
+        {
+          "id": "rev:Neuralinked Hive_CNY",
+          "name": "Neuralinked Hive",
+          "original_text": "Type: Creature — Human Drone \nMana cost: {2}{W}{U}\nPower/Toughness: 3/3\nCreatures you control with counters on them have all activated abilities of other creatures you control with counters on them.\n{1}, {T}: Teach target creature vigilance. *(Put a vigilance counter on it. If it already has vigilance, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Drone \nMana cost: {2}{W}{U}\nPower/Toughness: 3/3\nCreatures you control with counters on them have all activated abilities of other creatures you control with counters on them.\n{1}, {T}: Choose target creature. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Creatures you control with counters on them have all activated abilities of other creatures you control with counters on them.\n{1}, {T}: Teach target creature vigilance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Neuralinked Hive",
+              "executable_text": "Type: Creature — Human Drone \nMana cost: {2}{W}{U}\nPower/Toughness: 3/3\nCreatures you control with counters on them have all activated abilities of other creatures you control with counters on them.\n{1}, {T}: Choose target creature. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Creatures you control with counters on them have all activated abilities of other creatures you control with counters on them.\n{1}, {T}: Teach target creature vigilance."
+            }
+          ]
+        },
+        {
+          "id": "rev:Seasoned Spymaster_CNY",
+          "name": "Seasoned Spymaster",
+          "original_text": "Type: Creature — Human Rebel\nMana cost: {3}{W}\nPower/Toughness: 3/2\nVigilance\nWhen Seasoned Spymaster enters, teach target creature vigilance. *(Put a vigilance counter on it. If it already has vigilance, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Creature — Human Rebel\nMana cost: {3}{W}\nPower/Toughness: 3/2\nVigilance\nWhen Seasoned Spymaster enters, Choose target creature. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nWhen Seasoned Spymaster enters, teach target creature vigilance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Seasoned Spymaster",
+              "executable_text": "Type: Creature — Human Rebel\nMana cost: {3}{W}\nPower/Toughness: 3/2\nVigilance\nWhen Seasoned Spymaster enters, Choose target creature. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nWhen Seasoned Spymaster enters, teach target creature vigilance."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Evasive Tactics",
+        "Neuralinked Hive",
+        "Seasoned Spymaster"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-028",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Put a trample counter on it. If it already has trample, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Gain Traction_CNY",
+          "name": "Gain Traction",
+          "original_text": "Type: Enchantment — Aura \nMana cost: {R}\nEnchant creature\nEnchanted creature attacks each combat if able.\nWhenever enchanted creature attacks, teach it trample. *(Put a trample counter on it. If it already has trample, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Enchantment — Aura \nMana cost: {R}\nEnchant creature\nEnchanted creature attacks each combat if able.\nWhenever enchanted creature attacks, Choose it. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Enchant creature\nEnchanted creature attacks each combat if able.\nWhenever enchanted creature attacks, teach it trample.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Gain Traction",
+              "executable_text": "Type: Enchantment — Aura \nMana cost: {R}\nEnchant creature\nEnchanted creature attacks each combat if able.\nWhenever enchanted creature attacks, Choose it. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Enchant creature\nEnchanted creature attacks each combat if able.\nWhenever enchanted creature attacks, teach it trample."
+            }
+          ]
+        },
+        {
+          "id": "rev:Reckless Jailbreak_CNY",
+          "name": "Reckless Jailbreak",
+          "original_text": "Type: Instant\nMana cost: {1}{R}\nTarget creature gets +3/+2 until end of turn. Teach it trample. *(Put a trample counter on it. If it already has trample, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Instant\nMana cost: {1}{R}\nTarget creature gets +3/+2 until end of turn. Choose it. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Target creature gets +3/+2 until end of turn. Teach it trample.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Reckless Jailbreak",
+              "executable_text": "Type: Instant\nMana cost: {1}{R}\nTarget creature gets +3/+2 until end of turn. Choose it. If it has trample, put a +1/+1 counter on it. Otherwise, put a trample counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Target creature gets +3/+2 until end of turn. Teach it trample."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Gain Traction",
+        "Reckless Jailbreak"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-029",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "To teach a keyword, put a counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "unreviewed",
+        "evidence": "Generic typed action operand binding added in reminder-action-parameters.js. Concrete modal actions can bind object/ability. Adaptive Hydra choice/repeat-X and Genome Project independently conditioned same-is-true clauses remain unexpanded and pending full-card strict behavioral proof."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Genome Project_CNY",
+          "name": "Genome Project",
+          "original_text": "Type: Enchantment\nMana cost: {G}{W}{U}\nWhenever a creature you control enters, teach it flying if a creature you control has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance. *(To teach a keyword, put a counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Enchantment\nMana cost: {G}{W}{U}\nWhenever a creature you control enters, teach it flying if a creature you control has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance. (To teach a keyword, put a counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)",
+          "source_layout": "normal",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread",
+          "executable_faces": [
+            {
+              "name": "Genome Project",
+              "executable_text": "Type: Enchantment\nMana cost: {G}{W}{U}\nWhenever a creature you control enters, teach it flying if a creature you control has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance. (To teach a keyword, put a counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ]
+        },
+        {
+          "id": "rev:Genotype Splicer_CNY",
+          "name": "Genotype Splicer",
+          "original_text": "Type: Creature — Human Artificer Mutant \nMana cost: {1}{W}\nPower/Toughness: 2/1\nAt the beginning of combat on your turn, you may pay {X}. When you do, choose up to X. Each mode must have different targets.\n• Teach target creature flying. *(To teach a keyword, put a counter of that kind on it. If it already has that keyword, put a +1/+1 counter on it instead.)*\n• Teach target creature lifelink.\n• Teach target creature vigilance.",
+          "executable_text": "Type: Creature — Human Artificer Mutant \nMana cost: {1}{W}\nPower/Toughness: 2/1\nAt the beginning of combat on your turn, you may pay {X}. When you do, choose up to X. Each mode must have different targets.\n• Choose target creature. If it has flying, put a +1/+1 counter on it. Otherwise, put a flying counter on it.\n• Choose target creature. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it.\n• Choose target creature. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "At the beginning of combat on your turn, you may pay {X}. When you do, choose up to X. Each mode must have different targets.\n• Teach target creature flying.\n• Teach target creature lifelink.\n• Teach target creature vigilance.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Genotype Splicer",
+              "executable_text": "Type: Creature — Human Artificer Mutant \nMana cost: {1}{W}\nPower/Toughness: 2/1\nAt the beginning of combat on your turn, you may pay {X}. When you do, choose up to X. Each mode must have different targets.\n• Choose target creature. If it has flying, put a +1/+1 counter on it. Otherwise, put a flying counter on it.\n• Choose target creature. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it.\n• Choose target creature. If it has vigilance, put a +1/+1 counter on it. Otherwise, put a vigilance counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "At the beginning of combat on your turn, you may pay {X}. When you do, choose up to X. Each mode must have different targets.\n• Teach target creature flying.\n• Teach target creature lifelink.\n• Teach target creature vigilance."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Genome Project",
+        "Genotype Splicer"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "candidate_action_template": {
+        "keyword": "Teach {Object} {Ability}",
+        "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+      },
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    },
+    {
+      "id": "rev-teach-030",
+      "keyword": "Teach",
+      "scope": "revolution",
+      "rule_reference": "701.77.",
+      "rule_text": {
+        "name": "701.77.",
+        "rule": "Teach",
+        "subrules": [
+          {
+            "name": "701.77a",
+            "rule": "“Teach [a permanent] [keyword].” means “If that [permanent] has [keyword], put a +1/+1 counter on it. Otherwise, put a [keyword] counter on it.”",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "701",
+        "matched_card_names": [
+          "Goldpeak Gateway",
+          "Adaptive Hydra",
+          "Anesthesiologist",
+          "Arsenal Mentor",
+          "Battlefield Tactician",
+          "Bureau Mentor",
+          "Charity Match",
+          "Civic Copterist",
+          "Corporate Mentor",
+          "Demolition Team",
+          "Evasive Tactics",
+          "Gain Traction",
+          "Genome Project",
+          "Genotype Splicer",
+          "Insurgency Mentor",
+          "Laboratory Mentor",
+          "Medic's Implant",
+          "Neuralinked Hive",
+          "Night Squad",
+          "Presidential Pardon",
+          "Reckless Jailbreak",
+          "Seasoned Spymaster"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.",
+      "executable_reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Revolution rule 701.77a checks keyword before placement. This is a body rewrite; the declaration binds the taught object. Existing keyword predicate and counter effects suffice."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Medic's Implant_CNY",
+          "name": "Medic's Implant",
+          "original_text": "Type: Instant\nMana cost: {1}{W}\nTarget creature gains indestructible until end of turn. Teach it lifelink. *(Put a lifelink counter on it. If it already has lifelink, put a +1/+1 counter on it instead.)*",
+          "executable_text": "Type: Instant\nMana cost: {1}{W}\nTarget creature gains indestructible until end of turn. Choose it. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it.",
+          "source_layout": "normal",
+          "custom_keyword_identities": [
+            "teach"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Target creature gains indestructible until end of turn. Teach it lifelink.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Medic's Implant",
+              "executable_text": "Type: Instant\nMana cost: {1}{W}\nTarget creature gains indestructible until end of turn. Choose it. If it has lifelink, put a +1/+1 counter on it. Otherwise, put a lifelink counter on it.",
+              "custom_keyword_identities": [
+                "teach"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Target creature gains indestructible until end of turn. Teach it lifelink."
+            }
+          ]
+        }
+      ],
+      "source_cards": [
+        "Medic's Implant"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "pre-placement-keyword-check",
+          "status": "pending",
+          "test_reference": "custom_revolution_counter_tests::revolution_teach_checks_existing_keyword_before_counter_placement",
+          "observable": "Already having the keyword produces a +1/+1 counter; otherwise the keyword counter grants that keyword."
+        },
+        {
+          "id": "declared-target-counter-condition",
+          "status": "pending",
+          "test_reference": "crates/ironsmith-compiler-runtime/tests/custom_revolution_counter.rs::revolution_teach_target_prelude_binds_both_branches_to_one_legal_creature",
+          "observable": "Chooseprelude declaresonelegalowncreature; controller/shroudnegativecases; correctkeyword-vs+counterbranch; failed+counterplacementdoesnotrunfalsearm."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Teach {Object} {Ability}",
+          "reminder": "Choose {Object}. If it has {Ability}, put a +1/+1 counter on it. Otherwise, put a {Ability} counter on it."
+        }
+      ],
+      "support_status": "existing_operations_candidate"
+    }
+  ]
+}

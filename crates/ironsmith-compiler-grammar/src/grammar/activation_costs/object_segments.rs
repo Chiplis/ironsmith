@@ -407,6 +407,20 @@ pub fn parse_unattach_segment_tokens(
 pub fn parse_tap_chosen_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    // A quoted opaque payment label applies to this whole selected set, not
+    // to any one contributor or a subsequent resolving ability instruction.
+    let original_tokens = tokens;
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let named_suffix = words.windows(3).position(|part| part == ["as", "payment", "named"]);
+    let (tokens, named_payment) = if let Some(word_index) = named_suffix {
+        let start = view.map_word_to_token_start(word_index).ok_or_else(|| unsupported(tokens, "named tap payment"))?;
+        let label_start = view.map_word_to_token_start(word_index + 3).ok_or_else(|| unsupported(tokens, "named tap payment label"))?;
+        let label = crate::lexer::render_literal_token_slice(&tokens[label_start..]).trim().trim_matches('"').to_ascii_lowercase();
+        if label.is_empty() || !label.chars().all(|ch| ch.is_ascii_alphabetic() || matches!(ch, ' ' | '-' | '\'')) { return Err(unsupported(tokens, "named tap payment label")); }
+        crate::word_claims::claim_tokens(&original_tokens[start..]);
+        (&tokens[..start], Some(label))
+    } else { (tokens, None) };
     let shape = primitives::parse_all(tokens, parse_tap_chosen_shape_lexed, "tap-chosen-cost")
         .map_err(|_| unsupported(tokens, "tap chosen"))?;
     let (filter_tokens, exclude_declared_combatants) =
@@ -433,6 +447,7 @@ pub fn parse_tap_chosen_segment_tokens(
         }
     };
     let mut filter = tap_state_cost_filter(filter_tokens, shape.other)?;
+    filter.named_tap_payment = named_payment;
     if shared_creature_type {
         filter.target_set_shared_creature_type = true;
     }

@@ -246,6 +246,7 @@ pub enum PlayerAchievementAst {
     CitysBlessing,
     /// "an enduring story" (Storied).
     EnduringStory,
+    NamedDesignation(String),
     CompletedDungeon {
         dungeon_name: Option<String>,
     },
@@ -640,6 +641,7 @@ impl PlayerAchievementConditionAst {
                     player: self.player,
                 })
             }
+            PlayerAchievementAst::NamedDesignation(designation) => PredicateAst::Player(PlayerPredicateAst::PlayerHasDesignation { player: self.player, designation }),
             PlayerAchievementAst::EnduringStory => {
                 PredicateAst::Player(PlayerPredicateAst::PlayerHasEnduringStory {
                     player: self.player,
@@ -1834,7 +1836,25 @@ fn parse_object_death_amount(tokens: &[OwnedLexToken]) -> Option<Comparison> {
 pub fn parse_battlefield_entry_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldEntryConditionAst> {
-    parse_battlefield_entry_shape(tokens)
+    if let Some(parsed) = parse_battlefield_entry_shape(tokens) { return Some(parsed); }
+    // "You've had one or more <objects> you control enter this turn"
+    // names the same controller-relative entry history, not a current count.
+    let words = crate::lexer::token_word_refs(tokens);
+    let prefix = if words.starts_with(&["youve", "had", "one", "or", "more"])
+        || words.starts_with(&["you've", "had", "one", "or", "more"]) { 5 }
+        else if words.starts_with(&["you", "have", "had", "one", "or", "more"]) { 6 }
+        else { return None; };
+    let positions = tokens.iter().enumerate().filter_map(|(index, token)| token.as_word().map(|_| index)).collect::<Vec<_>>();
+    let entry = words.iter().position(|word| matches!(*word, "enter" | "entered"))?;
+    if entry <= prefix || words.get(entry + 1..) != Some(&["this", "turn"][..])
+        || words.get(entry.saturating_sub(2)..entry) != Some(&["you", "control"][..]) { return None; }
+    let mut normalized = tokens[positions[prefix]..positions[entry]].to_vec();
+    normalized.extend(crate::lexer::synthetic_word_tokens(["entered", "under", "your", "control"]));
+    normalized.extend_from_slice(&tokens[positions[entry + 1]..]);
+    let parsed = parse_battlefield_entry_shape(&normalized)?;
+    crate::word_claims::claim_tokens(&tokens[..positions[prefix]]);
+    crate::word_claims::claim_tokens(&tokens[positions[entry]..positions[entry + 1]]);
+    Some(parsed)
 }
 
 fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<BattlefieldEntryConditionAst> {
@@ -2159,3 +2179,16 @@ fn split_control_condition_filter_suffix_words<'a>(
 #[cfg(test)]
 #[path = "conditions_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod controlled_entry_history_regressions {
+    #[test]
+    fn had_controlled_entry_is_typed_event_history() {
+        let tokens = crate::lexer::lex_line("youve had one or more enchantments you control enter this turn", 0).unwrap();
+        let Some(super::BattlefieldEntryConditionAst::ObjectEntered { filter, min_count, window }) = super::parse_battlefield_entry_condition(&tokens) else { panic!("typed entry history"); };
+        assert!(filter.card_types.contains(&crate::types::CardType::Enchantment));
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+        assert_eq!(min_count, None);
+        assert!(matches!(window, super::BattlefieldEntryTurnWindowAst::ThisTurn));
+    }
+}

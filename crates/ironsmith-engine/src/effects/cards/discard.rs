@@ -1641,6 +1641,10 @@ pub(crate) fn discard_selected_cards_with_outputs(
 }
 
 impl EffectExecutor for DiscardEffect {
+    fn scalar_target_resolution_specs(&self)->Vec<crate::target::ChooseSpec>{
+        crate::effects::helpers::scalar_player_target_spec(&self.player).into_iter().collect()
+    }
+
     fn supports_replacement_draw_continuation(&self) -> bool {
         true
     }
@@ -1671,90 +1675,14 @@ impl EffectExecutor for DiscardEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Discarded)
     }
-    fn supports_simultaneous_player_action(&self) -> bool {
-        !self.random && !self.any_number && self.card_filter.is_none()
-    }
-
+    fn supports_simultaneous_player_action(&self)->bool {true}
     fn prepare_simultaneous_player_action(
-        &self,
-        game: &GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
-        if !self.supports_simultaneous_player_action() {
-            return Err(ExecutionError::Impossible(
-                "discard shape lacks simultaneous preparation".into(),
-            ));
-        }
-        let player = resolve_player_filter(game, &self.player, ctx)?;
-        let hand = game
-            .player(player)
-            .map(|player| player.hand.to_vec())
-            .unwrap_or_default();
-        let count = (resolve_value(game, &self.count, ctx)?.max(0) as usize).min(hand.len());
-        let explicit = ctx
-            .targets
-            .iter()
-            .filter_map(|target| match target {
-                crate::effects::ResolvedTarget::Object(id) => Some(*id),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let reveal_chosen_publicly = hand.iter().any(|id| game.hidden_identity_is_private(*id));
-        let mut revealed_by_choice = Vec::new();
-        let selected = if let Some(selected) = ctx.preselected_objects.take() {
-            if reveal_chosen_publicly { revealed_by_choice = selected.clone(); }
-            selected
-        } else if count == 0 {
-            Vec::new()
-        } else if !explicit.is_empty() {
-            normalize_object_selection(explicit, &hand, count)
-        } else {
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                format!(
-                    "Choose {} card{} to discard",
-                    count,
-                    if count == 1 { "" } else { "s" }
-                ),
-                hand.clone(),
-                count,
-                Some(count),
-            );
-            // Discarded hidden cards are opened publicly before the answer is
-            // replayed (Madness, discard triggers); see `hidden_hand_choices`.
-            let spec = if reveal_chosen_publicly {
-                spec.with_selection_reveal_policy(
-                    crate::decisions::context::SelectionRevealPolicy::Public,
-                )
-            } else {
-                spec
-            };
-            let chosen = make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
-            if reveal_chosen_publicly {
-                revealed_by_choice = chosen
-                    .iter()
-                    .copied()
-                    .filter(|id| hand.contains(id))
-                    .collect();
-            }
-            if ctx.decision_maker.awaiting_choice() {
-                Vec::new()
-            } else {
-                normalize_object_selection(chosen, &hand, count)
-            }
-        };
-        let mut effect = self.clone();
-        effect.player = PlayerFilter::Specific(player);
-        Ok(Box::new(DiscardProposal {
-            effect,
-            selected: Some(selected),
-            revealed_by_choice,
-            selection_ready: false,
-            selection: None,
-            original_ready: false,
-            prepared: None,
-        }))
+        &self,_game:&GameState,_ctx:&mut ExecutionContext,
+    )->Result<Box<dyn crate::effects::SimultaneousEffectProposal>,ExecutionError>{
+        // The ordinary native proposal already freezes player, count and
+        // selected cards before any original commits. Reuse it for random,
+        // filtered and any-number discards as well as fixed plain discards.
+        Ok(Box::new(DiscardProposal::native(self.clone())))
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

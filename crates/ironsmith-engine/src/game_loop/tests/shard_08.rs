@@ -221,6 +221,7 @@ pub(super) fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 

@@ -591,6 +591,8 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> {
         None
     }
+    fn tail_related_exiled_snapshots(&self) -> Option<&std::collections::BTreeMap<String, Vec<ObjectSnapshot>>> { None }
+
     fn tail_has_alternative_cast_kind(
         &self,
         kind: AlternativeCastKind,
@@ -941,6 +943,7 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 }
 
 impl TailMatchSubject for ObjectSnapshot {
+    fn tail_related_exiled_snapshots(&self) -> Option<&std::collections::BTreeMap<String, Vec<ObjectSnapshot>>> { Some(&self.related_exiled_cards) }
     fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> {
         Some(&self.attachment_snapshots)
     }
@@ -1510,7 +1513,7 @@ fn subject_creature_subtypes(
     game.current_subtypes(subject.subject_object_id())
         .unwrap_or_else(|| subject.subject_subtypes().to_vec())
         .into_iter()
-        .filter(|subtype| subtype.is_creature_type())
+        .filter(|subtype| game.admitted_subtype(*subtype).is_creature_type())
         .collect()
 }
 
@@ -1531,7 +1534,7 @@ fn object_creature_subtypes(object: &Object, game: &GameState) -> Vec<Subtype> {
     game.current_subtypes(object.id)
         .unwrap_or_else(|| object.subtypes.to_vec())
         .into_iter()
-        .filter(|subtype| subtype.is_creature_type())
+        .filter(|subtype| game.admitted_subtype(*subtype).is_creature_type())
         .collect()
 }
 
@@ -1734,6 +1737,23 @@ fn characteristic_relation_matches_subject(
                 | ObjectCharacteristic::Name
         )
     });
+    if relation.kind == ObjectCharacteristicRelationKind::HasUnrepresentedSubtype {
+        // Compare the complete union, not pairwise disjointness. A Human Elf
+        // can contribute Elf even when Human is already represented.
+        return relation.characteristics.iter().any(|characteristic| {
+            let ObjectCharacteristic::Subtype(family)=characteristic else { return false; };
+            let candidates=subject_subtypes_in_family(subject,*family);
+            candidates.into_iter().any(|subtype| {
+                !game.objects_in_deterministic_order().into_iter().any(|object| {
+                    !(relation.exclude_candidate && object.id==subject.subject_object_id())
+                        && !relation.comparison.zone.is_some_and(|zone|object.zone!=zone)
+                        && !(object.zone==Zone::Battlefield && game.is_phased_out(object.id))
+                        && relation.comparison.matches(object,&comparison_context,game)
+                        && object_subtypes_in_family(object,*family,game).contains(&subtype)
+                })
+            })
+        });
+    }
     let mut shares = false;
     for object in game.objects_in_deterministic_order() {
         if (relation.exclude_candidate && object.id == subject.subject_object_id())
@@ -1766,6 +1786,7 @@ fn characteristic_relation_matches_subject(
         }
     }
     match relation.kind {
+        ObjectCharacteristicRelationKind::HasUnrepresentedSubtype => unreachable!("handled above"),
         ObjectCharacteristicRelationKind::SharesAny => shares,
         ObjectCharacteristicRelationKind::SharesNone => !shares,
     }
@@ -2677,7 +2698,8 @@ fn resolve_filter_comparison_rhs_value(
         filter: &ObjectFilter,
         ctx: &'a FilterContext,
     ) -> Option<Vec<&'a ObjectSnapshot>> {
-        let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
+        let only_is_tagged_constraints = !filter.tagged_constraints.iter().any(|entry| entry.tag.as_str().starts_with("source_collection:"))
+            && !filter.tagged_constraints.is_empty()
             && filter
                 .tagged_constraints
                 .iter()
@@ -3187,6 +3209,11 @@ fn resolve_filter_comparison_rhs_value(
         }
         Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
         Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
+        Value::NamedActionCount {object,label,this_turn} => {
+            let id=match object.base() {ChooseSpec::Source=>ctx.source?,ChooseSpec::SpecificObject(id)=>*id,
+                ChooseSpec::Tagged(tag)=>ctx.tagged_objects.get(tag)?.first()?.object_id,_=>return None};
+            Some(i64::from(game.named_action_count(id,label,*this_turn)))
+        }
         Value::CountersOn(spec, counter_type) => match spec.base() {
             ChooseSpec::Source => {
                 let source = game.object(ctx.source?)?;
@@ -3695,7 +3722,7 @@ impl PlayerFilterExt for PlayerFilter {
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
-            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => false,
+            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => false,
             PlayerFilter::OpponentOf(_)
             | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. } => false,
@@ -4085,6 +4112,15 @@ pub(crate) fn player_filter_matches_game(
                 .filter_map(|id| game.object(id))
                 .any(|object| object.owner == player && filter.matches(object, &object_ctx, game))
         }
+        PlayerFilter::WithMatchingAttachments { base, filter } => {
+            if !player_filter_matches_game(base, player, game, ctx) { return false; }
+            let mut object_ctx = ctx.clone();
+            object_ctx.iterated_player = Some(player);
+            game.battlefield.iter().copied().filter(|id| !game.is_phased_out(*id))
+                .filter_map(|id| game.object(id))
+                .any(|object| object.attached_to == Some(crate::object::AttachmentTarget::Player(player))
+                    && filter.matches(object, &object_ctx, game))
+        }
         PlayerFilter::ControlsMatchingObject { filter } => {
             if ctx.players_in_range.as_ref().is_some_and(|players| !players.contains(&player)) {
                 return false;
@@ -4434,6 +4470,67 @@ impl ObjectFilterExt for ObjectFilter {
         game: &crate::game_state::GameState,
         stack_entry: Option<&crate::game_state::StackEntry>,
     ) -> bool {
+        if !object_group_filter_matches(self,subject.tail_object_id(),ctx,game){return false}
+        if let Some(query)=&self.named_action_recipient_this_turn {
+            let actors=match query.1.base(){
+                ChooseSpec::Source=>ctx.source.into_iter().collect::<Vec<_>>(),
+                ChooseSpec::SpecificObject(id)=>vec![*id],
+                ChooseSpec::Tagged(tag)=>ctx.tagged_objects.get(tag).into_iter().flatten().map(|snapshot|snapshot.object_id).collect(),
+                _=>return false,
+            };
+            if !actors.into_iter().any(|actor|game.named_action_affected_this_turn(actor,&query.0,subject.tail_object_id())){return false;}
+        }
+        if let Some(history)=&self.shares_name_with_named_action_objects {
+            let matches=|receipt:&crate::triggers::TriggerEvent| {
+                if receipt.completed_action_provenance().is_none(){return false;}
+                let Some(action)=receipt.downcast::<crate::events::NamedActionEvent>() else{return false};
+                action.label.eq_ignore_ascii_case(history.label.trim())
+                    && history.player.matches_player(action.player,ctx)
+                    && action.objects.iter().any(|snapshot| {
+                        std::iter::once(snapshot.tail_name()).chain(snapshot.tail_alternate_name())
+                            .any(|name|subject_has_name_in_game(subject,name,game))
+                    })
+            };
+            let observed=if history.this_turn {
+                game.turn_store.turn_history.projected_records().any(|record|matches(&record.event))
+            }else{game.retained_action_observations().any(matches)};
+            if !observed{return false;}
+        }
+        if let Some(owner)=&self.name_noted_for {
+            let owners=match owner.base(){
+                ChooseSpec::Source=>ctx.source.into_iter().collect::<Vec<_>>(),
+                ChooseSpec::SpecificObject(id)=>vec![*id],
+                ChooseSpec::Tagged(tag)=>ctx.tagged_objects.get(tag).into_iter().flatten().map(|snapshot|snapshot.object_id).collect(),
+                _=>Vec::new(),
+            };
+            if !owners.into_iter().any(|source| {
+                // Missing/ambiguous acquisition evidence cannot borrow another link.
+                match crate::source_numbers::resolve_owner(game,source,self.noted_name_pair,ctx.source_number_owner.as_ref(),
+                    ctx.source_snapshot.as_ref().filter(|snapshot|snapshot.object_id==source)) {
+                    Ok(owner)=>game.noted_card_names_for_owner(&owner).iter().any(|name|subject_has_name_in_game(subject,name,game)),
+                    Err(error)=>{game.record_token_resource_failure(&error);false},
+                }
+            }){return false;}
+        }
+        if let Some(boundary)=&self.library_boundary {
+            let Some(object)=game.object(subject.subject_object_id()).filter(|object|object.zone==Zone::Library)else{return false;};
+            let Some(library)=game.player(object.owner).map(|player|&player.library)else{return false;};
+            let Some(position)=library.iter().position(|id|*id==object.id)else{return false;};
+            let Some(count)=resolve_filter_comparison_rhs_value(boundary.count.as_ref(),game,ctx,stack_entry).and_then(|count|usize::try_from(count.max(0)).ok())else{return false;};
+            let included=if boundary.from_top{position>=library.len().saturating_sub(count)}else{position<count};
+            if !included{return false;}
+        }
+        if let Some(relation) = &self.related_exile_anchor {
+            if !related_exile_anchor_contains(game,ctx,relation,subject.subject_object_id()) { return false; }
+        }
+        if let Some(relation) = &self.related_exile_members {
+            let members = subject.tail_related_exiled_snapshots().map(|collections|
+                collections.get(&relation.relationship.trim().to_ascii_lowercase()).cloned().unwrap_or_default())
+                .unwrap_or_else(|| game.related_exiled_cards(&relation.relationship,subject.subject_object_id()).into_iter()
+                    .filter_map(|id|game.object(id)).map(|object|ObjectSnapshot::from_object(object,game)).collect());
+            let count=members.iter().filter(|card|relation.filter.matches_snapshot(card,ctx,game)).count();
+            if !relation.count.satisfies_with_context(count.min(i32::MAX as usize) as i32,game,ctx,stack_entry) {return false;}
+        }
         // Name check
         if let Some(required_name) = &self.name {
             if required_name == "{chosen name}" {
@@ -4675,6 +4772,20 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         for constraint in &self.tagged_constraints {
+            if let Some(name) = constraint.tag.as_str().strip_prefix("source_collection:") {
+                let Some(source) = ctx.source else { return false; };
+                let member = game.source_collection_objects(source, name).contains(&subject.subject_object_id())
+                    || ctx.departed_battlefield_lookback.as_deref().unwrap_or(&[]).iter()
+                        .find(|snapshot|snapshot.object_id==subject.subject_object_id())
+                        .is_some_and(|snapshot|game.source_collection_had_member(source,name,snapshot.object_id,snapshot.zone));
+                let expected = match constraint.relation {
+                    TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::SameObjectId => true,
+                    TaggedOpbjectRelation::IsNotTaggedObject => false,
+                    _ => return false,
+                };
+                if member != expected { return false; }
+                continue;
+            }
             if let Some(matches) =
                 source_characteristic_constraint_matches_subject(subject, constraint, ctx, game)
             {
@@ -5172,6 +5283,7 @@ impl ObjectFilterExt for ObjectFilter {
         allow_calculated_pt: bool,
         view: Option<&crate::derived_view::DerivedGameView<'_>>,
     ) -> bool {
+        if self.zone.is_some() && game.is_originless_card_entry_pending(object.id) { return false; }
         if self.castable_face_match {
             let mut filter = self.clone();
             filter.castable_face_match = false;
@@ -5252,6 +5364,7 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if self.zone.is_some() && game.is_originless_card_entry_pending(snapshot.object_id) { return false; }
         if self.match_current_state {
             let Some(current) = game.object(snapshot.object_id) else {
                 return false;
@@ -5397,6 +5510,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
+        if self.text_added_from_source || self.text_added_from_stable.is_some() {
+            post_noun_qualifiers.push("with text added from this card".into());
+        }
         for name in &self.excluded_custom_statuses { post_noun_qualifiers.push(format!("without the {name} status")); }
         for name in &self.custom_statuses {
             post_noun_qualifiers.push(format!("with the {name} status"));
@@ -5512,7 +5628,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 // "target creature one of their opponents controls": the
@@ -5701,7 +5817,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_)
@@ -5934,8 +6050,14 @@ impl ObjectFilterExt for ObjectFilter {
             ));
         }
         for relation in &self.characteristic_relations {
+            if relation.kind == ObjectCharacteristicRelationKind::HasUnrepresentedSubtype {
+                let families=relation.characteristics.iter().filter_map(|kind|match kind { ObjectCharacteristic::Subtype(family)=>Some(family.type_phrase()),_=>None }).collect::<Vec<_>>().join(" or ");
+                post_noun_qualifiers.push(format!("that has a {families} no {} has",relation.comparison_description()));
+                continue;
+            }
             if relation.characteristics == [ObjectCharacteristic::Name] {
                 let phrase = match relation.kind {
+                    ObjectCharacteristicRelationKind::HasUnrepresentedSubtype => unreachable!("subtype relation rendered above"),
                     ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
                     ObjectCharacteristicRelationKind::SharesNone => {
                         "that doesn't have the same name as"
@@ -5952,6 +6074,7 @@ impl ObjectFilterExt for ObjectFilter {
                 .collect::<Vec<_>>()
                 .join(" or ");
             let verb = match relation.kind {
+                ObjectCharacteristicRelationKind::HasUnrepresentedSubtype => unreachable!("subtype relation rendered above"),
                 ObjectCharacteristicRelationKind::SharesAny => "shares",
                 ObjectCharacteristicRelationKind::SharesNone => "doesn't share",
             };
@@ -7092,7 +7215,13 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         for marker in &self.ability_markers {
-            parts.push(format!("with {}", marker.to_ascii_lowercase()));
+            if let Some(label) = marker.strip_prefix("cast using ") {
+                parts.push(format!("that was cast using custom cost \"{}\"", label.to_ascii_lowercase()));
+            } else if let Some(label) = marker.strip_prefix("using ") {
+                parts.push(format!("using custom cost \"{}\"", label.to_ascii_lowercase()));
+            } else {
+                parts.push(format!("with {}", marker.to_ascii_lowercase()));
+            }
         }
         if self.excluded_static_abilities.len() > 1 {
             // Oracle writes a multi-keyword exclusion as one serial clause
@@ -7686,3 +7815,138 @@ mod owned_zone_participant_tests {
 
 /// Structural keyword test for a frozen copy envelope.
 pub(crate) fn copy_abilities_have_marker(abilities: &[crate::ability::Ability], marker: &str) -> bool { descriptions::abilities_have_marker(abilities, marker) }
+
+/// Associations use exact historical object identities for tagged/source references.
+fn object_group_filter_matches(filter:&ObjectFilter,subject:ObjectId,ctx:&FilterContext,game:&GameState)->bool{
+ fn references(spec:&crate::target::ChooseSpec,ctx:&FilterContext,game:&GameState)->Vec<ObjectId>{
+  match spec.base(){
+   crate::target::ChooseSpec::Source=>ctx.source.or_else(||ctx.source_snapshot.as_ref().map(|snapshot|snapshot.object_id)).into_iter().collect(),
+   crate::target::ChooseSpec::SpecificObject(id)=>vec![*id],
+   crate::target::ChooseSpec::Tagged(tag)=>ctx.tagged_objects.get(tag).map(|objects|objects.iter().map(|snapshot|snapshot.object_id).collect()).unwrap_or_default(),
+   crate::target::ChooseSpec::Object(reference)|crate::target::ChooseSpec::All(reference)=>{
+    if reference.source{return ctx.source.or_else(||ctx.source_snapshot.as_ref().map(|snapshot|snapshot.object_id)).into_iter().collect()}
+    if let Some(id)=reference.specific{return vec![id]}
+    if spec.is_target(){return ctx.target_objects.iter().filter(|snapshot|reference.matches_snapshot(snapshot,ctx,game)).map(|snapshot|snapshot.object_id).collect()}
+    let mut found=ctx.tagged_objects.values().flatten().filter(|snapshot|reference.matches_snapshot(snapshot,ctx,game)).map(|snapshot|snapshot.object_id).collect::<Vec<_>>();
+    let candidates=if reference.zone.is_some(){game.object_ids_in_deterministic_order()}else{game.battlefield.iter().copied().collect()};
+    found.extend(candidates.into_iter().filter(|id|game.object(*id).is_some_and(|object|reference.matches(object,ctx,game))));found.sort();found.dedup();found
+   },
+   _=>Vec::new(),
+  }
+ }
+ if filter.group_member_of.as_ref().is_some_and(|reference|!references(reference,ctx,game).iter().any(|owner|game.object_group_members_owned_by(*owner).contains(&subject))){return false}
+ if filter.same_group_as.as_ref().is_some_and(|reference|!references(reference,ctx,game).iter().any(|owner|game.object_group_members_with(*owner).contains(&subject))){return false}
+ true
+}
+
+/// Pure host reference resolution for persistent object associations. The
+/// relationship filter cannot introduce a new choice or a target.
+pub(crate) fn related_exile_host_ids(game:&GameState,ctx:&FilterContext,spec:&ChooseSpec)->Vec<ObjectId>{
+    match spec.base(){
+        ChooseSpec::Source=>ctx.source.into_iter().collect(),
+        ChooseSpec::SpecificObject(id)=>vec![*id],
+        ChooseSpec::Tagged(tag)=>ctx.tagged_objects.get(tag).into_iter().flatten().map(|object|object.object_id).collect(),
+        ChooseSpec::All(filter)|ChooseSpec::Object(filter)=>game.objects_in_deterministic_order().into_iter()
+            .filter(|object|filter.matches_non_recursive(object,ctx,game)).map(|object|object.id).collect(),
+        _=>Vec::new(),
+    }
+}
+pub(crate) fn related_exile_anchor_contains(game:&GameState,ctx:&FilterContext,relation:&ironsmith_core::filter_model::RelatedExileAnchor,member:ObjectId)->bool{
+    related_exile_host_ids(game,ctx,&relation.host).into_iter().any(|host|{
+        if game.object(host).is_some_and(|object|object.zone==Zone::Battlefield){
+            return game.has_related_exiled_card(&relation.relationship,host,member);
+        }
+        ctx.source_snapshot.iter().chain(ctx.tagged_objects.values().flatten()).filter(|snapshot|snapshot.object_id==host)
+            .any(|snapshot|snapshot.related_exiled_cards.get(&relation.relationship.trim().to_ascii_lowercase()).is_some_and(|cards|cards.iter().any(|card|card.object_id==member)))
+    })
+}
+#[cfg(test)]
+mod unrepresented_subtype_relation_tests {
+    use super::*;
+    #[test]
+    fn subtype_set_difference_allows_partial_overlap_and_uses_only_controlled_creatures() {
+        let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let a=PlayerId(0);let b=PlayerId(1);
+        let human=crate::CardDefinitionBuilder::new(crate::CardId::new(),"Represented type").card_types(vec![crate::CardType::Creature]).subtypes(vec![crate::Subtype::Human]).build();
+        let mixed=crate::CardDefinitionBuilder::new(crate::CardId::new(),"Partial overlap").card_types(vec![crate::CardType::Creature]).subtypes(vec![crate::Subtype::Human,crate::Subtype::Elf]).build();
+        let own=game.create_object_from_definition(&human,a,Zone::Battlefield);
+        let candidate=game.create_object_from_definition(&mixed,a,Zone::Library);
+        // `creature()` is a battlefield-permanent filter. This unit probes a
+        // library card, just as the permission reader does after normalizing
+        // its outer candidate zone; retain the comparison's battlefield zone.
+        assert!(!ObjectFilter::creature().matches(game.object(candidate).unwrap(),&FilterContext::new(a),&game));
+        let mut filter=ObjectFilter::creature().in_zone(Zone::Library);
+        filter.characteristic_relations.push(ObjectCharacteristicRelation{kind:ObjectCharacteristicRelationKind::HasUnrepresentedSubtype,characteristics:vec![ObjectCharacteristic::Subtype(ironsmith_core::types::SubtypeFamily::Creature)],comparison:ObjectFilter::creature().you_control().in_zone(Zone::Battlefield),exclude_candidate:false});
+        let ctx=FilterContext::new(a);
+        assert!(filter.matches(game.object(candidate).unwrap(),&ctx,&game),"Elf is absent despite existing Human overlap");
+        game.create_object_from_definition(&mixed,b,Zone::Battlefield);
+        assert!(filter.matches(game.object(candidate).unwrap(),&ctx,&game),"opponent types do not count");
+        game.create_object_from_definition(&mixed,a,Zone::Battlefield);
+        assert!(!filter.matches(game.object(candidate).unwrap(),&ctx,&game),"union covers both candidate types");
+        assert!(game.object(own).is_some());
+    }
+}
+
+
+/// Source-local successful entry exile, retaining the original ObjectId. The
+/// historical receipt stays available separately for event-time predicates.
+pub(crate) fn entry_exiled_reference_snapshots(
+    game: &GameState, source: ObjectId, source_snapshot: Option<&ObjectSnapshot>, receipt_tag: &str,
+) -> Vec<ObjectSnapshot> {
+    let receipt=source_entry_exiled_receipt(game,source,source_snapshot,receipt_tag);
+    receipt.into_iter().flatten().filter_map(|snapshot| {
+        game.object(snapshot.object_id).filter(|object|
+            object.zone == Zone::Exile && object.stable_id == snapshot.stable_id
+            && game.find_object_by_stable_id(snapshot.stable_id) == Some(snapshot.object_id))
+            .and_then(|object| ObjectSnapshot::capture_for_execution(object, game))
+    }).collect()
+}
+
+pub(crate) fn entry_exiled_reference_domains(
+    game:&GameState,source:ObjectId,source_snapshot:Option<&ObjectSnapshot>,
+)->Vec<(TagKey,Vec<ObjectSnapshot>)> {
+    let retained=source_snapshot.filter(|snapshot|snapshot.object_id==source);
+    let mut receipts=std::collections::BTreeSet::from(["__entry_action_exiled__".to_string()]);
+    for map in [retained.map(|snapshot|&snapshot.entry_action_objects),
+        game.object(source).map(|object|&object.cast_tagged_objects),
+        game.source_characteristic_lki_snapshot(source,retained).map(|snapshot|&snapshot.entry_action_objects)]
+        .into_iter().flatten()
+    {
+        receipts.extend(map.keys().filter(|tag|tag.as_str().starts_with("__entry_action_exiled_by__:"))
+            .map(ToString::to_string));
+    }
+    receipts.into_iter().map(|receipt| {
+        let reference=receipt.strip_prefix("__entry_action_exiled_by__:")
+            .map(|label|format!("__entry_reference_exiled_by__:{label}"))
+            .unwrap_or_else(||"__entry_reference_exiled__".to_string());
+        (reference.into(),entry_exiled_reference_snapshots(game,source,source_snapshot,&receipt))
+    }).collect()
+}
+
+/// An entry receipt has an exact producer incarnation even when its ability is
+/// resolving after that source departed. Anonymous context tags are not owners.
+pub(crate) fn source_entry_exiled_receipt<'a>(
+    game:&'a GameState,source:ObjectId,source_snapshot:Option<&'a ObjectSnapshot>,receipt_tag:&str,
+)->Option<&'a Vec<ObjectSnapshot>> {
+    let retained=source_snapshot.filter(|snapshot|snapshot.object_id==source);
+    retained.and_then(|snapshot|snapshot.entry_action_objects.get(receipt_tag))
+        .or_else(||game.object(source).and_then(|object|object.cast_tagged_objects.get(receipt_tag)))
+        .or_else(||game.source_characteristic_lki_snapshot(source,retained)
+            .and_then(|snapshot|snapshot.entry_action_objects.get(receipt_tag)))
+}
+
+/// Exact current contributor policy shared by selection and actual payment.
+/// A generic named tap payment never bypasses a source's authored prohibition.
+pub(crate) fn admits_named_tap_payment(game: &GameState, object: ObjectId, name: &str) -> bool {
+    fn prohibits(game: &GameState, object: ObjectId, model: &crate::static_abilities::CompiledStaticAbility, name: &str) -> bool {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::GenericManaTapPaymentProhibition { name: denied } => denied.eq_ignore_ascii_case(name),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. }
+                if game.current_controller(object).is_some_and(|controller| crate::condition_eval::evaluate_condition_cast_time(game, condition, controller, object)) => prohibits(game, object, ability, name),
+            _ => false,
+        }
+    }
+    game.object(object).is_some() && !game.current_abilities(object).unwrap_or_default().iter().any(|ability|
+        matches!(&ability.kind, crate::ability::AbilityKind::Static(rule)
+            if rule.compiled_model().is_some_and(|model| prohibits(game, object, model, name))))
+}

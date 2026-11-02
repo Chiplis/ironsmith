@@ -660,6 +660,7 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
     view: &DerivedGameView<'_>,
 ) {
     for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
+        if game.selected_exile_preparation_index(card_id).is_some_and(|selected|selected!=idx) && (alt_cast.exile_preparation().is_some() || alt_cast.prepares_face_down() || alt_cast.prepares_face_up_sorcery()) { continue; }
         let additional_zone_allowed = native_alternative_cast_zone_permission(
             game, player, card, from_zone, alt_cast, view,
         );
@@ -1037,7 +1038,11 @@ fn append_cast_actions_from_zone_for_card(
             view,
         );
     }
-    if zone_has_active_grants {
+    // A nonselected linked face can authorize its own cast from this zone.
+    // Its static permission is absent from the physical front's registry, so
+    // the global front-face grant precheck cannot suppress the proposed-face
+    // query. That query still proves the selected face's exact permission.
+    if zone_has_active_grants || spell_view_for_split_other_half_cast(game, card).is_some() {
         append_granted_play_from_actions_for_card(
             game, actions, player, card_id, card, from_zone, view,
         )?;
@@ -1141,7 +1146,7 @@ fn build_hand_summaries<'a>(game: &'a GameState, hand: &[ObjectId]) -> Vec<HandC
         .filter_map(|&card_id| {
             let card = game.object(card_id)?;
             let has_hand_special_actions = card.alternative_casts.iter().any(|method| {
-                crate::alternative_cast::hand_special_action(method, card_id).is_some()
+                crate::alternative_cast::hand_special_action(method, card_id, Some(0)).is_some()
             });
             let has_hand_native_alternatives = card
                 .alternative_casts
@@ -1305,28 +1310,27 @@ fn add_hand_special_actions(
         // A granted special-action keyword ("Each nonland card in your hand
         // without foretell has foretell", Dream Devourer) offers the same
         // hand action as a printed one.
-        let granted: Vec<crate::alternative_cast::AlternativeCastingMethod> =
-            if hand_has_active_grants {
-                game.effect_store
-                    .grant_registry
-                    .granted_alternative_casts_for_card(game, summary.card_id, Zone::Hand, player)
-                    .into_iter()
-                    .map(|granted| granted.method)
-                    .filter(|method| {
-                        crate::alternative_cast::hand_special_action(method, summary.card_id)
-                            .is_some()
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+        let materialized_grants=if hand_has_active_grants {
+            game.effect_store.grant_registry.granted_alternative_casts_for_card(game,summary.card_id,Zone::Hand,player)
+        }else{Vec::new()};
+        for (index,granted) in materialized_grants.iter().enumerate() {
+            let Some(preparation)=granted.method.exile_preparation()else{continue;};
+            let Some(identity)=granted.permission_identity.clone()else{continue;};
+            let action=crate::special_actions::SpecialAction::PrepareGrantedExile {card_id:summary.card_id,
+                grant:crate::alternative_cast::GrantSelection{identity,source:granted.source_id,index},preparation:preparation.clone()};
+            match crate::special_actions::can_perform_check(&action,game,player) {
+                Ok(())=>actions.push(LegalAction::SpecialAction(action)),
+                Err(crate::special_actions::ActionError::ExecutionFailure{error,..})=>return Err(error),Err(_)=>{}
+            }
+        }
+        let granted:Vec<_>=materialized_grants.into_iter().filter(|grant|grant.method.exile_preparation().is_none()).map(|grant|grant.method).collect();
         if !summary.has_any_hand_special_action() && granted.is_empty() {
             continue;
         }
         let mut offered = Vec::new();
-        for method in summary.card.alternative_casts.iter().chain(granted.iter()) {
+        for (index, method) in summary.card.alternative_casts.iter().chain(granted.iter()).enumerate() {
             let Some(action) =
-                crate::alternative_cast::hand_special_action(method, summary.card_id)
+                crate::alternative_cast::hand_special_action(method, summary.card_id, (index < summary.card.alternative_casts.len()).then_some(index))
             else {
                 continue;
             };
@@ -1857,9 +1861,10 @@ fn collect_non_battlefield_source_ids(
     if let Some(owner) = game.player(player) {
         non_battlefield_ids.extend(owner.library.iter().copied().filter(|id| {
             game.object(*id).is_some_and(|obj| {
-                obj.abilities.iter().any(|ability| {
+                obj.abilities.iter().enumerate().any(|(index,ability)| {
                     matches!(ability.kind, crate::ability::AbilityKind::Activated(_))
-                        && ability.functions_in(&Zone::Library)
+                        && (ability.functions_in(&Zone::Library)
+                            || crate::activation_zone_permissions::permission(game,*id,index).is_some())
                 })
             })
         }));
@@ -1926,7 +1931,8 @@ fn add_non_battlefield_ability_actions(
                 let Some(ability) = abilities.get(ability_index) else {
                     continue;
                 };
-                if !ability.functions_in(&obj.zone) {
+                if !ability.functions_in(&obj.zone)
+                    && crate::activation_zone_permissions::permission(game, source_id, ability_index).is_none() {
                     continue;
                 }
                 let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
@@ -2084,6 +2090,22 @@ fn compute_legal_actions_checked(
         .collect();
     perf.controlled_battlefield_ms = controlled_battlefield_started_at.elapsed_ms();
 
+    // Intrinsic paid actions are static permissions. They are discovered from
+    // current abilities, so losing the permission removes the action at once.
+    for object in game.objects_in_deterministic_order() {
+        if !requested_action_source(object.id) { continue; }
+        let Some(characteristics) = game.current_characteristics(object.id) else { continue; };
+        for (index, ability) in characteristics.abilities.iter().enumerate() {
+            if !matches!(&ability.kind, crate::ability::AbilityKind::Static(rule)
+                if matches!(rule.compiled_model().map(|model| &model.payload), Some(ironsmith_core::StaticAbilityPayload::IntrinsicImmediateAction { .. }))) { continue; }
+            let action = crate::special_actions::SpecialAction::PerformIntrinsicAction {
+                source_id: object.id, ability_index: index,
+            };
+            if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
+        }
+    }
     actions.push(LegalAction::PassPriority);
     if requested_global_actions() {
         for delayed_trigger_index in 0..game.effect_store.delayed_triggers.len() {
@@ -2365,6 +2387,39 @@ pub(crate) fn can_activate_ability_with_restrictions(
         None,
         None,
     )
+}
+
+/// Legality for an effect instructing its controller to activate one current
+/// ability with all costs waived. Cost state never blocks the instruction;
+/// explicit activation restrictions and genuine target legality still do.
+pub(crate) fn can_invoke_activated_ability_without_costs(
+    game: &GameState, source: ObjectId, ability_index: usize, activator: PlayerId,
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    can_invoke_designated_ability_without_costs(game, source, ability_index, activator, activated, None)
+}
+
+pub(crate) fn can_invoke_designated_ability_without_costs(
+    game: &GameState, source: ObjectId, ability_index: usize, activator: PlayerId,
+    activated: &crate::ability::ActivatedAbility, action: Option<&str>,
+) -> bool {
+    let mut permitted = activated.clone();
+    if matches!(permitted.timing, crate::ability::ActivationTiming::SorcerySpeed)
+        && action.is_some_and(|action| permitted.effects.activation_sorcery_exceptions.iter().any(|name| name.eq_ignore_ascii_case(action))) {
+        permitted.timing = crate::ability::ActivationTiming::AnyTime;
+    }
+    let activated = &permitted;
+    let Some(object) = game.object(source) else { return false; };
+    if game.current_controller(source) != Some(activator) && !activated_allows_any_player(activated) { return false; }
+    let Some(ability) = game.current_ability(source, ability_index) else { return false; };
+    if !ability.functional_zones.contains(&object.zone) { return false; }
+    // Explicit instant/sorcery activation instructions survive an effect's
+    // instruction to activate during its resolution (CR602.1b,602.5d-e).
+    if matches!(activated.timing, crate::ability::ActivationTiming::AsInstant | crate::ability::ActivationTiming::SorcerySpeed | crate::ability::ActivationTiming::SorcerySpeedByOpponents) { return false; }
+    let view = DerivedGameView::new(game);
+    activation_precheck_with_policy(game, source, ability_index, activated, &view, None, None, Some(activator)).is_some()
+        && game.object_is_within_range(activator, source, Some(source))
+        && activated_ability_has_legal_targets_with_view(activated, activator, source, &view)
 }
 
 fn activated_ability_has_legal_targets_with_view(
@@ -2653,7 +2708,7 @@ fn loyalty_precheck_cost<'a>(
         source,
         &activated.mana_cost,
         &[],
-        Some(ActivationCostAbility::of(game, controller, source, activated)),
+        Some(&ActivationCostAbility::of(game, controller, source, activated)),
         view,
     );
     payable(&effective).then_some(std::borrow::Cow::Owned(effective))
@@ -2878,9 +2933,9 @@ pub(crate) fn exhaust_activation_allows(
     activated: &crate::ability::ActivatedAbility,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    !activated.is_exhaust_ability()
+    game.activation_group_allows(source, ability_index) && (!activated.is_exhaust_ability()
         || !game.exhaust_ability_activated(source, ability_index)
-        || player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view)
+        || player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view))
 }
 
 fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
@@ -2924,6 +2979,19 @@ fn activation_precheck_with_view(
     perf_ctx: Option<&BattlefieldAbilityContext>,
     source_facts: Option<&ActivationSourceFacts>,
 ) -> Option<PlayerId> {
+    activation_precheck_with_policy(game, source, ability_index, activated, view, perf_ctx, source_facts, None)
+}
+
+fn activation_precheck_with_policy(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+    activated: &crate::ability::ActivatedAbility,
+    view: &DerivedGameView<'_>,
+    perf_ctx: Option<&BattlefieldAbilityContext>,
+    source_facts: Option<&ActivationSourceFacts>,
+    waived_actor: Option<PlayerId>,
+) -> Option<PlayerId> {
     let started_at = PerfTimer::start();
     if game.is_phased_out(source) {
         return None;
@@ -2935,13 +3003,19 @@ fn activation_precheck_with_view(
         owned_facts = ActivationSourceFacts::for_source(game, source, view);
         &owned_facts
     };
-    let controller = if activated_allows_any_player(activated) {
+    let controller = if let Some(actor) = waived_actor { actor } else if activated_allows_any_player(activated) {
         game.turn.priority_player.unwrap_or(source_facts.controller)
     } else {
         source_facts.controller
     };
 
-    if !activated_minimum_x_cost_is_payable(game, controller, source, activated) {
+    let history_bound;
+    let activated=if crate::activation_color_history::needs_binding(&activated.mana_cost) {
+        history_bound={let mut ability=activated.clone();ability.mana_cost=crate::activation_color_history::bind(game,source,Some(ability_index),&ability.mana_cost);ability};
+        &history_bound
+    }else{activated};
+
+    if waived_actor.is_none() && !activated_minimum_x_cost_is_payable(game, controller, source, activated) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -2975,6 +3049,7 @@ fn activation_precheck_with_view(
     }
 
     if !activated.is_loyalty_ability()
+        && (waived_actor.is_none() || !activated.is_runtime_mana_ability(game, source, controller))
         && game
             .effect_store
             .cant_effects
@@ -2987,7 +3062,8 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    if game.object(source).is_some() && !game.can_activate_non_mana_abilities(controller) {
+    if game.object(source).is_some() && !game.can_activate_non_mana_abilities(controller)
+        && (waived_actor.is_none() || !activated.is_runtime_mana_ability(game, source, controller)) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -3000,10 +3076,12 @@ fn activation_precheck_with_view(
         }
         return None;
     }
+    let granted_alternative = crate::decision::ActivationCostAbility::at(game, controller, source, ability_index)
+        .is_some_and(|facts| crate::activation_cost_alternatives::has_available_alternative(game, source, &facts, &activated.mana_cost));
     let every_branch_taps =
-        every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_tap);
+        waived_actor.is_none() && !granted_alternative && every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_tap);
     let every_branch_untaps =
-        every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_untap);
+        waived_actor.is_none() && !granted_alternative && every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_untap);
     if every_branch_taps && !source_facts.can_activate_tap_abilities {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -3100,6 +3178,7 @@ fn activation_precheck_with_view(
             return None;
         }
 
+        if waived_actor.is_none() {
         let reason = activated.payment_reason(game, source, controller);
         let Some(precheck_cost) =
             loyalty_precheck_cost(game, controller, source, activated, view)
@@ -3109,7 +3188,7 @@ fn activation_precheck_with_view(
             }
             return None;
         };
-        if !crate::cost::prospective_references::activation_reference_preflight(
+        if !granted_alternative && !crate::cost::prospective_references::activation_reference_preflight(
             game,
             source,
             ability_index,
@@ -3132,6 +3211,7 @@ fn activation_precheck_with_view(
             return None;
         }
 
+        }
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -3194,6 +3274,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
+    if waived_actor.is_none() {
     let reason = activated.payment_reason(game, source, controller);
     let Some(precheck_cost) = loyalty_precheck_cost(game, controller, source, activated, view)
     else {
@@ -3202,7 +3283,7 @@ fn activation_precheck_with_view(
         }
         return None;
     };
-    if !crate::cost::prospective_references::activation_reference_preflight(
+    if !granted_alternative && !crate::cost::prospective_references::activation_reference_preflight(
         game,
         source,
         ability_index,
@@ -3225,6 +3306,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
+    }
     for condition in &activated.activation_restrictions {
         if !crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx) {
             if let Some(perf_ctx) = perf_ctx {
@@ -3309,6 +3391,8 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     perf_ctx: Option<&BattlefieldAbilityContext>,
     source_facts: Option<&ActivationSourceFacts>,
 ) -> bool {
+    let prepared = crate::activation_zone_permissions::prepare(game, source, ability_index, activated);
+    let activated = prepared.as_ref().unwrap_or(activated);
     let total_started_at = PerfTimer::start();
     let Some(controller) = activation_precheck_with_view(
         game,
@@ -3331,9 +3415,12 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         return false;
     }
 
+    let mut facts = ActivationCostAbility::of(game, controller, source, activated);
+    facts.ability_index = Some(ability_index);
+    let granted_alternative = crate::activation_cost_alternatives::has_available_alternative(game, source, &facts, &activated.mana_cost);
     // The reference-aware preflight evaluates each public cost choice with
     // its own targets and fully modified price. Never redo it without tags.
-    if let Some(payable) = crate::cost::prospective_references::activation_reference_preflight(
+    if !granted_alternative && let Some(payable) = crate::cost::prospective_references::activation_reference_preflight(
         game,
         source,
         ability_index,
@@ -3360,7 +3447,8 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     let has_activation_cost_modifiers = perf_ctx
         .map(BattlefieldAbilityContext::has_activation_cost_modifiers)
         .unwrap_or_else(|| view.has_activated_ability_cost_modifiers())
-        || view.source_has_activated_ability_cost_modifiers(source);
+        || view.source_has_activated_ability_cost_modifiers(source)
+        || !game.effect_store.activation_cost_alternatives.is_empty();
     if !has_activation_cost_modifiers {
         // The precheck already validated the printed activation costs, so when
         // nothing can modify them we can stop after target legality.
@@ -3370,7 +3458,7 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         return true;
     }
 
-    let ability = Some(ActivationCostAbility::of(game, controller, source, activated));
+    let ability = Some(&facts);
     let payable = |targets: &[Target]| {
         let total_cost = calculate_effective_activation_total_cost_with_view(
             game, controller, source, &activated.mana_cost, targets, ability, view,

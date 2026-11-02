@@ -49,6 +49,12 @@ pub use nodes::*;
 pub enum StaticAbilityAst {
     Static(crate::model::CompilerStaticAbilityCore),
     KeywordAction(KeywordAction),
+    SourceSetupProgram {
+        source_zone: crate::zone::Zone,
+        effects: Vec<EffectAst>,
+        remember_moved_card: bool,
+        display: String,
+    },
     PregameRevealFromOpeningHand {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
@@ -158,6 +164,13 @@ pub enum StaticAbilityAst {
         filter: AuraAttachmentFilter,
         display: String,
     },
+    NamedActionTokenAbilityGrant {
+        label: String,
+        player: PlayerFilter,
+        abilities: Vec<GrantedAbilityAst>,
+        display: String,
+    },
+    CopySourceSelectionReplacement { player:PlayerFilter, definition_name:String, display:String },
 }
 
 impl From<crate::model::CompilerStaticAbilityCore> for StaticAbilityAst {
@@ -175,6 +188,9 @@ pub enum TriggerIntroSurfaceAst {
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum TriggerSpec {
+    /// A labelled triggered occurrence selected by an explicit instruction;
+    /// no autonomous event condition is introduced.
+    ExternallyInvoked { class: String },
     WithIntro {
         intro: TriggerIntroSurfaceAst,
         trigger: Box<TriggerSpec>,
@@ -566,6 +582,8 @@ pub enum TriggerSpec {
     },
     CounterPutOn {
         filter: ObjectFilter,
+        cause_designation: Option<String>,
+        activation_label: Option<String>,
         counter_type: Option<CounterType>,
         source_controller: Option<PlayerFilter>,
         one_or_more: bool,
@@ -710,6 +728,7 @@ pub enum TriggerSpec {
     },
     /// "Whenever a permanent you control transforms".
     PermanentTransforms(ObjectFilter),
+    PermanentTransformsFromNamedActivation { filter: ObjectFilter, label: String },
     ThisDealsCombatDamageToPlayer {
         player: PlayerFilter,
         source_surface: Option<crate::target::SourceReferenceSurface>,
@@ -736,6 +755,21 @@ pub enum TriggerSpec {
         object_recipient: Option<ObjectFilter>,
     },
     YouCastThisSpell,
+    /// A completed custom-labelled operation, independent of keyword identity.
+    NamedAction {
+        label: String,
+        player: PlayerFilter,
+        source_filter: ObjectFilter,
+        object_filter: Option<ObjectFilter>,
+        minimum_amount: u32,
+    },
+    NamedActionParticipant {
+        label: String,
+        player: PlayerFilter,
+        participant_filter: ObjectFilter,
+        performer_filter: Option<ObjectFilter>,
+        one_or_more: bool,
+    },
     KeywordAction {
         action: crate::events::KeywordActionKind,
         player: PlayerFilter,
@@ -788,4 +822,8 @@ pub enum TriggerSpec {
     FinalChapterAbilityTriggers(ObjectFilter),
     StackObjectAdded,
     StateBasedObjects { filter: ObjectFilter, display: String },
+    AttachmentChangedToPlayer { attachment: ObjectFilter, recipient: PlayerFilter, attached: bool },
+    PermanentTransformsFromOwnNamedActivation { filter: ObjectFilter, label: String, activator: Option<PlayerFilter> },
+    /// Append-only: typed gain on a continuing battlefield incarnation.
+    CharacteristicGained(ironsmith_core::trigger_model::CharacteristicGainTrigger),
 }

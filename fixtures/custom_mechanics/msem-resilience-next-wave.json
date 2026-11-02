@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "mechanics": [
+    {
+      "id": "msem-859",
+      "keyword": "Resilience",
+      "original_reminder": "When this dies, exile it, then create a 1/1 token copy without resilience.",
+      "executable_reminder": "Keyword ability \"resilience\" — When this permanent dies, exile it, then create a token that's a copy of it, except it's 1/1 and it doesn't have custom keyword \"resilience\".",
+      "source_cards": [
+        "Nitz, Globetrotting Knight"
+      ],
+      "rule_reference": "702.280.",
+      "rule_text": [
+        {
+          "name": "702.280a",
+          "rule": "Resilience is a triggered ability. “Resilience” means “When this permanent is put into a graveyard from the battlefield, exile it, then create a token that's a copy of it, except the token is 1/1 and doesn't have resilience.”",
+          "custom": true
+        },
+        {
+          "name": "702.280b",
+          "rule": "If a permanent has multiple instances of resilience, multiple 1/1 token copies of it will be created, but those tokens will lose all instances of resilience.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Nitz, Globetrotting Knight_MSL",
+          "name": "Nitz, Globetrotting Knight",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Mouse Knight\nPower/Toughness: 2/3\nVigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nResilience *(When this dies, exile it, then create a 1/1 token copy without resilience.)*",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Mouse Knight\nPower/Toughness: 2/3\nVigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nKeyword ability \"resilience\" — When this permanent dies, exile it, then create a token that's a copy of it, except it's 1/1 and it doesn't have custom keyword \"resilience\"",
+          "mana_cost": "{1}{G}{W}",
+          "type_line": "Legendary Creature — Mouse Knight",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Nitz, Globetrotting Knight_MSL",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Nitz, Globetrotting Knight",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Mouse Knight\nPower/Toughness: 2/3\nVigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nResilience *(When this dies, exile it, then create a 1/1 token copy without resilience.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Nitz, Globetrotting Knight",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Creature — Mouse Knight\nPower/Toughness: 2/3\nVigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nKeyword ability \"resilience\" — When this permanent dies, exile it, then create a token that's a copy of it, except it's 1/1 and it doesn't have custom keyword \"resilience\"",
+              "custom_keyword_identities": [
+                "resilience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nResilience",
+              "original_printed_rules_text": "Vigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nResilience (When this dies, exile it, then create a 1/1 token copy without resilience.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "resilience"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nResilience",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Vigilance\nCreatures you control with power 1 or less can't be blocked by creatures with power 3 or greater.\nResilience (When this dies, exile it, then create a 1/1 token copy without resilience.)"
+        }
+      ],
+      "support_status": "candidate_requires_native_verification"
+    }
+  ]
+}

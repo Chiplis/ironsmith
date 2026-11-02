@@ -33,6 +33,7 @@ export function createForgeScene(host, quality = 'high') {
     const configuration = JSON.stringify(specifications);
     if (configuration === lightConfiguration) return;
     lightConfiguration = configuration;
+    const previousLightCount = seatLights.size;
     const active = new Set(specifications.map(spec => spec.owner));
     for (const [owner, light] of seatLights) if (!active.has(owner)) {
       scene.remove(light, light.target); light.dispose(); seatLights.delete(owner);
@@ -54,11 +55,28 @@ export function createForgeScene(host, quality = 'high') {
       light.intensity = distance * distance * 1.3 / Math.max(.25, incidence);
       light.distance = distance * 2.6; light.angle = spec.angle;
     }
+    if (previousLightCount !== seatLights.size) shaderRevision++;
     host.dataset.playerLights = specifications.map(spec => `${spec.owner}:${spec.color}`).join(',');
   }
   const resources = new Set();
   let disposed = false, lost = false, width = 1, height = 1, pixelRatio = 0;
   let placements = [];
+  let shaderRevision = 0, compiledRevision = -1, compiling = false, compileError = null;
+  let zoneConfiguration = '';
+  function warmShaders() {
+    if (compiling || lost || disposed || compiledRevision === shaderRevision) return;
+    const revision = shaderRevision;
+    compiling = true;
+    // Three.js uses KHR_parallel_shader_compile when present and supplies its
+    // own fallback otherwise. Compile with the actual lights and loaded maps.
+    renderer.compileAsync(scene, camera).then(() => {
+      if (disposed) return;
+      compiledRevision = revision;
+    }).catch(error => { if (!disposed) compileError = error; }).finally(() => {
+      compiling = false;
+      if (!disposed && !lost) ready();
+    });
+  }
   const own = resource => { resources.add(resource); return resource; };
   const plane = own(new THREE.PlaneGeometry(1, 1));
   const ready = () => { if (!disposed) host.dispatchEvent(new Event('forgeassetsready')); };
@@ -82,7 +100,7 @@ export function createForgeScene(host, quality = 'high') {
     own(texture); texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     floorMaterial.map = texture; floorMaterial.needsUpdate = true; floor.visible = true;
-    host.dataset.terrain = 'ready'; ready();
+    shaderRevision++; host.dataset.terrain = 'ready'; ready();
   }, undefined, () => { if (!disposed) host.dataset.terrain = 'fallback'; });
 
   const sanctuary = createZoneSanctuary(scene, own);
@@ -115,12 +133,13 @@ export function createForgeScene(host, quality = 'high') {
         normalizer.scale.setScalar(1 / Math.max(size.x, size.y, size.z));
         prop.group.add(normalizer); prop.ready = true;
       }
+      shaderRevision++;
       host.dataset.models = String(props.filter(p => p.ready).length); ready();
     }, undefined, () => { if (!disposed) host.dataset.modelFallback = 'true'; });
   }
 
   const onLost = event => { event.preventDefault(); lost = true; host.dataset.renderer = 'fallback'; renderer.domElement.style.visibility = 'hidden'; };
-  const onRestored = () => { lost = false; host.dataset.renderer = 'webgl'; renderer.domElement.style.visibility = ''; };
+  const onRestored = () => { shaderRevision++; compiledRevision = -1; lost = false; host.dataset.renderer = 'webgl'; renderer.domElement.style.visibility = ''; };
   renderer.domElement.addEventListener('webglcontextlost', onLost);
   renderer.domElement.addEventListener('webglcontextrestored', onRestored);
   host.dataset.renderer = 'webgl';
@@ -142,6 +161,8 @@ export function createForgeScene(host, quality = 'high') {
         daylight.position.set(width * .15, height * .25, 750);
         daylight.target.position.set(width * .55, -height * .65, -60);
       }
+      const nextZoneConfiguration = JSON.stringify([...zones].map(([key, zone]) => [key, zone.type, zone.battlefield]));
+      if (nextZoneConfiguration !== zoneConfiguration) { zoneConfiguration = nextZoneConfiguration; shaderRevision++; }
       sanctuary.layout(new Map([...zones].map(([key, zone]) => [key, { ...zone, rect: projection.rect(zone.rect, -22) }])));
       placements = placeForgeScenery(width, height, [...layout.obstacles, ...[...zones.values()].map(z => z.rect)]);
     },
@@ -161,6 +182,11 @@ export function createForgeScene(host, quality = 'high') {
         prop.group.position.copy(center);
         prop.group.scale.setScalar(worldSize);
       });
+      if (compileError) throw compileError;
+      if (compiledRevision !== shaderRevision) {
+        warmShaders();
+        return false; // Completion wakes the controller, including an idle board.
+      }
       renderer.render(scene, camera);
       return false;
     },

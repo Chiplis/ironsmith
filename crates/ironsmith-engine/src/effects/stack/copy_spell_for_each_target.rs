@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
-use crate::effects::stack::copy_spell::{create_stack_copy, stack_entry_for_copy_target};
+use crate::effects::stack::copy_spell::{create_stack_copy_with_context, stack_entry_for_copy_target};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::effects::stack::retarget_stack_object::stack_entry_retarget_requirements;
@@ -43,6 +43,7 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_transaction(game,ctx,||EffectOutcome::count(0),|game,ctx| {
         let target_id = *resolve_objects_for_effect(game, ctx, &self.target)?
             .first()
             .ok_or(ExecutionError::InvalidTarget)?;
@@ -174,20 +175,23 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         }
 
         for (_, targets) in planned {
-            let Some(copy_id) = create_stack_copy(
+            let Some(copy_id) = create_stack_copy_with_context(
                 game,
                 target_id,
                 &original_entry,
                 copier,
                 &self.removed_supertypes,
                 Some(targets),
-            )? else { continue; };
+                ctx,
+            )? else {if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));} continue; };
             created_ids.push(copy_id);
 
             events.extend(super::copy_spell::stack_copy_events(game,ctx,copy_id,super::copy_spell::CopyCompletionOrder::CopyThenTargets));
         }
 
         Ok(EffectOutcome::with_objects(created_ids).with_events(events))
+    
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

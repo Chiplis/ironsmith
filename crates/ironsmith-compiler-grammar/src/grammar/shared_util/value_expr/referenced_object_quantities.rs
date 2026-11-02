@@ -20,6 +20,18 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
 
 fn parse_reference(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
+    // A named additional payment reads the referenced spell's receipt.
+    let offset = usize::from(words.first()==Some(&"the"));
+    let rest = &words[offset..];
+    if rest.starts_with(&["number","of","times","that"])
+        && matches!(rest.get(4),Some(&"spell's"|&"spells")) && rest.get(5)==Some(&"additional")
+        && let Some(end) = rest.windows(3).position(|tail| tail==["cost","was","paid"])
+        && end>6
+    {
+        let mut reference = ironsmith_core::OptionalCostRef::from("Additional");
+        reference.custom_keyword=Some(rest[6..end].join(" "));
+        return Some((Value::TimesPaidLabelOf {object: tagged(Tag::It,"that spell"),reference},offset+end+3));
+    }
     // "draw cards equal to its total toxic value" (Goliath Hatchery): the
     // summed toxic N of the object the preceding choice named (CR 702.164c).
     if words.starts_with(&["its", "total", "toxic", "value"]) {

@@ -80,6 +80,14 @@ fn attached_anthem_otherwise_base_and_block_restriction_stays_one_static_program
     assert!(debug.contains("BlockSpecificAttacker"), "{debug}");
     assert_eq!(debug.matches("Not(").count(), 2, "{debug}");
     assert!(debug.contains("Detective"), "{debug}");
+    let public=parse_static_ability_ast_line_lexed(&tokens)
+        .expect("public static ownership must preserve the compound")
+        .expect("public static entry must recognize the complete otherwise program");
+    assert_eq!(public.len(),3);
+    let public_debug=format!("{public:#?}");
+    assert!(public_debug.contains("SetBasePowerToughness"),"{public_debug}");
+    assert!(public_debug.contains("BlockSpecificAttacker"),"{public_debug}");
+    assert_eq!(public_debug.matches("Not(").count(),2,"{public_debug}");
 
     let changed_subject = crate::lexer::lex_line(
         "Enchanted creature gets +2/+2 as long as it's a Detective you control. Otherwise, target creature has base power and toughness 1/1 and can't block Detectives.",

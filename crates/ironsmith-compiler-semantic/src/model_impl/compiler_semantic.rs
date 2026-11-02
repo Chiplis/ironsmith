@@ -232,6 +232,7 @@ pub enum ConditionalModeSelection {
     AnyNumber,
     OneOrMore,
     One,
+    UpTo(u32),
 }
 
 #[derive(Debug, Clone)]

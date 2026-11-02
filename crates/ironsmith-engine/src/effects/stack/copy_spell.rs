@@ -180,6 +180,47 @@ pub(crate) fn departed_source_spell_lki(
     Some((object, entry.clone()))
 }
 
+/// The copy instruction keeps its actor/modifiers/context while a replacement
+/// may select an independently supplied card definition as its operand.
+pub(crate) fn create_stack_copy_from_object_with_context(
+    game:&mut GameState,source:&Object,target_id:crate::ObjectId,original_entry:&StackEntry,
+    copier:crate::PlayerId,removed_supertypes:&[crate::types::Supertype],
+    customize_copy:impl FnMut(&mut Object),targets_override:Option<Vec<Target>>,ctx:&mut ExecutionContext,
+)->Result<Option<crate::ObjectId>,ExecutionError>{
+    crate::effects::composition::execute_transaction(game,ctx,||None,|game,ctx|{
+    if original_entry.is_ability {
+        return create_stack_copy_from_object(game,source,target_id,original_entry,copier,removed_supertypes,customize_copy,targets_override);
+    }
+    // An instruction prohibited from copying its original operand does not
+    // acquire a new operand through a would-copy replacement.
+    let abilities=if game.object(source.id).is_some_and(|object|object.zone==Zone::Stack){
+        game.current_abilities(source.id).unwrap_or_else(||source.abilities_vec())
+    }else{source.abilities_vec()};
+    if abilities.iter().any(|ability|matches!(&ability.kind,crate::ability::AbilityKind::Static(rule) if rule.id()==crate::static_abilities::StaticAbilityId::CantBeCopied)) {
+        return Ok(None);
+    }
+    match crate::effects::select_copy_source_definition(game,ctx,crate::events::CopySourceOperation::SpellCopy,copier,Some(target_id))? {
+        crate::effects::CopySourceSelection::Original=>create_stack_copy_from_object(game,source,target_id,original_entry,copier,removed_supertypes,customize_copy,targets_override),
+        crate::effects::CopySourceSelection::Supplied(definition)=>{
+            let (replacement,mut entry)=super::definition_copy_source(game,&definition,copier)?;
+            entry.provenance=original_entry.provenance;
+            // A different card has no original spell's paid costs, targets,
+            // modes or X announcement. Its own definition owns those choices.
+            create_stack_copy_from_object(game,&replacement,replacement.id,&entry,copier,removed_supertypes,customize_copy,None)
+        },
+        crate::effects::CopySourceSelection::Prevented|crate::effects::CopySourceSelection::Pending=>Ok(None),
+    }
+    })
+}
+
+pub(crate) fn create_stack_copy_with_context(
+    game:&mut GameState,target_id:crate::ObjectId,entry:&StackEntry,copier:crate::PlayerId,
+    removed_supertypes:&[crate::types::Supertype],targets_override:Option<Vec<Target>>,ctx:&mut ExecutionContext,
+)->Result<Option<crate::ObjectId>,ExecutionError>{
+    let source=game.object(target_id).cloned().ok_or(ExecutionError::ObjectNotFound(target_id))?;
+    create_stack_copy_from_object_with_context(game,&source,target_id,entry,copier,removed_supertypes,|_|{},targets_override,ctx)
+}
+
 pub(crate) fn create_stack_copy_from_object(
     game: &mut GameState,
     source: &Object,
@@ -565,6 +606,7 @@ impl EffectExecutor for CopySpellEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_transaction(game,ctx,||EffectOutcome::count(0),|game,ctx| {
         let copy_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let loyalty = self.set_base_loyalty.as_ref().map(|value|
             crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)).transpose()?;
@@ -628,7 +670,7 @@ impl EffectExecutor for CopySpellEffect {
                     departed_source_spell_lki(game, ctx, target_id)
             {
                 for _ in 0..copy_count {
-                    let Some(copy_id) = create_stack_copy_from_object(
+                    let Some(copy_id) = create_stack_copy_from_object_with_context(
                         game,
                         &target,
                         target_id,
@@ -637,8 +679,10 @@ impl EffectExecutor for CopySpellEffect {
                         &self.removed_supertypes,
                         |copy| self.apply_copy_characteristic_modifiers(copy, loyalty),
                         None,
+                        ctx,
                     )?
                     else {
+                        if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));}
                         prevented_copy = true;
                         continue;
                     };
@@ -687,7 +731,7 @@ impl EffectExecutor for CopySpellEffect {
                 spell_copy_count
             };
             for index in 0..this_count {
-                let Some(copy_id) = create_stack_copy_from_object(
+                let Some(copy_id) = create_stack_copy_from_object_with_context(
                     game,
                     &target,
                     target_id,
@@ -696,8 +740,10 @@ impl EffectExecutor for CopySpellEffect {
                     &self.removed_supertypes,
                     |copy| self.apply_copy_characteristic_modifiers(copy, loyalty),
                     None,
+                    ctx,
                 )?
                 else {
+                    if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));}
                     prevented_copy = true;
                     continue;
                 };
@@ -740,6 +786,8 @@ impl EffectExecutor for CopySpellEffect {
         Ok(EffectOutcome::with_objects(created_ids).with_action_objects(
             crate::effect::PriorEffectAction::Copied, Some(copier), copied,
         ))
+    
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

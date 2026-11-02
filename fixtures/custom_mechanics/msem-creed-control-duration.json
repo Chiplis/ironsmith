@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "constraint": "Exact preserved physical source control; executable source program is ordinary generic composition.",
+  "source_fixture": "fixtures/custom_mechanics/tokens-complete.json",
+  "mechanics": [
+    {
+      "id": "source-control-msem-333",
+      "keyword": "Reappropriate",
+      "original_reminder": "You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.",
+      "executable_reminder": "Exile exactly two {Type} cards from your hand and/or graveyard.",
+      "source_cards": [
+        "Creed's Desperado"
+      ],
+      "rule_reference": "701.86.",
+      "rule_text": [
+        {
+          "name": "701.86a",
+          "rule": "To reappropriate, exile exactly two cards from your hand and/or graveyard.",
+          "custom": true
+        },
+        {
+          "name": "701.86b",
+          "rule": "If you are instructed to reappropriate while your hand and graveyard have only one card total, you will be unable to. Any abilities that would trigger due to that reappropriate action don't.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Creed's Desperado_OTH",
+          "name": "Creed's Desperado",
+          "original_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nBloodprice—Reappropriate red. *(You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.)*\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nYou may exile exactly two red cards from your hand and/or graveyard and sacrifice a creature rather than pay this spell's mana cost.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature — Spirit Warrior",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Creed's Desperado_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Creed's Desperado",
+              "original_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nBloodprice—Reappropriate red. *(You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.)*\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Creed's Desperado",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature — Spirit Warrior\nPower/Toughness: 3/2\nYou may exile exactly two red cards from your hand and/or graveyard and sacrifice a creature rather than pay this spell's mana cost.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+              "custom_keyword_identities": [
+                "bloodprice"
+              ],
+              "custom_keyword_payments": [
+                "bloodprice"
+              ],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Bloodprice—Reappropriate red.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+              "original_printed_rules_text": "Bloodprice—Reappropriate red. (You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.)\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it."
+            }
+          ],
+          "custom_keyword_identities": [
+            "bloodprice"
+          ],
+          "custom_keyword_payments": [
+            "bloodprice"
+          ],
+          "original_display_text": "Bloodprice—Reappropriate red.\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Bloodprice—Reappropriate red. (You may cast this spell by sacrificing a creature and exiling two red cards from your hand and/or graveyard.)\nHaste\nWhenever Creed's Desperado attacks, if defending player has more cards in hand than you, exile the top card of that player's library. You may cast it as long as you control a Warrior, and you may spend mana as though it were mana of any color to cast it."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Bloodprice",
+          "template": "{Cost}",
+          "reminder": "You may pay {Cost} and sacrifice a creature rather than pay this spell's mana cost."
+        },
+        {
+          "keyword": "Reappropriate",
+          "template": "{Type}",
+          "reminder": "Exile exactly two {Type} cards from your hand and/or graveyard."
+        }
+      ],
+      "source_candidate_id": "msem-333",
+      "test_status": "pending_parent_native_verification"
+    }
+  ]
+}

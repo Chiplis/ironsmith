@@ -13,6 +13,7 @@ pub(crate) fn parse_entry_type_rider(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
+    if let Some(program) = conditional_described_entry(&sentences)? { return Ok(Some(program)); }
     let [prefix @ .., rider] = sentences.as_slice() else {
         return Ok(None);
     };
@@ -174,4 +175,67 @@ fn collect_descriptions(effects: &[EffectAst], changes: &mut BattlefieldEntryTyp
         }
     }
     true
+}
+
+/// Choose one optional hand card, then describe its entry conditionally from
+/// its pre-entry characteristics. The departure replacement is bound only
+/// after the actual arrival, so it cannot affect a later incarnation.
+fn conditional_described_entry(sentences:&[&[OwnedLexToken]])->Result<Option<Vec<EffectAst>>,CardTextError> {
+    let [selection,shield,rider]=sentences else {return Ok(None);};
+    let selection=crate::util::trim_edge_punctuation_tokens(selection);
+    let view=crate::lexer::TokenWordView::new(selection);
+    let words=view.word_refs();
+    let Some(filter_words)=words.strip_prefix(&["you","may","put"])
+        .and_then(|rest|rest.strip_suffix(&["from","your","hand","onto","the","battlefield"])) else {return Ok(None);};
+    if filter_words.is_empty() {return Ok(None);}
+    let Some(range)=view.token_span_for_words(3,3+filter_words.len()) else {return Ok(None);};
+    let mut selection_filter=match parse_object_filter_lexed(&selection[range],false) {Ok(filter)=>filter,Err(_)=>return Ok(None)};
+    let shield_words=crate::lexer::token_word_refs(shield);
+    if shield_words.as_slice()!=["exile","that","permanent","if","it","would","leave","the","battlefield"] {return Ok(None);}
+    let clean=crate::util::trim_edge_punctuation_tokens(rider);
+    let view=crate::lexer::TokenWordView::new(clean);
+    let words=view.word_refs();
+    let start=if words.starts_with(&["if","its"]) || words.starts_with(&["if","it's"]) {2}
+        else if words.starts_with(&["if","it","is"]) {3} else {return Ok(None);};
+    let Some(enters)=words.windows(3).position(|part|part==["it","enters","as"]) else {return Ok(None);};
+    if enters<=start || enters+3>=words.len() {return Ok(None);}
+    let Some(gate_range)=view.token_span_for_words(start,enters) else {return Ok(None);};
+    let gate_tokens=crate::lexer::trim_lexed_commas(&clean[gate_range]);
+    let gate=match parse_object_filter_lexed(gate_tokens,false) {Ok(filter)=>filter,Err(_)=>return Ok(None)};
+    let mut types=Vec::new();let mut subtypes=Vec::new();
+    for word in &words[enters+3..] {
+        if matches!(*word,"a"|"an"|"and") {continue;}
+        if let Some(kind)=crate::util::parse_card_type(word) {types.push(kind);}
+        else if let Some(kind)=crate::util::parse_subtype_flexible(word) {subtypes.push(kind);}
+        else {return Ok(None);}
+    }
+    if types.is_empty() {return Ok(None);}
+    let tag=helper_tag_for_tokens(selection,"conditional_entry_choice");
+    selection_filter=selection_filter.in_zone(Zone::Hand).owned_by(PlayerFilter::You);
+    let choice=EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+        filter:selection_filter,count:ChoiceCount::up_to(1),player:PlayerAst::You,
+        tag:crate::tag::TagRef::of(tag.clone()),zone:Zone::Hand,
+    });
+    let move_card=EffectAst::subject_verb_move_to_zone(TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()),None),Zone::Battlefield,false,ReturnControllerAst::Preserve,false,None);
+    let mut described_move=move_card.clone();
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {action:SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {entry_type_changes,..}),..})=&mut described_move {
+        *entry_type_changes=Some(BattlefieldEntryTypeChanges {
+            set_card_types:Some(types),added_subtypes:subtypes,
+            removed_subtype_families:vec![crate::types::SubtypeFamily::Creature],..Default::default()
+        });
+    } else {return Ok(None);}
+    let arrival=helper_tag_for_tokens(selection,"conditional_entry_arrival");
+    let tag_arrival=|movement|EffectAst::TagAffected {
+        effect:Box::new(movement),tag:crate::tag::TagRef::of(arrival.clone()),
+    };
+    let departure=||EffectAst::subject_verb_register_zone_replacement(
+        TargetAst::Tagged(crate::tag::TagRef::of(arrival.clone()),None),Some(Zone::Battlefield),None,Zone::Exile,ZoneReplacementDurationAst::Persistent,
+    );
+    // Capture the actual new incarnation separately in either branch.
+    let conditional=EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate:PredicateAst::TaggedMatches(crate::tag::TagRef::of(tag),gate),
+        if_true:vec![tag_arrival(described_move),departure()],if_false:vec![tag_arrival(move_card),departure()],
+    });
+    for sentence in sentences {crate::word_claims::claim_tokens(sentence);}
+    Ok(Some(vec![choice,conditional]))
 }

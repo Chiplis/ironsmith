@@ -634,13 +634,12 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             ProtectionTargetKind::OwnColors => Some(KeywordAction::ProtectionFromOwnColors),
             ProtectionTargetKind::EachColorAmong { filter_word_first } => {
                 let first = *TokenWordView::new(tokens).token_start_indices().get(filter_word_first)?;
-                // This live family is intentionally bounded to the printed
-                // permanent population; future scopes need their own review.
-                let scope_tokens = &tokens[first..target.target_token_end];
-                crate::grammar::primitives::probe_all(scope_tokens,
-                    crate::grammar::primitives::phrase(&["permanents", "you", "control"]),
-                    "complete controlled-permanent color scope")?;
-                Some(KeywordAction::ProtectionFromColorsAmong(ObjectFilter::permanent().you_control()))
+                // Population is independent of the color projection. The
+                // ordinary complete filter reader retains zone and exact
+                // source-collection predicates; it does not sample colors.
+                let scope_tokens = trim_commas(&tokens[first..target.target_token_end]);
+                crate::grammar::primitives::probe_shape(parse_object_filter_lexed(&scope_tokens, false))
+                    .map(KeywordAction::ProtectionFromColorsAmong)
             }
             ProtectionTargetKind::Monocolored => Some(KeywordAction::ProtectionFromFilter(
                 ObjectFilter::default().monocolored(),
@@ -1193,6 +1192,24 @@ pub fn parse_linked_attack_group_combat_triggered_line_lexed(
         effects,
         max_triggers_per_turn,
     }))
+}
+
+/// An externally invoked triggered ability retains the ordinary effect
+/// program. Its class label supplies selection identity, never behavior.
+pub(crate) fn parse_externally_triggered_line(tokens: &[OwnedLexToken]) -> Result<Option<LineAst>, CardTextError> {
+    let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+    if !words.starts_with(&["externally","triggered","ability","named"]) {return Ok(None);}
+    let class_start=view.token_start_indices().get(4).copied().ok_or_else(||CardTextError::ParseError("external triggered heading needs a class label".into()))?;
+    let delimiter=tokens.iter().enumerate().skip(class_start).find_map(|(index,token)|matches!(token.kind,crate::lexer::TokenKind::Dash|crate::lexer::TokenKind::EmDash|crate::lexer::TokenKind::Comma).then_some(index)).ok_or_else(||CardTextError::ParseError("external triggered heading needs its body delimiter".into()))?;
+    let name_tokens=&tokens[class_start..delimiter];
+    if name_tokens.is_empty()||name_tokens.iter().any(|token|token.as_word().is_none()){return Err(CardTextError::ParseError("external triggered class label must be words".into()));}
+    let class=crate::lexer::token_word_refs(name_tokens).join(" ").to_ascii_lowercase();
+    let body=&tokens[delimiter+1..];
+    if body.is_empty(){return Err(CardTextError::ParseError("external triggered ability needs its complete effect body".into()));}
+    let effects=parse_effect_sentences_lexed(body)?;
+    if effects.is_empty(){return Err(CardTextError::ParseError("external triggered ability has no effect program".into()));}
+    crate::word_claims::claim_tokens(&tokens[..=delimiter]);
+    Ok(Some(LineAst::Triggered{trigger:TriggerSpec::ExternallyInvoked{class},effects,max_triggers_per_turn:None}))
 }
 
 pub fn parse_triggered_line_lexed(tokens: &[OwnedLexToken]) -> Result<LineAst, CardTextError> {

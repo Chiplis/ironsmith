@@ -1,3 +1,4 @@
+import { mergeSubtypes } from './custom-subtypes.js';
 import { mergeMechanics, prepareCustomCard } from './custom-mechanics.js';
 
 export function setMechanics(value) {
@@ -6,9 +7,13 @@ export function setMechanics(value) {
 
 // Set definitions override the copies carried by cards without touching the
 // personal library's registry. Compilation stays isolated to this workspace.
-export async function prepareSetCard(draft, definitions, compile) {
+export function setSubtypes(value) {
+  return mergeSubtypes(value.customSubtypes || [], value.customCards.flatMap(card => card.draft.customSubtypes || []));
+}
+
+export async function prepareSetCard(draft, definitions, compile, subtypes = []) {
   const keywords = new Set(definitions.map(def => def.keyword));
-  const prepared = await prepareCustomCard({ ...draft, customMechanics: (draft.customMechanics || []).filter(def => !keywords.has(def.keyword)) }, compile, { known: definitions });
+  const prepared = await prepareCustomCard({ ...draft, customMechanics: (draft.customMechanics || []).filter(def => !keywords.has(def.keyword)) }, compile, { known: definitions, knownSubtypes: subtypes });
   prepared.preview.customMechanics = prepared.draft.customMechanics;
   for (const face of prepared.preview.faces || []) face.customMechanics = prepared.draft.customMechanics;
   return prepared;
@@ -19,7 +24,7 @@ export async function updateSetMechanic(value, definition, compile) {
   const cards = [];
   for (const card of value.customCards) {
     try {
-      const prepared = await prepareSetCard(card.draft, definitions, compile);
+      const prepared = await prepareSetCard(card.draft, definitions, compile, setSubtypes(value));
       cards.push({ ...card, draft: prepared.draft });
     } catch (error) {
       throw new Error(`${card.draft.faces[0].name}: ${error.message}`);

@@ -76,6 +76,7 @@ enum SimpleObjectFilterAtom {
     Monocolored,
     CardMarker,
     PermanentMarker,
+    NonPermanent,
     SpellMarker,
     Named(NamedObjectFilterAtom),
     CardType(CardType),
@@ -89,6 +90,7 @@ enum SimpleObjectFilterAtom {
     ExcludedColor(ColorSet),
     Outlaw,
     NonOutlaw,
+    Nonenchanted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -603,6 +605,12 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Tapped => filter.tapped = true,
             SimpleObjectFilterAtom::Untapped => filter.untapped = true,
             SimpleObjectFilterAtom::Unblocked => filter.unblocked = true,
+            SimpleObjectFilterAtom::Nonenchanted => {
+                filter.without_attached_object = Some(Box::new(ObjectFilter {
+                    card_types: vec![CardType::Enchantment], subtypes: vec![Subtype::Aura],
+                    ..ObjectFilter::default()
+                }));
+            }
             SimpleObjectFilterAtom::Equipped => {
                 filter.with_attached_object = Some(Box::new(ObjectFilter {
                     subtypes: vec![Subtype::Equipment],
@@ -617,6 +625,12 @@ fn parse_simple_filter_body(
                 terminal_noun_follows_last_characteristic = last_type_atom_is_card_type.is_some();
             }
             SimpleObjectFilterAtom::PermanentMarker => saw_permanent = true,
+            SimpleObjectFilterAtom::NonPermanent => {
+                for card_type in [CardType::Artifact, CardType::Battle, CardType::Creature,
+                    CardType::Enchantment, CardType::Land, CardType::Planeswalker] {
+                    push_unique(&mut filter.excluded_card_types, card_type);
+                }
+            },
             SimpleObjectFilterAtom::SpellMarker => {
                 saw_spell = true;
                 terminal_noun_follows_last_characteristic = last_type_atom_is_card_type.is_some();
@@ -721,7 +735,9 @@ fn parse_simple_filter_body(
     if filter.zone.is_none() {
         if saw_spell {
             filter.zone = Some(Zone::Stack);
-        } else if saw_permanent || saw_permanent_type || filter.token {
+        } else if saw_permanent || (!saw_card && saw_permanent_type) || filter.token {
+            // A permanent card type implies the battlefield only without a
+            // card noun. Explicit location suffixes were applied above.
             filter.zone = Some(Zone::Battlefield);
         } else if saw_card {
             filter.zone = None;
@@ -930,12 +946,14 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "tapped" => SimpleObjectFilterAtom::Tapped,
         "untapped" => SimpleObjectFilterAtom::Untapped,
         "unblocked" => SimpleObjectFilterAtom::Unblocked,
+        "nonenchanted" | "non-enchanted" | "unenchanted" => SimpleObjectFilterAtom::Nonenchanted,
         "equipped" => SimpleObjectFilterAtom::Equipped,
         "colorless" => SimpleObjectFilterAtom::Colorless,
         "multicolored" | "multicolour" | "multicoloured" => SimpleObjectFilterAtom::Multicolored,
         "monocolored" | "monocolour" | "monocoloured" => SimpleObjectFilterAtom::Monocolored,
         "card" | "cards" => SimpleObjectFilterAtom::CardMarker,
         "permanent" | "permanents" => SimpleObjectFilterAtom::PermanentMarker,
+        "nonpermanent" | "nonpermanents" => SimpleObjectFilterAtom::NonPermanent,
         "spell" | "spells" => SimpleObjectFilterAtom::SpellMarker,
         _ => {
             *input = checkpoint;
@@ -954,7 +972,11 @@ fn parse_split_non_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilter
         .void()
         .parse_next(input)?;
     let word = parse_any_word.parse_next(input)?;
-    let atom = if let Some(card_type) = parse_card_type(word) {
+    let atom = if matches!(word, "permanent" | "permanents") {
+        SimpleObjectFilterAtom::NonPermanent
+    } else if word == "enchanted" {
+        SimpleObjectFilterAtom::Nonenchanted
+    } else if let Some(card_type) = parse_card_type(word) {
         SimpleObjectFilterAtom::ExcludedCardType(card_type)
     } else if let Some(subtype) = parse_subtype_flexible(word) {
         SimpleObjectFilterAtom::ExcludedSubtype(subtype)
@@ -1002,3 +1024,34 @@ use simple_object_action_programs::{
     parse_control_action, parse_control_negation, parse_controller_owner_suffix,
     parse_controller_suffix, parse_negated_controller_suffix,
 };
+
+#[cfg(test)]
+mod nonpermanent_card_tests {
+    use super::*;
+    #[test]
+    fn nonpermanent_excludes_every_permanent_type_and_keeps_the_card_domain() {
+        for words in [&["nonpermanent","card"][..], &["non","permanent","card"][..]] {
+            let filter = parse_simple_object_filter_words(words, false).unwrap();
+            assert_eq!(filter.excluded_card_types, vec![CardType::Artifact, CardType::Battle,
+                CardType::Creature, CardType::Enchantment, CardType::Land, CardType::Planeswalker]);
+            assert!(filter.card_types.is_empty());
+            assert_ne!(filter.zone, Some(Zone::Battlefield));
+        }
+    }
+}
+
+#[cfg(test)]
+mod nonenchanted_adjective_tests {
+    use super::*;
+    #[test]
+    fn nonenchanted_is_an_intrinsic_negative_attachment_state_not_a_source_alias() {
+        for words in [&["nonenchanted","creature"][..], &["non","enchanted","creature"][..]] {
+            let filter=parse_simple_object_filter_words(words,false).unwrap();
+            assert_eq!(filter.card_types,vec![CardType::Creature]);
+            assert!(filter.with_attached_object.is_none());
+            assert_eq!(filter.without_attached_object.as_deref(),Some(&ObjectFilter {
+                card_types:vec![CardType::Enchantment],subtypes:vec![Subtype::Aura],..ObjectFilter::default()
+            }));
+        }
+    }
+}

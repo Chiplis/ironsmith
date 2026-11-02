@@ -344,10 +344,10 @@ pub(super) fn commit_combat_damage_batch(
         .map(|receipt| (receipt.source, receipt.controller))
         .or_else(|| payload_receipts.first().map(|payload| (payload.source, payload.context.controller())))
     {
-        let ctx = ExecutionContext::new(source, controller, &mut *dm);
+        let mut ctx = ExecutionContext::new(source, controller, &mut *dm);
         crate::effects::capture_triggers_before_added_program(
             game,
-            &ctx,
+            &mut ctx,
             None,
             receipts
                 .iter_mut()

@@ -22,6 +22,11 @@ fn selected_targets_satisfy_requirement(
         return false;
     }
 
+    // CR601.2c: one target occurrence cannot choose the same target twice.
+    // Separate occurrences may still choose that target independently.
+    if selected.iter().enumerate().any(|(index,target)|selected[..index].contains(target)) {
+        return false;
+    }
     let satisfies_set_constraint = req.legal_target_sets.is_empty()
         || req
             .legal_target_sets
@@ -141,6 +146,8 @@ fn assign_target_counts(
         cursor: usize,
         allow_autofill: bool,
         used_by_group: &mut TargetGroupSelections,
+        used_extra: usize,
+        extra_budget: usize,
     ) -> Option<Vec<usize>> {
         if req_idx == requirements.len() {
             if cursor == targets.len() {
@@ -169,6 +176,9 @@ fn assign_target_counts(
                     continue;
                 }
 
+                let original_max = req.max_targets.map(|max| max.saturating_sub(req.additional_target_budget));
+                let extra = original_max.map_or(0, |max| count.saturating_sub(max));
+                if used_extra.saturating_add(extra) > extra_budget { continue; }
                 let slice = &targets[cursor..cursor + count];
                 if !selected_targets_satisfy_requirement(req, slice)
                     || !selected_targets_satisfy_distinct_player_group(req, slice, used_by_group, allow_autofill)
@@ -185,6 +195,8 @@ fn assign_target_counts(
                     cursor + count,
                     allow_autofill,
                     used_by_group,
+                    used_extra + extra,
+                    extra_budget,
                 );
                 if let Some(mut rest) = result {
                     let mut counts = Vec::with_capacity(rest.len() + 1);
@@ -207,6 +219,8 @@ fn assign_target_counts(
         0,
         allow_autofill,
         &mut used_by_group,
+        0,
+        requirements.iter().map(|req|req.additional_target_budget).max().unwrap_or(0),
     )
 }
 
@@ -391,6 +405,7 @@ mod tests {
                 aggregate_constraint: None,
                 min_targets: 0,
                 max_targets: None,
+                additional_target_budget: 0,
                 distinct_player_group: None,
                 shared_player_group: None,
             },
@@ -401,6 +416,7 @@ mod tests {
                 aggregate_constraint: None,
                 min_targets: 1,
                 max_targets: Some(1),
+                additional_target_budget: 0,
                 distinct_player_group: None,
                 shared_player_group: None,
             },
@@ -426,6 +442,7 @@ mod tests {
             aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }];
@@ -448,6 +465,7 @@ mod tests {
                 aggregate_constraint: None,
                 min_targets: 1,
                 max_targets: Some(1),
+                additional_target_budget: 0,
                 distinct_player_group: None,
                 shared_player_group: None,
             },
@@ -458,6 +476,7 @@ mod tests {
                 aggregate_constraint: None,
                 min_targets: 1,
                 max_targets: Some(1),
+                additional_target_budget: 0,
                 distinct_player_group: None,
                 shared_player_group: None,
             },
@@ -477,6 +496,7 @@ mod tests {
             aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }];
@@ -501,6 +521,7 @@ mod tests {
             aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }];
@@ -522,6 +543,7 @@ mod tests {
             aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }];
@@ -548,6 +570,7 @@ mod tests {
             }),
             min_targets: 0,
             max_targets: None,
+            additional_target_budget: 0,
             distinct_player_group: None,
             shared_player_group: None,
         }];
@@ -683,5 +706,31 @@ mod prior_target_pair_constraint_tests {
         assert!(validate_flat_target_assignment(&req,&[t(1),t(2),t(2)]));
         assert!(!validate_flat_target_assignment(&req,&[t(1),t(2),t(1)]));
         assert!(!validate_flat_target_assignment(&req,&[t(1),t(1),t(1)]));
+    }
+}
+
+#[cfg(test)]
+mod optional_extra_target_budget_tests {
+    use super::*;
+    #[test]
+    fn optional_extra_target_allowance_is_shared_across_slots() {
+        let a=Target::Player(crate::ids::PlayerId(0));
+        let b=Target::Player(crate::ids::PlayerId(1));
+        let mut slot=TargetRequirementContext::single("player",vec![a,b]);
+        slot.max_targets=Some(2);slot.additional_target_budget=1;
+        assert!(assigned_target_ranges(&[slot.clone()],&[a,a]).is_none(),"an additional target must be distinct within that occurrence");
+        let requirements=vec![slot.clone(),slot];
+        assert!(assigned_target_ranges(&requirements,&[a,b]).is_some(),"choosing no extra remains legal");
+        assert!(assigned_target_ranges(&requirements,&[a,b,a]).is_some(),"one additional target may belong to either occurrence");
+        assert!(assigned_target_ranges(&requirements,&[a,b,a,b]).is_none(),"the allowance is not multiplied by the number of target occurrences");
+    }
+    #[test]
+    fn an_existing_zero_capacity_slot_can_receive_the_optional_target() {
+        let a=Target::Player(crate::ids::PlayerId(0));
+        let mut slot=TargetRequirementContext::single("up to zero players",vec![a]);
+        slot.min_targets=0;slot.max_targets=Some(1);slot.additional_target_budget=1;
+        assert!(assigned_target_ranges(&[slot.clone()],&[]).is_some());
+        assert!(assigned_target_ranges(&[slot],&[a]).is_some());
+        assert!(assigned_target_ranges(&[],&[a]).is_none(),"a targetless spell gets no invented target occurrence");
     }
 }

@@ -28,7 +28,8 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         .next()
         .unwrap_or(type_name);
     match kind {
-        "CascadeEffect"
+        "CreateCardsEffect"
+        | "CascadeEffect"
         | "ConniveEffect"
         | "DiscoverEffect"
         | "DrawCardsEffect"
@@ -50,13 +51,18 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ShuffleHandAndGraveyardIntoLibraryEffect"
         | "SurveilEffect"
         // Activates arbitrary mana abilities of lands.
+        | "ActivateAbilityWithoutCostsEffect"
         | "ActivateManaAbilityOfEachLandEffect" => Moves,
         "ApplyContinuousEffect"
         | "ApplyReplacementEffect"
         | "BackupEffect"
         | "CreateEmblemEffect"
+        | "CopyFromDefinitionEffect"
         | "CreateTokenCopyEffect"
         | "CreateTokenEffect"
+        // Delegates to the same creation owner using a retained physical
+        // back-face blueprint; owned token abilities retain the token policy.
+        | "CreateLinkedFaceTokenEffect"
         | "GrantAbilitiesAllEffect"
         | "GrantAbilitiesTargetEffect"
         | "GrantBySpecEffect"
@@ -76,6 +82,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ReflexiveTriggerEffect"
         | "RegenerateEffect"
         | "RegisterDrawReplacementEffect"
+        | "RegisterEventReplacementEffect"
         | "ScheduleDelayedTriggerEffect"
         | "ScheduleEffectsWhenTaggedLeavesEffect" => Deferred,
         "BidLifeEffect"
@@ -117,6 +124,8 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "PutOntoBattlefieldEffect"
         | "PutTaggedRemainderOnLibraryBottomEffect"
         | "RepeatEffectsEffect"
+        | "FirstResolutionEachTurnEffect"
+        | "NamedActionProgramEffect"
         | "RepeatProcessEffect"
         | "ReturnAllToBattlefieldEffect"
         | "ReturnToHandEffect"
@@ -127,6 +136,8 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ShuffleObjectsIntoLibraryEffect"
         | "TagAllEffect"
         | "TagMatchingObjectsEffect"
+        | "RememberOriginalMovementArrivalsEffect"
+        | "CardDefinitionScopeEffect"
         | "TaggedEffect"
         | "UnlessActionEffect"
         | "UnlessPaysEffect"
@@ -172,6 +183,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "CantEffect"
         | "CastEncodedCardCopyEffect"
         | "CastStoredCardCopyEffect"
+        | "RemoveOptionalTextFragmentEffect"
         | "ChangeTextEffect"
         | "ChooseCardNameEffect"
         | "ChooseCardTypeEffect"
@@ -198,6 +210,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ControlPlayerEffect"
         | "ControlVotesThisTurnEffect"
         | "ConvertEffect"
+        | "TriggerAbilitiesByClassEffect"
         | "CopySpellEffect"
         | "CopySpellForEachTargetEffect"
         | "CounterEffect"
@@ -225,6 +238,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "EachPlayerScryEffect"
         | "EarthbendEffect"
         | "EmitGiftGivenEffect"
+        | "PerformNamedActionEffect"
         | "EmitKeywordActionEffect"
         | "EmpowerJaceEffect"
         | "EmptyManaPoolEffect"
@@ -281,6 +295,9 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ModifyPowerToughnessEffect"
         | "ModifyPowerToughnessForEachEffect"
         | "SetPermanentDesignationEffect"
+        | "RecordSourceCollectionEffect"
+        | "GrantExileControllerInspectionEffect"
+        | "GrantActivationCostAlternativeEffect"
         | "MonstrosityEffect"
         | "MoveAllCountersEffect"
         | "MoveCountersEffect"
@@ -298,6 +315,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "NoteTriggeringCreatureTypeEffect"
         | "NoteCountersEffect"
         | "NoteLifeTotalEffect"
+        | "NoteObjectNamesEffect"
         | "RedistributeLifeTotalsEffect"
         | "CoinFlipLifeStakesEffect"
         | "RedirectEnteringSourceEffect"
@@ -412,6 +430,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "SkipTurnEffect"
         | "SneakCostEffect"
         | "SolveCaseEffect"
+        | "LinkPermanentsEffect"
         | "SoulbondPairEffect"
         | "SupportEffect"
         | "SuspectEffect"
@@ -424,6 +443,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "TagTriggeringObjectEffect"
         | "TagSplicedCardsEffect"
         | "TagLastDamageSourceEffect"
+        | "LinkObjectsToGroupEffect"
         | "TagTriggeringSourceEffect"
         | "TakeInitiativeEffect"
         | "TapCostObjects"
@@ -442,6 +462,12 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "VentureIntoDungeonEffect"
         | "WardCounterEffect"
         | "WinTheGameEffect" => Leaf,
+        // Battlefield-only component merge: counters/attachments transfer,
+        // but no component crosses a zone boundary.
+        "MergePermanentsEffect" => Leaf,
+        // Records exact Exile/Battlefield associations and emits a completed
+        // action receipt; selection/exile are separate authored instructions.
+        "LinkExiledCardsEffect" => Leaf,
         _ => Unknown,
     }
 }
@@ -463,6 +489,14 @@ mod tests {
                 "missing structural contract: {kind}"
             );
         }
+    }
+    #[test]
+    fn linked_definition_creation_and_association_contracts_are_explicit() {
+        assert_eq!(library_movement_policy("CreateLinkedFaceTokenEffect"),
+            library_movement_policy("CreateTokenEffect"));
+        assert_eq!(library_movement_policy("CreateLinkedFaceTokenEffect"), LibraryMovementPolicy::Deferred);
+        assert_eq!(library_movement_policy("MergePermanentsEffect"), LibraryMovementPolicy::Leaf);
+        assert_eq!(library_movement_policy("LinkExiledCardsEffect"), LibraryMovementPolicy::Leaf);
     }
     #[test]
     fn unknown_callback_is_not_a_known_safe_leaf() {

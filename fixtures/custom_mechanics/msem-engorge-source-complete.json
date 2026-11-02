@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "mechanics": [
+    {
+      "id": "msem-404",
+      "keyword": "Engorge",
+      "original_reminder": "As this enters, mill three cards, then exile a card from among the milled cards.",
+      "executable_reminder": "As this creature enters, mill three cards, then exile exactly one card in your graveyard milled this way.",
+      "source_cards": [
+        "Abhorrent Exhumer"
+      ],
+      "rule_reference": "702.196.",
+      "rule_text": [
+        {
+          "name": "702.196a",
+          "rule": "Engorge is a static ability. “Engorge” means “As this creature enters, put the top three cards of your library into your graveyard, then exile exactly one card put into your graveyard this way.”",
+          "custom": true
+        },
+        {
+          "name": "702.196b",
+          "rule": "A creature with engorge may refer to the card exiled this way as “the card it engorged.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Abhorrent Exhumer_AFM",
+          "name": "Abhorrent Exhumer",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Zombie\nPower/Toughness: 3/2\nEngorge *(As this enters, mill three cards, then exile a card from among the milled cards.)*\nWhen Abhorrent Exhumer enters, if it engorged a creature card, you may return target creature card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Zombie\nPower/Toughness: 3/2\nAs this creature enters, mill three cards, then exile exactly one card in your graveyard milled this way\nWhen Abhorrent Exhumer enters, if a creature card was exiled as this creature entered, you may return target creature card from your graveyard to your hand.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature — Zombie",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Abhorrent Exhumer_AFM",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Abhorrent Exhumer",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Zombie\nPower/Toughness: 3/2\nEngorge *(As this enters, mill three cards, then exile a card from among the milled cards.)*\nWhen Abhorrent Exhumer enters, if it engorged a creature card, you may return target creature card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Abhorrent Exhumer",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Zombie\nPower/Toughness: 3/2\nAs this creature enters, mill three cards, then exile exactly one card in your graveyard milled this way\nWhen Abhorrent Exhumer enters, if a creature card was exiled as this creature entered, you may return target creature card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "engorge"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Engorge\nWhen Abhorrent Exhumer enters, if it engorged a creature card, you may return target creature card from your graveyard to your hand.",
+              "original_printed_rules_text": "Engorge (As this enters, mill three cards, then exile a card from among the milled cards.)\nWhen Abhorrent Exhumer enters, if it engorged a creature card, you may return target creature card from your graveyard to your hand."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_keyword_identities": [
+            "engorge"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Engorge\nWhen Abhorrent Exhumer enters, if it engorged a creature card, you may return target creature card from your graveyard to your hand.",
+          "original_printed_rules_text": "Engorge (As this enters, mill three cards, then exile a card from among the milled cards.)\nWhen Abhorrent Exhumer enters, if it engorged a creature card, you may return target creature card from your graveyard to your hand."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_parent_native_verification",
+      "pending_generic_plumbing": "Entry replacement mill then exact-one exile from its own milled receipt, with persistent linked engorged-card identity and characteristics.",
+      "candidate_executable_reminder": "As this creature enters, mill three cards. Then exile exactly one card in your graveyard milled this way.",
+      "required_behavioral_assertions": [
+        "replacement before entry",
+        "exact-one from this instance of mill",
+        "empty library and short library",
+        "milled cards removed by replacement cannot be selected",
+        "linked exiled card type receipt",
+        "multiple engorge instances remain independent"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Engorge",
+          "reminder": "As this creature enters, mill three cards, then exile exactly one card in your graveyard milled this way.",
+          "linkedExileVerb": "engorged"
+        }
+      ]
+    }
+  ]
+}

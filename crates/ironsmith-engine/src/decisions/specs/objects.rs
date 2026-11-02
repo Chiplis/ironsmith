@@ -969,6 +969,8 @@ pub struct TargetRequirement {
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
     pub max_targets: Option<usize>,
+    /// Shared optional extra-target budget; original maximum is max minus this allowance.
+    pub additional_target_budget: usize,
 }
 
 impl TargetRequirement {
@@ -984,6 +986,7 @@ impl TargetRequirement {
             aggregate_constraint: None,
             min_targets: 1,
             max_targets: Some(1),
+            additional_target_budget: 0,
         }
     }
 
@@ -999,6 +1002,7 @@ impl TargetRequirement {
             aggregate_constraint: None,
             min_targets: 0,
             max_targets: None,
+            additional_target_budget: 0,
         }
     }
 }
@@ -1015,6 +1019,7 @@ fn runtime_requirements(
             aggregate_constraint: req.aggregate_constraint.clone(),
             min_targets: req.min_targets,
             max_targets: req.max_targets,
+            additional_target_budget: req.additional_target_budget,
             distinct_player_group: None,
             shared_player_group: None,
         })
@@ -1061,10 +1066,10 @@ impl DecisionSpec for TargetsSpec {
             let maxes: Vec<_> = self
                 .requirements
                 .iter()
-                .filter_map(|r| r.max_targets)
+                .filter_map(|r| r.max_targets.map(|max|max.saturating_sub(r.additional_target_budget)))
                 .collect();
             if maxes.len() == self.requirements.len() {
-                Some(maxes.iter().sum())
+                Some(maxes.iter().sum::<usize>().saturating_add(self.requirements.iter().map(|r|r.additional_target_budget).max().unwrap_or(0)))
             } else {
                 None // At least one requirement has unlimited targets
             }
@@ -1121,10 +1126,10 @@ impl DecisionSpec for TargetsSpec {
             let maxes: Vec<_> = self
                 .requirements
                 .iter()
-                .filter_map(|r| r.max_targets)
+                .filter_map(|r| r.max_targets.map(|max|max.saturating_sub(r.additional_target_budget)))
                 .collect();
             if maxes.len() == self.requirements.len() {
-                Some(maxes.iter().sum())
+                Some(maxes.iter().sum::<usize>().saturating_add(self.requirements.iter().map(|r|r.additional_target_budget).max().unwrap_or(0)))
             } else {
                 None
             }
@@ -1241,6 +1246,7 @@ mod tests {
                 aggregate_constraint: None,
                 min_targets: 2,
                 max_targets: Some(2),
+                additional_target_budget: 0,
             }],
         );
 

@@ -193,10 +193,12 @@ struct TokenProposal {
     resolved_token: CardDefinition,
     initial_counters: Vec<(crate::object::CounterType, u32)>,
     completion: Option<(crate::events::KeywordActionKind, u32)>,
+    token_grants: Vec<super::NamedActionTokenGrant>,
     token_preview: Option<crate::object::Object>,
     controller: crate::ids::PlayerId,
     count: u32,
     prepared: Option<crate::events::processing::PreparedTokenCreation>,
+    entry_attachment_plan: Option<super::lifecycle::TokenEntryAttachmentPlan>,
     charge_instruction: bool,
     instruction: Option<super::resources::TokenInstructionPermit>,
 }
@@ -226,10 +228,12 @@ fn prepare_token_proposal(
             resolved_token: effect.token.clone(),
             initial_counters: Vec::new(),
             completion: None,
+            token_grants: Vec::new(),
             token_preview: None,
             controller: controller_id,
             count: 0,
             prepared: None,
+            entry_attachment_plan: None,
             charge_instruction: false,
             instruction: None,
         });
@@ -264,6 +268,7 @@ fn prepare_token_proposal(
         })?;
     }
     materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
+    resolved_token=ctx.bind_definition_scope_definition(resolved_token)?;
     // CR 122.6: counters a token "enters with" are part of its entry event;
     // their amounts are fixed as the instruction resolves.
     let mut initial_counters = Vec::with_capacity(effect.entry_counters.len());
@@ -278,40 +283,27 @@ fn prepare_token_proposal(
             initial_counters.push((counter.counter_type, amount));
         }
     }
+    let token_grants = match &ctx.named_action_token_scope {
+        Some((label, player)) if base_count > 0 => super::capture_named_action_token_grants(game, label, *player)?,
+        _ => Vec::new(),
+    };
+    super::apply_named_action_grants_to_definition(&mut resolved_token, &token_grants);
     let token_preview = crate::object::Object::from_token_definition(
         ObjectId::from_raw(0),
         &resolved_token,
         controller_id,
     );
-    // CR 303.4i: an Aura token created attached to a named host that is
-    // undefined or that it couldn't legally enchant isn't created at all.
-    let mut base_count = base_count;
-    if effect.suppress_aura_attachment_choice
-        && resolved_token.card.subtypes.contains(&crate::types::Subtype::Aura)
-        && let Some(spec) = &ctx.pending_entry_attachment
-    {
-        let legal = crate::effects::permanents::resolve_entry_attachment_target(game, spec, ctx)
-            .is_some_and(|target| {
-                crate::effects::permanents::aura_preview_can_enter_attached_to(
-                    game,
-                    &token_preview,
-                    controller_id,
-                    target,
-                )
-            });
-        if !legal {
-            base_count = 0;
-        }
-    }
     Ok(TokenProposal {
         effect: effect.clone(),
         resolved_token,
         initial_counters,
         completion: None,
+        token_grants,
         token_preview: Some(token_preview),
         controller: controller_id,
         count: base_count,
         prepared: None,
+        entry_attachment_plan: None,
         charge_instruction: false,
         instruction: None,
     })
@@ -332,14 +324,37 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
             .map(|permit| permit.enter_phase())
             .transpose()?;
         game.clear_pending_decision_controllers();
-        self.prepared = Some(crate::events::processing::prepare_token_creation_deferred(
+        if self.prepared.is_some() { return Ok(()); }
+        let mut prepared = crate::events::processing::prepare_token_creation_deferred(
             game,
             self.controller,
             self.count,
             self.token_preview.clone(),
             ctx.cause.clone(),
             ctx,
-        )?);
+        )?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        if ctx.pending_entry_attachment.is_some()
+            && let crate::events::processing::PreparedTokenCreation::Proceed { event, provenance, .. } = &mut prepared
+        {
+            game.reserve_token_creation(event.total_count())?;
+            let registration_id = event.token.as_ref().map(|object| object.id).unwrap_or(ctx.source);
+            let _ = game.object_from_token_definition(registration_id, &self.resolved_token, event.controller);
+            if let Some(preview) = &mut event.token {
+                let exiled = cost_exiled_objects(game, ctx);
+                if !exiled.is_empty() {
+                    preview.cast_tagged_objects.insert(crate::tag::COST_EXILED_TAG.into(), exiled);
+                }
+            }
+            let previous_provenance = std::mem::replace(&mut ctx.provenance, *provenance);
+            let planned = super::lifecycle::prepare_token_entry_attachments(
+                game, ctx, event, &self.initial_counters, self.effect.enters_tapped, &self.token_grants, &[], true,
+            );
+            ctx.provenance = previous_provenance;
+            self.entry_attachment_plan = planned?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        }
+        self.prepared = Some(prepared);
         Ok(())
     }
     fn commit_original(
@@ -540,12 +555,14 @@ fn commit_token_proposal(
                 &proposal.effect,
                 &proposal.resolved_token,
                 &proposal.initial_counters,
+                &proposal.token_grants,
                 preview,
                 game,
                 ctx,
                 event,
                 programs,
                 proposal.instruction.take(),
+                proposal.entry_attachment_plan.take(),
             )?
         }
     };
@@ -569,19 +586,24 @@ fn commit_token_original(
     effect: &CreateTokenEffect,
     resolved_token: &CardDefinition,
     initial_counters: &[(crate::object::CounterType, u32)],
+    token_grants: &[super::NamedActionTokenGrant],
     token_preview: crate::object::Object,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     replacement: crate::events::CreateTokensEvent,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
     instruction: Option<super::resources::TokenInstructionPermit>,
+    mut entry_attachment_plan: Option<super::lifecycle::TokenEntryAttachmentPlan>,
 ) -> Result<
     crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
     ExecutionError,
 > {
     let controller_id = replacement.controller;
     let token_preview = replacement.token.clone().unwrap_or(token_preview);
-    game.reserve_token_creation(replacement.total_count())?;
+    if ctx.pending_entry_attachment.is_some() && entry_attachment_plan.is_none() {
+        return Err(ExecutionError::IncompleteEvidence("authored token attachment lost its prepared entry owner".into()));
+    }
+    if entry_attachment_plan.is_none() { game.reserve_token_creation(replacement.total_count())?; }
     let count = replacement.count as usize;
     let cleanup_options = TokenCleanupOptions::new(
         effect.exile_at_end_of_combat,
@@ -640,6 +662,7 @@ fn commit_token_original(
     let mut created_ids = super::resources::buffer(count)?;
     let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
+    let mut attachment_receipts = Vec::new();
     let mut lifecycle_children = Vec::new();
     let mut entry_outputs = Vec::new();
     let pending_start = game.effect_store.pending_trigger_events.len();
@@ -647,9 +670,12 @@ fn commit_token_original(
     // CR 607.2a: a token whose ability returns "the exiled card" is linked
     // to the cards its creating resolution exiled with the source.
     let linked_exiles: Vec<ObjectId> = if effect.link_source_exiled_this_resolution {
-        ctx.get_tagged_all(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG)
+        ctx.get_tagged_all(if effect.link_only_last_source_exiled { ironsmith_core::tag::LAST_EXILED_RESULT_TAG } else { ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG })
             .map(|snapshots| {
-                snapshots
+                let linked = if effect.link_only_last_source_exiled {
+                    &snapshots[snapshots.len().saturating_sub(1)..]
+                } else { snapshots.as_slice() };
+                linked
                     .iter()
                     .map(|snapshot| snapshot.object_id)
                     .filter(|id| game.object(*id).is_some_and(|obj| obj.zone == Zone::Exile))
@@ -660,28 +686,39 @@ fn commit_token_original(
         Vec::new()
     };
 
-    for _ in 0..count {
-        let id = game.new_object_id();
-        let mut token_obj = game.object_from_token_definition(id, &resolved_token, controller_id);
-        token_obj.zone = Zone::Command;
-        if !cost_exiled.is_empty() {
-            token_obj.cast_tagged_objects.insert(
-                crate::tag::TagKey::from(crate::tag::COST_EXILED_TAG),
-                cost_exiled.clone(),
-            );
-        }
-        let token_is_creature = token_obj.is_creature();
-
-        game.commit_token_resource_slot()?;
-        game.add_object(token_obj);
-        let entry_result = game.move_created_token_with_entry_instructions(
-            id,
-            ctx.cause.clone(),
-            &mut ctx.decision_maker,
-            effect.enters_tapped,
-            !effect.suppress_aura_attachment_choice,
-            initial_counters.to_vec(),
-        )?;
+    for index in 0..count {
+        let (id, token_is_creature, entry_result) = if let Some(plan) = &mut entry_attachment_plan {
+            let prepared = plan.take(crate::events::tokens::TokenGroupKey::Original, index)?;
+            let id = prepared.id; let is_creature = prepared.is_creature;
+            let result = prepared.commit(game, ctx)?;
+            (id, is_creature, result)
+        } else {
+            let id = game.new_object_id();
+            let mut token_obj = game.object_from_token_definition(id, &resolved_token, controller_id);
+            token_obj.zone = Zone::Command;
+            if !cost_exiled.is_empty() {
+                token_obj.cast_tagged_objects.insert(
+                    crate::tag::TagKey::from(crate::tag::COST_EXILED_TAG),
+                    cost_exiled.clone(),
+                );
+            }
+            let token_is_creature = token_obj.is_creature();
+    
+            game.commit_token_resource_slot()?;
+            game.add_object(token_obj);
+            let attachment = None;
+            let entry_result = game.move_created_token_with_entry_instructions(
+                id,
+                ctx.cause.clone(),
+                &mut ctx.decision_maker,
+                effect.enters_tapped,
+                !effect.suppress_aura_attachment_choice,
+                initial_counters.to_vec(),
+                attachment,
+                ctx.pending_entry_attachment.is_some(),
+            )?;
+            (id, token_is_creature, entry_result)
+        };
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
                 crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -692,6 +729,8 @@ fn commit_token_original(
         let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(
             game,
             id,
+            ctx.provenance,
+            &mut attachment_receipts,
             entry_result,
             &mut entry_outputs,
             &mut entry_receipts,
@@ -703,7 +742,7 @@ fn commit_token_original(
         let entered_id = entry_result.new_id;
         created_ids.push(entered_id);
         for &exiled_id in &linked_exiles {
-            game.add_exiled_with_source_link(entered_id, exiled_id);
+            game.add_created_token_exile_link(entered_id, exiled_id);
         }
         let entered_battlefield = game
             .object(entered_id)
@@ -781,6 +820,7 @@ fn commit_token_original(
         controller_id,
         &mut actual_creation,
         &super::lifecycle::AdditionalTokenInstructions {
+            entry_attachment_plan: entry_attachment_plan.clone(),
             enters_tapped: effect.enters_tapped,
             suppress_aura_attachment_choice: effect.suppress_aura_attachment_choice,
             entry: entry_options,
@@ -790,10 +830,12 @@ fn commit_token_original(
             cleanup: None,
             linked_exiles: linked_exiles.clone(),
             initial_counters: initial_counters.to_vec(),
+            operation_grants: token_grants.to_vec(),
             ..Default::default()
         },
         &mut events,
         &mut entry_receipts,
+        &mut attachment_receipts,
         &mut lifecycle_children,
         &mut entry_outputs,
     )?;
@@ -885,10 +927,14 @@ fn commit_token_original(
         );
     }
 
-    let original = EffectOutcome::with_objects(created_ids.clone())
+    super::capture_named_action_created_objects(game, ctx, &created_ids)?;
+    let mut original = EffectOutcome::with_objects(created_ids.clone())
         .with_result_objects(created_ids.clone())
         .with_events(events)
         .with_affected_objects_from_game(game, created_ids);
+    if ctx.pending_entry_attachment.is_some() {
+        original.execution_facts.push(crate::effect::ExecutionFact::EntryAttachments(attachment_receipts));
+    }
     let mut outcome = super::lifecycle::compose_token_original(original, lifecycle_children);
     outcome.retain_published_references(entry_outputs);
     Ok(crate::effects::SimultaneousEffectCommit {
@@ -957,6 +1003,36 @@ impl EffectExecutor for CreateTokenEffect {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn singular_linked_token_owns_only_latest_exiled_incarnation_and_never_falls_back() {
+        for singular in [true,false] {
+            let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            let definition=CardDefinitionBuilder::new(CardId::new(),"Linked card").card_types(vec![CardType::Enchantment]).build();
+            let source=game.create_object_from_definition(&definition,PlayerId(0),Zone::Battlefield);
+            let first=game.create_object_from_definition(&definition,PlayerId(0),Zone::Hand);
+            let second=game.create_object_from_definition(&definition,PlayerId(0),Zone::Hand);
+            let mut ctx=ExecutionContext::new_default(source,PlayerId(0));
+            crate::effects::ExileEffect::specific(first).execute(&mut game,&mut ctx).unwrap();
+            let first_exiled=game.get_exiled_with_source_links(source)[0];
+            let mut create=CreateTokenEffect::one(treasure_token_definition()).linking_source_exiled_this_resolution();
+            create.link_only_last_source_exiled=singular;
+            create.execute(&mut game,&mut ctx).unwrap();
+            let first_reader=*game.battlefield.last().unwrap();
+            assert_eq!(game.get_exiled_with_source_links(first_reader),&[first_exiled]);
+            crate::effects::ExileEffect::specific(second).execute(&mut game,&mut ctx).unwrap();
+            let second_exiled=game.get_exiled_with_source_links(source)[1];
+            create.execute(&mut game,&mut ctx).unwrap();
+            let second_reader=*game.battlefield.last().unwrap();
+            if singular { assert_eq!(game.get_exiled_with_source_links(second_reader),&[second_exiled]); }
+            else { assert_eq!(game.get_exiled_with_source_links(second_reader),&[first_exiled,second_exiled]); }
+            game.move_object(second_exiled,Zone::Graveyard,crate::events::EventCause::effect()).unwrap();
+            create.execute(&mut game,&mut ctx).unwrap();
+            let third_reader=*game.battlefield.last().unwrap();
+            if singular { assert!(game.get_exiled_with_source_links(third_reader).is_empty(),"a departed last result never revives the previous card"); }
+            else { assert_eq!(game.get_exiled_with_source_links(third_reader),&[first_exiled]); }
+        }
+    }
+
     use super::*;
     use crate::ability::Ability;
     use crate::card::PowerToughness;
@@ -2617,5 +2693,36 @@ mod simultaneous_token_resource_contract {
                 assert_eq!(game.battlefield.len(), 4);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod retained_entry_proposal_owner_tests {
+    use super::*;
+    use crate::effects::SimultaneousEffectProposal;
+    use crate::target::PlayerFilter;
+    use crate::effects::tokens::lifecycle::retained_token_entry_attachment_tests::{source_and_creation, bind_hosts, HostChoices};
+    #[test]
+    fn proposal_prepares_every_exact_entry_before_any_original_and_commit_does_not_prompt() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = crate::ids::PlayerId::from_index(0); let bob = crate::ids::PlayerId::from_index(1);
+        let (source, creation) = source_and_creation(&mut game, alice);
+        let (root, meter) = game.begin_token_resource_scope();
+        let guard = super::super::resources::TokenInstructionGuard::enter(meter.clone()).unwrap();
+        let mut decisions = HostChoices { calls: 0, pending: false, suspend: false };
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions); bind_hosts(&mut ctx, alice, bob);
+        let effect = CreateTokenEffect::new(creation.additional_templates[0].definition.clone(), 2, PlayerFilter::You).suppress_aura_attachment_choice();
+        let mut proposal = prepare_token_proposal(&effect, &game, &mut ctx).unwrap();
+        proposal.prepare_original(&mut game, &mut ctx).unwrap();
+        assert!(proposal.entry_attachment_plan.is_some());
+        assert_eq!(game.battlefield, vec![source], "entry preparation has not committed any original token");
+        let receipt = Box::new(proposal).commit_original_with_outputs(&mut game, &mut ctx).unwrap();
+        let completed = crate::effects::composition::complete_standalone_original_with_outputs(&mut game, &mut ctx, receipt).unwrap();
+        let entries = completed.outcome.entry_attachments().expect("genuine instruction entry facts");
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| entry.choice.performed && entry.choice.target == Some(crate::object::AttachmentTarget::Player(bob))));
+        assert_eq!(game.battlefield.len(), 3);
+        drop(ctx); assert_eq!(decisions.calls, 2, "original commit consumes host receipts, it never asks again");
+        drop(guard); game.end_token_resource_scope(root, &meter);
     }
 }

@@ -82,7 +82,7 @@ fn execute_optional_effects_with_outputs(
             .map_err(ExecutionError::InternalError)?;
         if let ironsmith_core::TotalCostKind::All(components) = cost.kind()
             && components.iter().all(|component| component.0.supports_prepared_payment()) {
-            let prepared = crate::costs::prepare_total_cost(&cost, game, ctx, payer, crate::costs::PaymentReason::Effect)?;
+            let prepared = crate::costs::prepare_total_cost_program_action(&cost, game, ctx, payer, crate::costs::PaymentReason::Effect)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
@@ -102,7 +102,8 @@ fn execute_optional_effects_with_outputs(
         ) {
             Ok(children) if !ctx.decision_maker.awaiting_choice() => Ok(
                 crate::effects::CompletedEffectOutputs::from_children(children, |outcomes| {
-                    EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted)
+                    crate::costs::acknowledged_payment_program_outcome(outcomes)
+                        .with_execution_fact(ExecutionFact::Accepted)
                 })),
             Ok(_) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
             Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
@@ -148,6 +149,8 @@ fn execute_optional_effects_with_outputs(
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct MayEffect {
+    /// Authored optional-payment receipt, independent of any keyword name.
+    pub payment_receipt:Option<String>,
     /// The optional effects to execute.
     pub effects: Vec<Effect>,
     /// Optional explicit decider for "that player may ..." patterns.
@@ -200,6 +203,7 @@ impl MayEffect {
             decider: None,
             fallback: FallbackStrategy::Decline,
             pay_as_cost: false,
+            payment_receipt:None,
         }
     }
 
@@ -210,6 +214,7 @@ impl MayEffect {
             decider: Some(decider),
             fallback: FallbackStrategy::Decline,
             pay_as_cost: false,
+            payment_receipt:None,
         }
     }
 
@@ -222,6 +227,10 @@ impl MayEffect {
     pub fn with_fallback(mut self, fallback: FallbackStrategy) -> Self {
         self.fallback = fallback;
         self
+    }
+
+    pub fn with_payment_receipt(mut self,label:impl Into<String>)->Self {
+        self.payment_receipt=Some(label.into());self
     }
 
     pub fn with_pay_as_cost(mut self, pay_as_cost: bool) -> Self {
@@ -483,6 +492,7 @@ impl EffectExecutor for MayEffect {
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
+        if self.payment_receipt.is_some() {return false;}
         if !self.pay_as_cost { return true; }
         crate::costs::Cost::try_effects(self.effects.iter().cloned()).is_ok_and(|cost|
             matches!(cost.kind(), ironsmith_core::TotalCostKind::All(components)
@@ -510,7 +520,7 @@ impl EffectExecutor for MayEffect {
             .unwrap_or(ctx.iteration.iterated_player);
         let prepared = if self.pay_as_cost && acceptance.is_some() {
             let cost = crate::costs::Cost::try_effects(self.effects.iter().cloned()).map_err(ExecutionError::InternalError)?;
-            crate::costs::prepare_total_cost(&cost, game, ctx, acceptance.as_ref().expect("accepted payment").payment_player, crate::costs::PaymentReason::Effect)?
+            crate::costs::prepare_total_cost_program_action(&cost, game, ctx, acceptance.as_ref().expect("accepted payment").payment_player, crate::costs::PaymentReason::Effect)?
         } else if self.pay_as_cost { None } else { super::prepared_branch::prepare_action_branch(
             &effects,
             game,
@@ -766,6 +776,12 @@ fn execute_may_with_outputs(
     // The complete optional instruction owns all of its child actions.
     // Pending answers cannot become a decline or publish earlier partial
     // actions; retry must retain the original context and one-shot state.
+    let receipt_payer=if effect.payment_receipt.is_some() {
+        if !effect.pay_as_cost {return Err(ExecutionError::IncompleteEvidence("a named payment receipt requires an optional cost program".into()))}
+        Some(match &effect.decider {
+            Some(player)=>crate::effects::helpers::resolve_player_filter_as_chooser(game,player,ctx)?,None=>ctx.iteration.iterated_player.filter(|player|Some(*player)!=ctx.iteration.trigger_bound_player).unwrap_or(ctx.controller),
+        })
+    } else {None};
     let unpaid_checkpoint = effect.pay_as_cost.then(|| (game.clone(), crate::effects::ExecutionContextCheckpoint::capture(ctx)));
     let result = super::execute_transaction(
         game,
@@ -788,7 +804,26 @@ fn execute_may_with_outputs(
             context.restore(ctx);
         }
     }
-    result
+    let mut receipt_event=None;
+    if !ctx.decision_maker.awaiting_choice()
+        && let (Some(label),Some(payer),Ok(output))=(&effect.payment_receipt,receipt_payer,&result)
+    {
+        let receipt=crate::object::NamedPaymentOutcomeReceipt {label:label.clone(),payer,paid:output.outcome.status.is_success()};
+        let Some(source)=game.object_mut(ctx.source) else{return Err(ExecutionError::IncompleteEvidence("named payment producer incarnation is gone".into()))};
+        let unpaid=!receipt.paid;
+        source.named_payment_outcomes.push(receipt);
+        if unpaid {
+            let snapshot=crate::snapshot::ObjectSnapshot::from_object_id(game,ctx.source).ok_or_else(||ExecutionError::IncompleteEvidence("named payment source snapshot is unavailable".into()))?;
+            let sources=game.try_trigger_source_lookback_snapshots()?;
+            let event=crate::events::NamedActionEvent::new(format!("fail {label}"),payer,ctx.source,snapshot.clone(),vec![snapshot],1,ctx.cause.clone()).with_complete_source_lookback();
+            let provenance=game.alloc_child_event_provenance(ctx.provenance,crate::events::EventKind::KeywordAction);
+            let event=crate::triggers::TriggerEvent::new_with_provenance(event,provenance).with_lookback_source_snapshots(sources);
+            receipt_event=Some(event);
+        }
+    }
+    result.map(|output| {
+        if let Some(event)=receipt_event {let outcome=output.outcome.clone().with_event(event);output.project_aggregate(outcome)} else {output}
+    })
 }
 
 impl CostExecutableEffect for MayEffect {
@@ -854,8 +889,17 @@ impl MayEffect {
     fn should_auto_decline_without_prompt(
         &self,
         game: &GameState,
-        ctx: &ExecutionContext,
+        ctx: &mut ExecutionContext,
     ) -> Result<bool, ExecutionError> {
+        if self.pay_as_cost {
+            let cost = crate::costs::Cost::try_effects(self.effects.iter().cloned()).map_err(ExecutionError::InternalError)?;
+            let payer = match self.decider.as_ref() {
+                Some(filter) => crate::effects::helpers::resolve_player_filter_as_chooser(game, filter, ctx)?,
+                None => ctx.controller,
+            };
+            let possible = crate::special_actions::can_pay_non_mana_parts_of_cost_in_context(game, payer, ctx.source, &cost, crate::costs::PaymentReason::Effect, ctx);
+            if crate::costs::acknowledged_total_cost(possible)?.is_none() { return Ok(true); }
+        }
         // "Any player may sacrifice two creatures of their choice" is not an
         // option for a player who controls one: an optional action has to be
         // performed in full, so a leading fixed-count choice the deciding

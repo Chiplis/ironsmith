@@ -74,4 +74,11 @@ pub enum ReplacedEventSpec {
     /// The life-loss action of an accepted life payment, never ordinary
     /// damage or life loss. The capacity guard is evaluated before replacement.
     LifePayment { player: PlayerFilter, require_library_capacity: bool },
+    /// A zone departure except for explicitly permitted destinations.
+    /// Appended to preserve the published variant ordinals.
+    ZoneChangeExcluding {
+        object: ObjectFilter,
+        from: Zone,
+        excluded_to_zones: Vec<Zone>,
+    },
 }

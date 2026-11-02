@@ -104,6 +104,10 @@ impl EffectExecutor for PhaseOutEffect {
             PhaseOutDuration::UntilVisitRollAtMost(maximum) => game.duration_event_occurred(ctx.duration_window_start, |event| {
                 event.downcast::<crate::events::other::DieRolledEvent>().is_some_and(|event| event.is_attraction_visit && event.player == ctx.controller && event.result <= maximum)
             })?,
+            PhaseOutDuration::UntilControllerCastsNthSpellInTurn(nth) => game.duration_event_occurred(ctx.duration_window_start, |event| {
+                event.downcast::<crate::events::SpellCastEvent>().is_some_and(|cast| cast.caster == ctx.controller
+                    && game.turn_store.turn_history.spell_cast_order_for_player(cast.spell, cast.caster) == Some(nth))
+            })?,
             _ => false,
         };
         if duration_event_already_occurred { return Ok(EffectOutcome::count(0)); }
@@ -152,6 +156,16 @@ impl EffectExecutor for PhaseOutEffect {
         if let PhaseOutDuration::UntilVisitRollAtMost(max_result) = self.duration {
             for &object_id in &affected {
                 game.hold_phased_out_until_visit_roll(object_id, ctx.controller, max_result);
+            }
+        }
+        if let PhaseOutDuration::UntilControllerCastsNthSpellInTurn(nth) = self.duration {
+            for &object_id in &affected {
+                game.hold_phased_out_until_nth_spell(object_id, ctx.controller, nth);
+            }
+        }
+        if self.duration == PhaseOutDuration::UntilEndOfTurn {
+            for &object_id in &affected {
+                game.hold_phased_out_until_end_of_turn(object_id);
             }
         }
         if self.duration.is_until_source_leaves() {

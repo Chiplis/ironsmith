@@ -369,6 +369,7 @@ pub(super) fn test_triggered_mana_ability_target_requirement_uses_stack() {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     }
@@ -425,6 +426,7 @@ pub(super) fn test_triggered_mana_ability_ignores_non_target_choices() {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     }
@@ -1646,6 +1648,8 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
     game.effect_store
         .delayed_triggers
         .push(crate::triggers::DelayedTrigger {
+            persistent_player_rule: None,
+            intervening_if: None,
             linked_exile_owner: None,
             source_number_owner: None,
             trigger: Trigger::this_leaves_battlefield(),
@@ -1661,6 +1665,7 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
             expires_at_end_of_combat: false,
             bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
+                            source_collection_scope: None,
             while_source_tapped: None,
             target_objects: vec![stangg_id],
             ability_source: None,

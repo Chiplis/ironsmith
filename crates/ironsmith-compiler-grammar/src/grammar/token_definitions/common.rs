@@ -19,14 +19,23 @@ pub(super) fn token_description_projection(tokens: &[crate::lexer::OwnedLexToken
     let mut outer = Vec::new();
     let mut quoted_rules = Vec::new();
     let mut open = None;
+    let mut quoted_name = false;
     for (index, token) in tokens.iter().enumerate() {
         if token.is_quote() {
             if let Some(start) = open.take() {
-                if start < index { quoted_rules.push(&tokens[start..index]); }
-            } else { open = Some(index + 1); }
-        } else if open.is_none() { outer.push(token.clone()); }
+                if quoted_name { outer.push(token.clone()); }
+                else if start < index { quoted_rules.push(&tokens[start..index]); }
+                quoted_name = false;
+            } else {
+                // A proper name following `named` is descriptor data, not a
+                // granted-rule quotation. Preserve its lexical boundary.
+                quoted_name = outer.last().is_some_and(|token: &crate::lexer::OwnedLexToken| token.is_word("named"));
+                if quoted_name { outer.push(token.clone()); }
+                open = Some(index + 1);
+            }
+        } else if open.is_none() || quoted_name { outer.push(token.clone()); }
     }
-    if let Some(start) = open && start < tokens.len() { quoted_rules.push(&tokens[start..]); }
+    if let Some(start) = open && start < tokens.len() && !quoted_name { quoted_rules.push(&tokens[start..]); }
     TokenDescriptionProjection { outer, quoted_rules, complete_quotes: open.is_none() }
 }
 

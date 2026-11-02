@@ -1085,7 +1085,7 @@ impl crate::effects::SimultaneousEffectCompletion for DamageBatchCompletion {
                     let mut before = self.current_prefix(&original.outcome);
                     crate::effects::capture_triggers_before_added_program(
                         game,
-                        &participant,
+                        &mut participant,
                         program.effects.first(),
                         before.events.iter_mut(),
                     )?;

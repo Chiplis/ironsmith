@@ -575,6 +575,12 @@ pub fn parse_stack_retarget_filter(
 
 pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
+        specific_primitive!(
+            "named-action-performer",
+            &["have"],
+            super::named_action_atom::parse_have_performer,
+        ),
+        specific_primitive!("optional-text-fragment-removal", &["remove"], super::text_changes::parse_optional_text_fragment_removal),
         specific_primitive!("typed-text-change", &["change"], super::text_changes::parse_text_change),
         specific_primitive!(
             "bounded-number-choice",
@@ -765,7 +771,7 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "reselect-attack-target-clause",
-            &["reselect"],
+            &["reselect", "it", "its", "it's", "they", "theyre", "they're", "this", "that", "target", "enchanted", "equipped", "the"],
             parse_reselect_attack_target_clause,
         ),
         specific_primitive!(
@@ -891,6 +897,40 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
 pub fn parse_choose_card_name_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A finite authored domain uses the existing ordinary card-name choice.
+    // Names are quoted operands: commas/conjunctions within them are literal.
+    let bounded = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(bounded);
+    if words.first() == Some(&"choose") && words.ends_with(&["as", "a", "card", "name"]) {
+        let positions = crate::lexer::parser_token_word_positions(bounded);
+        let suffix = positions.get(positions.len().saturating_sub(4)).map(|item| item.0);
+        if let Some(suffix) = suffix {
+            let mut options = Vec::new();
+            let mut index = 1;
+            while index < suffix {
+                if !bounded[index].is_quote() { return Ok(None); }
+                index += 1;
+                let start = index;
+                while index < suffix && !bounded[index].is_quote() { index += 1; }
+                if index == suffix || start == index { return Ok(None); }
+                options.push(render_token_slice(&bounded[start..index]));
+                index += 1;
+                if index == suffix { break; }
+                if bounded[index].is_comma() { index += 1; }
+                if index < suffix && bounded[index].is_any_word(&["or", "and"]) { index += 1; }
+            }
+            if options.len() >= 2 && index == suffix {
+                crate::word_claims::claim_tokens(tokens);
+                return Ok(Some(EffectAst::subject_verb(
+                    SubjectVerbRoleAst::Chooser, PlayerAst::You,
+                    SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseCardName {
+                        filter: None, tag: crate::tag::CompilerReferenceTag::ChosenName.bind(),
+                        options, exclude_source_history: false,
+                    }),
+                )));
+            }
+        }
+    }
     let Some(shape) = clause_shapes::parse_choose_card_name_shape(tokens) else {
         return Ok(None);
     };
@@ -1315,6 +1355,22 @@ pub fn parse_reselect_targets_at_random_clause(
 pub fn parse_reselect_attack_target_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+    let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+    let target=if matches!(words.as_slice(),["its"|"it's"|"theyre"|"they're","attacking"]) {
+        Some(TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(),crate::util::span_from_tokens(tokens)))
+    } else if words.len()>2 && matches!(words[words.len()-2..],["is"|"are","attacking"]) {
+        let end=view.token_start_indices()[words.len()-2];Some(parse_target_phrase(&tokens[..end])?)
+    }else{None};
+    if let Some(target)=target {
+        crate::word_claims::claim_tokens(tokens);
+        return Ok(Some(EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor,
+            crate::cards::builders::PlayerAst::Implicit,
+            crate::cards::builders::SubjectVerbActionAst::PermanentState(
+                crate::cards::builders::PermanentStateActionAst::ReselectAttackTarget {
+                    target,players_only:false,attacked_player:None,enters_combat:true,among_attacked_by:None,
+                }))));
+    }
     let Some(shape) = clause_shapes::parse_reselect_attack_target_shape(tokens) else {
         return Ok(None);
     };
@@ -1855,13 +1911,40 @@ fn parse_named_player_turn_end_trailing_trigger_clause(
         one_shot: false,
         duration: crate::effect::Until::PlayersNextTurnEnd { player },
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None,
     })))
 }
 
 pub fn parse_until_duration_triggered_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // The registration label and prior-action relation are independent data.
+    if tokens.first().is_some_and(|token| token.is_word("maintain")) {
+        let Some(collection) = tokens.iter().position(|token| token.is_word("collection")) else { return Ok(None); };
+        if collection < 3 || !tokens[1].is_word("the") { return Ok(None); }
+        let Some(label) = tokens[2..collection].iter().map(OwnedLexToken::as_word).collect::<Option<Vec<_>>>() else { return Ok(None); };
+        let after = &tokens[collection + 1..];
+        let header = ["with", "cards", "exiled", "this", "way"];
+        if !header.iter().enumerate().all(|(index, word)| after.get(index).is_some_and(|token| token.is_word(word))) {
+            return Ok(None);
+        }
+        let Some(colon) = tokens.iter().position(|token| token.is_colon()) else { return Ok(None); };
+        if colon != collection + 6 { return Ok(None); }
+        let LineAst::Triggered { trigger, effects, max_triggers_per_turn: None } = parse_triggered_line_lexed(&tokens[colon + 1..])? else {
+            return Ok(None);
+        };
+        crate::word_claims::claim_tokens(&tokens[..=colon]);
+        let name = label.join(" ");
+        return Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+            trigger, effects, one_shot: false, duration: crate::effect::Until::Forever,
+            either_of_watched_objects: false, while_any_tagged_object_in_zone: None,
+            source_collection_scope: Some(ironsmith_core::effect::SourceCollectionScope {
+                tag: format!("source_collection:{name}").into(), name,
+                zone: Zone::Exile, capture_from: crate::effect::EffectId::PENDING_PRIOR_ACTION,
+                capture_action: ironsmith_core::PriorEffectAction::Exiled,
+            }),
+        })));
+    }
     if let Some(effect) = parse_named_player_turn_end_trailing_trigger_clause(tokens)? {
         return Ok(Some(effect));
     }
@@ -2031,7 +2114,7 @@ pub fn parse_until_duration_triggered_clause(
         one_shot: false,
         duration,
         either_of_watched_objects,
-        while_any_tagged_object_in_zone: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None,
     });
     Ok(Some(match declared_subject_target {
         Some(declaration) => EffectAst::Sequence {

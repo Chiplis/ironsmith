@@ -110,7 +110,7 @@ fn complete_entry_characteristics_do_not_become_a_granted_keyword() {
     let parsed = parse(text);
     let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else { panic!("one complete replacement"); };
     let ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter {
-        filter, card_types, subtypes, power, toughness,
+        filter, card_types, subtypes, power, toughness, ..
     } = &ability.payload else { panic!("typed entry replacement: {ability:#?}"); };
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert_eq!(card_types, &[CardType::Creature]);
@@ -266,4 +266,35 @@ fn raw_protection_grant_delimiters_and_quoted_continuous_context_cannot_be_trimm
         let tokens = crate::lexer::lex_line(text, 0).unwrap();
         assert!(crate::clause_support::validate_protection_static_line(&tokens).is_ok(), "{text}");
     }
+}
+
+#[test]
+fn filtered_face_down_entry_is_one_typed_replacement_without_custom_keyword_semantics(){
+ for reminder in ["", " (They're 2/2 creatures.)"] {
+ let text=format!("Nontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down.{reminder}");
+ let parsed=parse(&text);
+ let [StaticAbilityAst::Static(ability)]=parsed.as_slice() else{panic!("one replacement: {parsed:#?}")};
+ let ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter{face_down:true,filter,..}=&ability.payload else{panic!("face-down entry replacement")};
+ assert!(filter.nontoken);assert!(filter.not_cast);assert!(filter.excluded_ability_markers.iter().any(|name|name=="undercover"));
+ }
+ for suffix in [" Draw a card."," (They're 2/2 creatures."," (They're 2/2 creatures.) Draw a card."] {
+  let text=format!("Nontoken creatures without custom keyword \"undercover\" that weren't cast enter face-down.{suffix}");
+  let tokens=crate::lexer::lex_line(&text,0).unwrap();
+  assert!(!matches!(parse_as_enters_becomes_characteristics_for_filter_line(&tokens),Ok(Some(_))),"unread or unbalanced tail accepted: {text}");
+ }
+}
+
+#[test]
+fn protection_population_retains_nested_source_collection_from() {
+    let abilities = parse("This creature has protection from each color among cards in exile from the salvaged collection.");
+    let [StaticAbilityAst::KeywordAction(KeywordAction::ProtectionFromColorsAmong(filter))] = abilities.as_slice() else {
+        panic!("expected one projected-color protection ability: {abilities:?}");
+    };
+    assert_eq!(filter.zone, Some(crate::zone::Zone::Exile));
+    assert!(filter.tagged_constraints.iter().any(|constraint|
+        constraint.tag.as_str() == "source_collection:salvaged"
+            && constraint.relation == crate::target::TaggedOpbjectRelation::SameObjectId));
+    // A second quality still requires the ordinary explicit list separator.
+    assert_eq!(crate::clause_support::parse_protection_chain(
+        &crate::lexer::lex_line("Protection from white and from blue", 0).unwrap()).unwrap().len(), 2);
 }

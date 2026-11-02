@@ -43,6 +43,37 @@ pub(crate) struct CounterAbilityOccurrence {
     pub abilities: Vec<Ability>,
 }
 
+/// Immutable vocabulary owned by the physical source definition. It is
+/// transport/admission metadata, not a counter, granted ability or copiable
+/// characteristic. Unrelated game registry entries never enter this packet.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SourceDefinitionMetadata {
+    ability_counter_definitions: std::collections::BTreeMap<String, Vec<Ability>>,
+    custom_subtypes: Vec<Subtype>,
+}
+impl SourceDefinitionMetadata {
+    fn from_definition(definition: &crate::cards::CardDefinition) -> Self {
+        Self {
+            ability_counter_definitions: definition.ability_counter_definitions.clone(),
+            custom_subtypes: definition.card.custom_subtypes.clone(),
+        }
+    }
+    fn from_copy_dependencies(dependencies: &crate::snapshot::CopyDefinitionDependencies<Ability>) -> Self {
+        Self { ability_counter_definitions: dependencies.ability_counter_definitions.clone(), custom_subtypes: dependencies.custom_subtypes.clone() }
+    }
+    fn include_linked_face(&mut self, face: &Self) {
+        for (name, program) in &face.ability_counter_definitions {
+            // Admission owns name-conflict validation. Retain the original
+            // executable packet for an already admitted name; independently
+            // compiled native effects do not have structural PartialEq.
+            self.ability_counter_definitions.entry(name.clone()).or_insert_with(|| program.clone());
+        }
+        for subtype in &face.custom_subtypes {
+            ironsmith_core::custom_subtypes::merge_subtype_associations(&mut self.custom_subtypes, *subtype);
+        }
+    }
+}
+
 /// Counter counts and their registered ability payloads mutate together.
 /// Immutable map access is retained; mutable map access would bypass identity.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -50,15 +81,28 @@ pub struct ObjectCounters {
     counts: std::collections::BTreeMap<CounterType, u32>,
     occurrences: std::collections::BTreeMap<CounterType, Vec<CounterAbilityOccurrence>>,
     next_serial: Vec<u32>,
+    named_ability_programs: std::collections::BTreeMap<CounterType, Vec<Ability>>,
 }
 impl ObjectCounters {
+    /// Bind a supplied compiled program to this counter identity. Counts and
+    /// programs remain separate: one occurrence carries the whole program.
+    pub(crate) fn bind_named_ability_program(&mut self, kind: CounterType, abilities: Vec<Ability>) {
+        self.named_ability_programs.insert(kind, abilities);
+        let count = self.counts.get(&kind).copied().unwrap_or(0);
+        if count > 0 { self.insert(kind, count); }
+    }
+
+    pub(crate) fn has_ability_occurrences(&self) -> bool {
+        self.occurrences.values().any(|occurrences| !occurrences.is_empty())
+    }
+
     pub fn counts(&self) -> &std::collections::BTreeMap<CounterType, u32> {
         &self.counts
     }
 
     pub fn insert(&mut self, kind: CounterType, count: u32) -> Option<u32> {
         let old = self.counts.insert(kind, count);
-        if kind.is_ability_counter() {
+        if kind.is_ability_counter() || self.named_ability_programs.contains_key(&kind) {
             let mut occurrences = self.occurrences.remove(&kind).unwrap_or_default();
             occurrences.truncate(count as usize);
             while occurrences.len() < count as usize {
@@ -80,7 +124,7 @@ impl ObjectCounters {
                         counter_type: kind,
                         serial,
                     },
-                    abilities: counter_ability_payloads(kind),
+                    abilities: self.named_ability_programs.get(&kind).cloned().unwrap_or_else(||counter_ability_payloads(kind)),
                 });
             }
             if !occurrences.is_empty() {
@@ -105,6 +149,12 @@ impl ObjectCounters {
     pub fn clear(&mut self) {
         self.counts.clear();
         self.occurrences.clear();
+    }
+
+    /// Active counter occurrences contribute abilities to trigger discovery,
+    /// even though they never enter the object's copiable printed text box.
+    pub(crate) fn occurrence_abilities(&self) -> impl Iterator<Item=&Ability> {
+        self.occurrences.values().flat_map(|occurrences|occurrences.iter()).flat_map(|occurrence|occurrence.abilities.iter())
     }
 
     pub(crate) fn ability_occurrences(&self, kind: CounterType) -> &[CounterAbilityOccurrence] {
@@ -146,6 +196,14 @@ impl FromIterator<(CounterType, u32)> for ObjectCounters {
 
 /// Construct a payload only when a counter is registered, never during queries.
 fn counter_ability_payloads(kind: CounterType) -> Vec<Ability> {
+    if let CounterType::Named(name) = kind {
+        if let Some(amount) = crate::marker::ward_counter_generic_amount(name.as_str()) {
+            return vec![Ability::static_ability(StaticAbility::ward(crate::cost::TotalCost::mana(
+                crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(amount)]),
+            )))];
+        }
+    }
+
     let keyword = match kind {
         CounterType::Deathtouch => Some(StaticAbility::deathtouch()),
         CounterType::Flying => Some(StaticAbility::flying()),
@@ -159,6 +217,7 @@ fn counter_ability_payloads(kind: CounterType) -> Vec<Ability> {
         CounterType::Trample => Some(StaticAbility::trample()),
         CounterType::Vigilance => Some(StaticAbility::vigilance()),
         CounterType::Haste => Some(StaticAbility::haste()),
+        CounterType::Named(name) if name.eq_ignore_ascii_case("prowess") => Some(StaticAbility::prowess()),
         CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => {
             Some(StaticAbility::shadow())
         }
@@ -441,6 +500,7 @@ fn owned_optional_value<T: Clone>(value: &Option<SharedValue<T>>) -> Option<T> {
 #[derive(Debug, Clone)]
 pub(crate) struct CardSharedHandles {
     definition: Arc<crate::cards::CardDefinition>,
+    source_definition_metadata: Arc<SourceDefinitionMetadata>,
     name: SharedStr,
     first_printed_set_name: Option<SharedStr>,
     mana_cost: Option<SharedValue<ManaCost>>,
@@ -531,6 +591,7 @@ impl CardSharedHandles {
         }
         Self {
             definition: Arc::new(def.clone()),
+            source_definition_metadata: Arc::new(SourceDefinitionMetadata::from_definition(def)),
             name: def.card.name.clone().into(),
             first_printed_set_name: def.card.first_printed_set_name.clone().map(Into::into),
             mana_cost: shared_optional_value(def.card.mana_cost.clone()),
@@ -760,6 +821,8 @@ pub struct BestowCastState {
 /// overlay and then shed it through the ordinary stack-to-zone transition.
 #[derive(Debug, Clone)]
 pub struct SpliceCastState {
+    /// Exact original cards supplying added text; copies inherit these receipts.
+    pub text_sources: Vec<crate::ids::StableId>,
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
     /// Abilities before stack-only text was added (CR 702.47c), if any was.
     pub abilities: Option<Arc<Vec<Ability>>>,
@@ -887,10 +950,15 @@ pub struct Object {
     /// This is clone/rollback state, not an id source and not a serialization surface.
     pub last_modified: u64,
     pub kind: ObjectKind,
+    /// Copied spell provenance can forbid battlefield entry independently of
+    /// its current presentation or whether it would become a token.
+    pub spell_copy_entry_forbidden: bool,
     pub copied_face_values: Option<Box<CopiableValues>>,
     pub token_creation_method: Option<ironsmith_core::effect::TokenCreationMethod>,
     /// Reference to the original card definition (None for pure tokens)
     pub card: Option<CardId>,
+    // Kept outside copy/face-down/prototype restore packets deliberately.
+    pub(crate) source_definition_metadata: Arc<SourceDefinitionMetadata>,
     pub zone: Zone,
 
     // Ownership (normally immutable; CR 407.2 changes ownership at the end of
@@ -987,6 +1055,8 @@ pub struct Object {
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
     pub optional_costs: SharedVec<OptionalCost>,
+    /// Announcement-only baseline; never part of copiable values or a new incarnation.
+    pub optional_costs_before_payment_alternatives: Option<SharedVec<OptionalCost>>,
     /// Which optional costs were paid when this spell was cast (for ETB triggers)
     pub optional_costs_paid: OptionalCostsPaid,
     /// Mana actually spent to cast this object while it was a spell.
@@ -1014,6 +1084,11 @@ pub struct Object {
     /// This lets replacement/trigger text on the resolving permanent reference cards or permanents
     /// used to pay costs, such as "the discarded card's mana value".
     pub cast_tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Completed optional payment decisions for this incarnation. These are
+    /// outside copiable characteristics; spell copies retain casting decisions
+    /// under CR 707.10. Stack-to-battlefield continuation retains them;
+    /// independent moves and ordinary token/permanent copies clear them.
+    pub named_payment_outcomes:Vec<NamedPaymentOutcomeReceipt>,
     /// Additional non-printed costs paid while casting this object as a spell.
     pub additional_cost: SharedValue<TotalCost>,
     // Note: The following fields have been moved to GameState extension maps:
@@ -1376,6 +1451,7 @@ impl Object {
             id,
             stable_id: StableId::from(id), // Set to same as id initially; preserved across zone changes
             last_modified: 0,
+            spell_copy_entry_forbidden: false,
             kind: if is_token {
                 ObjectKind::Token
             } else {
@@ -1384,6 +1460,10 @@ impl Object {
             copied_face_values: None,
             token_creation_method: None,
             card: (!is_token).then_some(card.id),
+            source_definition_metadata: Arc::new(SourceDefinitionMetadata {
+                ability_counter_definitions: Default::default(),
+                custom_subtypes: card.custom_subtypes.clone(),
+            }),
             zone,
             owner,
             initial_controller: owner,
@@ -1427,6 +1507,7 @@ impl Object {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -1436,6 +1517,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: TotalCost::free().into(),
         }
     }
@@ -1474,9 +1556,11 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::Card,
+            spell_copy_entry_forbidden: false,
             copied_face_values: None,
             token_creation_method: None,
             card: None,
+            source_definition_metadata: Arc::default(),
             zone,
             owner,
             initial_controller: owner,
@@ -1520,6 +1604,7 @@ impl Object {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -1529,6 +1614,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: TotalCost::free().into(),
         }
     }
@@ -1561,6 +1647,7 @@ impl Object {
             ObjectKind::Card
         };
         self.card = (!is_token).then_some(def.card.id);
+        self.source_definition_metadata = handles.source_definition_metadata.clone();
         self.apply_definition_face_with_shared(def, handles);
         self.spell_effect = handles.spell_effect.clone();
         self.aura_attach_filter = handles.aura_attach_filter.clone();
@@ -1672,6 +1759,10 @@ impl Object {
             && def.card.linked_face_layout == LinkedFaceLayout::Split)
             .then(|| self.clone());
         if turning_to_linked_face {
+            // Both faces belong to this physical card's source graph. Keep
+            // their declared vocabulary when either face is later extracted.
+            Arc::make_mut(&mut self.source_definition_metadata)
+                .include_linked_face(&handles.source_definition_metadata);
             self.linked_face_mana_cost = self.mana_cost.take();
         }
         self.name = handles.name.clone();
@@ -1769,8 +1860,33 @@ impl Object {
 
     /// Reconstructs a CardDefinition from this object's fields.
     /// Used for rendering compiled text in the UI.
+    pub(crate) fn source_definition_dependencies(&self) -> crate::snapshot::CopyDefinitionDependencies<Ability> {
+        crate::snapshot::CopyDefinitionDependencies {
+            ability_counter_definitions:self.source_definition_metadata.ability_counter_definitions.clone(),
+            custom_subtypes:self.source_definition_metadata.custom_subtypes.clone(),
+        }
+    }
+
+    /// Granted copiable programs retain their source's exact executable
+    /// vocabulary and ability-counter definitions on subsequent copies.
+    pub(crate) fn include_source_definition_dependencies(&mut self, dependencies: &crate::snapshot::CopyDefinitionDependencies<Ability>) {
+        Arc::make_mut(&mut self.source_definition_metadata)
+            .include_linked_face(&SourceDefinitionMetadata::from_copy_dependencies(dependencies));
+    }
+
+    fn copied_definition_metadata(&self) -> Arc<SourceDefinitionMetadata> {
+        self.copied_face_values.as_ref().and_then(|values|values.definition_dependencies.as_ref())
+            .map(|dependencies|Arc::new(SourceDefinitionMetadata::from_copy_dependencies(dependencies)))
+            .unwrap_or_else(||self.source_definition_metadata.clone())
+    }
+
+    pub fn authored_optional_costs(&self) -> &[OptionalCost] {
+        self.optional_costs_before_payment_alternatives.as_deref().unwrap_or(&self.optional_costs)
+    }
+
     pub fn to_card_definition(&self) -> crate::cards::CardDefinition {
         use crate::card::PowerToughness;
+        let definition_metadata=self.copied_definition_metadata();
 
         let power_toughness = match (self.base_power, self.base_toughness) {
             (Some(p), Some(t)) => Some(PowerToughness::new(p, t)),
@@ -1790,7 +1906,13 @@ impl Object {
                 supertypes: self.supertypes.to_vec(),
                 card_types: self.card_types.to_vec(),
                 subtypes: self.subtypes.to_vec(),
-                custom_subtypes: self.subtypes.iter().copied().filter(|ty| ty.is_custom_vocabulary()).collect(),
+                custom_subtypes: {
+                    let mut dependencies = definition_metadata.custom_subtypes.clone();
+                    for subtype in self.subtypes.iter().copied().filter(|ty| ty.is_custom_vocabulary()) {
+                        ironsmith_core::custom_subtypes::merge_subtype_associations(&mut dependencies, subtype);
+                    }
+                    dependencies
+                },
                 rules_text_color_identity: self.rules_text_color_identity,
                 power_toughness,
                 loyalty: self.base_loyalty,
@@ -1816,9 +1938,10 @@ impl Object {
             aura_attach_filter: self.aura_attach_filter_owned(),
             alternative_casts: self.alternative_casts.to_vec(),
             has_fuse: self.has_fuse,
-            optional_costs: self.optional_costs.to_vec(),
+            optional_costs: self.authored_optional_costs().to_vec(),
             additional_cost: self.additional_cost.to_owned_value(),
             refers_to_ante: false,
+            ability_counter_definitions: definition_metadata.ability_counter_definitions.clone(),
         }
     }
 
@@ -1853,9 +1976,11 @@ impl Object {
             stable_id: StableId::from(id), // New token gets its own stable_id
             last_modified: 0,
             kind: ObjectKind::Token,
+            spell_copy_entry_forbidden: false,
             copied_face_values: None,
             token_creation_method: None,
             card: None,
+            source_definition_metadata: Arc::default(),
             zone: Zone::Battlefield,
             owner,
             initial_controller: owner,
@@ -1899,6 +2024,7 @@ impl Object {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -1908,6 +2034,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: TotalCost::free().into(),
         }
     }
@@ -1934,9 +2061,11 @@ impl Object {
             stable_id: StableId::from(id), // Token copy is a new instance
             last_modified: 0,
             kind: ObjectKind::Token,
+            spell_copy_entry_forbidden: false,
             copied_face_values: source.copied_face_values.clone(),
             token_creation_method: None,
             card: None,
+            source_definition_metadata: if source.face_down_cast_state.is_some(){Arc::default()}else{source.copied_definition_metadata()},
             zone: Zone::Battlefield,
             owner,
             initial_controller: owner,
@@ -1984,7 +2113,8 @@ impl Object {
             cast_play_permission: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
-            optional_costs: source.optional_costs.clone(),
+            optional_costs: source.authored_optional_costs().to_vec().into(),
+            optional_costs_before_payment_alternatives: None,
             // Optional costs paid is non-copiable (tokens weren't cast)
             optional_costs_paid: OptionalCostsPaid::default(),
             // Tokens are never cast.
@@ -1996,6 +2126,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             // Cost effects are copiable
             additional_cost: source.additional_cost.clone(),
             // Saga fields - copiable (a token copy of a saga is also a saga)
@@ -2018,9 +2149,11 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::SpellCopy,
+            spell_copy_entry_forbidden: source.spell_copy_entry_forbidden || source.cast_alternative_method.as_deref().is_some_and(|method| method.battlefield_instructions().spell_copies_cannot_enter),
             copied_face_values: None,
             token_creation_method: None,
             card: None,
+            source_definition_metadata: if source.face_down_cast_state.is_some(){Arc::default()}else{source.copied_definition_metadata()},
             zone: Zone::Stack,
             owner,
             initial_controller: owner,
@@ -2063,7 +2196,8 @@ impl Object {
             cast_price: None,
             cast_play_permission: None,
             has_fuse: source.has_fuse,
-            optional_costs: source.optional_costs.clone(),
+            optional_costs: source.authored_optional_costs().to_vec().into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: source.optional_costs_paid.clone(),
             // CR 707.10: mana isn't an object, so a copy of a spell has no mana
             // spent to cast it (converge, adamant, "if {G} was spent" read 0).
@@ -2081,6 +2215,9 @@ impl Object {
                 .keyword_payment_contributions_to_cast
                 .clone(),
             cast_tagged_objects: source.cast_tagged_objects.clone(),
+            // CR 707.10: casting-time choices, including a completed
+            // opponent payment decision, are copied without paying again.
+            named_payment_outcomes:source.named_payment_outcomes.clone(),
             additional_cost: source.additional_cost.clone(),
         };
         if let Some(loyalty) = source.base_loyalty {
@@ -2105,9 +2242,16 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::Token,
+            spell_copy_entry_forbidden: false,
             copied_face_values: Some(Box::new(copiable.clone())),
             token_creation_method: None,
             card: None,
+            source_definition_metadata: copiable.definition_dependencies.as_ref()
+                .map(|dependencies|Arc::new(SourceDefinitionMetadata::from_copy_dependencies(dependencies)))
+                .or_else(||snapshot.source_definition_metadata.clone())
+                .or_else(|| snapshot.revealed_cast_definition.as_ref()
+                    .map(|definition| Arc::new(SourceDefinitionMetadata::from_definition(definition))))
+                .unwrap_or_default(),
             zone: Zone::Battlefield,
             owner,
             initial_controller: owner,
@@ -2159,6 +2303,7 @@ impl Object {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: copiable.optional_costs.clone().into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -2168,6 +2313,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: TotalCost::free().into(),
         };
         if let Some(loyalty) = copiable.loyalty {
@@ -2192,9 +2338,11 @@ impl Object {
             stable_id: StableId::from(id), // Emblems get their own stable_id
             last_modified: 0,
             kind: ObjectKind::Emblem,
+            spell_copy_entry_forbidden: false,
             copied_face_values: None,
             token_creation_method: None,
             card: None,
+            source_definition_metadata: Arc::default(),
             zone: Zone::Command,
             owner,
             initial_controller: owner,
@@ -2238,6 +2386,7 @@ impl Object {
             cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -2247,6 +2396,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: TotalCost::free().into(),
         }
     }
@@ -2410,6 +2560,14 @@ impl Object {
         cost: ManaCost,
         power_toughness: PowerToughness,
     ) -> bool {
+        self.apply_cast_characteristic_overlay(cost, Some(power_toughness))
+    }
+
+    pub fn apply_cast_characteristic_overlay(
+        &mut self,
+        cost: ManaCost,
+        power_toughness: Option<PowerToughness>,
+    ) -> bool {
         if self.prototype_cast_state.is_some() {
             return false;
         }
@@ -2424,8 +2582,10 @@ impl Object {
         let colors = Self::colors_from_mana_cost(&cost);
         self.mana_cost = Some(cost.into());
         self.color_override = (!colors.is_empty()).then_some(colors);
-        self.base_power = Some(power_toughness.power);
-        self.base_toughness = Some(power_toughness.toughness);
+        if let Some(power_toughness) = power_toughness {
+            self.base_power = Some(power_toughness.power);
+            self.base_toughness = Some(power_toughness.toughness);
+        }
         true
     }
 
@@ -2461,6 +2621,7 @@ impl Object {
             return false;
         }
         self.splice_cast_state = Some(Box::new(SpliceCastState {
+            text_sources: Vec::new(),
             spell_effect: self.spell_effect.clone(),
             abilities: None,
         }));
@@ -3305,9 +3466,11 @@ impl Object {
             stable_id: StableId::from(id),
             last_modified: 0,
             kind: ObjectKind::Token,
+            spell_copy_entry_forbidden: false,
             copied_face_values: None,
             token_creation_method: None,
             card: None,
+            source_definition_metadata: handles.source_definition_metadata.clone(),
             zone: Zone::Battlefield,
             owner: controller,
             initial_controller: controller,
@@ -3351,6 +3514,7 @@ impl Object {
             cast_play_permission: None,
             has_fuse: def.has_fuse,
             optional_costs: handles.optional_costs.clone(),
+            optional_costs_before_payment_alternatives: None,
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
@@ -3360,6 +3524,7 @@ impl Object {
             x_value: None,
             keyword_payment_contributions_to_cast: Vec::new(),
             cast_tagged_objects: HashMap::new(),
+            named_payment_outcomes:Vec::new(),
             additional_cost: handles.additional_cost.clone(),
         }
     }
@@ -4500,4 +4665,15 @@ pub struct CastPriceReceipt<C, G> {
     pub origin_mana_surcharge: ManaCost,
     pub prototype: Option<usize>,
     pub constraints: crate::grant_registry::PlayFromConstraints,
+}
+
+
+/// Evidence from one completed optional payment program, retaining its payer.
+/// This is transaction state and is never part of copiable characteristics.
+#[derive(Debug,Clone,PartialEq,Eq)]
+#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+pub struct NamedPaymentOutcomeReceipt {
+    pub label:String,
+    pub payer:PlayerId,
+    pub paid:bool,
 }

@@ -1,6 +1,7 @@
 use super::*;
 
 include!("helpers.rs");
+include!("private_cost_admission.rs");
 include!("opponent_choices.rs");
 include!("external_registry.rs");
 include!("dispatch.rs");

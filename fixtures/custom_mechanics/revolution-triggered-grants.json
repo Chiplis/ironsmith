@@ -1,0 +1,795 @@
+{
+  "schema_version": 1,
+  "description": "Rule-faithful Revolution recipient-relative triggered programs; source originals preserved.",
+  "mechanics": [
+    {
+      "id": "rev-experience-072",
+      "keyword": "Experience",
+      "scope": "revolution",
+      "rule_reference": "702.197.",
+      "rule_text": {
+        "name": "702.197.",
+        "rule": "Experience",
+        "subrules": [
+          {
+            "name": "702.197a",
+            "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+            "custom": true
+          },
+          {
+            "name": "702.197b",
+            "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Budding Companion//Flourishing Companion",
+          "Cheerful Generator//Combined Generator",
+          "Crusher Beetle",
+          "Curious Cubs//Mauling Mother",
+          "Determined Koi//Destructive Serpent",
+          "Eager Hatchling//Realized Hatchling",
+          "Flame-Tailed Lizard//Flame-Tested Dragon",
+          "Forgotten Temple",
+          "Galloping Blaze",
+          "Grinding",
+          "Loyal Firestarter",
+          "Maternal Monster",
+          "Paralycker",
+          "Sprout Tender",
+          "Tangling Vines",
+          "Tidepool Turtle//Tsunami Titan",
+          "Unstoppable Weed",
+          "Winding Snake//Mother Snake",
+          "Wings of Trust",
+          "Worried Vulpine//Worthy Vulpine",
+          "Callaphe the Mariner//Blessing of the Sea"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+      "executable_reminder": "Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 702 experience is an intervening-if attack trigger; two or fewer is equivalent to fewer than three and is checked again on resolution. Grant expansion must bind this creature to the recipient."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Budding Companion//Flourishing Companion_MON",
+          "name": "Budding Companion",
+          "original_text": "Type: Creature — Plant Dinosaur \nMana cost: {G}{G}\nPower/Toughness: 2/2\nExperience *(Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it.",
+          "executable_text": "Type: Creature — Plant Dinosaur \nMana cost: {G}{G}\nPower/Toughness: 2/2\nexperience — Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it.",
+          "source_faces": [
+            {
+              "name": "Budding Companion",
+              "original_text": "Type: Creature — Plant Dinosaur \nMana cost: {G}{G}\nPower/Toughness: 2/2\nExperience *(Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it."
+            },
+            {
+              "name": "Flourishing Companion",
+              "original_text": "Type: Creature — Plant Dinosaur \nPower/Toughness: 8/6\nReach, trample\nWhenever this creature transforms into Flourishing Companion or attacks, untap all lands you control."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Budding Companion",
+              "executable_text": "Type: Creature — Plant Dinosaur \nMana cost: {G}{G}\nPower/Toughness: 2/2\nexperience — Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it.",
+              "custom_keyword_identities": [
+                "experience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Experience\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it.",
+              "original_printed_rules_text": "Experience (Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it."
+            },
+            {
+              "name": "Flourishing Companion",
+              "executable_text": "Type: Creature — Plant Dinosaur \nPower/Toughness: 8/6\nReach, trample\nWhenever this creature transforms into Flourishing Companion or attacks, untap all lands you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reach, trample\nWhenever this creature transforms into Flourishing Companion or attacks, untap all lands you control.",
+              "original_printed_rules_text": "Reach, trample\nWhenever this creature transforms into Flourishing Companion or attacks, untap all lands you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "experience"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Experience\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Experience (Whenever this creature attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)\nWhen Budding Companion has three or more +1/+1 counters on it, remove them all and transform it."
+        }
+      ],
+      "source_cards": [
+        "Budding Companion//Flourishing Companion"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-experience-072-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "Rule 702 experience is an intervening-if attack trigger; two or fewer is equivalent to fewer than three and is checked again on resolution. Grant expansion must bind this creature to the recipient."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Experience",
+          "reminder": "Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.",
+          "abilityDesignation": "experience"
+        }
+      ]
+    },
+    {
+      "id": "rev-experience-073",
+      "keyword": "Experience",
+      "scope": "revolution",
+      "rule_reference": "702.197.",
+      "rule_text": {
+        "name": "702.197.",
+        "rule": "Experience",
+        "subrules": [
+          {
+            "name": "702.197a",
+            "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+            "custom": true
+          },
+          {
+            "name": "702.197b",
+            "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Budding Companion//Flourishing Companion",
+          "Cheerful Generator//Combined Generator",
+          "Crusher Beetle",
+          "Curious Cubs//Mauling Mother",
+          "Determined Koi//Destructive Serpent",
+          "Eager Hatchling//Realized Hatchling",
+          "Flame-Tailed Lizard//Flame-Tested Dragon",
+          "Forgotten Temple",
+          "Galloping Blaze",
+          "Grinding",
+          "Loyal Firestarter",
+          "Maternal Monster",
+          "Paralycker",
+          "Sprout Tender",
+          "Tangling Vines",
+          "Tidepool Turtle//Tsunami Titan",
+          "Unstoppable Weed",
+          "Winding Snake//Mother Snake",
+          "Wings of Trust",
+          "Worried Vulpine//Worthy Vulpine",
+          "Callaphe the Mariner//Blessing of the Sea"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.",
+      "executable_reminder": "Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule 702 experience is an intervening-if attack trigger; two or fewer is equivalent to fewer than three and is checked again on resolution. Grant expansion must bind this creature to the recipient."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Grinding_MON",
+          "name": "Grinding",
+          "original_text": "Type: Enchantment — Aura \nMana cost: {G}\nEnchant creature\nEnchanted creature has experience. *(Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)*",
+          "executable_text": "Type: Enchantment — Aura \nMana cost: {G}\nEnchant creature\nEnchanted creature has custom keyword \"experience\", and \"experience — Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.\".",
+          "executable_faces": [
+            {
+              "name": "Grinding",
+              "executable_text": "Type: Enchantment — Aura \nMana cost: {G}\nEnchant creature\nEnchanted creature has custom keyword \"experience\", and \"experience — Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.\".",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Enchant creature\nEnchanted creature has experience.",
+              "original_printed_rules_text": "Enchant creature\nEnchanted creature has experience. (Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Enchant creature\nEnchanted creature has experience.",
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_printed_rules_text": "Enchant creature\nEnchanted creature has experience. (Whenever it attacks, if it has fewer than three +1/+1 counters on it, put a +1/+1 counter on it.)"
+        }
+      ],
+      "source_cards": [
+        "Grinding"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-experience-073-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "Rule 702 experience is an intervening-if attack trigger; two or fewer is equivalent to fewer than three and is checked again on resolution. Grant expansion must bind this creature to the recipient."
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Experience",
+          "reminder": "Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.",
+          "abilityDesignation": "experience"
+        }
+      ]
+    },
+    {
+      "id": "rev-glory-130",
+      "keyword": "Glory",
+      "scope": "revolution",
+      "rule_reference": "702.204.",
+      "rule_text": {
+        "name": "702.204.",
+        "rule": "Glory",
+        "subrules": [
+          {
+            "name": "702.204a",
+            "rule": "Glory is a triggered ability. “Glory” means “When this creature dies while attacking, return it to the battlefield transformed.”",
+            "custom": true
+          },
+          {
+            "name": "702.204b",
+            "rule": "The permanent will return under the control of whoever controlled triggered ability, usually whoever controlled the creature when it died.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Brallatt, Light-Maiden//Legend of Brallatt",
+          "Brallatt's Chosen//Brallatt's Blessing",
+          "Dawnglade Assailant//Dawnglade Invoker",
+          "Devout Sword-Thane//Light-Maiden's Chosen",
+          "Duskborn Warrior//Duskborn Mantle",
+          "Maldunn, Raven-Wise//Legend of Maldunn",
+          "Myrkalt, Shade-Bound//Legend of Myrkalt",
+          "Myrkalt's Rager//Battle-Hardened Berserker",
+          "Northwind Adventurer//Northwind Hero",
+          "Rasnif, Rage-Heart//Legend of Rasnif",
+          "Scaravi Skald",
+          "Skagar, Wild-Lord//Legend of Skagar",
+          "Skagar's Favored//Skagar's Rancor",
+          "Skilled Axeman//Rasnif's Fury",
+          "Skofa Elite//Skofa Blessing",
+          "Warforge Zealot//Lightning-Born Einherjar"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this dies while attacking, return her to the battlefield transformed.",
+      "executable_reminder": "When this creature dies, if it was attacking, return it to the battlefield transformed under your control.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "The death trigger checks attacking last known information. Rule glory returns under the trigger controller, including when control differed from ownership; linked transformed face remains required."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Brallatt, Light-Maiden//Legend of Brallatt_SVG",
+          "name": "Brallatt, Light-Maiden",
+          "original_text": "Type: Legendary Creature — God \nMana cost: {2}{W}{W}\nPower/Toughness: 4/4\nFlying\nOther creatures you control get +1/+1.\nGlory *(When this dies while attacking, return her to the battlefield transformed.)*",
+          "executable_text": "Type: Legendary Creature — God \nMana cost: {2}{W}{W}\nPower/Toughness: 4/4\nFlying\nOther creatures you control get +1/+1.\nWhen this creature dies, if it was attacking, return it to the battlefield transformed under your control",
+          "source_faces": [
+            {
+              "name": "Brallatt, Light-Maiden",
+              "original_text": "Type: Legendary Creature — God \nMana cost: {2}{W}{W}\nPower/Toughness: 4/4\nFlying\nOther creatures you control get +1/+1.\nGlory *(When this dies while attacking, return her to the battlefield transformed.)*"
+            },
+            {
+              "name": "Legend of Brallatt",
+              "original_text": "Type: Enchantment — Saga \n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI, II — Create a 1/1 white Warrior creature token.\nIII — Exile Legend of Brallatt, then return it to the battlefield. *(It enters as a God.)*"
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Brallatt, Light-Maiden",
+              "executable_text": "Type: Legendary Creature — God \nMana cost: {2}{W}{W}\nPower/Toughness: 4/4\nFlying\nOther creatures you control get +1/+1.\nWhen this creature dies, if it was attacking, return it to the battlefield transformed under your control",
+              "custom_keyword_identities": [
+                "glory"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nOther creatures you control get +1/+1.\nGlory"
+            },
+            {
+              "name": "Legend of Brallatt",
+              "executable_text": "Type: Enchantment — Saga \n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Create a 1/1 white Warrior creature token.\nIII — Exile Legend of Brallatt, then return it to the battlefield. (It enters as a God.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "glory"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nOther creatures you control get +1/+1.\nGlory",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Brallatt, Light-Maiden//Legend of Brallatt"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-glory-130-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "The death trigger checks attacking last known information. Rule glory returns under the trigger controller, including when control differed from ownership; linked transformed face remains required."
+        }
+      ]
+    },
+    {
+      "id": "rev-glory-131",
+      "keyword": "Glory",
+      "scope": "revolution",
+      "rule_reference": "702.204.",
+      "rule_text": {
+        "name": "702.204.",
+        "rule": "Glory",
+        "subrules": [
+          {
+            "name": "702.204a",
+            "rule": "Glory is a triggered ability. “Glory” means “When this creature dies while attacking, return it to the battlefield transformed.”",
+            "custom": true
+          },
+          {
+            "name": "702.204b",
+            "rule": "The permanent will return under the control of whoever controlled triggered ability, usually whoever controlled the creature when it died.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Brallatt, Light-Maiden//Legend of Brallatt",
+          "Brallatt's Chosen//Brallatt's Blessing",
+          "Dawnglade Assailant//Dawnglade Invoker",
+          "Devout Sword-Thane//Light-Maiden's Chosen",
+          "Duskborn Warrior//Duskborn Mantle",
+          "Maldunn, Raven-Wise//Legend of Maldunn",
+          "Myrkalt, Shade-Bound//Legend of Myrkalt",
+          "Myrkalt's Rager//Battle-Hardened Berserker",
+          "Northwind Adventurer//Northwind Hero",
+          "Rasnif, Rage-Heart//Legend of Rasnif",
+          "Scaravi Skald",
+          "Skagar, Wild-Lord//Legend of Skagar",
+          "Skagar's Favored//Skagar's Rancor",
+          "Skilled Axeman//Rasnif's Fury",
+          "Skofa Elite//Skofa Blessing",
+          "Warforge Zealot//Lightning-Born Einherjar"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this dies while attacking, return it to the battlefield transformed.",
+      "executable_reminder": "When this creature dies, if it was attacking, return it to the battlefield transformed under your control.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "The death trigger checks attacking last known information. Rule glory returns under the trigger controller, including when control differed from ownership; linked transformed face remains required."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Brallatt's Chosen//Brallatt's Blessing_SVG",
+          "name": "Brallatt's Chosen",
+          "original_text": "Type: Creature — Human Archer \nMana cost: {2}{W}\nPower/Toughness: 2/2\nVigilance\nGlory *(When this dies while attacking, return it to the battlefield transformed.)*",
+          "executable_text": "Type: Creature — Human Archer \nMana cost: {2}{W}\nPower/Toughness: 2/2\nVigilance\nWhen this creature dies, if it was attacking, return it to the battlefield transformed under your control",
+          "source_faces": [
+            {
+              "name": "Brallatt's Chosen",
+              "original_text": "Type: Creature — Human Archer \nMana cost: {2}{W}\nPower/Toughness: 2/2\nVigilance\nGlory *(When this dies while attacking, return it to the battlefield transformed.)*"
+            },
+            {
+              "name": "Brallatt's Blessing",
+              "original_text": "Type: Enchantment — Aura \nEnchant creature you control\nEnchanted creature gets +1/+1 and has vigilance."
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Brallatt's Chosen",
+              "executable_text": "Type: Creature — Human Archer \nMana cost: {2}{W}\nPower/Toughness: 2/2\nVigilance\nWhen this creature dies, if it was attacking, return it to the battlefield transformed under your control",
+              "custom_keyword_identities": [
+                "glory"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Vigilance\nGlory"
+            },
+            {
+              "name": "Brallatt's Blessing",
+              "executable_text": "Type: Enchantment — Aura \nEnchant creature you control\nEnchanted creature gets +1/+1 and has vigilance.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "glory"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Vigilance\nGlory",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Brallatt's Chosen//Brallatt's Blessing",
+        "Warforge Zealot//Lightning-Born Einherjar"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-glory-131-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "The death trigger checks attacking last known information. Rule glory returns under the trigger controller, including when control differed from ownership; linked transformed face remains required."
+        }
+      ]
+    },
+    {
+      "id": "rev-glory-132",
+      "keyword": "Glory",
+      "scope": "revolution",
+      "rule_reference": "702.204.",
+      "rule_text": {
+        "name": "702.204.",
+        "rule": "Glory",
+        "subrules": [
+          {
+            "name": "702.204a",
+            "rule": "Glory is a triggered ability. “Glory” means “When this creature dies while attacking, return it to the battlefield transformed.”",
+            "custom": true
+          },
+          {
+            "name": "702.204b",
+            "rule": "The permanent will return under the control of whoever controlled triggered ability, usually whoever controlled the creature when it died.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Brallatt, Light-Maiden//Legend of Brallatt",
+          "Brallatt's Chosen//Brallatt's Blessing",
+          "Dawnglade Assailant//Dawnglade Invoker",
+          "Devout Sword-Thane//Light-Maiden's Chosen",
+          "Duskborn Warrior//Duskborn Mantle",
+          "Maldunn, Raven-Wise//Legend of Maldunn",
+          "Myrkalt, Shade-Bound//Legend of Myrkalt",
+          "Myrkalt's Rager//Battle-Hardened Berserker",
+          "Northwind Adventurer//Northwind Hero",
+          "Rasnif, Rage-Heart//Legend of Rasnif",
+          "Scaravi Skald",
+          "Skagar, Wild-Lord//Legend of Skagar",
+          "Skagar's Favored//Skagar's Rancor",
+          "Skilled Axeman//Rasnif's Fury",
+          "Skofa Elite//Skofa Blessing",
+          "Warforge Zealot//Lightning-Born Einherjar"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this dies while attacking, return him to the battlefield transformed.",
+      "executable_reminder": "When this creature dies, if it was attacking, return it to the battlefield transformed under your control.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "The death trigger checks attacking last known information. Rule glory returns under the trigger controller, including when control differed from ownership; linked transformed face remains required."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Maldunn, Raven-Wise//Legend of Maldunn_SVG",
+          "name": "Maldunn, Raven-Wise",
+          "original_text": "Type: Legendary Creature — God \nMana cost: {3}{U}{U}\nPower/Toughness: 4/4\nWhenever an artifact you control enters for the first time each turn, create a Glyph token. *(It's an artifact with “{1}, Sacrifice this artifact: Scry 1.”)*\n{1}, Sacrifice a Glyph: Scry 1. Draw a card.\nGlory *(When this dies while attacking, return him to the battlefield transformed.)*",
+          "executable_text": "Type: Legendary Creature — God \nMana cost: {3}{U}{U}\nPower/Toughness: 4/4\nWhenever an artifact you control enters for the first time each turn, create a Glyph token.\n{1}, Sacrifice a Glyph: Scry 1. Draw a card.\nWhen this creature dies, if it was attacking, return it to the battlefield transformed under your control",
+          "source_faces": [
+            {
+              "name": "Maldunn, Raven-Wise",
+              "original_text": "Type: Legendary Creature — God \nMana cost: {3}{U}{U}\nPower/Toughness: 4/4\nWhenever an artifact you control enters for the first time each turn, create a Glyph token. *(It's an artifact with “{1}, Sacrifice this artifact: Scry 1.”)*\n{1}, Sacrifice a Glyph: Scry 1. Draw a card.\nGlory *(When this dies while attacking, return him to the battlefield transformed.)*"
+            },
+            {
+              "name": "Legend of Maldunn",
+              "original_text": "Type: Enchantment — Saga \n*(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)*\nI — Create a Glyph token.\nII, III — Draw a card.\nExile Legend of Maldunn, then return it to the battlefield. *(It enters as a God.)*"
+            }
+          ],
+          "source_layout": "doubleface",
+          "executable_faces": [
+            {
+              "name": "Maldunn, Raven-Wise",
+              "executable_text": "Type: Legendary Creature — God \nMana cost: {3}{U}{U}\nPower/Toughness: 4/4\nWhenever an artifact you control enters for the first time each turn, create a Glyph token.\n{1}, Sacrifice a Glyph: Scry 1. Draw a card.\nWhen this creature dies, if it was attacking, return it to the battlefield transformed under your control",
+              "custom_keyword_identities": [
+                "glory"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Whenever an artifact you control enters for the first time each turn, create a Glyph token.\n{1}, Sacrifice a Glyph: Scry 1. Draw a card.\nGlory"
+            },
+            {
+              "name": "Legend of Maldunn",
+              "executable_text": "Type: Enchantment — Saga \n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Create a Glyph token.\nII, III — Draw a card.\nExile Legend of Maldunn, then return it to the battlefield. (It enters as a God.)",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [
+            "glory"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Whenever an artifact you control enters for the first time each turn, create a Glyph token.\n{1}, Sacrifice a Glyph: Scry 1. Draw a card.\nGlory",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Maldunn, Raven-Wise//Legend of Maldunn"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-glory-132-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "The death trigger checks attacking last known information. Rule glory returns under the trigger controller, including when control differed from ownership; linked transformed face remains required."
+        }
+      ]
+    },
+    {
+      "id": "rev-decoy-239",
+      "keyword": "Decoy",
+      "scope": "revolution",
+      "rule_reference": "702.224.",
+      "rule_text": {
+        "name": "702.224.",
+        "rule": "Decoy",
+        "subrules": [
+          {
+            "name": "702.224a",
+            "rule": "Decoy is a triggered ability that creates a delayed triggered ability. “Decoy” means “Whenever this creature attacks, create a tapped and attacking token that’s a copy of it, except it's a 1/1 Illusion instead of its other creature types.” and “Exile that token at the beginning of the next end step.”",
+            "custom": true
+          },
+          {
+            "name": "702.224b",
+            "rule": "If a creature has multiple instances of decoy, each triggers separately.",
+            "custom": true
+          },
+          {
+            "name": "702.224c",
+            "rule": "If a replacement effect causes the decoy ability to create multiple tokens, they will be exiled by the delayed trigger as well.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Ambassador of Unseen Edges",
+          "Aspen's Oathguard",
+          "Blooming Wing",
+          "Cloudveil Reshaper",
+          "Gilded Noon Runner",
+          "Gossamer Dreamer",
+          "Gracebound Noble",
+          "Mistwrit Archivist",
+          "Proclaimer of Blooming Wing",
+          "Silken Tactician",
+          "Snow on Petals",
+          "Thistrel Ascendant",
+          "Undertide Scout",
+          "Whisperthorn Weaver"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Whenever this creature attacks, create a tapped and attacking 1/1 Illusion token that's a copy of it. Exile the token at the beginning of the next end step.",
+      "executable_reminder": "Whenever this creature attacks, create a tapped and attacking token that's a copy of this creature, except it's a 1/1 Illusion instead of its other creature types. Exile that token at the beginning of the next end step.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule decoy specifies a copy with base power/toughness 1/1 and replacement creature subtype Illusion, preserving other types/colors/abilities; the delayed exile is next end step, including the source reminder variant incorrectly saying end of combat. Grant expansion binds this creature to the recipient."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Ambassador of Unseen Edges_TWI",
+          "name": "Ambassador of Unseen Edges",
+          "original_text": "Type: Creature — Faerie Soldier\nMana cost: {1}{U}{R}\nPower/Toughness: 1/4\nDecoy *(Whenever this creature attacks, create a tapped and attacking 1/1 Illusion token that's a copy of it. Exile the token at the beginning of the next end step.)*\nWhenever a creature you control becomes blocked, it deals 1 damage to the player or permanent it's attacking. Scry 1.",
+          "executable_text": "Type: Creature — Faerie Soldier\nMana cost: {1}{U}{R}\nPower/Toughness: 1/4\nWhenever this creature attacks, create a tapped and attacking token that's a copy of this creature, except it's a 1/1 Illusion instead of its other creature types. Exile that token at the beginning of the next end step\nWhenever a creature you control becomes blocked, it deals 1 damage to the player or permanent it's attacking. Scry 1.",
+          "executable_faces": [
+            {
+              "name": "Ambassador of Unseen Edges",
+              "executable_text": "Type: Creature — Faerie Soldier\nMana cost: {1}{U}{R}\nPower/Toughness: 1/4\nWhenever this creature attacks, create a tapped and attacking token that's a copy of this creature, except it's a 1/1 Illusion instead of its other creature types. Exile that token at the beginning of the next end step\nWhenever a creature you control becomes blocked, it deals 1 damage to the player or permanent it's attacking. Scry 1.",
+              "custom_keyword_identities": [
+                "decoy"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Decoy\nWhenever a creature you control becomes blocked, it deals 1 damage to the player or permanent it's attacking. Scry 1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "decoy"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Decoy\nWhenever a creature you control becomes blocked, it deals 1 damage to the player or permanent it's attacking. Scry 1.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Ambassador of Unseen Edges",
+        "Cloudveil Reshaper"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-decoy-239-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "Rule decoy specifies a copy with base power/toughness 1/1 and replacement creature subtype Illusion, preserving other types/colors/abilities; the delayed exile is next end step, including the source reminder variant incorrectly saying end of combat. Grant expansion binds this creature to the recipient."
+        }
+      ]
+    },
+    {
+      "id": "rev-decoy-240",
+      "keyword": "Decoy",
+      "scope": "revolution",
+      "rule_reference": "702.224.",
+      "rule_text": {
+        "name": "702.224.",
+        "rule": "Decoy",
+        "subrules": [
+          {
+            "name": "702.224a",
+            "rule": "Decoy is a triggered ability that creates a delayed triggered ability. “Decoy” means “Whenever this creature attacks, create a tapped and attacking token that’s a copy of it, except it's a 1/1 Illusion instead of its other creature types.” and “Exile that token at the beginning of the next end step.”",
+            "custom": true
+          },
+          {
+            "name": "702.224b",
+            "rule": "If a creature has multiple instances of decoy, each triggers separately.",
+            "custom": true
+          },
+          {
+            "name": "702.224c",
+            "rule": "If a replacement effect causes the decoy ability to create multiple tokens, they will be exiled by the delayed trigger as well.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Ambassador of Unseen Edges",
+          "Aspen's Oathguard",
+          "Blooming Wing",
+          "Cloudveil Reshaper",
+          "Gilded Noon Runner",
+          "Gossamer Dreamer",
+          "Gracebound Noble",
+          "Mistwrit Archivist",
+          "Proclaimer of Blooming Wing",
+          "Silken Tactician",
+          "Snow on Petals",
+          "Thistrel Ascendant",
+          "Undertide Scout",
+          "Whisperthorn Weaver"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "Whenever that creature attacks, create a tapped and attacking 1/1 Illusion token that's a copy of it. Exile the token at end of combat.",
+      "executable_reminder": "Whenever this creature attacks, create a tapped and attacking token that's a copy of this creature, except it's a 1/1 Illusion instead of its other creature types. Exile that token at the beginning of the next end step.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule decoy specifies a copy with base power/toughness 1/1 and replacement creature subtype Illusion, preserving other types/colors/abilities; the delayed exile is next end step, including the source reminder variant incorrectly saying end of combat. Grant expansion binds this creature to the recipient."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Blooming Wing_TWI",
+          "name": "Blooming Wing",
+          "original_text": "Type: Legendary Creature — Faerie Bard\nMana cost: {3}{U}{R}\nPower/Toughness: 3/5\nFlying\nOther nontoken creatures you control have decoy. *(Whenever that creature attacks, create a tapped and attacking 1/1 Illusion token that's a copy of it. Exile the token at end of combat.)*\nBlooming Wing gets +1/+0 for each other attacking creature you control.",
+          "executable_text": "Type: Legendary Creature — Faerie Bard\nMana cost: {3}{U}{R}\nPower/Toughness: 3/5\nFlying\nOther nontoken creatures you control have custom keyword \"decoy\", and \"Whenever this creature attacks, create a tapped and attacking token that's a copy of this creature, except it's a 1/1 Illusion instead of its other creature types. Exile that token at the beginning of the next end step.\".\nBlooming Wing gets +1/+0 for each other attacking creature you control.",
+          "executable_faces": [
+            {
+              "name": "Blooming Wing",
+              "executable_text": "Type: Legendary Creature — Faerie Bard\nMana cost: {3}{U}{R}\nPower/Toughness: 3/5\nFlying\nOther nontoken creatures you control have custom keyword \"decoy\", and \"Whenever this creature attacks, create a tapped and attacking token that's a copy of this creature, except it's a 1/1 Illusion instead of its other creature types. Exile that token at the beginning of the next end step.\".\nBlooming Wing gets +1/+0 for each other attacking creature you control.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nOther nontoken creatures you control have decoy.\nBlooming Wing gets +1/+0 for each other attacking creature you control."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Flying\nOther nontoken creatures you control have decoy.\nBlooming Wing gets +1/+0 for each other attacking creature you control."
+        }
+      ],
+      "source_cards": [
+        "Blooming Wing"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-decoy-240-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "Rule decoy specifies a copy with base power/toughness 1/1 and replacement creature subtype Illusion, preserving other types/colors/abilities; the delayed exile is next end step, including the source reminder variant incorrectly saying end of combat. Grant expansion binds this creature to the recipient."
+        }
+      ]
+    },
+    {
+      "id": "rev-rapture-241",
+      "keyword": "Rapture",
+      "scope": "revolution",
+      "rule_reference": "702.225.",
+      "rule_text": {
+        "name": "702.225.",
+        "rule": "Rapture",
+        "subrules": [
+          {
+            "name": "702.225a",
+            "rule": "Rapture is a triggered ability. \"Rapture\" means \"When this creature dies, return it to the battlefield with a haze counter on it. As long as it has a haze counter on it, it loses all abilities and can't block.\"",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Annan, Thief of the Sun",
+          "Bloodhorn Ravager",
+          "Bloodline Inciter",
+          "Burning Blood Orator",
+          "Diviner of the Sun",
+          "Doctrine of Sacrifice",
+          "Ember-Caged Siegebreaker",
+          "Ember-Eyed Skirmisher",
+          "Emberforged Forerunner",
+          "Frenzied Dawnseeker",
+          "Litany-Marked Schemer",
+          "Radiant Heritor",
+          "Rekindled Seraph",
+          "Sanctified Attendant",
+          "Sun-Frenzied Frontliner",
+          "Tyrant of Burning Judgment"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this creature dies, return it to the battlefield with a haze counter on it. It loses all abilities and can't block.",
+      "executable_reminder": "When this creature dies, return it to the battlefield with a haze counter on it. For as long as it has a haze counter on it, it loses all abilities and can't block.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Rule rapture ties both ability removal and blocking restriction to the returned object retaining a haze counter; unlike the abbreviated source reminder, removing all haze counters ends both restrictions."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Annan, Thief of the Sun_TWI",
+          "name": "Annan, Thief of the Sun",
+          "original_text": "Type: Legendary Creature — Demigod Cleric\nMana cost: {1}{R}{W}\nPower/Toughness: 3/2\nWard—Sacrifice a nonland permanent.\nRapture *(When this creature dies, return it to the battlefield with a haze counter on it. It loses all abilities and can't block.)*\nWhenever Annan, Thief of the Sun attacks, other attacking creatures you control without haze counters on them gain rapture until end of turn.",
+          "executable_text": "Type: Legendary Creature — Demigod Cleric\nMana cost: {1}{R}{W}\nPower/Toughness: 3/2\nWard—Sacrifice a nonland permanent.\nWhen this creature dies, return it to the battlefield with a haze counter on it. For as long as it has a haze counter on it, it loses all abilities and can't block\nWhenever Annan, Thief of the Sun attacks, other attacking creatures you control without haze counters on them gain custom keyword \"rapture\", and \"When this creature dies, return it to the battlefield with a haze counter on it. For as long as it has a haze counter on it, it loses all abilities and can't block.\" until end of turn.",
+          "executable_faces": [
+            {
+              "name": "Annan, Thief of the Sun",
+              "executable_text": "Type: Legendary Creature — Demigod Cleric\nMana cost: {1}{R}{W}\nPower/Toughness: 3/2\nWard—Sacrifice a nonland permanent.\nWhen this creature dies, return it to the battlefield with a haze counter on it. For as long as it has a haze counter on it, it loses all abilities and can't block\nWhenever Annan, Thief of the Sun attacks, other attacking creatures you control without haze counters on them gain custom keyword \"rapture\", and \"When this creature dies, return it to the battlefield with a haze counter on it. For as long as it has a haze counter on it, it loses all abilities and can't block.\" until end of turn.",
+              "custom_keyword_identities": [
+                "rapture"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Ward—Sacrifice a nonland permanent.\nRapture\nWhenever Annan, Thief of the Sun attacks, other attacking creatures you control without haze counters on them gain rapture until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "rapture"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Ward—Sacrifice a nonland permanent.\nRapture\nWhenever Annan, Thief of the Sun attacks, other attacking creatures you control without haze counters on them gain rapture until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "source_cards": [
+        "Annan, Thief of the Sun",
+        "Doctrine of Sacrifice"
+      ],
+      "behavioral_assertions": [
+        {
+          "id": "rev-rapture-241-rule-semantics",
+          "status": "pending",
+          "test_reference": null,
+          "observable": "Rule rapture ties both ability removal and blocking restriction to the returned object retaining a haze counter; unlike the abbreviated source reminder, removing all haze counters ends both restrictions."
+        }
+      ]
+    }
+  ]
+}

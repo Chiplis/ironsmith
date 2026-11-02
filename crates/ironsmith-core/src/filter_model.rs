@@ -1523,6 +1523,9 @@ impl ObjectCharacteristic {
 pub enum ObjectCharacteristicRelationKind {
     SharesAny,
     SharesNone,
+    /// At least one candidate subtype in a declared family is absent from
+    /// the union of matching comparison objects. Partial overlap is allowed.
+    HasUnrepresentedSubtype,
 }
 
 /// A relation between the candidate object and all objects selected by
@@ -1874,6 +1877,9 @@ pub enum PlayerFilter {
     /// counterpart of `TargetPlayerOrControllerOfTarget`. Appended to preserve
     /// serialized ordinals.
     TargetPlayerOrRelatedPlayerOfTarget(TargetObjectPlayerRelation),
+    /// Existential attachment relation, independent of ownership/controller.
+    /// Each matching player is selected once even with multiple attachments.
+    WithMatchingAttachments { base: Box<PlayerFilter>, filter: Box<ObjectFilter> },
 }
 
 /// The player an object names in [`PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget`].
@@ -2083,6 +2089,9 @@ impl PlayerFilter {
             }
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
                 player.mentions_player_filter(needle) || filter.mentions_player_filter(needle)
+            }
+            Self::WithMatchingAttachments { base, filter } => {
+                base.mentions_player_filter(needle) || filter.mentions_player_filter(needle)
             }
             Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } | Self::OwnsMatchingObject { filter } | Self::ControlsMatchingObject { filter } => {
                 filter.mentions_player_filter(needle)
@@ -2299,6 +2308,7 @@ impl PlayerFilter {
             ),
             Self::OwnsMatchingObject { filter } => format!("a player who owns {}", filter.description()),
             Self::ControlsMatchingObject { filter } => format!("a player who controls {}", filter.description()),
+            Self::WithMatchingAttachments { base, filter } => format!("{} with {} attached to them", base.description(), filter.description()),
             Self::MostLifeTiedAmong { base } => describe_most_life_tied_among(base),
             Self::QuantityGreaterThanPlayer { base, other, quantity } => {
                 describe_quantity_greater_than_player(base, other, *quantity)
@@ -2615,11 +2625,57 @@ impl SectorPredicate {
     }
 }
 
+/// Names retained on exact objects of an actual completed named operation.
+#[cfg_attr(feature="serde",derive(serde::Serialize,serde::Deserialize))]
+#[derive(Debug,Clone,PartialEq,TagKeyWalk)]
+pub struct NamedActionObjectNameCondition {
+    pub label:String,
+    pub player:PlayerFilter,
+    pub this_turn:bool,
+}
+
+/// A pure positional library predicate. It neither inspects nor reveals cards.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct LibraryBoundary {
+    pub from_top: bool,
+    /// Box the recursive Value -> Count(ObjectFilter) -> LibraryBoundary path.
+    /// Serde and tag traversal retain the same logical count operand.
+    pub count: Box<Value>,
+}
+
+/// A named operation's proposed subject set, qualified before replacement.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct NamedActionObjectRequirement { pub minimum: u32, pub filter: Box<ObjectFilter> }
+
+/// Exiled members related to one or more exact battlefield hosts.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RelatedExileAnchor {
+    pub relationship: String,
+    pub host: Box<crate::ChooseSpec>,
+}
+/// A host's named exiled-card collection, independently qualified and counted.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RelatedExileMembers {
+    pub relationship: String,
+    pub filter: Box<ObjectFilter>,
+    pub count: Comparison,
+}
+
 /// Filter for selecting objects (permanents, spells, cards).
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, Default, TagKeyWalk)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
+    /// Members of a persistent group owned by the referenced object.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub group_member_of: Option<Box<ChooseSpec>>,
+    /// Actors in the same persistent association as the referenced object.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub same_group_as: Option<Box<ChooseSpec>>,
     /// Match a saved reference only while that exact object still exists,
     /// using its current characteristics rather than its saved snapshot.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2634,6 +2690,15 @@ pub struct ObjectFilter {
     /// Require each named custom status on the exact permanent incarnation.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub custom_statuses: Vec<String>,
+    /// Current eligibility to contribute a tap to this opaque named payment.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub named_tap_payment: Option<String>,
+    /// Candidate spell carries text added from this source card's exact identity.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub text_added_from_source: bool,
+    /// A copied rule's source-relative origin is frozen before its text is appended.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub text_added_from_stable: Option<crate::ids::StableId>,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub excluded_custom_statuses: Vec<String>,
     pub controller: Option<PlayerFilter>,
@@ -2743,6 +2808,12 @@ pub struct ObjectFilter {
     /// Chimera"), recorded across every card of that name.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub exiled_with_cards_named: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub related_exile_anchor: Option<RelatedExileAnchor>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub library_boundary: Option<LibraryBoundary>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub related_exile_members: Option<RelatedExileMembers>,
     pub chosen_land_type: bool,
     /// Requires at least one of the five basic land subtypes.  This is not
     /// the same as requiring the Basic supertype: nonbasic dual lands can
@@ -2786,6 +2857,9 @@ pub struct ObjectFilter {
     /// Requires the current Ring-bearer designation (or its captured LKI).
     #[cfg_attr(feature = "serde", serde(default))]
     pub ring_bearer: bool,
+    /// Candidate is the target of this named directed link from the filter source.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub linked_from_source: Option<String>,
     /// Requires a current space-sculptor sector designation (CR 702.158b).
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     #[tag_walk(skip)]
@@ -3084,6 +3158,10 @@ pub struct ObjectFilter {
     /// Literal presence/absence of the cumulative-upkeep keyword mechanic.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub has_cumulative_upkeep: Option<bool>,
+    /// Candidate was an affected object in this turn's named operation,
+    /// performed by an exact source or captured object reference.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub named_action_recipient_this_turn: Option<Box<(String,ChooseSpec)>>,
     pub ability_markers: Vec<String>,
     pub excluded_ability_markers: Vec<String>,
     pub no_shared_creature_types_with: Vec<ObjectFilter>,
@@ -3149,11 +3227,23 @@ pub struct ObjectFilter {
     /// to any of these source-owned rule modifications.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub excluded_rules: Vec<crate::value_model::ObjectRule>,
+    /// Candidate shares any name with an operation object's immutable receipt.
+    #[cfg_attr(feature="serde",serde(default,skip_serializing_if="Option::is_none"))]
+    pub shares_name_with_named_action_objects:Option<NamedActionObjectNameCondition>,
+    /// The candidate has a name noted for an exact referenced object incarnation.
+    #[cfg_attr(feature="serde",serde(default,skip_serializing_if="Option::is_none"))]
+    pub name_noted_for:Option<Box<ChooseSpec>>,
+    /// Exact linked producer/reader relationship; never source-wide name notes.
+    #[cfg_attr(feature="serde",serde(default,skip_serializing_if="Option::is_none"))]
+    pub noted_name_pair:Option<crate::LinkedExilePair>,
     /// The audited filter parse that produced this filter (compiler
     /// word-claim audit only); never part of the filter's meaning.
     #[cfg_attr(feature = "serde", serde(skip))]
     #[tag_walk(skip)]
     pub claim_origin: ClaimOrigin,
+    /// Exact copy-of-card/spell identity, not merely an uncast stack object.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub spell_copy: bool,
 }
 
 /// Which audited object-filter parse produced a filter, for the compiler's
@@ -3225,10 +3315,15 @@ impl std::fmt::Debug for ObjectFilter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
             zone,
+            group_member_of,
+            same_group_as,
             match_current_state,
             use_face_up_characteristics,
             renowned,
             custom_statuses,
+            named_tap_payment,
+            text_added_from_source,
+            text_added_from_stable,
             excluded_custom_statuses,
             controller,
             cast_by,
@@ -3277,6 +3372,9 @@ impl std::fmt::Debug for ObjectFilter {
             name_noted_while_drafting_named,
             creature_types_noted_while_drafting_named,
             exiled_with_cards_named,
+            related_exile_anchor,
+            library_boundary,
+            related_exile_members,
             chosen_land_type,
             has_basic_land_type,
             has_nonbasic_land_type,
@@ -3300,6 +3398,7 @@ impl std::fmt::Debug for ObjectFilter {
             goaded,
             prepared,
             ring_bearer,
+            linked_from_source,
             sector,
             sticker,
             token,
@@ -3422,6 +3521,7 @@ impl std::fmt::Debug for ObjectFilter {
             static_abilities,
             excluded_static_abilities,
             has_cumulative_upkeep,
+            named_action_recipient_this_turn,
             ability_markers,
             excluded_ability_markers,
             no_shared_creature_types_with,
@@ -3435,6 +3535,9 @@ impl std::fmt::Debug for ObjectFilter {
             source,
             source_surface,
             shares_name,
+            shares_name_with_named_action_objects,
+            name_noted_for,
+            noted_name_pair,
             shares_color,
             has_activated_ability,
             shares_card_type,
@@ -3443,6 +3546,7 @@ impl std::fmt::Debug for ObjectFilter {
             colored_mana_symbol_count,
             physical_card,
             not_cast,
+            spell_copy,
             match_captured_public_destination,
             castable_face_match,
             excluded_rules,
@@ -3450,10 +3554,15 @@ impl std::fmt::Debug for ObjectFilter {
         } = self;
         let mut out = f.debug_struct("ObjectFilter");
         out.field("zone", zone);
+        out.field("group_member_of", group_member_of);
+        out.field("same_group_as", same_group_as);
         out.field("match_current_state", match_current_state);
         out.field("use_face_up_characteristics", use_face_up_characteristics);
         out.field("renowned", renowned);
         out.field("custom_statuses", custom_statuses);
+        out.field("named_tap_payment", named_tap_payment);
+        out.field("text_added_from_source", text_added_from_source);
+        out.field("text_added_from_stable", text_added_from_stable);
         out.field("excluded_custom_statuses", excluded_custom_statuses);
         out.field("controller", controller);
         out.field("cast_by", cast_by);
@@ -3502,6 +3611,9 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("name_noted_while_drafting_named", name_noted_while_drafting_named);
         out.field("creature_types_noted_while_drafting_named", creature_types_noted_while_drafting_named);
         out.field("exiled_with_cards_named", exiled_with_cards_named);
+        out.field("related_exile_anchor", related_exile_anchor);
+        out.field("library_boundary", library_boundary);
+        out.field("related_exile_members", related_exile_members);
         out.field("chosen_land_type", chosen_land_type);
         out.field("has_basic_land_type", has_basic_land_type);
         out.field("has_nonbasic_land_type", has_nonbasic_land_type);
@@ -3525,6 +3637,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("goaded", goaded);
         out.field("prepared", prepared);
         out.field("ring_bearer", ring_bearer);
+        out.field("linked_from_source", linked_from_source);
         out.field("sector", sector);
         out.field("sticker", sticker);
         out.field("token", token);
@@ -3647,6 +3760,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("static_abilities", static_abilities);
         out.field("excluded_static_abilities", excluded_static_abilities);
         out.field("has_cumulative_upkeep", has_cumulative_upkeep);
+        out.field("named_action_recipient_this_turn", named_action_recipient_this_turn);
         out.field("ability_markers", ability_markers);
         out.field("excluded_ability_markers", excluded_ability_markers);
         out.field("no_shared_creature_types_with", no_shared_creature_types_with);
@@ -3660,6 +3774,9 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("source", source);
         out.field("source_surface", source_surface);
         out.field("shares_name", shares_name);
+        out.field("shares_name_with_named_action_objects", shares_name_with_named_action_objects);
+        out.field("name_noted_for", name_noted_for);
+        out.field("noted_name_pair", noted_name_pair);
         out.field("shares_color", shares_color);
         out.field("has_activated_ability", has_activated_ability);
         out.field("shares_card_type", shares_card_type);
@@ -3668,6 +3785,7 @@ impl std::fmt::Debug for ObjectFilter {
         out.field("colored_mana_symbol_count", colored_mana_symbol_count);
         out.field("physical_card", physical_card);
         out.field("not_cast", not_cast);
+        out.field("spell_copy", spell_copy);
         out.field("match_captured_public_destination", match_captured_public_destination);
         out.field("castable_face_match", castable_face_match);
         out.field("excluded_rules", excluded_rules);
@@ -4362,6 +4480,9 @@ impl ObjectFilter {
             || self.name_noted_while_drafting_named.is_some()
             || self.creature_types_noted_while_drafting_named.is_some()
             || self.exiled_with_cards_named.is_some()
+            || self.related_exile_anchor.is_some()
+            || self.library_boundary.is_some()
+            || self.related_exile_members.is_some()
             || self.sector.is_some()
             || self.chosen_land_type
             || self.has_basic_land_type
@@ -4384,6 +4505,9 @@ impl ObjectFilter {
             || self.modified
             || self.sticker.is_some()
             || self.enlist_eligible
+            || self.group_member_of.is_some()
+            || self.same_group_as.is_some()
+            || self.linked_from_source.is_some()
             || self.attached_to_object.is_some()
             || self.could_enchant_object.is_some()
             || self.could_be_enchanted_by_source
@@ -4406,6 +4530,7 @@ impl ObjectFilter {
             || self.colored_mana_symbol_count.is_some()
             || self.physical_card
             || self.not_cast
+            || self.spell_copy
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
@@ -4415,6 +4540,8 @@ impl ObjectFilter {
             || self.no_x_in_cost
             || self.has_x_in_cost
             || self.name.is_some()
+            || self.shares_name_with_named_action_objects.is_some()
+            || self.name_noted_for.is_some()
             || self.excluded_name.is_some()
             || self.name_originally_printed_in_set.is_some()
             || self.nameless
@@ -5711,6 +5838,8 @@ impl ObjectFilter {
                 && shared_colors.is_none()
                 && !self.has_conjunctive_set_surface()
                 && self.union_connective() == ObjectFilterUnionConnective::Or
+                && self.group_member_of.is_none()
+                && self.same_group_as.is_none()
                 && self.attached_to_object.is_none()
                 && self.attached_to_player.is_none()
                 && left_branch.stack_kind == Some(StackObjectKind::ActivatedAbility)
@@ -5734,6 +5863,8 @@ impl ObjectFilter {
                 && shared_colors.is_none()
                 && !self.has_conjunctive_set_surface()
                 && self.union_connective() == ObjectFilterUnionConnective::Or
+                && self.group_member_of.is_none()
+                && self.same_group_as.is_none()
                 && self.attached_to_object.is_none()
                 && self.attached_to_player.is_none()
                 && left.matches(" power ").count() == 1
@@ -5794,6 +5925,10 @@ impl ObjectFilter {
 
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
+        if self.text_added_from_source || self.text_added_from_stable.is_some() {
+            post_noun_qualifiers.push("with text added from this card".into());
+        }
+        if let Some(name) = &self.named_tap_payment { post_noun_qualifiers.push(format!("as payment named \"{name}\"")); }
         for name in &self.excluded_custom_statuses { post_noun_qualifiers.push(format!("without the {name} status")); }
         for name in &self.custom_statuses {
             post_noun_qualifiers.push(format!("with the {name} status"));
@@ -5958,7 +6093,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 // "any number of target attacking creatures their opponents
@@ -6138,6 +6273,7 @@ impl ObjectFilter {
             };
             post_noun_qualifiers.push(format!("that wasn't cast from {origin}"));
         }
+        if self.spell_copy {post_noun_qualifiers.push("that is a copy".to_string());}
         if self.not_cast {
             post_noun_qualifiers.push("that wasn't cast".to_string());
         }
@@ -6230,7 +6366,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_)
@@ -6423,8 +6559,22 @@ impl ObjectFilter {
         if let Some(sector) = self.sector {
             post_noun_qualifiers.push(sector.description());
         }
+        if let Some(owner)=&self.name_noted_for {
+            let actor=match owner.base(){ChooseSpec::Source=>"this permanent".into(),ChooseSpec::Tagged(_)=>"that permanent".into(),ChooseSpec::SpecificObject(id)=>format!("object {}",id.0),_=>"the referenced permanent".into()};
+            post_noun_qualifiers.push(format!("with a name noted for {actor}"));
+        }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));
+        }
+        if let Some(relation)=&self.related_exile_anchor {
+            let host=match relation.host.base(){crate::ChooseSpec::Source=>"this permanent".to_string(),crate::ChooseSpec::Tagged(_)=>"the referenced permanent".to_string(),crate::ChooseSpec::All(filter)|crate::ChooseSpec::Object(filter)=>filter.description(),_=>"the exact referenced host".to_string()};
+            post_noun_qualifiers.push(format!("linked to {host} under the {} relationship",relation.relationship));
+        }
+        if let Some(relation)=&self.related_exile_members {
+            post_noun_qualifiers.push(format!("with a number of {} linked under the {} relationship {}",relation.filter.description(),relation.relationship,describe_comparison(&relation.count)));
+        }
+        if let Some(boundary)=&self.library_boundary {
+            post_noun_qualifiers.push(format!("among the {} {:?} cards of its owner's library",if boundary.from_top{"top"}else{"bottom"},boundary.count));
         }
         if let Some(card_name) = &self.exiled_with_cards_named {
             post_noun_qualifiers.push(format!("you exiled with cards named {card_name}"));
@@ -6453,8 +6603,14 @@ impl ObjectFilter {
             ));
         }
         for relation in &self.characteristic_relations {
+            if relation.kind == ObjectCharacteristicRelationKind::HasUnrepresentedSubtype {
+                let families=relation.characteristics.iter().filter_map(|kind|match kind { ObjectCharacteristic::Subtype(family)=>Some(family.type_phrase()),_=>None }).collect::<Vec<_>>().join(" or ");
+                post_noun_qualifiers.push(format!("that has a {families} no {} has",relation.comparison_description()));
+                continue;
+            }
             if relation.characteristics == [ObjectCharacteristic::Name] {
                 let phrase = match relation.kind {
+                    ObjectCharacteristicRelationKind::HasUnrepresentedSubtype => unreachable!("subtype relation rendered above"),
                     ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
                     ObjectCharacteristicRelationKind::SharesNone => {
                         "that doesn't have the same name as"
@@ -6471,6 +6627,7 @@ impl ObjectFilter {
                 .collect::<Vec<_>>()
                 .join(" or ");
             let verb = match relation.kind {
+                ObjectCharacteristicRelationKind::HasUnrepresentedSubtype => unreachable!("subtype relation rendered above"),
                 ObjectCharacteristicRelationKind::SharesAny => "shares",
                 ObjectCharacteristicRelationKind::SharesNone => "doesn't share",
             };
@@ -6488,6 +6645,9 @@ impl ObjectFilter {
                 | TaggedOpbjectRelation::SameObjectId
                 | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
                     match constraint.tag.as_str() {
+                        tag if tag.starts_with("source_collection:") => {
+                            post_noun_qualifiers.push(format!("from the {} collection", &tag["source_collection:".len()..]));
+                        }
                         "it" => parts.push("that".to_string()),
                         "enchanted" => parts.push("enchanted".to_string()),
                         "equipped" => parts.push("equipped".to_string()),
@@ -6958,6 +7118,10 @@ impl ObjectFilter {
         if self.nonhistoric {
             post_noun_qualifiers.push("that's not historic".to_string());
         }
+        if let Some(relation) = &self.linked_from_source {
+            post_noun_qualifiers.push(format!("linked by {relation} to this permanent"));
+        }
+
         if self.is_commander
             && !(self.card_types.is_empty()
                 && self.all_card_types.is_empty()
@@ -7656,6 +7820,9 @@ impl ObjectFilter {
         if self.shares_name {
             parts.push("with the same name".to_string());
         }
+        if let Some(history)=&self.shares_name_with_named_action_objects {
+            parts.push(format!("sharing a name with a card from {} {} action{}",describe_possessive_player_filter(&history.player),history.label,if history.this_turn {" this turn"}else{""}));
+        }
         if self.shares_color {
             parts.push("that share a color".to_string());
         }
@@ -7887,6 +8054,7 @@ impl ObjectFilter {
                 crate::ChoiceAggregateMetric::Toughness => "toughness",
                 crate::ChoiceAggregateMetric::ManaValue => "mana value",
                 crate::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+                crate::ChoiceAggregateMetric::DistinctColorRepresentatives => "distinct represented colors",
                 crate::ChoiceAggregateMetric::ManaSymbolsOfColor(_) => "mana symbols",
             };
             if let crate::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = constraint.metric
@@ -7991,14 +8159,22 @@ impl ObjectFilter {
                 }
             }
         }
+        if let Some(query)=&self.named_action_recipient_this_turn {
+            let actor=match query.1.base(){ChooseSpec::Source=>"this permanent".into(),ChooseSpec::Tagged(_)=>"that permanent".into(),ChooseSpec::SpecificObject(id)=>format!("object {}",id.0),_=>"the referenced permanent".into()};
+            parts.push(format!("that was affected by the {} action performed by {actor} this turn",query.0));
+        }
         for marker in &self.ability_markers {
             if marker.eq_ignore_ascii_case("modal") {
                 parts.push("that's modal".to_string());
                 continue;
             }
             // "a spell using blink": a custom keyword's paid designation.
-            if marker.starts_with("using ") {
-                parts.push(marker.to_ascii_lowercase());
+            if let Some(label) = marker.strip_prefix("cast using ") {
+                parts.push(format!("that was cast using custom cost \"{}\"", label.to_ascii_lowercase()));
+                continue;
+            }
+            if let Some(label) = marker.strip_prefix("using ") {
+                parts.push(format!("using custom cost \"{}\"", label.to_ascii_lowercase()));
                 continue;
             }
             parts.push(format!("with {}", marker.to_ascii_lowercase()));
@@ -8289,6 +8465,8 @@ impl ObjectFilter {
 
         parts.extend(chosen_trailing_qualifiers);
 
+        if let Some(owner) = &self.group_member_of { parts.push(format!("in group owned by {}", describe_counter_holder(owner))); }
+        if let Some(member) = &self.same_group_as { parts.push(format!("in the same group as {}", describe_counter_holder(member))); }
         if let Some(attached_to) = &self.attached_to_object {
             parts.push(format!(
                 "attached to {}",
@@ -8904,6 +9082,8 @@ fn describe_possessive_commander_subject(filter: &ObjectFilter) -> Option<String
         || !filter.excluded_subtypes.is_empty()
         || !filter.tagged_constraints.is_empty()
         || filter.name.is_some()
+        || filter.shares_name_with_named_action_objects.is_some()
+        || filter.name_noted_for.is_some()
         || filter.specific.is_some()
         || filter.token
         || filter.nontoken
@@ -9555,7 +9735,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
         ),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             format!("{}'s", filter.description())
         }
         PlayerFilter::OpponentOf(_) | PlayerFilter::PlayerToLeftOf(_) => {
@@ -9690,6 +9870,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         ),
         PlayerFilter::OwnsMatchingObject { filter } => format!("player who owns {}", filter.description()),
         PlayerFilter::ControlsMatchingObject { filter } => format!("player who controls {}", filter.description()),
+        PlayerFilter::WithMatchingAttachments { base, filter } => format!("{} with {} attached to them", describe_player_filter(base), filter.description()),
         PlayerFilter::MostLifeTiedAmong { base } => describe_most_life_tied_among(base)
             .trim_start_matches("an ")
             .trim_start_matches("a ")
@@ -10480,6 +10661,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
+            Value::NamedActionCount {object,label,this_turn} => format!("the number of times {} has performed the {label} action{}",describe_counter_holder(object),if *this_turn {" this turn"}else{""}),
             Value::SourceChosenNumber { .. } => "the chosen number".to_string(),
             Value::DraftNotedHighestNumber { card_name } => {
                 format!("the highest number you noted for cards named {card_name}")
@@ -10561,6 +10743,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::StationContributionOf(spec) => {
                 format!("{} power", describe_value_choose_spec_possessive(spec))
             }
+            Value::TimesPaidLabelOf {reference,..} => format!("the number of times that object's additional {} cost was paid", reference.custom_keyword.as_deref().unwrap_or("named")),
             Value::KicksPaidOf(_) => "the number of times it was kicked".to_string(),
             Value::ModeSelectionsOf(_) => {
                 "the number of times you chose a mode for that spell".to_string()
@@ -11271,7 +11454,7 @@ mod tests {
 
         assert_eq!(
             filter.description(),
-            "artifact or non-aura enchantment card in your graveyard"
+            "artifact or non-Aura enchantment card in your graveyard"
         );
     }
 
@@ -11494,7 +11677,7 @@ mod tests {
 
         assert_eq!(
             filter.description(),
-            "artifact, non-aura enchantment, or land"
+            "artifact, non-Aura enchantment, or land"
         );
     }
 
@@ -11726,9 +11909,22 @@ mod tests {
     }
 
     #[test]
-    fn hand_written_debug_matches_the_derived_layout() {
+    fn hand_written_debug_keeps_current_field_order_and_payloads() {
         let text = format!("{:?}", ObjectFilter::default());
-        assert!(text.starts_with("ObjectFilter { zone: None, match_current_state: false, "));
+        assert!(text.starts_with("ObjectFilter { zone: None, group_member_of: None, same_group_as: None, match_current_state: false, "));
+        assert!(text.ends_with("excluded_rules: [] }"));
+
+        // Group-reference fields precede current-state matching in the model;
+        // neither their payloads nor their positions may disappear from Debug.
+        let filter = ObjectFilter {
+            zone: Some(Zone::Exile),
+            group_member_of: Some(Box::new(crate::target_model::ChooseSpec::Source)),
+            same_group_as: Some(Box::new(crate::target_model::ChooseSpec::SourceController)),
+            match_current_state: true,
+            ..Default::default()
+        };
+        let text = format!("{filter:?}");
+        assert!(text.starts_with("ObjectFilter { zone: Some(Exile), group_member_of: Some(Source), same_group_as: Some(SourceController), match_current_state: true, "));
         assert!(text.ends_with("excluded_rules: [] }"));
     }
 }
@@ -11914,4 +12110,21 @@ pub fn with_untyped_filter_default_noun<R>(noun: &'static str, render: impl FnOn
     let rendered = render();
     UNTYPED_DEFAULT_NOUN.with(|cell| cell.set(previous));
     rendered
+}
+
+#[cfg(all(test,feature="serde"))]
+mod library_boundary_indirection_tests {
+    use super::*;
+    #[test]
+    fn nested_boundary_counts_roundtrip_without_changing_wire_shape() {
+        let mut inner=ObjectFilter::default();
+        inner.library_boundary=Some(LibraryBoundary{from_top:false,count:Box::new(Value::Fixed(2))});
+        let count=Value::Count(inner);
+        let boundary=LibraryBoundary{from_top:true,count:Box::new(count.clone())};
+        let wire=serde_json::to_value(&boundary).unwrap();
+        assert_eq!(wire.get("count"),Some(&serde_json::to_value(&count).unwrap()),"indirection is transparent on the wire");
+        let restored:LibraryBoundary=serde_json::from_value(wire).unwrap();
+        assert_eq!(restored,boundary);
+        assert_eq!(restored.count.as_ref(),&count,"the complete nested filter/count operand survives");
+    }
 }

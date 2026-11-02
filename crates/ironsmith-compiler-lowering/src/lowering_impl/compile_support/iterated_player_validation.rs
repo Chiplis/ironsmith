@@ -299,7 +299,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::EnteredBattlefield(filter)
                 | TurnHistoryCount::DealtExcessDamage(filter)
                 | TurnHistoryCount::DiedTotalPower(filter)
-                | TurnHistoryCount::MovedZones { filter, .. }
+                | TurnHistoryCount::MovedZones { filter, .. } | TurnHistoryCount::MovedZonesEver { filter, .. }
                 | TurnHistoryCount::CountersRemovedFrom { filter, .. } => {
                     object_filter_mentions_iterated_player(filter)
                 }
@@ -540,8 +540,10 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerIsYou { player }
         | PlayerHasInitiative { player }
         | PlayerHasCitysBlessing { player }
+        | PlayerNamedActionHistory { player, .. } | PlayerHasDesignation { player, .. }
         | PlayerHasEnduringStory { player }
         | SourceIsRingBearer { player }
+        | PlayerSpentManaToCastSpellsThisTurnAtLeast { player, .. }
         | PlayerRingTemptedThisGameOrMore { player, .. }
         | PlayerCommittedCrimeThisTurn { player }
         | PlayerRolledResultThisTurn { player, .. }
@@ -581,6 +583,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     match restriction {
         CastOrActivatePayments { player, sacrifice, .. } => player.mentions_iterated_player()
             || sacrifice.as_ref().is_some_and(object_filter_mentions_iterated_player),
+        MoveBetweenZones { .. } => false,
         AdditionalLandPlays(player, _)
         | NoMaximumHandSize(player)
         | ReduceMaximumHandSize(player, _)

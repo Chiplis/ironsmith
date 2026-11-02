@@ -637,6 +637,36 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
     if !has_colon && !looks_like_trigger {
         return Ok(None);
     }
+    // A bounded modal program after an instruction boundary owns its colon.
+    // Do not veto punctuation generally: quoted multi-instruction costs and
+    // complete composite activation costs retain their normal cost owner.
+    if !looks_like_trigger {
+        let mut quoted = false;
+        let mut statement_start = None;
+        for (index, token) in ability_tokens.iter().enumerate() {
+            if token.kind == TokenKind::Quote { quoted = !quoted; continue; }
+            if quoted { continue; }
+            if token.kind == TokenKind::Colon {
+                if let Some(start) = statement_start {
+                    let header = crate::lexer::parser_token_word_refs(&ability_tokens[start..index]);
+                    let modal = matches!(header.as_slice(),
+                        ["choose", "one", "of", "the", "following"]
+                        | ["you", "choose", "one", "of", "the", "following"]
+                        | ["its", "controller", "chooses", "one", "of", "the", "following"]
+                        | ["its", "owner", "chooses", "one", "of", "the", "following"]);
+                    if modal && ability_tokens.get(index + 1)
+                        .is_some_and(|token| token.kind == TokenKind::LBracket)
+                    {
+                        return Ok(None);
+                    }
+                }
+                break;
+            }
+            if token.kind == TokenKind::Semicolon || token.is_period() {
+                statement_start = Some(index + 1);
+            }
+        }
+    }
     // "loses all abilities and is a Citizen with base power and toughness
     // 1/1 and "{T}: Add {C}" named Humble Merchant" (Honest Work): the colon
     // belongs to a quoted ability embedded mid-clause, so the component is
@@ -688,13 +718,56 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
             }
         }
     } else {
-        let Some(mut parsed) = parse_activated_line(&semantic_tokens)? else {
+        // The document owner normally extracts restriction sentences before
+        // reading an activation. A quoted grant has no outer document pass,
+        // so perform the same separation here and attach those restrictions
+        // to the parsed ability below.
+        let mut activation_tokens = semantic_tokens.clone();
+        let mut mana_restrictions = Vec::new();
+        if let Some(colon) = semantic_tokens.iter().position(|token| token.kind == TokenKind::Colon) {
+            activation_tokens = semantic_tokens[..=colon].to_vec();
+            for sentence in crate::lexer::split_lexed_sentences(&semantic_tokens[colon + 1..]) {
+                if let Some(restriction) = crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence) {
+                    // A surface-shaped restriction is not necessarily executable.
+                    // Never remove an unknown condition and grant an unrestricted ability.
+                    let conditional = sentence.windows(2)
+                        .any(|words| words[0].is_word("only") && words[1].is_word("if"));
+                    if (restriction.timing.is_none() && restriction.condition.is_none()
+                        && restriction.text_only_condition.is_none()
+                        && restriction.mana_usage_restriction.is_none())
+                        || (conditional && restriction.condition.is_none()
+                            && restriction.text_only_condition.is_none())
+                    {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported quoted activation restriction: {}",
+                            display_text_for_tokens(sentence)
+                        )));
+                    }
+                    crate::word_claims::claim_tokens(sentence);
+                } else if let Some(restriction) = crate::grammar::restriction_facts::parse_mana_restriction_tokens(sentence) {
+                    // Use the ordinary compiler-owned restriction transport;
+                    // nested on-spend programs are lowered with the ability.
+                    if restriction.usage_restriction.is_none() {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported quoted mana restriction: {}", display_text_for_tokens(sentence)
+                        )));
+                    }
+                    crate::word_claims::claim_tokens(sentence);
+                    mana_restrictions.push(restriction);
+                } else if !sentence.is_empty() {
+                    activation_tokens.extend_from_slice(sentence);
+                    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+                }
+            }
+        }
+        let Some(mut parsed) = parse_activated_line(&activation_tokens)? else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported granted activated/triggered ability clause (clause: '{}')",
                 clause_words.join(" ")
             )));
         };
         apply_quoted_activation_restrictions(&mut parsed, &semantic_tokens);
+        crate::restriction_support::apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
         parsed
     };
 
@@ -745,12 +818,17 @@ fn apply_quoted_activation_restrictions(parsed: &mut ParsedAbility, tokens: &[Ow
     else {
         return;
     };
-    for sentence in ironsmith_grammar_common::primitives::split_lexed_slices_on_period(&tokens[colon + 1..]) {
+    for sentence in crate::lexer::split_lexed_sentences(&tokens[colon + 1..]) {
         let Some(restriction) =
             crate::grammar::restriction_facts::parse_activation_restriction_tokens(sentence)
         else {
             continue;
         };
+        if let Some(usage) = restriction.mana_usage_restriction.clone()
+            && !activated.mana_usage_restrictions.contains(&usage)
+        {
+            activated.mana_usage_restrictions.push(usage);
+        }
         if let Some(timing) = restriction.timing
             && timing != activated.timing
         {
@@ -775,6 +853,9 @@ fn apply_quoted_activation_restrictions(parsed: &mut ParsedAbility, tokens: &[Ow
         }
         let mut stated = Vec::new();
         if let Some(condition) = restriction.condition {
+            conjuncts(condition, &mut stated);
+        }
+        if let Some(condition) = restriction.text_only_condition {
             conjuncts(condition, &mut stated);
         }
         for condition in stated {
@@ -807,6 +888,16 @@ pub(super) fn normalize_named_granted_trigger_subject(
     else {
         return tokens.to_vec();
     };
+    // An ordinary filtered event subject is not a printed token name.
+    // In particular, `a nonland permanent you control` contains only words
+    // the loose proper-name heuristic accepts. Preserve its event filter.
+    let explicit_filter_subject = tokens.get(1).is_some_and(|token|
+        matches!(token.parser_text(), "a" | "an" | "another" | "each" | "other" | "this" | "that" | "the" | "all"));
+    if dies_idx > 1 && explicit_filter_subject && crate::word_claims::probe_only(||
+        crate::object_filters::parse_object_filter_lexed(&tokens[1..dies_idx], false)
+    ).is_ok() {
+        return tokens.to_vec();
+    }
     if dies_idx <= 1
         || !tokens[1..dies_idx].iter().all(|token| {
             token.kind == TokenKind::Word
@@ -1003,4 +1094,70 @@ pub(super) fn parse_granted_triggered_otherwise_ability(
         None,
         ReferenceImports::default(),
     )))
+}
+
+#[cfg(test)]
+mod granted_death_subject_regressions {
+    #[test]
+    fn ordinary_death_filter_is_not_inferred_as_a_token_name() {
+        let tokens = crate::lexer::lex_line("Whenever a nonland permanent you control dies, each opponent loses 1 life.", 0).unwrap();
+        assert_eq!(super::normalize_named_granted_trigger_subject(&tokens), tokens);
+    }
+}
+
+#[cfg(test)]
+mod quoted_grant_review_regressions {
+    #[test]
+    fn bare_known_subtype_name_still_means_this_token() {
+        let tokens = crate::lexer::lex_line("When Spirit dies, draw a card.", 0).unwrap();
+        let normalized = super::normalize_named_granted_trigger_subject(&tokens);
+        assert_eq!(crate::lexer::parser_token_word_refs(&normalized), ["when", "this", "token", "dies", "draw", "a", "card"]);
+    }
+
+    #[test]
+    fn quoted_mana_restriction_is_transported_as_the_exact_typed_payload() {
+        let tokens = crate::lexer::lex_line("{T}: Add {G}. Spend this mana only to cast creature spells.", 0).unwrap();
+        let granted = super::parse_granted_activated_or_triggered_ability_for_gain(&tokens, &[])
+            .unwrap().expect("quoted activated ability");
+        let crate::cards::builders::GrantedAbilityAst::ParsedObjectAbility { ability, .. } = granted
+            else { panic!("typed parsed object ability"); };
+        let crate::model::CompilerAbilityKindCore::Activated(activated) = ability.kind()
+            else { panic!("activated mana ability"); };
+        let [ironsmith_core::ManaUsageRestriction::CastSpell { card_types, restrict_to_matching_spell, .. }] = activated.mana_usage_restrictions.as_slice()
+            else { panic!("exactly one typed spending restriction: {:?}", activated.mana_usage_restrictions); };
+        assert!(*restrict_to_matching_spell);
+        assert_eq!(card_types.as_slice(), [crate::types::CardType::Creature]);
+        let restriction_tokens = crate::lexer::lex_line("Spend this mana only to cast creature spells.", 0).unwrap();
+        let expected = crate::grammar::restriction_facts::parse_mana_restriction_tokens(&restriction_tokens)
+            .unwrap().usage_restriction.unwrap();
+        assert_eq!(activated.mana_usage_restrictions[0], expected);
+    }
+
+    #[test]
+    fn quoted_unknown_mana_restriction_cannot_become_unrestricted_mana() {
+        let tokens = crate::lexer::lex_line("{T}: Add {G}. Spend this mana only to cast glittering spells.", 0).unwrap();
+        assert!(super::parse_granted_activated_or_triggered_ability_for_gain(&tokens, &[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod nested_program_activation_boundary_tests {
+    use super::*;
+    #[test]
+    fn later_choice_program_colon_does_not_turn_instructions_into_activation_costs() {
+        let tokens = crate::lexer::lex_line(
+            "You lose all research counters; Choose one of the following: [You gain 1 life] or [Draw a card]", 0,
+        ).unwrap();
+        let words = crate::lexer::parser_token_word_refs(&tokens);
+        assert!(parse_granted_activated_or_triggered_ability_for_gain_remaining(&tokens, &words).unwrap().is_none());
+        let tokens = crate::lexer::lex_line("{T}: Draw a card.", 0).unwrap();
+        let words = crate::lexer::parser_token_word_refs(&tokens);
+        assert!(parse_granted_activated_or_triggered_ability_for_gain_remaining(&tokens, &words).unwrap().is_some());
+        let tokens = crate::lexer::lex_line(
+            "{T}, Pay 1 life: Draw a card.", 0,
+        ).unwrap();
+        let words = crate::lexer::parser_token_word_refs(&tokens);
+        assert!(parse_granted_activated_or_triggered_ability_for_gain_remaining(&tokens, &words).unwrap().is_some(),
+            "a complete composite cost retains its ordinary activated-ability owner");
+    }
 }

@@ -65,6 +65,18 @@ impl EffectExecutor for ReselectAttackTargetEffect {
             };
             let mut changed = 0;
             for creature in creatures {
+                // An instruction simply making an existing permanent attacking
+                // uses the ordinary entering-combat chooser. It neither moves
+                // the permanent nor declares an attacker or reselects an attack
+                // it is already making (CR506.3d/508.4).
+                if self.enters_combat && fixed_player.is_none() && among_player.is_none() {
+                    if game.combat.as_ref().is_some_and(|combat|combat.attackers.iter().any(|info|info.creature==creature)){continue;}
+                    if let Some(chosen)=super::enter_attacking::choose_enters_attacking_target(game,ctx,creature) {
+                        game.add_entering_attacker(creature,chosen);changed+=1;
+                    }
+                    if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));}
+                    continue;
+                }
                 let Some(current) = game.combat.as_ref().and_then(|combat| {
                     combat
                         .attackers

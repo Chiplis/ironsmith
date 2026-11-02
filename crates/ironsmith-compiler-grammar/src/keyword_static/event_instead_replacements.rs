@@ -26,7 +26,8 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
         ReplacedEventSpec::LifePayment { .. } => &["pay", "pays"],
         // Regeneration is its own destruction replacement (CR 701.19).
         ReplacedEventSpec::Destroy { .. } => &["regenerate"],
-        ReplacedEventSpec::ZoneChange { .. } => &[],
+        ReplacedEventSpec::ZoneChange { .. }
+        | ReplacedEventSpec::ZoneChangeExcluding { .. } => &[],
         ReplacedEventSpec::DrawInstruction { .. } => &[],
         ReplacedEventSpec::SourceDestructionRegenerates => &[],
         ReplacedEventSpec::Untap { .. } => &[],
@@ -262,6 +263,17 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         }
         // "If this creature would die": put into a graveyard from the
         // battlefield (CR 700.4).
+        ["leave", "the", origin, "other", "than", "being", "put", "onto", "the", destination] => {
+            let from = crate::util::parse_zone_word(origin)?;
+            let excluded = crate::util::parse_zone_word(destination)?;
+            let object = object_subject(header, subject)?;
+            claim_predicate();
+            Some(ReplacedEventSpec::ZoneChangeExcluding {
+                object,
+                from,
+                excluded_to_zones: vec![excluded],
+            })
+        }
         ["leave", "the", "battlefield"] => {
             let object = object_subject(header, subject)?;
             claim_predicate();
@@ -562,7 +574,7 @@ pub fn parse_if_event_would_happen_instead_line(
     if trailing {
         body.remove(sentence_end - 1);
     }
-    if leading && matches!(event, ReplacedEventSpec::ZoneChange { .. }) {
+    if leading && matches!(event, ReplacedEventSpec::ZoneChange { .. } | ReplacedEventSpec::ZoneChangeExcluding { .. }) {
         rewrite_passive_zone_change_body(&mut body);
     }
     // "If this permanent would be put into a graveyard, you may put it on top
@@ -662,4 +674,73 @@ pub fn parse_if_event_would_happen_instead_line(
     } else {
         StaticAbility::event_replacement_with_effects(event, effects, display)
     }))
+}
+
+/// An explicitly bounded program replaces each qualifying future event this
+/// turn. The complete body is retained and read by the ordinary effect grammar.
+pub fn parse_timed_event_replacement_program(tokens:&[OwnedLexToken])
+    ->Result<Option<crate::cards::builders::EffectAst>,CardTextError> {
+    use crate::lexer::TokenKind;
+    use crate::model::{CompilerControlFlowAst,ControlFlowSemanticAst,ControlFlowNodeAst,
+        ReplacementRelationshipAst,ReplacementKindAst,ReplacedEventAst,NestedProgramAst,NestedProgramKindAst};
+    let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(comma)=tokens.iter().position(|token|token.is_comma()) else{return Ok(None);};
+    let header=&tokens[..comma];
+    let Some(end)=header.len().checked_sub(2) else{return Ok(None);};
+    if words_of(&header[end..])!=["this","turn"] {return Ok(None);}
+    let tail=&tokens[comma+1..];
+    if tail.len()<7 || words_of(&tail[..4])!=["do","the","following","instead"]
+        || tail[4].kind!=TokenKind::Colon || tail[5].kind!=TokenKind::LBracket {return Ok(None);}
+    if tail.last().is_none_or(|token|token.kind!=TokenKind::RBracket){return Ok(None);}
+    let Some(event)=replaced_event(&header[..end]) else{return Ok(None);};
+    if !matches!(event,ReplacedEventSpec::ZoneChange{..}|ReplacedEventSpec::ZoneChangeExcluding{..}){return Ok(None);}
+    let effects=crate::clause_support::parse_effect_sentences_lexed(&tail[6..tail.len()-1])?;
+    if effects.is_empty(){return Ok(None);}
+    let display=crate::lexer::render_token_slice(tokens);
+    let flow=CompilerControlFlowAst::new(ControlFlowSemanticAst::Replacement,
+        ControlFlowNodeAst::Replacement(ReplacementRelationshipAst{
+            kind:ReplacementKindAst::Instead,event:ReplacedEventAst::ZoneChange,condition:None,
+            original_program:None,replacement_program:0,affected_reference:None,
+            registration:Some(crate::model::control_flow::FutureEventRegistrationAst {
+                event,mode:ironsmith_core::ReplacementApplyMode::UntilEndOfTurn,display,
+                target:None,resolving_object_only:false,
+            }),
+        }),vec![NestedProgramAst::new(NestedProgramKindAst::Replacement,effects)],None)
+        .map_err(|error|CardTextError::InvariantViolation(format!("invalid timed replacement scope: {error:?}")))?;
+    crate::word_claims::claim_tokens(&tokens[..comma+1]);
+    crate::word_claims::claim_tokens(&tail[..6]);
+    crate::word_claims::claim_tokens(&tail[tail.len()-1..]);
+    Ok(Some(crate::cards::builders::EffectAst::ControlFlow(Box::new(flow))))
+}
+
+/// A cast trigger can register a complete replacement for its exact spell's
+/// successful resolving departure, without applying to countering or a recast.
+pub fn parse_resolving_spell_replacement_program(tokens:&[OwnedLexToken])
+ ->Result<Option<crate::cards::builders::EffectAst>,CardTextError>{
+ use crate::lexer::TokenKind;
+ use crate::model::{CompilerControlFlowAst,ControlFlowSemanticAst,ControlFlowNodeAst,
+     ReplacementRelationshipAst,ReplacementKindAst,ReplacedEventAst,NestedProgramAst,NestedProgramKindAst};
+ let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+ let Some(comma)=tokens.iter().position(|token|token.is_comma()) else{return Ok(None);};
+ if words_of(&tokens[..comma])!=["instead","of","putting","the","triggering","spell","into","your","graveyard","as","it","resolves"]{return Ok(None);}
+ let tail=&tokens[comma+1..];
+ if tail.len()<6 || words_of(&tail[..3])!=["do","the","following"]
+   || tail[3].kind!=TokenKind::Colon || tail[4].kind!=TokenKind::LBracket
+   || tail.last().is_none_or(|token|token.kind!=TokenKind::RBracket){return Ok(None);}
+ let effects=crate::clause_support::parse_effect_sentences_lexed(&tail[5..tail.len()-1])?;
+ if effects.is_empty(){return Ok(None);}
+ let flow=CompilerControlFlowAst::new(ControlFlowSemanticAst::Replacement,
+   ControlFlowNodeAst::Replacement(ReplacementRelationshipAst{
+    kind:ReplacementKindAst::Instead,event:ReplacedEventAst::ZoneChange,condition:None,
+    original_program:None,replacement_program:0,affected_reference:None,
+    registration:Some(crate::model::control_flow::FutureEventRegistrationAst{
+      event:ReplacedEventSpec::ZoneChange{object:ObjectFilter::default(),from:Some(Zone::Stack),to:Some(Zone::Graveyard)},
+      mode:ironsmith_core::ReplacementApplyMode::OneShot,display:crate::lexer::render_token_slice(tokens),
+      target:Some(crate::cards::builders::TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(),None)),
+      resolving_object_only:true,
+    }),
+   }),vec![NestedProgramAst::new(NestedProgramKindAst::Replacement,effects)],None)
+   .map_err(|error|CardTextError::InvariantViolation(format!("invalid resolving replacement scope: {error:?}")))?;
+ crate::word_claims::claim_tokens(&tokens[..comma+1]);crate::word_claims::claim_tokens(&tail[..5]);crate::word_claims::claim_tokens(&tail[tail.len()-1..]);
+ Ok(Some(crate::cards::builders::EffectAst::ControlFlow(Box::new(flow))))
 }

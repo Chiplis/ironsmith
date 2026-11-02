@@ -1,0 +1,1497 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "cohort": "Improve activation-local counter-scaled cost",
+  "notes": [
+    "All20 source variants and faces retained. Structural candidates only; native activation-price and granted-source verification required."
+  ],
+  "mechanics": [
+    {
+      "id": "msem-726",
+      "keyword": "Improve",
+      "original_reminder": "{1}{W/B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Aramas, the Veindrinker"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Aramas, the Veindrinker_SWR",
+          "name": "Aramas, the Veindrinker",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature \u2014 Vampire Rogue\nPower/Toughness: 2/1\nFlying, lifelink\nImprove {1}{W/B} *({1}{W/B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nOnce each turn, when you gain life, you may have each opponent lose 2 life.",
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature \u2014 Vampire Rogue\nPower/Toughness: 2/1\nFlying, lifelink\n{1}{W/B}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nOnce each turn, when you gain life, you may have each opponent lose 2 life.",
+          "mana_cost": "{1}{B}{B}",
+          "type_line": "Legendary Creature \u2014 Vampire Rogue",
+          "power": "2",
+          "toughness": "1",
+          "source_card_key": "Aramas, the Veindrinker_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Aramas, the Veindrinker",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature \u2014 Vampire Rogue\nPower/Toughness: 2/1\nFlying, lifelink\nImprove {1}{W/B} *({1}{W/B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nOnce each turn, when you gain life, you may have each opponent lose 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Aramas, the Veindrinker",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Legendary Creature \u2014 Vampire Rogue\nPower/Toughness: 2/1\nFlying, lifelink\n{1}{W/B}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nOnce each turn, when you gain life, you may have each opponent lose 2 life.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying, lifelink\nImprove {1}{W/B}\nOnce each turn, when you gain life, you may have each opponent lose 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying, lifelink\nImprove {1}{W/B}\nOnce each turn, when you gain life, you may have each opponent lose 2 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-727",
+      "keyword": "Improve",
+      "original_reminder": "{1}{U}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Artificer's Familiar"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Artificer's Familiar_SWR",
+          "name": "Artificer's Familiar",
+          "original_text": "Mana cost: {U}\nType: Artifact Creature \u2014 Bird Construct\nPower/Toughness: 1/1\nFlying\nImprove {1}{U} *({1}{U}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*",
+          "executable_text": "Mana cost: {U}\nType: Artifact Creature \u2014 Bird Construct\nPower/Toughness: 1/1\nFlying\n{1}{U}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+          "mana_cost": "{U}",
+          "type_line": "Artifact Creature \u2014 Bird Construct",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Artificer's Familiar_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Artificer's Familiar",
+              "original_text": "Mana cost: {U}\nType: Artifact Creature \u2014 Bird Construct\nPower/Toughness: 1/1\nFlying\nImprove {1}{U} *({1}{U}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Artificer's Familiar",
+              "executable_text": "Mana cost: {U}\nType: Artifact Creature \u2014 Bird Construct\nPower/Toughness: 1/1\nFlying\n{1}{U}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nImprove {1}{U}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nImprove {1}{U}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ],
+      "verification": {
+        "status": "focused_native_scenarios_passed",
+        "log": "/tmp/custom-improve-round114.log",
+        "tests": 2,
+        "scope": "Exact source materialization direct/artifact. Colossal covers totalalternative price, entry counters, timing/resolution condition; Improve covers dynamic activation prices, timing, repeated resolution and Corym counter replacement. Other source interactions remain separately unverified."
+      }
+    },
+    {
+      "id": "msem-728",
+      "keyword": "Improve",
+      "original_reminder": "{1}{R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Bloodbelly Glutton"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bloodbelly Glutton_SWR",
+          "name": "Bloodbelly Glutton",
+          "original_text": "Mana cost: {2}{R}\nType: Creature \u2014 Ogre Warrior\nPower/Toughness: 4/3\nImprove {1}{R} *({1}{R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAs long as Bloodbelly Glutton is embattled, it has first strike, menace, and haste. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Creature \u2014 Ogre Warrior\nPower/Toughness: 4/3\n{1}{R}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAs long as Bloodbelly Glutton is embattled, it has first strike, menace, and haste.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Creature \u2014 Ogre Warrior",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Bloodbelly Glutton_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloodbelly Glutton",
+              "original_text": "Mana cost: {2}{R}\nType: Creature \u2014 Ogre Warrior\nPower/Toughness: 4/3\nImprove {1}{R} *({1}{R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAs long as Bloodbelly Glutton is embattled, it has first strike, menace, and haste. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bloodbelly Glutton",
+              "executable_text": "Mana cost: {2}{R}\nType: Creature \u2014 Ogre Warrior\nPower/Toughness: 4/3\n{1}{R}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAs long as Bloodbelly Glutton is embattled, it has first strike, menace, and haste.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}{R}\nAs long as Bloodbelly Glutton is embattled, it has first strike, menace, and haste."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}{R}\nAs long as Bloodbelly Glutton is embattled, it has first strike, menace, and haste.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-729",
+      "keyword": "Improve",
+      "original_reminder": "{1}{G/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Corym, Gyrewood Ranger"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Corym, Gyrewood Ranger_SWR",
+          "name": "Corym, Gyrewood Ranger",
+          "original_text": "Mana cost: {2}{G}\nType: Legendary Creature \u2014 Elf Ranger\nPower/Toughness: 3/3\nReach\nImprove {1}{G/W} *({1}{G/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nIf one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on that creature instead.",
+          "executable_text": "Mana cost: {2}{G}\nType: Legendary Creature \u2014 Elf Ranger\nPower/Toughness: 3/3\nReach\n{1}{G/W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nIf one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on that creature instead.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Legendary Creature \u2014 Elf Ranger",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Corym, Gyrewood Ranger_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Corym, Gyrewood Ranger",
+              "original_text": "Mana cost: {2}{G}\nType: Legendary Creature \u2014 Elf Ranger\nPower/Toughness: 3/3\nReach\nImprove {1}{G/W} *({1}{G/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nIf one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on that creature instead."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Corym, Gyrewood Ranger",
+              "executable_text": "Mana cost: {2}{G}\nType: Legendary Creature \u2014 Elf Ranger\nPower/Toughness: 3/3\nReach\n{1}{G/W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nIf one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on that creature instead.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Reach\nImprove {1}{G/W}\nIf one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on that creature instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Reach\nImprove {1}{G/W}\nIf one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on that creature instead.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ],
+      "verification": {
+        "status": "focused_native_scenarios_passed",
+        "log": "/tmp/custom-improve-round114.log",
+        "tests": 2,
+        "scope": "Exact source materialization direct/artifact. Colossal covers totalalternative price, entry counters, timing/resolution condition; Improve covers dynamic activation prices, timing, repeated resolution and Corym counter replacement. Other source interactions remain separately unverified."
+      }
+    },
+    {
+      "id": "msem-730",
+      "keyword": "Improve",
+      "original_reminder": "{1}{W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Dauntless Paladin"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Dauntless Paladin_SWR",
+          "name": "Dauntless Paladin",
+          "original_text": "Mana cost: {3}{W}\nType: Creature \u2014 Human Knight\nPower/Toughness: 2/2\nImprove {1}{W} *({1}{W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nKnights you control have double strike as long as they're attacking.",
+          "executable_text": "Mana cost: {3}{W}\nType: Creature \u2014 Human Knight\nPower/Toughness: 2/2\n{1}{W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nKnights you control have double strike as long as they're attacking.",
+          "mana_cost": "{3}{W}",
+          "type_line": "Creature \u2014 Human Knight",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Dauntless Paladin_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Dauntless Paladin",
+              "original_text": "Mana cost: {3}{W}\nType: Creature \u2014 Human Knight\nPower/Toughness: 2/2\nImprove {1}{W} *({1}{W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nKnights you control have double strike as long as they're attacking."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Dauntless Paladin",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature \u2014 Human Knight\nPower/Toughness: 2/2\n{1}{W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nKnights you control have double strike as long as they're attacking.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}{W}\nKnights you control have double strike as long as they're attacking."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}{W}\nKnights you control have double strike as long as they're attacking.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-731",
+      "keyword": "Improve",
+      "original_reminder": "{1}{B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Duskbringer Prelate"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Duskbringer Prelate_SWR",
+          "name": "Duskbringer Prelate",
+          "original_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 3/2\nImprove {1}{B} *({1}{B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nOnce each turn, when you gain life, you may have each opponent loses 1 life.",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 3/2\n{1}{B}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nOnce each turn, when you gain life, you may have each opponent loses 1 life.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature \u2014 Human Cleric",
+          "power": "3",
+          "toughness": "2",
+          "source_card_key": "Duskbringer Prelate_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Duskbringer Prelate",
+              "original_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 3/2\nImprove {1}{B} *({1}{B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nOnce each turn, when you gain life, you may have each opponent loses 1 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Duskbringer Prelate",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature \u2014 Human Cleric\nPower/Toughness: 3/2\n{1}{B}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nOnce each turn, when you gain life, you may have each opponent loses 1 life.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}{B}\nOnce each turn, when you gain life, you may have each opponent loses 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}{B}\nOnce each turn, when you gain life, you may have each opponent loses 1 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-732",
+      "keyword": "Improve",
+      "original_reminder": "{2}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Empyreal Exemplar"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Empyreal Exemplar_SWR",
+          "name": "Empyreal Exemplar",
+          "original_text": "Mana cost: {6}\nType: Artifact Creature \u2014 Angel Construct\nPower/Toughness: 4/4\nFlying\nImprove {2} *({2}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAt the beginning of combat on your turn, up to two target embattled creatures gain double strike until end of turn. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*",
+          "executable_text": "Mana cost: {6}\nType: Artifact Creature \u2014 Angel Construct\nPower/Toughness: 4/4\nFlying\n{2}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAt the beginning of combat on your turn, up to two target embattled creatures gain double strike until end of turn.",
+          "mana_cost": "{6}",
+          "type_line": "Artifact Creature \u2014 Angel Construct",
+          "power": "4",
+          "toughness": "4",
+          "source_card_key": "Empyreal Exemplar_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Empyreal Exemplar",
+              "original_text": "Mana cost: {6}\nType: Artifact Creature \u2014 Angel Construct\nPower/Toughness: 4/4\nFlying\nImprove {2} *({2}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAt the beginning of combat on your turn, up to two target embattled creatures gain double strike until end of turn. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Empyreal Exemplar",
+              "executable_text": "Mana cost: {6}\nType: Artifact Creature \u2014 Angel Construct\nPower/Toughness: 4/4\nFlying\n{2}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAt the beginning of combat on your turn, up to two target embattled creatures gain double strike until end of turn.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nImprove {2}\nAt the beginning of combat on your turn, up to two target embattled creatures gain double strike until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nImprove {2}\nAt the beginning of combat on your turn, up to two target embattled creatures gain double strike until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-733",
+      "keyword": "Improve",
+      "original_reminder": "{R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Folkvar, Galdurheim Brawler"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Folkvar, Galdurheim Brawler_SWR",
+          "name": "Folkvar, Galdurheim Brawler",
+          "original_text": "Mana cost: {2}{G/W}{R}\nType: Legendary Creature \u2014 Dwarf Warrior\nPower/Toughness: 2/3\nImprove {R} *({R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever another creature you control with power less than or equal to Folkvar, Galdurheim Brawler's power attacks, Folkvar deals 1 damage to the player or planeswalker that creature is attacking and you gain 1 life.",
+          "executable_text": "Mana cost: {2}{G/W}{R}\nType: Legendary Creature \u2014 Dwarf Warrior\nPower/Toughness: 2/3\n{R}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever another creature you control with power less than or equal to Folkvar, Galdurheim Brawler's power attacks, Folkvar deals 1 damage to the player or planeswalker that creature is attacking and you gain 1 life.",
+          "mana_cost": "{2}{G/W}{R}",
+          "type_line": "Legendary Creature \u2014 Dwarf Warrior",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Folkvar, Galdurheim Brawler_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Folkvar, Galdurheim Brawler",
+              "original_text": "Mana cost: {2}{G/W}{R}\nType: Legendary Creature \u2014 Dwarf Warrior\nPower/Toughness: 2/3\nImprove {R} *({R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever another creature you control with power less than or equal to Folkvar, Galdurheim Brawler's power attacks, Folkvar deals 1 damage to the player or planeswalker that creature is attacking and you gain 1 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Folkvar, Galdurheim Brawler",
+              "executable_text": "Mana cost: {2}{G/W}{R}\nType: Legendary Creature \u2014 Dwarf Warrior\nPower/Toughness: 2/3\n{R}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever another creature you control with power less than or equal to Folkvar, Galdurheim Brawler's power attacks, Folkvar deals 1 damage to the player or planeswalker that creature is attacking and you gain 1 life.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {R}\nWhenever another creature you control with power less than or equal to Folkvar, Galdurheim Brawler's power attacks, Folkvar deals 1 damage to the player or planeswalker that creature is attacking and you gain 1 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {R}\nWhenever another creature you control with power less than or equal to Folkvar, Galdurheim Brawler's power attacks, Folkvar deals 1 damage to the player or planeswalker that creature is attacking and you gain 1 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-734",
+      "keyword": "Improve",
+      "original_reminder": "{G}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Frontier Trackers",
+        "Pack Huntress"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Frontier Trackers_SWR",
+          "name": "Frontier Trackers",
+          "original_text": "Mana cost: {G}\nType: Creature \u2014 Elf Scout\nPower/Toughness: 1/1\nImprove {G} *({G}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhen Frontier Trackers dies, create a 1/1 green Elf creature token.",
+          "executable_text": "Mana cost: {G}\nType: Creature \u2014 Elf Scout\nPower/Toughness: 1/1\n{G}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhen Frontier Trackers dies, create a 1/1 green Elf creature token.",
+          "mana_cost": "{G}",
+          "type_line": "Creature \u2014 Elf Scout",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Frontier Trackers_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Frontier Trackers",
+              "original_text": "Mana cost: {G}\nType: Creature \u2014 Elf Scout\nPower/Toughness: 1/1\nImprove {G} *({G}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhen Frontier Trackers dies, create a 1/1 green Elf creature token."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Frontier Trackers",
+              "executable_text": "Mana cost: {G}\nType: Creature \u2014 Elf Scout\nPower/Toughness: 1/1\n{G}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhen Frontier Trackers dies, create a 1/1 green Elf creature token.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {G}\nWhen Frontier Trackers dies, create a 1/1 green Elf creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {G}\nWhen Frontier Trackers dies, create a 1/1 green Elf creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-735",
+      "keyword": "Improve",
+      "original_reminder": "{W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Frontier Wayfinder"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Frontier Wayfinder_SWR",
+          "name": "Frontier Wayfinder",
+          "original_text": "Mana cost: {W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/1\nImprove {W} *({W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever Frontier Wayfinder attacks, untap each other creature you control.",
+          "executable_text": "Mana cost: {W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/1\n{W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever Frontier Wayfinder attacks, untap each other creature you control.",
+          "mana_cost": "{W}",
+          "type_line": "Creature \u2014 Human Scout",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Frontier Wayfinder_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Frontier Wayfinder",
+              "original_text": "Mana cost: {W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/1\nImprove {W} *({W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever Frontier Wayfinder attacks, untap each other creature you control."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Frontier Wayfinder",
+              "executable_text": "Mana cost: {W}\nType: Creature \u2014 Human Scout\nPower/Toughness: 1/1\n{W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever Frontier Wayfinder attacks, untap each other creature you control.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {W}\nWhenever Frontier Wayfinder attacks, untap each other creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {W}\nWhenever Frontier Wayfinder attacks, untap each other creature you control.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-736",
+      "keyword": "Improve",
+      "original_reminder": "{1}{B/G}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Gorganith, Ruin Maw"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Gorganith, Ruin Maw_SWR",
+          "name": "Gorganith, Ruin Maw",
+          "original_text": "Mana cost: {4}{G}{G}\nType: Legendary Creature \u2014 Hydra\nPower/Toughness: 6/6\nReach, trample\nImprove {1}{B/G} *({1}{B/G}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever one or more +1/+1 counters are put on Gorganith, Ruin Maw, you may search your library and/or graveyard for a creature card with mana value equal to or less than the number of +1/+1 counters on Gorganith and put it onto the battlefield. If you search your library this way, shuffle.",
+          "executable_text": "Mana cost: {4}{G}{G}\nType: Legendary Creature \u2014 Hydra\nPower/Toughness: 6/6\nReach, trample\n{1}{B/G}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever one or more +1/+1 counters are put on Gorganith, Ruin Maw, you may search your library and/or graveyard for a creature card with mana value equal to or less than the number of +1/+1 counters on Gorganith and put it onto the battlefield. If you search your library this way, shuffle.",
+          "mana_cost": "{4}{G}{G}",
+          "type_line": "Legendary Creature \u2014 Hydra",
+          "power": "6",
+          "toughness": "6",
+          "source_card_key": "Gorganith, Ruin Maw_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gorganith, Ruin Maw",
+              "original_text": "Mana cost: {4}{G}{G}\nType: Legendary Creature \u2014 Hydra\nPower/Toughness: 6/6\nReach, trample\nImprove {1}{B/G} *({1}{B/G}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever one or more +1/+1 counters are put on Gorganith, Ruin Maw, you may search your library and/or graveyard for a creature card with mana value equal to or less than the number of +1/+1 counters on Gorganith and put it onto the battlefield. If you search your library this way, shuffle."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Gorganith, Ruin Maw",
+              "executable_text": "Mana cost: {4}{G}{G}\nType: Legendary Creature \u2014 Hydra\nPower/Toughness: 6/6\nReach, trample\n{1}{B/G}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever one or more +1/+1 counters are put on Gorganith, Ruin Maw, you may search your library and/or graveyard for a creature card with mana value equal to or less than the number of +1/+1 counters on Gorganith and put it onto the battlefield. If you search your library this way, shuffle.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Reach, trample\nImprove {1}{B/G}\nWhenever one or more +1/+1 counters are put on Gorganith, Ruin Maw, you may search your library and/or graveyard for a creature card with mana value equal to or less than the number of +1/+1 counters on Gorganith and put it onto the battlefield. If you search your library this way, shuffle."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Reach, trample\nImprove {1}{B/G}\nWhenever one or more +1/+1 counters are put on Gorganith, Ruin Maw, you may search your library and/or graveyard for a creature card with mana value equal to or less than the number of +1/+1 counters on Gorganith and put it onto the battlefield. If you search your library this way, shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-737",
+      "keyword": "Improve",
+      "original_reminder": "{R/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "King Gjarbrand"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "King Gjarbrand_SWR",
+          "name": "King Gjarbrand",
+          "original_text": "Mana cost: {2}{R}\nType: Legendary Creature \u2014 Dwarf Warrior Noble\nPower/Toughness: 3/3\nImprove {R/W} *({R/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever an embattled creature you control attacks, you may exile the top card of your library. During any turn you attacked with an embattled creature, you may play that card. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*",
+          "executable_text": "Mana cost: {2}{R}\nType: Legendary Creature \u2014 Dwarf Warrior Noble\nPower/Toughness: 3/3\n{R/W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever an embattled creature you control attacks, you may exile the top card of your library. During any turn you attacked with an embattled creature, you may play that card.",
+          "mana_cost": "{2}{R}",
+          "type_line": "Legendary Creature \u2014 Dwarf Warrior Noble",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "King Gjarbrand_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "King Gjarbrand",
+              "original_text": "Mana cost: {2}{R}\nType: Legendary Creature \u2014 Dwarf Warrior Noble\nPower/Toughness: 3/3\nImprove {R/W} *({R/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever an embattled creature you control attacks, you may exile the top card of your library. During any turn you attacked with an embattled creature, you may play that card. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "King Gjarbrand",
+              "executable_text": "Mana cost: {2}{R}\nType: Legendary Creature \u2014 Dwarf Warrior Noble\nPower/Toughness: 3/3\n{R/W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever an embattled creature you control attacks, you may exile the top card of your library. During any turn you attacked with an embattled creature, you may play that card.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {R/W}\nWhenever an embattled creature you control attacks, you may exile the top card of your library. During any turn you attacked with an embattled creature, you may play that card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {R/W}\nWhenever an embattled creature you control attacks, you may exile the top card of your library. During any turn you attacked with an embattled creature, you may play that card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-738",
+      "keyword": "Improve",
+      "original_reminder": "{1}{R/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Margyd, Sanctum Commander"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Margyd, Sanctum Commander_SWR",
+          "name": "Margyd, Sanctum Commander",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature \u2014 Human Knight\nPower/Toughness: 2/2\nDouble strike\nImprove {1}{R/W} *({1}{R/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAt the beginning of combat on your turn, if you control three or more embattled creatures, you may search your library for an artifact, enchantment, or Angel card, reveal it, put it into your hand, then shuffle.",
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature \u2014 Human Knight\nPower/Toughness: 2/2\nDouble strike\n{1}{R/W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAt the beginning of combat on your turn, if you control three or more embattled creatures, you may search your library for an artifact, enchantment, or Angel card, reveal it, put it into your hand, then shuffle.",
+          "mana_cost": "{1}{W}{W}",
+          "type_line": "Legendary Creature \u2014 Human Knight",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Margyd, Sanctum Commander_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Margyd, Sanctum Commander",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature \u2014 Human Knight\nPower/Toughness: 2/2\nDouble strike\nImprove {1}{R/W} *({1}{R/W}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAt the beginning of combat on your turn, if you control three or more embattled creatures, you may search your library for an artifact, enchantment, or Angel card, reveal it, put it into your hand, then shuffle."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Margyd, Sanctum Commander",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Legendary Creature \u2014 Human Knight\nPower/Toughness: 2/2\nDouble strike\n{1}{R/W}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAt the beginning of combat on your turn, if you control three or more embattled creatures, you may search your library for an artifact, enchantment, or Angel card, reveal it, put it into your hand, then shuffle.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Double strike\nImprove {1}{R/W}\nAt the beginning of combat on your turn, if you control three or more embattled creatures, you may search your library for an artifact, enchantment, or Angel card, reveal it, put it into your hand, then shuffle."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Double strike\nImprove {1}{R/W}\nAt the beginning of combat on your turn, if you control three or more embattled creatures, you may search your library for an artifact, enchantment, or Angel card, reveal it, put it into your hand, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-739",
+      "keyword": "Improve",
+      "original_reminder": "{B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Marrowcaster"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Marrowcaster_SWR",
+          "name": "Marrowcaster",
+          "original_text": "Mana cost: {2}{B}\nType: Creature \u2014 Zombie Warlock\nPower/Toughness: 2/3\nImprove {B} *({B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever a nontoken creature you control dies, if it was embattled, you may pay {B}. If you do, create a 2/2 black Zombie creature token. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature \u2014 Zombie Warlock\nPower/Toughness: 2/3\n{B}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever a nontoken creature you control dies, if it was embattled, you may pay {B}. If you do, create a 2/2 black Zombie creature token.",
+          "mana_cost": "{2}{B}",
+          "type_line": "Creature \u2014 Zombie Warlock",
+          "power": "2",
+          "toughness": "3",
+          "source_card_key": "Marrowcaster_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Marrowcaster",
+              "original_text": "Mana cost: {2}{B}\nType: Creature \u2014 Zombie Warlock\nPower/Toughness: 2/3\nImprove {B} *({B}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever a nontoken creature you control dies, if it was embattled, you may pay {B}. If you do, create a 2/2 black Zombie creature token. *(A creature is embattled if it has a counter on it or has a permanent you control attached to it.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Marrowcaster",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature \u2014 Zombie Warlock\nPower/Toughness: 2/3\n{B}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever a nontoken creature you control dies, if it was embattled, you may pay {B}. If you do, create a 2/2 black Zombie creature token.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {B}\nWhenever a nontoken creature you control dies, if it was embattled, you may pay {B}. If you do, create a 2/2 black Zombie creature token."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {B}\nWhenever a nontoken creature you control dies, if it was embattled, you may pay {B}. If you do, create a 2/2 black Zombie creature token.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-740",
+      "keyword": "Improve",
+      "original_reminder": "{1}{G/U}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Merithyl, Nature's Embrace"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Merithyl, Nature's Embrace_SWR",
+          "name": "Merithyl, Nature's Embrace",
+          "original_text": "Mana cost: {3}{G}\nType: Legendary Creature \u2014 Elf Druid\nPower/Toughness: 3/4\nImprove {1}{G/U} *({1}{G/U}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nYou may play an additional land on each of your turns.\nWanderlust \u2014 At the beginning of your end step, if you control four or more differently named lands, you may draw a card.",
+          "executable_text": "Mana cost: {3}{G}\nType: Legendary Creature \u2014 Elf Druid\nPower/Toughness: 3/4\n{1}{G/U}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nYou may play an additional land on each of your turns.\nWanderlust \u2014 At the beginning of your end step, if you control four or more differently named lands, you may draw a card.",
+          "mana_cost": "{3}{G}",
+          "type_line": "Legendary Creature \u2014 Elf Druid",
+          "power": "3",
+          "toughness": "4",
+          "source_card_key": "Merithyl, Nature's Embrace_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Merithyl, Nature's Embrace",
+              "original_text": "Mana cost: {3}{G}\nType: Legendary Creature \u2014 Elf Druid\nPower/Toughness: 3/4\nImprove {1}{G/U} *({1}{G/U}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nYou may play an additional land on each of your turns.\nWanderlust \u2014 At the beginning of your end step, if you control four or more differently named lands, you may draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Merithyl, Nature's Embrace",
+              "executable_text": "Mana cost: {3}{G}\nType: Legendary Creature \u2014 Elf Druid\nPower/Toughness: 3/4\n{1}{G/U}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nYou may play an additional land on each of your turns.\nWanderlust \u2014 At the beginning of your end step, if you control four or more differently named lands, you may draw a card.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}{G/U}\nYou may play an additional land on each of your turns.\nWanderlust \u2014 At the beginning of your end step, if you control four or more differently named lands, you may draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}{G/U}\nYou may play an additional land on each of your turns.\nWanderlust \u2014 At the beginning of your end step, if you control four or more differently named lands, you may draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-741",
+      "keyword": "Improve",
+      "original_reminder": "{1}{B/R}, Sacrifice a creature: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Sarrithaz, the Fiendblade"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sarrithaz, the Fiendblade_SWR",
+          "name": "Sarrithaz, the Fiendblade",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Legendary Creature \u2014 Azra Warlock\nPower/Toughness: 4/3\nFlying\nImprove\u2014{1}{B/R}, Sacrifice a creature. *({1}{B/R}, Sacrifice a creature: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever another creature you control dies, each opponent loses 1 life and you gain 1 life. If that creature was sacrificed, instead each opponent loses 2 life and you gain 2 life.",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Legendary Creature \u2014 Azra Warlock\nPower/Toughness: 4/3\nFlying\n{1}{B/R}, Sacrifice a creature: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever another creature you control dies, each opponent loses 1 life and you gain 1 life. If that creature was sacrificed, instead each opponent loses 2 life and you gain 2 life.",
+          "mana_cost": "{3}{B}{B}",
+          "type_line": "Legendary Creature \u2014 Azra Warlock",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Sarrithaz, the Fiendblade_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sarrithaz, the Fiendblade",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Legendary Creature \u2014 Azra Warlock\nPower/Toughness: 4/3\nFlying\nImprove\u2014{1}{B/R}, Sacrifice a creature. *({1}{B/R}, Sacrifice a creature: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever another creature you control dies, each opponent loses 1 life and you gain 1 life. If that creature was sacrificed, instead each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sarrithaz, the Fiendblade",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Legendary Creature \u2014 Azra Warlock\nPower/Toughness: 4/3\nFlying\n{1}{B/R}, Sacrifice a creature: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever another creature you control dies, each opponent loses 1 life and you gain 1 life. If that creature was sacrificed, instead each opponent loses 2 life and you gain 2 life.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Flying\nImprove\u2014{1}{B/R}, Sacrifice a creature.\nWhenever another creature you control dies, each opponent loses 1 life and you gain 1 life. If that creature was sacrificed, instead each opponent loses 2 life and you gain 2 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Flying\nImprove\u2014{1}{B/R}, Sacrifice a creature.\nWhenever another creature you control dies, each opponent loses 1 life and you gain 1 life. If that creature was sacrificed, instead each opponent loses 2 life and you gain 2 life.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-742",
+      "keyword": "Improve",
+      "original_reminder": "{1}{B/R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Slaug, Ironpact Warlord"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Slaug, Ironpact Warlord_SWR",
+          "name": "Slaug, Ironpact Warlord",
+          "original_text": "Mana cost: {2}{R}{R}\nType: Legendary Creature \u2014 Orc Warrior\nPower/Toughness: 4/3\nImprove {1}{B/R} *({1}{B/R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAt the beginning of each player's combat, you may have that player create two goaded 1/1 red Goblin creature tokens with haste. Exile those tokens at end of combat. *(Until your next turn, they attack each combat if able and attack a player other than you if able.)*",
+          "executable_text": "Mana cost: {2}{R}{R}\nType: Legendary Creature \u2014 Orc Warrior\nPower/Toughness: 4/3\n{1}{B/R}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAt the beginning of each player's combat, you may have that player create two goaded 1/1 red Goblin creature tokens with haste. Exile those tokens at end of combat.",
+          "mana_cost": "{2}{R}{R}",
+          "type_line": "Legendary Creature \u2014 Orc Warrior",
+          "power": "4",
+          "toughness": "3",
+          "source_card_key": "Slaug, Ironpact Warlord_SWR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Slaug, Ironpact Warlord",
+              "original_text": "Mana cost: {2}{R}{R}\nType: Legendary Creature \u2014 Orc Warrior\nPower/Toughness: 4/3\nImprove {1}{B/R} *({1}{B/R}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nAt the beginning of each player's combat, you may have that player create two goaded 1/1 red Goblin creature tokens with haste. Exile those tokens at end of combat. *(Until your next turn, they attack each combat if able and attack a player other than you if able.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Slaug, Ironpact Warlord",
+              "executable_text": "Mana cost: {2}{R}{R}\nType: Legendary Creature \u2014 Orc Warrior\nPower/Toughness: 4/3\n{1}{B/R}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nAt the beginning of each player's combat, you may have that player create two goaded 1/1 red Goblin creature tokens with haste. Exile those tokens at end of combat.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}{B/R}\nAt the beginning of each player's combat, you may have that player create two goaded 1/1 red Goblin creature tokens with haste. Exile those tokens at end of combat."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}{B/R}\nAt the beginning of each player's combat, you may have that player create two goaded 1/1 red Goblin creature tokens with haste. Exile those tokens at end of combat.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-743",
+      "keyword": "Improve",
+      "original_reminder": "{1}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Agency Doorbreakers"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Agency Doorbreakers_TMI",
+          "name": "Agency Doorbreakers",
+          "original_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Soldier Detective\nPower/Toughness: 3/3\nImprove {1} *({1}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nOnce each turn, when one or more counters are put on a permanent you control, create a 1/1 colorless Human creature token.\nWhenever you attack with three or more creatures, destroy up to one target artifact or enchantment.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Soldier Detective\nPower/Toughness: 3/3\n{1}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nOnce each turn, when one or more counters are put on a permanent you control, create a 1/1 colorless Human creature token.\nWhenever you attack with three or more creatures, destroy up to one target artifact or enchantment.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature \u2014 Human Soldier Detective",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Agency Doorbreakers_TMI",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Agency Doorbreakers",
+              "original_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Soldier Detective\nPower/Toughness: 3/3\nImprove {1} *({1}: Put a +1/+1 counter on this creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nOnce each turn, when one or more counters are put on a permanent you control, create a 1/1 colorless Human creature token.\nWhenever you attack with three or more creatures, destroy up to one target artifact or enchantment."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Agency Doorbreakers",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature \u2014 Human Soldier Detective\nPower/Toughness: 3/3\n{1}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nOnce each turn, when one or more counters are put on a permanent you control, create a 1/1 colorless Human creature token.\nWhenever you attack with three or more creatures, destroy up to one target artifact or enchantment.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}\nOnce each turn, when one or more counters are put on a permanent you control, create a 1/1 colorless Human creature token.\nWhenever you attack with three or more creatures, destroy up to one target artifact or enchantment."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}\nOnce each turn, when one or more counters are put on a permanent you control, create a 1/1 colorless Human creature token.\nWhenever you attack with three or more creatures, destroy up to one target artifact or enchantment.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-744",
+      "keyword": "Improve",
+      "original_reminder": "{1}: Put a +1/+1 counter on this artifact. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Cavalier Deluxe Roadster"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Cavalier Deluxe Roadster_TMI",
+          "name": "Cavalier Deluxe Roadster",
+          "original_text": "Mana cost: {2}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\nImprove {1} *({1}: Put a +1/+1 counter on this artifact. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever one or more creatures crew Cavalier Deluxe Roadster, you may phase out up to one of those creatures.\nCrew 1. Activate only once during each of your turns.",
+          "executable_text": "Mana cost: {2}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\n{1}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever one or more creatures crew Cavalier Deluxe Roadster, you may phase out up to one of those creatures.\nCrew 1. Activate only once during each of your turns.",
+          "mana_cost": "{2}",
+          "type_line": "Artifact \u2014 Vehicle",
+          "power": "2",
+          "toughness": "2",
+          "source_card_key": "Cavalier Deluxe Roadster_TMI",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cavalier Deluxe Roadster",
+              "original_text": "Mana cost: {2}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\nImprove {1} *({1}: Put a +1/+1 counter on this artifact. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\nWhenever one or more creatures crew Cavalier Deluxe Roadster, you may phase out up to one of those creatures.\nCrew 1. Activate only once during each of your turns."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cavalier Deluxe Roadster",
+              "executable_text": "Mana cost: {2}\nType: Artifact \u2014 Vehicle\nPower/Toughness: 2/2\n{1}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.\nWhenever one or more creatures crew Cavalier Deluxe Roadster, you may phase out up to one of those creatures.\nCrew 1. Activate only once during each of your turns.",
+              "custom_keyword_identities": [
+                "improve"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Improve {1}\nWhenever one or more creatures crew Cavalier Deluxe Roadster, you may phase out up to one of those creatures.\nCrew 1. Activate only once during each of your turns."
+            }
+          ],
+          "custom_keyword_identities": [
+            "improve"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Improve {1}\nWhenever one or more creatures crew Cavalier Deluxe Roadster, you may phase out up to one of those creatures.\nCrew 1. Activate only once during each of your turns.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    },
+    {
+      "id": "msem-745",
+      "keyword": "Improve",
+      "original_reminder": "{1}: Put a +1/+1 counter on that creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.",
+      "executable_reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery.",
+      "source_cards": [
+        "Faithforged Pauldron"
+      ],
+      "rule_reference": "702.260.",
+      "rule_text": [
+        {
+          "name": "702.260a",
+          "rule": "Improve is an activated ability of some permanents. \u201cImpove [cost]\u201d means \u201c[cost]: Put a +1/+1 counter on this permanent. This ability costs (1) more to activate for each +1/+1 counter on this permanent. Improve only as a sorcery.\u201d",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Faithforged Pauldron_TMI",
+          "name": "Faithforged Pauldron",
+          "original_text": "Mana cost: {2}\nType: Artifact \u2014 Equipment\nEquipped creature has hexproof and improve {1}. *({1}: Put a +1/+1 counter on that creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\n{4}: Put Faithforged Pauldron from your hand onto the battlefield attached to target creature.\nEquip {1}",
+          "executable_text": "Mana cost: {2}\nType: Artifact \u2014 Equipment\nEquipped creature has hexproof and improve {1}. ({1}: Put a +1/+1 counter on that creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)\n{4}: Put Faithforged Pauldron from your hand onto the battlefield attached to target creature.\nEquip {1}",
+          "mana_cost": "{2}",
+          "type_line": "Artifact \u2014 Equipment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Faithforged Pauldron_TMI",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Faithforged Pauldron",
+              "original_text": "Mana cost: {2}\nType: Artifact \u2014 Equipment\nEquipped creature has hexproof and improve {1}. *({1}: Put a +1/+1 counter on that creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)*\n{4}: Put Faithforged Pauldron from your hand onto the battlefield attached to target creature.\nEquip {1}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Faithforged Pauldron",
+              "executable_text": "Mana cost: {2}\nType: Artifact \u2014 Equipment\nEquipped creature has hexproof and improve {1}. ({1}: Put a +1/+1 counter on that creature. This costs {1} more to activate for each +1/+1 counter on it. Improve only as a sorcery.)\n{4}: Put Faithforged Pauldron from your hand onto the battlefield attached to target creature.\nEquip {1}",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": []
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_declaration_unread"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Improve {Cost}",
+          "reminder": "{Cost}: Put a +1/+1 counter on this permanent. This ability costs {1} more to activate for each +1/+1 counter on this permanent. Activate only as a sorcery."
+        }
+      ],
+      "support_status": "existing_operations_candidate",
+      "test_status": "pending_behavioral_verification",
+      "equivalence_basis": "702.260a: counter addition, activation-local generic cost increase per source counter, and sorcery timing are independent operations. Source means the permanent holding the activated ability, including a granted ability.",
+      "behavioral_assertions": [
+        "Only this activation cost increases; unrelated abilities are unaffected.",
+        "Cost is determined at activation from source +1/+1 counters, including hybrid and nonmana base costs.",
+        "Sorcery timing enforced and ordinary activation cost reductions apply.",
+        "A granted ability refers to its recipient, not the Equipment granting it."
+      ]
+    }
+  ]
+}

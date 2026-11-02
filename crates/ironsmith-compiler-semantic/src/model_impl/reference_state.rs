@@ -237,6 +237,7 @@ pub struct ReferenceFrame {
     pub last_library_search_effect_id: Option<EffectId>,
     pub counter_removal_cost: Option<CounterRemovalCostReference>,
     pub last_object_tag: Option<TagKey>,
+    pub last_card_name_choice_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     pub snapshot_tag_aliases: Vec<(TagKey, TagKey)>,
@@ -271,6 +272,7 @@ impl ReferenceFrame {
             last_library_search_effect_id: frame.last_library_search_effect_id,
             counter_removal_cost: frame.counter_removal_cost,
             last_object_tag: frame.last_object_tag.clone(),
+            last_card_name_choice_tag: frame.last_card_name_choice_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: Arc::default(),
             snapshot_tag_aliases: {
@@ -318,6 +320,7 @@ impl ReferenceFrame {
             last_library_search_effect_id: self.last_library_search_effect_id,
             counter_removal_cost: self.counter_removal_cost,
             last_object_tag: self.last_object_tag.clone(),
+            last_card_name_choice_tag: self.last_card_name_choice_tag.clone(),
             last_value_comparison: self.last_value_comparison.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             token_copy_sources: Vec::new(),
@@ -385,6 +388,7 @@ pub struct ReferenceImports {
     /// Result branches must not reinterpret it as their local outcome.
     pub has_announced_x: bool,
     pub last_object_tag: Option<TagKey>,
+    pub last_card_name_choice_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     /// Stable parse-time aliases already bound by the enclosing reference
@@ -406,6 +410,7 @@ impl ReferenceImports {
         !self.has_announced_x
             && self.last_value_comparison.is_none()
             && self.last_object_tag.is_none()
+            && self.last_card_name_choice_tag.is_none()
             && self.recent_object_target_bindings.is_empty()
             && self.snapshot_tag_aliases.is_empty()
             && !self.last_it_choice_is_set
@@ -420,6 +425,7 @@ impl ReferenceImports {
     pub fn with_last_object_tag(tag: impl Into<TagKey>) -> Self {
         Self {
             last_object_tag: Some(tag.into()),
+            last_card_name_choice_tag: None,
             last_it_choice_is_set: false,
             iterated_object: false,
             ..Default::default()
@@ -430,6 +436,7 @@ impl ReferenceImports {
         Self {
             has_announced_x: frame.has_announced_x,
             last_object_tag: frame.last_object_tag.clone(),
+            last_card_name_choice_tag: frame.last_card_name_choice_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
@@ -451,6 +458,7 @@ impl ReferenceImports {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReferenceEnv {
     pub last_object_tag: RefState<TagKey>,
+    pub last_card_name_choice_tag: RefState<TagKey>,
     pub last_value_comparison: RefState<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a stable
@@ -486,6 +494,7 @@ impl Default for ReferenceEnv {
     fn default() -> Self {
         Self {
             last_object_tag: RefState::Unknown,
+            last_card_name_choice_tag: RefState::Unknown,
             last_value_comparison: RefState::Unknown,
             recent_object_target_bindings: Arc::default(),
             snapshot_tag_aliases: Vec::new(),
@@ -525,6 +534,7 @@ impl ReferenceEnv {
     ) -> Self {
         Self {
             last_object_tag: RefState::from_option(imports.last_object_tag.clone()),
+            last_card_name_choice_tag: RefState::from_option(imports.last_card_name_choice_tag.clone()),
             last_value_comparison: RefState::from_option(imports.last_value_comparison.clone()),
             recent_object_target_bindings: imports.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: imports.snapshot_tag_aliases.clone(),
@@ -560,6 +570,7 @@ impl ReferenceEnv {
     pub fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: RefState::from_option(frame.last_object_tag.clone()),
+            last_card_name_choice_tag: RefState::from_option(frame.last_card_name_choice_tag.clone()),
             last_value_comparison: RefState::from_option(frame.last_value_comparison.clone()),
             recent_object_target_bindings: frame.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
@@ -604,6 +615,7 @@ impl ReferenceEnv {
             last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
             counter_removal_cost: self.counter_removal_cost,
             last_object_tag: self.last_object_tag.clone().into_option(),
+            last_card_name_choice_tag: self.last_card_name_choice_tag.clone().into_option(),
             last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
@@ -671,6 +683,7 @@ impl ReferenceEnv {
 pub struct ReferenceExports {
     pub has_announced_x: bool,
     pub last_object_tag: RefState<TagKey>,
+    pub last_card_name_choice_tag: RefState<TagKey>,
     pub last_value_comparison: RefState<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
     pub last_it_choice_is_set: bool,
@@ -687,6 +700,7 @@ impl Default for ReferenceExports {
         Self {
             has_announced_x: false,
             last_object_tag: RefState::Unknown,
+            last_card_name_choice_tag: RefState::Unknown,
             last_value_comparison: RefState::Unknown,
             recent_object_target_bindings: Arc::default(),
             last_it_choice_is_set: false,
@@ -705,6 +719,7 @@ impl ReferenceExports {
         Self {
             has_announced_x: env.has_announced_x,
             last_object_tag: env.last_object_tag.clone(),
+            last_card_name_choice_tag: env.last_card_name_choice_tag.clone(),
             last_value_comparison: env.last_value_comparison.clone(),
             recent_object_target_bindings: env.recent_object_target_bindings.clone(),
             last_it_choice_is_set: env.last_it_choice_is_set,
@@ -721,6 +736,7 @@ impl ReferenceExports {
         Self {
             has_announced_x: left.has_announced_x && right.has_announced_x,
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
+            last_card_name_choice_tag: RefState::join(&left.last_card_name_choice_tag, &right.last_card_name_choice_tag),
             last_value_comparison: RefState::join(
                 &left.last_value_comparison,
                 &right.last_value_comparison,
@@ -747,6 +763,7 @@ impl ReferenceExports {
         ReferenceImports {
             has_announced_x: self.has_announced_x,
             last_object_tag: self.last_object_tag.clone().into_option(),
+            last_card_name_choice_tag: self.last_card_name_choice_tag.clone().into_option(),
             last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
             snapshot_tag_aliases: Vec::new(),

@@ -1,0 +1,106 @@
+{
+  "mechanics": [
+    {
+      "id": "msem-947",
+      "keyword": "Premonition",
+      "original_reminder": "You may pay {1}{R} and exile this from your hand as a sorcery to create a token copy of it that enters with a decayed counter. You may cast this later from exile.",
+      "executable_reminder": "Any time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, exile this card. Create a token that's a copy of the exiled card, except it enters with an additional decayed counter on it. After the current turn has ended, you may cast this card from exile. Take this action only while this card is in your hand.",
+      "source_cards": [
+        "Cultish Sorcerer"
+      ],
+      "rule_reference": "702.306.",
+      "rule_text": [
+        {
+          "name": "702.306a",
+          "rule": "Premonition is a static ability that functions while the card with premonition is in a player's hand. \"Premonition (cost)\" means \"Any time you could cast a sorcery, you may pay (cost) and exile this card from your hand. If you do, create a token that's a copy of it. It enters with an additional decayed counter on it. After the current turn has ended, you may cast this card from exile.\"",
+          "custom": true
+        },
+        {
+          "name": "702.306b",
+          "rule": "Exiling a card using its premonition ability is a special action, which doesn't use the stack. See rule 116, “Special Actions.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Cultish Sorcerer_MSY",
+          "name": "Cultish Sorcerer",
+          "original_text": "Mana cost: {R}\nType: Creature — Human Sorcerer\nPower/Toughness: 1/1\nWhen this creature enters, you may discard a card. If you do, draw a card.\nPremonition {1}{R} *(You may pay {1}{R} and exile this from your hand as a sorcery to create a token copy of it that enters with a decayed counter. You may cast this later from exile.)*",
+          "executable_text": "Mana cost: {R}\nType: Creature — Human Sorcerer\nPower/Toughness: 1/1\nWhen this creature enters, you may discard a card. If you do, draw a card.\nAny time you could cast a sorcery, you may pay {1}{R} to take a special action. If you do, exile this card. Create a token that's a copy of the exiled card, except it enters with an additional decayed counter on it. After the current turn has ended, you may cast this card from exile. Take this action only while this card is in your hand.",
+          "mana_cost": "{R}",
+          "type_line": "Creature — Human Sorcerer",
+          "power": "1",
+          "toughness": "1",
+          "source_card_key": "Cultish Sorcerer_MSY",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cultish Sorcerer",
+              "original_text": "Mana cost: {R}\nType: Creature — Human Sorcerer\nPower/Toughness: 1/1\nWhen this creature enters, you may discard a card. If you do, draw a card.\nPremonition {1}{R} *(You may pay {1}{R} and exile this from your hand as a sorcery to create a token copy of it that enters with a decayed counter. You may cast this later from exile.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Cultish Sorcerer",
+              "executable_text": "Mana cost: {R}\nType: Creature — Human Sorcerer\nPower/Toughness: 1/1\nWhen this creature enters, you may discard a card. If you do, draw a card.\nAny time you could cast a sorcery, you may pay {1}{R} to take a special action. If you do, exile this card. Create a token that's a copy of the exiled card, except it enters with an additional decayed counter on it. After the current turn has ended, you may cast this card from exile. Take this action only while this card is in your hand.",
+              "custom_keyword_identities": [
+                "premonition"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, you may discard a card. If you do, draw a card.\nPremonition {1}{R}",
+              "original_printed_rules_text": "When this creature enters, you may discard a card. If you do, draw a card.\nPremonition {1}{R} (You may pay {1}{R} and exile this from your hand as a sorcery to create a token copy of it that enters with a decayed counter. You may cast this later from exile.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "premonition"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, you may discard a card. If you do, draw a card.\nPremonition {1}{R}",
+          "original_printed_rules_text": "When this creature enters, you may discard a card. If you do, draw a card.\nPremonition {1}{R} (You may pay {1}{R} and exile this from your hand as a sorcery to create a token copy of it that enters with a decayed counter. You may cast this later from exile.)"
+        }
+      ],
+      "implementation_status": "pending_intrinsic_action_reader_and_full_behavioral_verification",
+      "ordinary_component_mapping": {
+        "existing_operations": [
+          "Mana payment and exile from hand",
+          "Token copy creation with an entering counter",
+          "Permission to cast linked card from exile after current turn"
+        ],
+        "missing_plumbing": [
+          "Intrinsic hand-zone immediate action at sorcery timing",
+          "Token copy built from the exiled card with entering decayed counter",
+          "Delayed availability boundary until after current turn ends"
+        ],
+        "negative_cases": [
+          "Original cannot be cast in the activation turn",
+          "Token must enter with counter, not receive it after ETB triggers",
+          "Source leaving exile invalidates old permission"
+        ],
+        "caution": "A granted activated ability changes response windows and is not equivalent."
+      },
+      "genuinely_new_rule_evidence": null,
+      "classification_note": "Unimplemented existing-operation composition; no evidence establishes that a new game rule is required. Do not count as unsupported solely for missing special-action plumbing.",
+      "executable_definitions": [
+        {
+          "keyword": "Premonition",
+          "template": "{Cost}",
+          "reminder": "Any time you could cast a sorcery, you may pay {Cost} to take a special action. If you do, exile this card. Create a token that's a copy of the exiled card, except it enters with an additional decayed counter on it. After the current turn has ended, you may cast this card from exile. Take this action only while this card is in your hand."
+        }
+      ],
+      "native_validation": "pending_parent",
+      "all_card_certification": false
+    }
+  ]
+}

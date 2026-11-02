@@ -2900,6 +2900,7 @@ mod tests {
         );
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects: vec![
                     Effect::new(crate::effects::LookAtTopCardsEffect::revealing(
                         PlayerFilter::You,
@@ -3080,6 +3081,7 @@ mod tests {
         );
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects,
                 self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                     count_replacement_test_condition(),
@@ -3120,6 +3122,7 @@ mod tests {
         .with_presentation_label(Some(PresentationLabel::from_ability_word("Spell mastery")));
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects,
                 self_replacements: vec![branch],
                 starts_new_source_line: false,
@@ -3158,6 +3161,7 @@ mod tests {
         branch.condition_after_replacement = true;
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects,
                 self_replacements: vec![branch],
                 starts_new_source_line: false,
@@ -3194,6 +3198,7 @@ mod tests {
         branch.leading_instead_surface = true;
         let program =
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                ability_designations: Default::default(),
                 default_effects,
                 self_replacements: vec![branch],
                 starts_new_source_line: false,

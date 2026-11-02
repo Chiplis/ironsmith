@@ -436,6 +436,9 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
             ironsmith::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
         }
+        compiler::grant::DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label } => {
+            ironsmith::grant::DerivedAlternativeCast::ExilePreparationFromCardManaCost { reduction, optional_cast, label }
+        },
         compiler::grant::DerivedAlternativeCast::PlotFromCardManaCost => {
             ironsmith::grant::DerivedAlternativeCast::PlotFromCardManaCost
         }
@@ -680,7 +683,34 @@ fn attach_rendered_presentation(
 pub fn into_runtime_definition(
     definition: compiler::CardDefinition,
 ) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    // Validate only this public closed root; nested shallow catalogue conversions
+    // deliberately use the private native adapter below the lexical binder.
+    let wire = wire_definition_from_serializable(&definition)
+        .map_err(|error| CompilerIntegrationError::ArtifactEncoding { detail: error.to_string() })?;
+    ironsmith_runtime_catalog::artifact_materializer::validate_card_creation_graph(&wire)
+        .map_err(|error| CompilerIntegrationError::ArtifactEncoding { detail: error.to_string() })?;
     runtime_definition_from_core_model(definition).map(attach_rendered_presentation)
+}
+
+/// Convert a finite lexical catalogue entirely through the native model adapter.
+pub fn into_runtime_definition_bundle(
+    bundle: compiler::SuppliedCardDefinitionBundle,
+) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
+    // Fail closed before interpreting any nested member. The pure wire binder
+    // checks lexical closure only; its output is discarded, never materialized.
+    let wire_root = wire_definition_from_serializable(&bundle.root)
+        .map_err(|error| CompilerIntegrationError::ArtifactEncoding { detail: error.to_string() })?;
+    let wire_nodes = bundle.catalog.iter().map(wire_definition_from_serializable)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| CompilerIntegrationError::ArtifactEncoding { detail: error.to_string() })?;
+    ironsmith_runtime_catalog::artifact_materializer::bind_card_creation_scope(wire_root, bundle.scope, &wire_nodes)
+        .map_err(|detail| CompilerIntegrationError::ArtifactEncoding { detail })?;
+    let root = runtime_definition_from_core_model(bundle.root)?;
+    let nodes = bundle.catalog.into_iter().map(runtime_definition_from_core_model)
+        .collect::<Result<Vec<_>, _>>()?;
+    ironsmith_runtime_catalog::artifact_materializer::bind_card_creation_scope_runtime(root, bundle.scope, &nodes)
+        .map(attach_rendered_presentation)
+        .map_err(|detail| CompilerIntegrationError::ArtifactEncoding { detail })
 }
 
 pub fn into_runtime_compiled_card_text(
@@ -703,6 +733,36 @@ pub fn compile_to_runtime_definition(
 }
 
 /// Compile source into the same typed transport artifact used by baked catalogs.
+/// Compile supplied keyword-counter definitions independently of the card body.
+/// Each resulting program is transported as structured artifact data.
+pub fn compile_to_artifact_with_counter_definitions(
+    name: &str, text: impl Into<String>, definitions: &[(String, String)], allow_unsupported: bool,
+) -> Result<(CompiledCardArtifact, ironsmith::cards::CardDefinition), CompilerIntegrationError> {
+    let (mut artifact, mut direct) = compile_to_artifact(name, text, allow_unsupported)?;
+    for (name, reminder) in definitions {
+        let key = ironsmith_core::counter::normalize_named_counter_name(name).map_err(|detail| CompilerIntegrationError::UnsupportedStaticAbility { detail })?;
+        if key.is_empty() { return Err(CompilerIntegrationError::UnsupportedStaticAbility { detail: "empty ability-counter name".into() }); }
+        let builder = compiler::CardDefinitionBuilder::new(compiler::ids::CardId::new(), "Ability counter program").with_custom_keyword(key.clone());
+        let (program_artifact, program) = compile_builder_to_artifact(builder, format!("Type: Creature\nPower/Toughness: 1/1\n{reminder}"), false)?;
+        if program.abilities.iter().all(|ability|matches!(&ability.kind,ironsmith::ability::AbilityKind::Static(value) if value.custom_keyword_name().is_some())) || program.spell_effect.is_some() {
+            return Err(CompilerIntegrationError::UnsupportedStaticAbility { detail: "ability-counter definition must contain permanent abilities".into() });
+        }
+        if let Some(previous) = direct.ability_counter_definitions.get(&key) {
+            if !ironsmith::ability_program_identity::ability_programs_equivalent(previous, &program.abilities) { return Err(CompilerIntegrationError::UnsupportedStaticAbility { detail: "conflicting ability-counter definitions".into() }); }
+        }
+        for subtype in &program.card.custom_subtypes {
+            ironsmith_core::custom_subtypes::merge_subtype_associations(&mut direct.card.custom_subtypes, *subtype);
+        }
+        for subtype in &program_artifact.payload.definition.card.custom_subtypes {
+            ironsmith_core::custom_subtypes::merge_subtype_associations(&mut artifact.payload.definition.card.custom_subtypes, *subtype);
+        }
+        direct.ability_counter_definitions.insert(key.clone(), program.abilities);
+        artifact.payload.definition.ability_counter_definitions.insert(key, program_artifact.payload.definition.abilities);
+    }
+    artifact.refresh_checksum();
+    Ok((artifact, direct))
+}
+
 pub fn compile_to_artifact(
     name: &str,
     text: impl Into<String>,
@@ -2204,7 +2264,8 @@ mod retained_copy_text_payload_tests {
                     ironsmith::Zone::Battlefield,
                 );
                 let modification = if copy_effect {
-                    ironsmith::continuous::Modification::CopyOf { retain_original_name: false,
+                    ironsmith::continuous::Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
                         target_id: source,
                         copiable_values: Box::new(if restored {
                             restored_copy.clone()
@@ -2691,7 +2752,7 @@ mod retained_casting_payload_codec_tests {
             name: "Saved alternative".into(),
             total_cost: total.clone(),
             condition: Some(ironsmith::static_abilities::ThisSpellCostCondition::YourTurn),
-            prototype_power_toughness: Some(ironsmith::card::PowerToughness::fixed(2, 3)),
+            prototype_power_toughness: Some(ironsmith::card::PowerToughness::fixed(2, 3)), uses_land_play: false, instructions: Default::default(),
         };
         let total = encode_runtime_total_cost(total).unwrap();
         let optional = encode_runtime_optional_cost(optional).unwrap();
@@ -2936,7 +2997,8 @@ mod retained_copy_defense_payload_tests {
                     .card_types(vec![ironsmith::types::CardType::Artifact]).build();
                 let source = game.create_object_from_definition(&blank, alice, ironsmith::Zone::Battlefield);
                 game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
-                    source, alice, vec![source], ironsmith::continuous::Modification::CopyOf { retain_original_name: false,
+                    source, alice, vec![source], ironsmith::continuous::Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
                         target_id: base, copiable_values: Box::new(restored), preserve_source_abilities: false,
                         name_override: None, name_override_surface: None, add_supertypes: Vec::new(),
                     },

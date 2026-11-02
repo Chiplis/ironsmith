@@ -421,6 +421,7 @@ fn mono_color_board(
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         };
         let cauldron = CardDefinitionBuilder::new(CardId::new(), "Agatha's Soul Cauldron")
@@ -612,6 +613,7 @@ fn heterogeneous_board(
             mana_source_filter: None,
             any_color_mana_symbol: None,
             mana_symbol_as: None,
+            ignore_minimum_colors_for_designation: None,
             other_mana_only_as_colorless: false,
         };
         let cauldron = CardDefinitionBuilder::new(CardId::new(), "Agatha's Soul Cauldron")

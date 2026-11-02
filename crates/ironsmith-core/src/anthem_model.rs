@@ -390,7 +390,7 @@ pub fn supports_scoped_reference_anthem_value(value: &Value) -> bool {
     match value.unhinted() {
         Value::Fixed(_) => true,
         Value::ManaValueOf(spec) => matches!(spec.unhinted(), crate::ChooseSpec::Iterated),
-        Value::CountersOn(spec, _) => matches!(
+        Value::NamedActionCount {object:spec,..} | Value::CountersOn(spec, _) => matches!(
             spec.unhinted(),
             crate::ChooseSpec::Source | crate::ChooseSpec::Iterated
         ),

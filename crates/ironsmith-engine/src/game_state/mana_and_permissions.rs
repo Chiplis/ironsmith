@@ -290,6 +290,7 @@ impl GameState {
             // so refresh those effects once more when a designation is granted.
             if self.grant_citys_blessings_from_permanent_ascend()
                 | self.grant_enduring_stories_from_permanent_storied()
+                | self.grant_count_named_designations()
             {
                 self.update_static_ability_effects()?;
                 self.update_cant_effects();
@@ -298,7 +299,7 @@ impl GameState {
                 self.update_cant_effects();
             }
 
-            while self.reconcile_soulbond_pairs() | self.reconcile_library_top_identity() {
+            while self.reconcile_soulbond_pairs() | self.reconcile_directed_permanent_links() | self.reconcile_library_top_identity() {
                 // Pair-dependent grants must disappear in this same immutable
                 // world, before a following instruction can restore a type.
                 self.update_static_ability_effects()?;
@@ -606,7 +607,7 @@ impl GameState {
                 characteristics.static_abilities.iter().filter_map(|ability| {
                     if !ability.is_active(self, id) { return None; }
                     let (minimum, historic_only, story) = match ability.keyword_marker_mechanic() {
-                        Some(ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story }) => (minimum, historic_only, enduring_story),
+                        Some(ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story, named_designation: None, .. }) => (minimum, historic_only, enduring_story),
                         _ if ability.id() == crate::static_abilities::StaticAbilityId::Ascend => (10, false, false),
                         _ if ability.id() == crate::static_abilities::StaticAbilityId::Storied => (3, true, true),
                         _ => return None,
@@ -628,6 +629,67 @@ impl GameState {
             if enduring_story { self.grant_enduring_story(*player); } else { self.grant_citys_blessing(*player); }
         }
         !recipients.is_empty()
+    }
+
+    fn grant_count_named_designations(&mut self) -> bool {
+        // These lasting static rules can depend on tapped state even when
+        // they have not yet awarded a designation and generated no effects.
+        // Retaining their failed check across a local-only tap would skip
+        // this evaluator through refresh_continuous_state's clean fast path.
+        self.enter_derived_tap_reads();
+        let granted = self.grant_count_named_designations_inner();
+        self.exit_derived_tap_reads();
+        granted
+    }
+
+    fn grant_count_named_designations_inner(&mut self) -> bool {
+        let grants = self.battlefield.iter().copied().filter(|id| !self.is_phased_out(*id)).flat_map(|id| {
+            let Some(controller) = self.controller_of_id(id) else { return Vec::new(); };
+            let Some(characteristics) = self.current_characteristics(id) else { return Vec::new(); };
+            characteristics.static_abilities.iter().filter_map(|ability| {
+                if !ability.is_active(self, id) { return None; }
+                match ability.keyword_marker_mechanic()? {
+                    ironsmith_core::KeywordMarkerMechanic::PermanentCountGrantsDesignation { minimum, historic_only, tapped_only, named_designation: Some(name), history_requirements, .. } => Some((controller, minimum, historic_only, tapped_only, name, history_requirements)),
+                    _ => None,
+                }
+            }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+        let recipients = grants.into_iter().filter(|(player, minimum, historic_only, tapped_only, name, requirements)| {
+            !self.has_player_designation(*player, name) && self.designation_history_requirements_met(*player, requirements) && self.battlefield.iter().copied().filter(|id| {
+                !self.is_phased_out(*id) && self.controller_of_id(*id) == Some(*player)
+                    && (!*tapped_only || self.is_tapped(*id))
+                    && (!*historic_only || self.current_card_types(*id).is_some_and(|t| t.contains(&crate::types::CardType::Artifact))
+                        || self.current_has_supertype(*id, crate::types::Supertype::Legendary)
+                        || self.current_subtypes(*id).is_some_and(|t| t.contains(&crate::types::Subtype::Saga)))
+            }).count() >= *minimum as usize
+        }).map(|(player, _, _, _, name, _)| (player, name)).collect::<Vec<_>>();
+        for (player, name) in &recipients { self.grant_player_designation(*player, name); }
+        !recipients.is_empty()
+    }
+
+    pub fn designation_history_requirements_met(&self, player: PlayerId, requirements: &[ironsmith_core::DesignationHistoryRequirement]) -> bool {
+        use ironsmith_core::DesignationHistoryRequirement as R;
+        requirements.iter().all(|requirement| match requirement {
+            R::Attacked => self.turn_store.turn_history.creatures_attacked_by_player_this_turn.get(&player).is_some_and(|ids| !ids.is_empty()),
+            R::ActivatedAbility { nonmana_only } => self.turn_store.turn_history.event_records.iter()
+                .chain(self.turn_store.turn_history.staged_event_records.iter())
+                .filter_map(|record| record.event.downcast::<crate::events::spells::AbilityActivatedEvent>())
+                .any(|event| event.activator == player && (!*nonmana_only || !event.is_mana_ability)),
+            R::CastSpellMatchingTypes(types) => self.turn_store.turn_history.event_records.iter()
+                .chain(self.turn_store.turn_history.staged_event_records.iter())
+                .filter_map(|record| record.event.downcast::<crate::events::spells::SpellCastEvent>())
+                .any(|event| event.caster == player && event.snapshot.as_ref().is_some_and(|snapshot| types.is_empty() || types.iter().any(|ty| snapshot.card_types.contains(ty)))),
+        })
+    }
+
+    pub fn has_player_designation(&self, player: PlayerId, name: &str) -> bool {
+        self.named_player_designations.get(&player).is_some_and(|names| names.contains(name))
+    }
+
+    pub fn grant_player_designation(&mut self, player: PlayerId, name: &str) -> bool {
+        let granted = self.named_player_designations.entry(player).or_default().insert(name.to_string());
+        if granted { self.mark_continuous_state_dirty(); }
+        granted
     }
 
     fn grant_enduring_stories_from_permanent_storied(&mut self) -> bool {
@@ -1268,12 +1330,17 @@ impl GameState {
 
     fn modification_may_change_enter_as_copy_presence(modification: &Modification) -> bool {
         match modification {
+            // Copied static occurrences may include conditional as-enters/copy
+            // rules from live donors; the unmodified source scan cannot see them.
+            Modification::CopyStaticAbilityVariants { .. } => true,
             Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
+            // A fragment subset selects a complete precompiled rules graph.
+            // It can add or remove the abilities this fast path scans for.
+            | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetTextBox(_)
             | Modification::SetAbilities(_)
-            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
@@ -2573,6 +2640,14 @@ impl GameState {
                 })
                 .collect::<Vec<_>>();
             let x_allocation = cost.allocate_mana_to_x(&generic, x_value)?;
+            let actual_colors = selected.iter().filter_map(|payment| match payment {
+                ManaPipCommit::ManaUnit { index, .. } => units.get(*index).and_then(|unit| unit.symbol.unit_color()),
+                _ => None,
+            }).fold(crate::color::ColorSet::new(), |colors, color| colors.with(color));
+            if cost.spending_restrictions().iter().any(|rule| match rule {
+                ironsmith_core::mana::ManaSpendingRestriction::AtLeastColors(minimum) => actual_colors.count() < u32::from(*minimum),
+                _ => false,
+            }) { return None; }
             if let Some(required) = cost.required_actual_payment() {
                 let actual = ironsmith_core::mana::ActualManaAllocation::from_symbols(
                     selected.iter().filter_map(|payment| match payment {
@@ -4575,7 +4650,21 @@ impl GameState {
 
     /// Returns all object IDs in deterministic order.
     pub fn object_ids_in_deterministic_order(&self) -> Vec<ObjectId> {
-        let mut ids: Vec<_> = self.objects.keys().copied().collect();
+        // A battlefield merge has already absorbed its incoming permanent
+        // before transferring counters/attachments. Its exact old Object is
+        // retained only for those state-transfer operations, not as another
+        // independent source of static, replacement or triggered abilities.
+        let mut ids: Vec<_> = self.objects.keys().copied().filter(|id| {
+            let Some(object) = self.object(*id) else { return false };
+            if object.zone != Zone::Battlefield || self.battlefield.contains(id) {
+                return true;
+            }
+            !self.commander_tracking.merged_permanents.iter().any(|(host, group)| {
+                *host != object.stable_id && group.components.iter().any(|component| {
+                    component.object.id == *id && component.object.stable_id == object.stable_id
+                })
+            })
+        }).collect();
         ids.sort();
         ids
     }
@@ -4695,7 +4784,7 @@ impl GameState {
             .filter(|object| !self.is_phased_out(object.id))
             .filter(|object| {
                 ability_effects_can_add_triggers
-                    || object.abilities.iter().any(|ability| {
+                    || object.abilities.iter().chain(object.counters.occurrence_abilities()).any(|ability| {
                         Self::ability_is_trigger_lookback_relevant(ability, object.zone)
                     })
             })
@@ -4727,6 +4816,8 @@ impl GameState {
             AbilityKind::Static(static_ability) => {
                 static_ability.trigger_duplication_spec().is_some()
                     || static_ability.trigger_suppression_spec().is_some()
+                    || matches!(static_ability.compiled_model().map(|model|&model.payload),
+                        Some(ironsmith_core::StaticAbilityPayload::TriggerClassEventChoice { .. }))
             }
             _ => false,
         }
@@ -4743,6 +4834,9 @@ impl GameState {
             Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
+            // A fragment subset selects a complete precompiled rules graph.
+            // It can add or remove the abilities this fast path scans for.
+            | Modification::RemoveOptionalTextFragments(_)
             | Modification::SetTextBox(_)
             | Modification::SetAbilities(_)
             | Modification::CopyTriggeredAbilities { .. }
@@ -4752,13 +4846,19 @@ impl GameState {
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbilityGeneric(ability)
             | Modification::RemoveAbilityGeneric { ability, .. } => {
-                matches!(ability.kind, AbilityKind::Triggered(_))
+                matches!(ability.kind, AbilityKind::Triggered(_)) || matches!(&ability.kind,
+                    AbilityKind::Static(rule) if matches!(rule.compiled_model().map(|model|&model.payload),
+                        Some(ironsmith_core::StaticAbilityPayload::TriggerClassEventChoice { .. })))
             }
-            // Static-only ability edits and pure characteristic changes
-            // cannot change the triggered-ability list.
-            Modification::AddAbility(_)
-            | Modification::RemoveAbility(_)
-            | Modification::RemoveStaticAbilityFamily(_)
+            Modification::AddAbility(rule) | Modification::RemoveAbility(rule) => {
+                matches!(rule.compiled_model().map(|model|&model.payload),
+                    Some(ironsmith_core::StaticAbilityPayload::TriggerClassEventChoice { .. }))
+            }
+            // A copied static may carry a source-authored event-selection rule.
+            Modification::CopyStaticAbilityVariants { .. } => true,
+            // Other static-only edits and pure characteristic changes cannot
+            // add triggered programs or their event-selection policy.
+            Modification::RemoveStaticAbilityFamily(_)
             | Modification::CopyActivatedAbilities { .. }
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::ChangeController(_)
@@ -4807,7 +4907,7 @@ impl GameState {
         }
 
         self.objects.values().any(|object| {
-            object.abilities.iter().any(|ability| {
+            object.abilities.iter().chain(object.counters.occurrence_abilities()).any(|ability| {
                 if !matches!(ability.kind, AbilityKind::Triggered(_))
                     || !ability.functions_in(&object.zone)
                 {

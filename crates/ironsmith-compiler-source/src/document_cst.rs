@@ -177,7 +177,7 @@ fn classify_line(
 ) -> Result<CstLine, CardTextError> {
     let trimmed = trimmed_byte_range(authored);
     let normalized = normalize_trimmed_line(authored);
-    let Some(trimmed) = trimmed else {
+    let Some(trimmed) = trimmed.filter(|_| normalized.is_some()) else {
         return Ok(CstLine {
             line_index,
             span: line_span,

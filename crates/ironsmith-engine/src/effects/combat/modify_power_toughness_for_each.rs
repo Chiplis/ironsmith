@@ -4,10 +4,11 @@ use crate::continuous::EffectTarget;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::continuous::ResolvedPowerToughness;
-use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::helpers::resolve_single_object_for_effect;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
+use crate::types::CardType;
 pub use ironsmith_core::ModifyPowerToughnessForEachEffect;
 
 /// Effect that modifies a creature's power/toughness based on a count.
@@ -48,6 +49,24 @@ impl EffectExecutor for ModifyPowerToughnessForEachEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.target_assignments.iter().any(|assignment| {
+            assignment.spec.base() == self.target.base() && assignment.range.len() > 1
+        }) {
+
+        let values = ResolvedPowerToughness::scaled(
+            game,
+            ctx,
+            self.power_per,
+            self.toughness_per,
+            &self.count,
+        )?;
+
+        let mut apply = values.additive(EffectTarget::AllPermanents, self.duration.clone());
+
+        apply.target_spec = Some(self.target.clone());
+        return execute_effect(game, &Effect::new(apply), ctx);
+        }
+
         let values = ResolvedPowerToughness::scaled(
             game,
             ctx,
@@ -67,6 +86,25 @@ impl EffectExecutor for ModifyPowerToughnessForEachEffect {
 
         execute_effect(game, &Effect::new(apply), ctx)
     }
+
+    fn scalar_target_resolution_specs(&self) -> Vec<ChooseSpec> {
+        self.target.is_target().then(|| self.target.clone()).into_iter().collect()
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool { true }
+
+    fn prepare_simultaneous_player_action(
+        &self, game: &GameState, ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Freeze each scalar recipient's own contextual quantities before any
+        // sibling continuous original can change those characteristics.
+        let values = ResolvedPowerToughness::scaled(game, ctx, self.power_per, self.toughness_per, &self.count)?;
+        let mut apply = values.additive(EffectTarget::AllPermanents, self.duration.clone());
+        apply.target_spec = Some(self.target.clone());
+        apply.prepare_simultaneous_player_action(game, ctx)
+    }
+
+    fn supports_additional_target_role(&self, spec: &ChooseSpec) -> bool { self.target == *spec }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
@@ -88,8 +126,7 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::target::ObjectFilter;
     use crate::test_prelude::*;
-    use crate::types::CardType;
-    use crate::zone::Zone;
+        use crate::zone::Zone;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

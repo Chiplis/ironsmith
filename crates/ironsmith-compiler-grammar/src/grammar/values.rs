@@ -765,6 +765,22 @@ pub fn parse_type_line_with(
     let mut subtypes = Vec::new();
     let mut index = 0;
     while index < right_words.len() {
+        if let Some((subtype, consumed)) = ironsmith_core::custom_subtypes::lookup_prefix(&right_words[index..]) {
+            let Subtype::Custom(value) = subtype else { unreachable!("scoped vocabulary contains custom subtypes"); };
+            use ironsmith_core::SubtypeFamily as Family;
+            let compatible = value.families().any(|family| match family {
+                Family::Creature => card_types.contains(&CardType::Creature) || card_types.contains(&CardType::Kindred),
+                Family::Land => card_types.contains(&CardType::Land),
+                Family::Artifact => card_types.contains(&CardType::Artifact),
+                Family::Enchantment => card_types.contains(&CardType::Enchantment),
+                Family::Spell => card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery),
+                Family::Planeswalker => card_types.contains(&CardType::Planeswalker),
+                Family::Battle => card_types.contains(&CardType::Battle),
+                Family::Planar => card_types.contains(&CardType::Plane),
+            });
+            if !compatible { return Err(CardTextError::ParseError(format!("{subtype} requires one of these subtype families: {}", value.families().map(|family|family.type_phrase()).collect::<Vec<_>>().join(", ")))); }
+            subtypes.push(subtype); index += consumed; continue;
+        }
         if right_words.get(index..index + 2).is_some_and(|words| {
             words[0].eq_ignore_ascii_case("time") && words[1].eq_ignore_ascii_case("lord")
         }) {
@@ -775,7 +791,7 @@ pub fn parse_type_line_with(
         if let Some(subtype) = parse_subtype(right_words[index]) {
             if let Subtype::Custom(value) = subtype {
                 use ironsmith_core::SubtypeFamily as Family;
-                let compatible = match value.family {
+                let compatible = value.families().any(|family| match family {
                     Family::Creature => card_types.contains(&CardType::Creature) || card_types.contains(&CardType::Kindred),
                     Family::Land => card_types.contains(&CardType::Land),
                     Family::Artifact => card_types.contains(&CardType::Artifact),
@@ -783,8 +799,9 @@ pub fn parse_type_line_with(
                     Family::Spell => card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery),
                     Family::Planeswalker => card_types.contains(&CardType::Planeswalker),
                     Family::Battle => card_types.contains(&CardType::Battle),
-                };
-                if !compatible { return Err(CardTextError::ParseError(format!("{subtype} is a {}", value.family.type_phrase()))); }
+                    Family::Planar => card_types.contains(&CardType::Plane),
+                });
+                if !compatible { return Err(CardTextError::ParseError(format!("{subtype} requires one of these subtype families: {}", value.families().map(|family|family.type_phrase()).collect::<Vec<_>>().join(", ")))); }
             }
             subtypes.push(subtype);
         } else {

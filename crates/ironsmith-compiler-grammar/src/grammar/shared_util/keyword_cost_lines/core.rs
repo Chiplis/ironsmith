@@ -60,6 +60,7 @@ pub fn parse_transfigure(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbilit
                     is_loyalty_ability: false,
                 },
             ),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         }
         .into(),

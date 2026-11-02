@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'effect_sentences::gain_ability::tests::custom_keyword_identity_component_is_bounded_and_composes_with_real_activation' panicked at crates/ironsmith-compiler-grammar/src/effect_sentences/gain_ability_inline_tests.rs:1717:81:
+called `Result::unwrap()` on an `Err` value: ParseError("rewrite lexer encountered an unsupported token \"}\" on line 1 at 34..35")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test effect_sentences::gain_ability::tests::custom_keyword_identity_component_is_bounded_and_composes_with_real_activation ... FAILED
+
+failures:
+
+failures:
+    effect_sentences::gain_ability::tests::custom_keyword_identity_component_is_bounded_and_composes_with_real_activation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5199 filtered out; finished in 0.10s
+

@@ -29,6 +29,8 @@ pub(crate) fn tagged_collection_has_object_in_zone(
 #[derive(Debug, Clone)]
 pub struct DelayedTriggerConfig {
     pub trigger: Trigger,
+    pub persistent_player_rule: Option<String>,
+    pub intervening_if: Option<crate::effect::Condition>,
     pub effects: ResolutionProgram,
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
@@ -42,6 +44,7 @@ pub struct DelayedTriggerConfig {
     pub expires_at_end_of_combat: bool,
     pub bound_extra_turn_index: Option<usize>,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
+    pub source_collection_scope: Option<ironsmith_core::effect::SourceCollectionScope>,
     /// "For as long as this creature remains tapped": the registration ends
     /// once this permanent untaps or leaves the battlefield (CR 611.2b).
     pub while_source_tapped: Option<ObjectId>,
@@ -67,6 +70,8 @@ impl DelayedTriggerConfig {
     ) -> Self {
         Self {
             trigger,
+            persistent_player_rule: None,
+            intervening_if: None,
             effects: effects.into(),
             linked_exile_owner: None,
             source_number_owner: None,
@@ -78,6 +83,7 @@ impl DelayedTriggerConfig {
             expires_at_end_of_combat: false,
             bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
+            source_collection_scope: None,
             while_source_tapped: None,
             target_objects,
             ability_source: None,
@@ -90,6 +96,13 @@ impl DelayedTriggerConfig {
             prepayment: None,
             prevention_shield: None,
         }
+    }
+
+    pub fn as_persistent_player_rule(mut self, name: String, condition: Option<crate::effect::Condition>) -> Self {
+        self.persistent_player_rule = Some(name);
+        self.intervening_if = condition;
+        self.one_shot = false;
+        self
     }
 
     pub fn with_not_before_turn(mut self, not_before_turn: Option<u32>) -> Self {
@@ -178,6 +191,10 @@ impl DelayedTriggerConfig {
         self
     }
 
+    pub fn with_source_collection_scope(mut self, scope: Option<ironsmith_core::effect::SourceCollectionScope>) -> Self {
+        self.source_collection_scope = scope; self
+    }
+
     pub fn with_prepayment(
         mut self,
         prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
@@ -229,6 +246,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub expires_at_end_of_combat: bool,
     pub bound_extra_turn_index: Option<usize>,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
+    pub source_collection_scope: Option<ironsmith_core::effect::SourceCollectionScope>,
     pub while_source_tapped: Option<ObjectId>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
@@ -261,6 +279,7 @@ impl DelayedTriggerTemplate {
             expires_at_end_of_combat: false,
             bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
+            source_collection_scope: None,
             while_source_tapped: None,
             ability_source: None,
             controller,
@@ -355,6 +374,10 @@ impl DelayedTriggerTemplate {
         self
     }
 
+    pub fn with_source_collection_scope(mut self, scope: Option<ironsmith_core::effect::SourceCollectionScope>) -> Self {
+        self.source_collection_scope = scope; self
+    }
+
     pub fn with_prepayment(
         mut self,
         prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
@@ -372,8 +395,99 @@ impl DelayedTriggerTemplate {
     }
 }
 
-/// Push a delayed trigger onto the game queue.
+/// Complete effect identity: validated canonical models compare across
+/// independent direct/artifact materializations. Native callbacks require the
+/// same immutable executor; display text and Debug output never prove identity.
+#[derive(Clone, PartialEq)]
+enum PlayerRuleEffectDefinition {
+    Compiled(String),
+    Native(crate::effect::Effect),
+}
+
+fn player_rule_program_definition(program: &ResolutionProgram) -> ironsmith_core::ResolutionProgram<PlayerRuleEffectDefinition> {
+    program.clone().try_map_effects(|effect| Ok::<_, std::convert::Infallible>(
+        match effect.serialized_model() {
+            Some(model) => PlayerRuleEffectDefinition::Compiled(model.to_owned()),
+            None => PlayerRuleEffectDefinition::Native(effect),
+        }
+    )).unwrap_or_else(|never| match never {})
+}
+
+fn compatible_player_rule(existing: &DelayedTrigger, config: &DelayedTriggerConfig) -> bool {
+    let trigger_equal = match (existing.trigger.compiled_model(), config.trigger.compiled_model()) {
+        (Some(left),Some(right)) => left == right,
+        (None,None) => existing.trigger.runtime_matcher_identity() == config.trigger.runtime_matcher_identity(),
+        _ => false,
+    };
+    trigger_equal && existing.intervening_if == config.intervening_if
+        && player_rule_program_definition(&existing.effects) == player_rule_program_definition(&config.effects)
+        && existing.choices == config.choices
+}
+
+/// Existing callers register source-bound delayed instructions. The checked
+/// gateway also protects direct callers that supply a persistent rule.
 pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig) {
+    try_queue_delayed_trigger(game, config)
+        .unwrap_or_else(|error| panic!("delayed registration invariant failed: {error}"));
+}
+
+/// A persistent rule name admits one compatible definition per player. A
+/// source-authority conflict is an invariant failure, never first-wins behavior.
+/// Returns false only for a proved identical repeat registration.
+pub fn try_queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig) -> Result<bool, crate::effects::ExecutionError> {
+    let mut config = config;
+    if let Some(name) = config.persistent_player_rule.as_ref() {
+        // Rule ownership belongs to a player, not the card or the exiled set.
+        if let Some(existing) = game.effect_store.delayed_triggers.iter().find(|entry|
+            entry.controller == config.controller && entry.persistent_player_rule.as_ref() == Some(name)) {
+            if compatible_player_rule(existing, &config) { return Ok(false); }
+            return Err(crate::effects::ExecutionError::InternalError(format!(
+                "incompatible persistent player rule {name:?} for {:?}", config.controller)));
+        }
+        config.ability_source = None;
+        config.target_objects.clear();
+        config.tagged_objects.clear();
+        config.tagged_players.clear();
+        config.linked_exile_owner = None;
+        config.source_number_owner = None;
+        config.x_value = None;
+    }
+
+    // Capture only compiler-declared free references. Names produced inside
+    // the delayed body are local slots and must not sample a parent's tags.
+    // Exact object IDs deliberately fail after departure/reentry into exile.
+    for tag in config.effects.object_reference_imports.clone() {
+        if config.effects.captured_object_references.iter().any(|(key,_)|key==&tag) {continue;}
+        let snapshots=config.tagged_objects.get(&tag).or_else(|| {
+            (tag.as_str()=="__prior_exiled_card__").then(||
+                config.tagged_objects.get(&TagKey::from(crate::tag::SOURCE_EXILED_SELF_TAG))).flatten()
+        });
+        let ids=snapshots.into_iter().flatten().map(|snapshot|snapshot.object_id).collect();
+        // An absent import is an explicitly empty exact reference, never an
+        // invitation to revive a later physical-card incarnation.
+        config.effects.captured_object_references.push((tag,ids));
+    }
+    if let Some(scope) = &config.source_collection_scope {
+        if let Some(source)=config.ability_source {
+            let members=config.tagged_objects.get(&scope.tag).into_iter().flatten().map(|snapshot|snapshot.object_id).collect::<Vec<_>>();
+            game.note_source_collection(source,None,&scope.name,scope.zone,&members);
+        }
+        let incoming = config.tagged_objects.get(&scope.tag).cloned().unwrap_or_default();
+        if let Some(existing) = game.effect_store.delayed_triggers.iter_mut().find(|existing| {
+            existing.ability_source == config.ability_source && existing.source_collection_scope.as_ref().is_some_and(|old| old.name == scope.name)
+        }) {
+            let old = existing.source_collection_scope.as_ref().unwrap();
+            let values = existing.tagged_objects.entry(old.tag.clone()).or_default();
+            for snapshot in incoming { if !values.iter().any(|previous| previous.object_id == snapshot.object_id) { values.push(snapshot); } }
+            // Only the declared collection slot grows. Independent captured
+            // parent references retain their original per-watcher binding.
+            let ids=values.iter().map(|snapshot|snapshot.object_id).collect::<Vec<_>>();
+            for (tag,captured) in &mut existing.effects.captured_object_references {
+                if tag==&old.tag {*captured=ids.clone();}
+            }
+            return Ok(false);
+        }
+    }
     let (ability_source_stable_id, ability_source_name, ability_source_snapshot) = config
         .ability_source
         .and_then(|source_id| {
@@ -390,7 +504,8 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
                         .push(crate::ability::lifelink());
                 }
                 (object.stable_id, object.name.to_string(), snapshot)
-            })
+            }).or_else(|| game.source_last_known_snapshot(source_id)
+                .map(|snapshot| (snapshot.stable_id, snapshot.name.to_string(), snapshot.clone())))
         })
         .map(|(stable_id, name, snapshot)| (Some(stable_id), Some(name), Some(snapshot)))
         .unwrap_or((None, None, None));
@@ -407,6 +522,8 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         linked_exile_owner: config.linked_exile_owner,
         source_number_owner: config.source_number_owner,
         trigger: config.trigger,
+        persistent_player_rule: config.persistent_player_rule,
+        intervening_if: config.intervening_if,
         effects: config.effects,
         one_shot: config.one_shot,
         x_value: config.x_value,
@@ -417,6 +534,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         expires_at_end_of_combat: config.expires_at_end_of_combat,
         bound_extra_turn_index: config.bound_extra_turn_index,
         while_any_tagged_object_in_zone: config.while_any_tagged_object_in_zone,
+        source_collection_scope: config.source_collection_scope,
         while_source_tapped: config.while_source_tapped,
         target_objects: config.target_objects,
         ability_source: config.ability_source,
@@ -431,6 +549,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         prepayment: config.prepayment,
         prevention_shield: config.prevention_shield,
     });
+    Ok(true)
 }
 
 /// Queue delayed trigger(s) using a shared template and watcher identity policy.
@@ -461,6 +580,7 @@ pub(crate) fn queue_delayed_from_template(
                 .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
                 .with_bound_extra_turn_index(template.bound_extra_turn_index)
                 .while_any_tagged_object_in_zone_opt(template.while_any_tagged_object_in_zone)
+                .with_source_collection_scope(template.source_collection_scope.clone())
                 .while_source_tapped(template.while_source_tapped)
                 .with_linked_exile_owner(template.linked_exile_owner.clone())
                 .with_source_number_owner(template.source_number_owner.clone())
@@ -498,6 +618,7 @@ pub(crate) fn queue_delayed_from_template(
                     .while_any_tagged_object_in_zone_opt(
                         template.while_any_tagged_object_in_zone.clone(),
                     )
+                    .with_source_collection_scope(template.source_collection_scope.clone())
                     .while_source_tapped(template.while_source_tapped)
                     .with_linked_exile_owner(template.linked_exile_owner.clone())
                     .with_source_number_owner(template.source_number_owner.clone())

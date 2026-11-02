@@ -73,6 +73,10 @@ pub(super) fn queue_triggers_for_event(
         game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
         return;
     }
+    match crate::triggers::class_event_choice::capture_event_choices(game, &event) {
+        Ok(choices) => trigger_queue.class_event_choices.extend(choices),
+        Err(error) => { game.record_token_resource_failure(&error); return; }
+    }
     let triggers = check_triggers(game, &event);
     for trigger in triggers {
         if crate::triggers::check::is_speed_rule_trigger(&trigger) {
@@ -107,6 +111,9 @@ pub(crate) fn queue_triggers_from_event_with_outputs(
         return None;
     }
     let mut event = game.event_with_retained_trigger_capture(&event);
+    if let Err(error)=crate::effects::capture_hand_reveal_window(game,&event) {
+        game.record_token_resource_failure(&error);return None;
+    }
     let include_delayed = include_delayed || event.kind() == crate::events::EventKind::SpellCast;
     if event.ordinary_triggers_captured() && (!include_delayed || event.delayed_triggers_captured())
     {
@@ -118,6 +125,13 @@ pub(crate) fn queue_triggers_from_event_with_outputs(
         event = event.with_inner_event(targeted.clone().with_participant_snapshots(game));
     }
     game.record_turn_history_event(&event);
+    // The boundary is a real occurrence. Resolve all qualifying source-authored
+    // policies before capturing either the boundary's or action's observers.
+    if !event.ordinary_triggers_captured() {
+        let actions = phase_boundary_player_actions(game, &event);
+        if game.token_resource_failure().is_some() { return None; }
+        for action in actions { queue_triggers_from_event_with_outputs(game, trigger_queue, action, true)?; }
+    }
     if !event.ordinary_triggers_captured() {
         queue_triggers_for_event(game, trigger_queue, event.clone());
         if game.token_resource_failure().is_some() {
@@ -194,6 +208,10 @@ pub(crate) fn capture_completed_spell_cast_with_outputs(
                 return Err(error);
             }
             event.mark_triggers_captured();
+            if let Some(nth) = game.turn_store.turn_history.spell_cast_order_for_player(spell, caster) {
+                game.release_nth_spell_phase_out_holds(caster, nth);
+            }
+            if let Some(error) = game.token_resource_failure() { return Err(error); }
             let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
                 crate::effect::EffectOutcome::resolved().with_event(event),
             );
@@ -384,6 +402,16 @@ pub(super) fn queue_triggers_for_simultaneous_events(
         game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
         game.turn_store.turn_history.end_simultaneous_batch(previous_batch_start);
         return;
+    }
+    for event in &events {
+        match crate::triggers::class_event_choice::capture_event_choices(game, event) {
+            Ok(choices) => trigger_queue.class_event_choices.extend(choices),
+            Err(error) => {
+                game.record_token_resource_failure(&error);
+                game.turn_store.turn_history.end_simultaneous_batch(previous_batch_start);
+                return;
+            }
+        }
     }
     let trigger_groups = check_triggers_batch(game, &events);
     let trigger_groups =
@@ -936,12 +964,10 @@ pub(super) fn queue_prepared_activation_notification_with_outputs(
         let provenance = activation.stack_entry_provenance.unwrap_or_default();
         let event_provenance = game
             .alloc_child_event_provenance(provenance, crate::events::EventKind::CardRevealed);
-        queue_triggers_from_event(
-            game,
-            trigger_queue,
-            TriggerEvent::new_with_provenance(reveal, event_provenance),
-            true,
-        );
+        let event = TriggerEvent::new_with_provenance(reveal, event_provenance);
+        crate::effects::cards::process_public_reveal_action_offers(game, &event, decision_maker)?;
+        if decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+        queue_triggers_from_event(game, trigger_queue, event, true);
     }
     let mut notification = game.complete_activation_notification(activation);
     for event in notification.outcome.events.clone() {
@@ -1137,7 +1163,7 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
     // No decision channel: duration-end requests stay queued. This callback
     // cannot fail, so the type system proves the matching-only drain infallible.
     let result =
-        drain_pending_trigger_events_inner::<std::convert::Infallible>(game, trigger_queue, |_| {
+        drain_pending_trigger_events_inner::<std::convert::Infallible>(game, trigger_queue, |_, _| {
             Ok(false)
         });
     match result {
@@ -1160,7 +1186,7 @@ pub fn try_drain_pending_trigger_events(
     let mut result = drain_pending_trigger_events_inner::<crate::effects::ExecutionError>(
         game,
         trigger_queue,
-        |_| Ok(false),
+        |_, _| Ok(false),
     );
     if let Some(error) = game.token_resource_failure() {
         result = Err(error);
@@ -1186,14 +1212,23 @@ pub fn drain_pending_trigger_events_with_dm(
     let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
-    let mut result = drain_pending_trigger_events_inner(game, trigger_queue, |game| {
-        if decision_maker.answers_player_choices() && game.has_pending_duration_end_returns() {
-            game.process_pending_duration_end_returns(decision_maker)?;
-            Ok(!decision_maker.awaiting_choice())
-        } else {
-            Ok(false)
+    let mut result=(|| {
+        loop {
+            {
+                let mut context=crate::effects::ExecutionContext::new(crate::ObjectId::from_raw(0),game.turn.active_player,decision_maker);
+                crate::effects::answer_hand_reveal_windows(game,&mut context)?;
+            }
+            if decision_maker.awaiting_choice() {return Ok(());}
+            drain_pending_trigger_events_inner(game,trigger_queue,|game, queue| -> Result<bool, crate::effects::ExecutionError> {
+                if !super::sba_triggers::complete_trigger_class_choices_before_continuation(game,queue,decision_maker)? { return Ok(false); }
+                if decision_maker.answers_player_choices() && game.has_pending_duration_end_returns() {
+                    game.process_pending_duration_end_returns(decision_maker)?;
+                    Ok(!decision_maker.awaiting_choice())
+                } else {Ok(false)}
+            })?;
+            if decision_maker.awaiting_choice() || game.effect_store.pending_hand_reveal_windows.is_empty() {return Ok(());}
         }
-    });
+    })();
     if let Some(error) = game.token_resource_failure() {
         result = Err(error);
     }
@@ -1208,11 +1243,12 @@ pub fn drain_pending_trigger_events_with_dm(
 fn drain_pending_trigger_events_inner<E>(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
-    mut execute_duration_returns: impl FnMut(&mut GameState) -> Result<bool, E>,
+    mut execute_duration_returns: impl FnMut(&mut GameState, &mut TriggerQueue) -> Result<bool, E>,
 ) -> Result<(), E> {
     if game.action_observations_suppressed() {
         return Ok(());
     }
+    trigger_queue.class_event_choices.append(&mut game.effect_store.pending_trigger_class_choices);
     for entry in game.take_pending_trigger_entries() {
         trigger_queue.add(entry);
     }
@@ -1224,7 +1260,7 @@ fn drain_pending_trigger_events_inner<E>(
             // CR 610.3c: exile-until durations that ended are returned with
             // the players answering the entry choices; without a player
             // decision channel they wait for the next caller that has one.
-            if execute_duration_returns(game)? {
+            if execute_duration_returns(game, trigger_queue)? {
                 continue;
             }
             break;
@@ -1266,10 +1302,10 @@ fn drain_pending_trigger_events_inner<E>(
                 let mut simultaneous_sources = Vec::new();
                 for event in &simultaneous {
                     if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
-                        && change.from == crate::zone::Zone::Battlefield
+                        && matches!(change.from, crate::zone::Zone::Battlefield | crate::zone::Zone::Stack)
                         && change.to != crate::zone::Zone::Battlefield
                     {
-                        simultaneous_sources.extend(change.objects.iter().copied());
+                        simultaneous_sources.extend(change.original_objects());
                     }
                 }
                 if !simultaneous_sources.is_empty() { departed_sources.push(simultaneous_sources); }
@@ -1278,9 +1314,9 @@ fn drain_pending_trigger_events_inner<E>(
             let source_leave = event
                 .downcast::<crate::events::zones::ZoneChangeEvent>()
                 .and_then(|zone_change| {
-                    (zone_change.from == crate::zone::Zone::Battlefield
+                    (matches!(zone_change.from, crate::zone::Zone::Battlefield | crate::zone::Zone::Stack)
                         && zone_change.to != crate::zone::Zone::Battlefield)
-                        .then(|| zone_change.objects.clone())
+                        .then(|| zone_change.original_objects())
                 });
             let queue_start = trigger_queue.entries.len();
             queue_triggers_from_event(game, trigger_queue, event, true);
@@ -2688,6 +2724,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 let distinct_player_group =
                     link_relative_target_to_prior_requirement(&spec, requirements);
                 requirements.push(TargetRequirement {
+                    supports_additional_targets: effect.0.supports_additional_target_role(&spec),
                     spec,
                     source_attachment: false,
                     announcement_tags: Vec::new(),
@@ -2698,6 +2735,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     description: "counter transfer endpoint".to_string(),
                     min_targets,
                     max_targets,
+                    additional_target_budget: 0,
                     distinct_player_group,
                     shared_player_group,
                     distribution_value: None,
@@ -2738,6 +2776,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 let legal_target_sets =
                     crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
                 requirements.push(TargetRequirement {
+                    supports_additional_targets: effect.0.supports_additional_target_role(&spec),
                     spec,
                     source_attachment: false,
                     announcement_tags: Vec::new(),
@@ -2748,6 +2787,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     description: "target".to_string(),
                     min_targets,
                     max_targets,
+                    additional_target_budget: 0,
                     distinct_player_group: None,
                     shared_player_group: None,
                     distribution_value: None,
@@ -2829,6 +2869,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 source_id,
             );
             requirements.push(TargetRequirement {
+                    supports_additional_targets: effect.0.supports_additional_target_role(extracted.spec),
                 spec: extracted.spec.clone(),
                 source_attachment: is_source_attachment_target(effect),
                 announcement_tags: target_announcement_tags(effect),
@@ -2839,6 +2880,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
+                additional_target_budget: 0,
                 distinct_player_group,
                 shared_player_group,
                 distribution_value: extracted.distribution_value.cloned(),
@@ -3340,6 +3382,7 @@ fn extract_target_requirements_from_iterated_effect(
             .is_none_or(|constraint| constraint.supports_minimum(min_targets));
         if has_enough_targets || extracted.chooser.is_some() {
             requirements.push(TargetRequirement {
+                    supports_additional_targets: effect.0.supports_additional_target_role(extracted.spec),
                 spec,
                 source_attachment: is_source_attachment_target(effect),
                 announcement_tags: target_announcement_tags(effect),
@@ -3350,6 +3393,7 @@ fn extract_target_requirements_from_iterated_effect(
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
+                additional_target_budget: 0,
                 distinct_player_group: None,
                 shared_player_group: None,
                 distribution_value: extracted.distribution_value.cloned(),
@@ -3625,6 +3669,10 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::OwnsMatchingObject { filter } => PlayerFilter::OwnsMatchingObject {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
+        PlayerFilter::WithMatchingAttachments { base, filter } => PlayerFilter::WithMatchingAttachments {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+        },
         PlayerFilter::ControlsMatchingObject { filter } => PlayerFilter::ControlsMatchingObject {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
@@ -3873,6 +3921,10 @@ fn cast_time_selected_effects_from_program(
         return program.flattened_default_effects().to_vec();
     };
 
+    let fragment_program=game.object(source_id).filter(|object|crate::continuous::optional_text_fragments::has_selected_cast_choice(object))
+        .filter(|object|object.spell_effect.as_deref().is_some_and(|base|base==program))
+        .and_then(|_|game.current_spell_program(source_id).ok());
+    let program=fragment_program.as_ref().unwrap_or(program);
     let mut selected = Vec::new();
     for segment in &program.segments {
         let applicable = segment
@@ -4678,7 +4730,7 @@ pub fn player_matches_filter_with_combat(
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::WithMatchingAttachments { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }
@@ -5611,13 +5663,14 @@ fn assignment_aggregate_still_legal(
     let maximum = i128::from(maximum);
     let mut total = 0i128;
     let mut types = 0u128;
+    let mut color_masks = Vec::new();
     for target in assigned {
         let Target::Object(id) = target else { continue };
         // The legality of one member can depend on the other announced
         // members, including independently illegal targets (CR608.2b;
         // Run Away Together's controller comparison is the same purpose).
         // Use exact departure/phasing LKI, never a later stable-card incarnation.
-        let (power, toughness, mana_value, card_types) =
+        let (power, toughness, mana_value, card_types, colors) =
             if let Some(object) = game.object(*id).filter(|_| !game.is_phased_out(*id)) {
                 let chars = view.current_characteristics_arc(*id).ok_or_else(|| {
                     crate::effects::ExecutionError::UnresolvableValue(
@@ -5638,6 +5691,7 @@ fn assignment_aggregate_still_legal(
                     chars.toughness,
                     mana_value,
                     chars.card_types.to_vec(),
+                    chars.colors,
                 )
             } else {
                 let snapshot = game.source_last_known_snapshot(*id).ok_or_else(|| {
@@ -5660,6 +5714,7 @@ fn assignment_aggregate_still_legal(
                     snapshot.toughness,
                     mana_value,
                     snapshot.card_types.clone(),
+                    snapshot.colors,
                 )
             };
         match constraint.metric {
@@ -5685,6 +5740,9 @@ fn assignment_aggregate_still_legal(
                     constraint.metric,
                 ))
             }
+            ChoiceAggregateMetric::DistinctColorRepresentatives => {
+                color_masks.push(crate::color::Color::ALL.iter().enumerate().fold(0u32, |mask, (slot, color)| if colors.contains(*color) { mask | (1 << slot) } else { mask }));
+            }
             ChoiceAggregateMetric::DistinctCardTypes => {
                 for ty in card_types {
                     types |= 1u128 << (ty as u32);
@@ -5694,6 +5752,9 @@ fn assignment_aggregate_still_legal(
     }
     if constraint.metric == ChoiceAggregateMetric::DistinctCardTypes {
         total = i128::from(types.count_ones());
+    } else if constraint.metric == ChoiceAggregateMetric::DistinctColorRepresentatives {
+        total = crate::targeting::card_type_slot_matching_size(&color_masks) as i128;
+        if total != color_masks.len() as i128 { return Ok(false); }
     }
     Ok(total <= maximum && minimum.is_none_or(|minimum| total >= minimum))
 }
@@ -6252,6 +6313,7 @@ mod negative_prior_controller_announcement_tests {
                 aggregate_constraint: r.aggregate_constraint.clone(),
                 min_targets: r.min_targets,
                 max_targets: r.max_targets,
+                additional_target_budget: r.additional_target_budget,
                 distinct_player_group: r.distinct_player_group,
                 shared_player_group: r.shared_player_group.clone(),
             })
@@ -6326,6 +6388,7 @@ mod multiplayer_prior_controller_announcement_tests {
                 aggregate_constraint: r.aggregate_constraint.clone(),
                 min_targets: r.min_targets,
                 max_targets: r.max_targets,
+                additional_target_budget: r.additional_target_budget,
                 distinct_player_group: r.distinct_player_group,
                 shared_player_group: r.shared_player_group.clone(),
             })
@@ -6699,4 +6762,124 @@ mod sol_78_procedure_target_bindings {
         assert_eq!(slots, vec![false, false]);
         assert!(all_invalid);
     }
+}
+
+#[cfg(test)]
+mod nth_spell_phase_hold_tests {
+    use super::*;
+    use crate::ability::Ability;
+    use crate::card::CardBuilder;
+    use crate::effects::{EffectExecutor, ExecutionContext, PhaseOutDuration, PhaseOutEffect};
+    use crate::ids::CardId;
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::triggers::Trigger;
+    use crate::types::CardType;
+
+    fn cast(game: &mut GameState, player: PlayerId) -> TriggerQueue {
+        let card = CardBuilder::new(CardId::new(), "Cast ordinal probe")
+            .card_types(vec![CardType::Instant]).build();
+        let spell = game.create_object_from_card(&card, player, Zone::Stack);
+        game.push_to_stack(StackEntry::new(spell, player));
+        capture_completed_spell_cast(game, spell, player, Zone::Hand, Default::default()).unwrap().1
+    }
+
+    #[test]
+    fn future_nth_cast_releases_after_observers_and_skips_untap_phasing() {
+        let a = PlayerId(0); let b = PlayerId(1);
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let card = CardBuilder::new(CardId::new(), "Patient cast observer")
+            .card_types(vec![CardType::Creature]).build();
+        let source = game.create_object_from_card(&card, a, Zone::Battlefield);
+        game.object_mut(source).unwrap().abilities_mut().push(Ability::triggered(
+            Trigger::spell_cast(None, PlayerFilter::You), vec![crate::effect::Effect::draw(1)]));
+        let mut effect = PhaseOutEffect::with_spec(ChooseSpec::Object(ObjectFilter::specific(source)));
+        effect.duration = PhaseOutDuration::UntilControllerCastsNthSpellInTurn(2);
+        effect.execute(&mut game, &mut ExecutionContext::new_default(source, a)).unwrap();
+        assert!(game.is_phased_out(source));
+        assert!(!game.directly_phased_out_under(a).any(|id| id == source));
+        assert!(cast(&mut game, a).take_all().is_empty());
+        cast(&mut game, b); cast(&mut game, b);
+        assert!(game.is_phased_out(source), "another player's second cast cannot release the hold");
+        assert!(cast(&mut game, a).take_all().is_empty(), "returning observer cannot observe its releasing cast");
+        assert!(!game.is_phased_out(source));
+        assert_eq!(cast(&mut game, a).take_all().len(), 1, "later casts observe the returned permanent");
+    }
+
+    #[test]
+    fn hold_installed_after_second_cast_waits_for_a_future_turn_second_cast() {
+        let a = PlayerId(0);
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        cast(&mut game, a); cast(&mut game, a);
+        let card = CardBuilder::new(CardId::new(), "Future turn hold")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, a, Zone::Battlefield);
+        let mut effect = PhaseOutEffect::source();
+        effect.duration = PhaseOutDuration::UntilControllerCastsNthSpellInTurn(2);
+        effect.execute(&mut game, &mut ExecutionContext::new_default(source, a)).unwrap();
+        cast(&mut game, a);
+        assert!(game.is_phased_out(source), "third spell is not second and earlier second is not replayed");
+        game.turn_store.turn_history = Default::default();
+        cast(&mut game, a);
+        assert!(game.is_phased_out(source));
+        cast(&mut game, a);
+        assert!(!game.is_phased_out(source));
+    }
+}
+
+/// Automatic operations are not stack abilities: eligibility is frozen at the
+/// boundary, then every player's completion is recorded before any observer.
+fn phase_boundary_player_actions(game: &mut GameState, event: &TriggerEvent) -> Vec<TriggerEvent> {
+    use ironsmith_core::static_ability_model::{PlayerActionBoundary, StaticAbilityPayload};
+    let boundary = match event.kind() {
+        crate::events::EventKind::BeginningOfEndStep => PlayerActionBoundary::EndStep,
+        crate::events::EventKind::BeginningOfCombat => PlayerActionBoundary::BeginCombat,
+        _ => return Vec::new(),
+    };
+    let player = match boundary {
+        PlayerActionBoundary::EndStep => event.downcast::<crate::events::BeginningOfEndStepEvent>().map(|event| event.player),
+        PlayerActionBoundary::BeginCombat => event.downcast::<crate::events::BeginningOfCombatEvent>().map(|event| event.player),
+    };
+    let Some(player) = player else { return Vec::new(); };
+    if let Err(error) = game.refresh_continuous_state() {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+        return Vec::new();
+    }
+    let mut selected: Vec<(String, crate::effect::Condition, crate::snapshot::ObjectSnapshot)> = Vec::new();
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    for source_id in game.battlefield.iter().copied() {
+        if game.is_phased_out(source_id) { continue; }
+        let Some(source) = game.object(source_id) else { continue; };
+        if game.controller_of(source) != player { continue; }
+        let Some(abilities) = view.abilities_rc(source_id) else { continue; };
+        for ability in abilities.iter() {
+            if !ability.functional_zones.contains(&crate::zone::Zone::Battlefield) { continue; }
+            let crate::ability::AbilityKind::Static(ability) = &ability.kind else { continue; };
+            let Some(StaticAbilityPayload::PhaseBoundaryPlayerAction { boundary: observed, label, condition }) = ability.compiled_model().map(|model| &model.payload) else { continue; };
+            if *observed != boundary { continue; }
+            let context = crate::condition_eval::ExternalEvaluationContext {
+                controller: player, source: source_id, filter_source: Some(source_id), triggering_event: Some(event), ..Default::default()
+            };
+            if !crate::condition_eval::evaluate_condition_external(game, condition, &context) { continue; }
+            let Some(snapshot) = crate::snapshot::ObjectSnapshot::from_object_id(game, source_id) else { continue; };
+            let label = label.trim().to_ascii_lowercase();
+            if !selected.iter().any(|(prior_label, prior_condition, _)| *prior_label == label && prior_condition == condition) {
+                selected.push((label, condition.clone(), snapshot));
+            }
+        }
+    }
+    drop(view);
+    if game.token_resource_failure().is_some() { return Vec::new(); }
+    if let Err(error) = game.record_player_named_actions(selected.iter().map(|(label, _, _)| (player, label.as_str()))) {
+        game.record_token_resource_failure(&error); return Vec::new();
+    }
+    let lookback = match game.try_trigger_source_lookback_snapshots() {
+        Ok(snapshots) => snapshots,
+        Err(error) => { game.record_token_resource_failure(&error); return Vec::new(); }
+    };
+    selected.into_iter().map(|(label, _, snapshot)| {
+        let action = crate::events::NamedActionEvent::new(label, player, snapshot.object_id, snapshot, Vec::new(), 1, crate::events::cause::EventCause::effect())
+            .with_player_only_performer().with_combat_phase(matches!(game.turn.phase, crate::game_state::Phase::Combat).then_some(game.turn_store.combat_phases_started_this_turn)).with_complete_source_lookback();
+        let provenance = game.alloc_child_event_provenance(event.provenance(), crate::events::EventKind::KeywordAction);
+        TriggerEvent::new_with_provenance(action, provenance).with_lookback_source_snapshots(lookback.clone())
+    }).collect()
 }

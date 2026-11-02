@@ -105,6 +105,26 @@ pub(crate) fn source_entered_battlefield_this_turn(game: &GameState, source_id: 
         .is_some()
 }
 
+/// A declared native lore action is independent of Saga subtype and Saga
+/// sacrifice. Read only current active abilities, the current controller, and
+/// current chapter thresholds; losing the declaration removes eligibility.
+fn declared_precombat_lore_actions(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    object: ObjectId,
+    active_player: PlayerId,
+) -> usize {
+    if game.is_phased_out(object) || view.calculated_characteristics(object)
+        .is_none_or(|current| current.controller != active_player) { return 0; }
+    let Some(current)=view.calculated_characteristics(object) else {return 0;};
+    current.static_abilities.iter().filter(|ability| {
+        if !ability.is_active(game,object) { return false; }
+        let Some(ironsmith_core::KeywordMarkerMechanic::PrecombatLoreProgression {stop_at_final_chapter})=ability.keyword_marker_mechanic() else {return false;};
+        !stop_at_final_chapter || final_chapter_number_with_view(view,object)
+            .is_some_and(|last|game.counter_count(object,CounterType::Lore)<last)
+    }).count()
+}
+
 /// Add lore counters to Sagas at the start of the precombat main phase.
 ///
 /// Per CR 714.3b, this applies only to Sagas the active player controls that
@@ -129,14 +149,14 @@ pub fn add_saga_lore_counters_with_dm(
         let active_player = game.turn.active_player;
         let sagas: Vec<ObjectId> = {
             let view = crate::derived_view::DerivedGameView::new(game);
-            game.battlefield
-                .iter()
-                .copied()
-                .filter(|&id| {
-                    saga_profile_with_view(game, &view, id)
-                        .is_some_and(|profile| profile.controller == active_player)
-                })
-                .collect()
+            game.battlefield.iter().copied().flat_map(|id| {
+                let saga=usize::from(saga_profile_with_view(game,&view,id)
+                    .is_some_and(|profile|profile.controller==active_player));
+                // Independent declarations compose with the existing Saga
+                // action rather than silently replacing its inherent rule.
+                let declared=declared_precombat_lore_actions(game,&view,id,active_player);
+                std::iter::repeat_n(id,saga+declared)
+            }).collect()
         };
 
         for saga_id in sagas {

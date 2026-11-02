@@ -1,4 +1,5 @@
 //! UNVALIDATED: exact named-source counter costs and modal X announcement.
+#[path="unfunded_activation_support.rs"] mod unfunded_activation_support;
 use ironsmith::card::{CardBuilder, PowerToughness};
 use ironsmith::cards::CardDefinition;
 use ironsmith::color::ColorSet;
@@ -80,6 +81,9 @@ struct Choices {
     mode: Option<usize>,
     expected_x_bounds: Option<(u32, u32)>,
     saw_x: bool,
+    cancel_mana: bool,
+    saw_cancel: bool,
+    expect_unpayable_mana: bool,
 }
 impl DecisionMaker for Choices {
     fn decide_options(&mut self, game: &GameState, context: &SelectOptionsContext) -> Vec<usize> {
@@ -122,6 +126,11 @@ impl DecisionMaker for Choices {
             return vec![target];
         }
         SelectFirstDecisionMaker.decide_targets(game, context)
+    }
+    fn decide_mana_payment(&mut self, game:&GameState, context:&ironsmith::decisions::context::ManaPaymentContext)->ironsmith::mana_payment::ManaPaymentResponse {
+        if self.expect_unpayable_mana {assert!(!context.plan.payable,"named source counters cannot waive the announced mana price");}
+        if self.cancel_mana {self.saw_cancel=true;return ironsmith::mana_payment::ManaPaymentResponse::Cancel;}
+        SelectFirstDecisionMaker.decide_mana_payment(game,context)
     }
     fn decide_number(&mut self, _game: &GameState, context: &NumberContext) -> u32 {
         if context.is_x_value {
@@ -293,7 +302,7 @@ fn marath_cast_payment_determines_entry_and_all_three_modes_pay_the_announced_x(
                     Target::Player(B)
                 }),
                 x: 2,
-                expected_x_bounds: Some((1, 2)),
+                expected_x_bounds: Some((1, 4)),
                 ..Default::default()
             };
             announce(&mut game, action, &mut choices);
@@ -489,7 +498,7 @@ fn paid_targeted_mode_fizzles_when_target_leaves_without_refunding_named_source_
         let mut choices = Choices {
             mode: Some(0),
             x: 1,
-            expected_x_bounds: Some((1, 1)),
+            expected_x_bounds: Some((1, 3)),
             target: Some(Target::Object(target)),
             ..Default::default()
         };
@@ -501,4 +510,17 @@ fn paid_targeted_mode_fizzles_when_target_leaves_without_refunding_named_source_
         assert!(game.stack.is_empty());
         assert!(!game.battlefield.contains(&target));
     }
+}
+
+#[test]
+fn marath_unfunded_announced_x_preserves_all_named_source_counters() {
+ for definition in definitions("Marath, Will of the Wild"){
+  let mut game=game();let source=cast_source(&mut game,&definition,true);assert_eq!(counters(&game,source),4);
+  mana(&mut game,A,ManaSymbol::Colorless,2);let next=activation(&game,A,source,0).unwrap();
+  let mut choices=Choices{mode:Some(1),target:Some(Target::Player(B)),x:3,expected_x_bounds:Some((1,4)),cancel_mana:true,expect_unpayable_mana:true,..Default::default()};
+  let rejected=unfunded_activation_support::reject_or_cancel(&mut game,next,&mut choices);
+  assert!(choices.saw_x&&(rejected||choices.saw_cancel));assert_eq!(counters(&game,source),4);
+  assert_eq!(game.player(A).unwrap().mana_pool.total(),2);assert_eq!(game.player(A).unwrap().life,20);assert_eq!(game.player(B).unwrap().life,20);
+  assert!(!game.is_tapped(source));assert!(activation(&game,A,source,0).is_some());
+ }
 }

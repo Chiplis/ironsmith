@@ -1,0 +1,979 @@
+{
+  "mechanics": [
+    {
+      "id": "msem-orchestrate-full-19",
+      "keyword": "Orchestrate",
+      "original_reminder": "You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.",
+      "executable_reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+      "source_cards": [
+        "Ardy's Invocation",
+        "Blessing of Valor",
+        "Bloated Keystone",
+        "Crystal Conjuration",
+        "Shatter Facade",
+        "Sprout Thought",
+        "Stormsurge",
+        "Surge of the Leylines",
+        "Thunderous Charge",
+        "Defying Gravity",
+        "Evigian Crusher",
+        "Malign Growth",
+        "Return to Form",
+        "Strike the Stage"
+      ],
+      "rule_reference": "702.221.",
+      "rule_text": [
+        {
+          "name": "702.221a",
+          "rule": "Orchestrate represents a static ability of a card in your hand that creates a delayed triggered ability. “Orchestrate (cost)” means “At any time you could cast a sorcery, you may pay (cost) and exile this card from your hand. If you do, when you next resolve a spell, cast this card from exile without paying its mana cost.”",
+          "custom": true
+        },
+        {
+          "name": "702.221b",
+          "rule": "Exiling a card for its orchestrate cost is a special action and can't be countered.",
+          "custom": true
+        },
+        {
+          "name": "702.221c",
+          "rule": "If the triggered ability created by orchestrate is countered, the card will remain in exile and the ability allowing you to cast it won't trigger anymore.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Ardy's Invocation_CAC",
+          "source_card_key": "Ardy's Invocation_CAC",
+          "name": "Ardy's Invocation",
+          "original_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ardy's Invocation",
+              "original_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Ardy's Invocation",
+              "executable_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nYou may pay {R}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G}",
+              "original_printed_rules_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {R}{G}\nType: Sorcery\nCreate a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nYou may pay {R}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G}",
+          "original_printed_rules_text": "Create a 1/1 red and green Elemental creature token. Creatures you control get +1/+1 and gain haste until end of turn.\nOrchestrate {R}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Blessing of Valor_CAC",
+          "source_card_key": "Blessing of Valor_CAC",
+          "name": "Blessing of Valor",
+          "original_text": "Mana cost: {R}{W}\nType: Instant\nUp to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nOrchestrate—Tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control. *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Blessing of Valor",
+              "original_text": "Mana cost: {R}{W}\nType: Instant\nUp to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nOrchestrate—Tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control. *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Blessing of Valor",
+              "executable_text": "Mana cost: {R}{W}\nType: Instant\nUp to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nYou may tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Up to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nOrchestrate—Tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control.",
+              "original_printed_rules_text": "Up to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nOrchestrate—Tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control. (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {R}{W}\nType: Instant\nUp to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nYou may tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Up to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nOrchestrate—Tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control.",
+          "original_printed_rules_text": "Up to two target creatures you control each get +2/+0 and gain first strike and haste until end of turn.\nOrchestrate—Tap an untapped red and white creature you control or an untapped red creature you control and untapped white creature you control. (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Bloated Keystone_CAC",
+          "source_card_key": "Bloated Keystone_CAC",
+          "name": "Bloated Keystone",
+          "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player discards two cards.\nOrchestrate {1}{B}{B} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bloated Keystone",
+              "original_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player discards two cards.\nOrchestrate {1}{B}{B} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bloated Keystone",
+              "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player discards two cards.\nYou may pay {1}{B}{B} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target player discards two cards.\nOrchestrate {1}{B}{B}",
+              "original_printed_rules_text": "Target player discards two cards.\nOrchestrate {1}{B}{B} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{B}{B}\nType: Sorcery\nTarget player discards two cards.\nYou may pay {1}{B}{B} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target player discards two cards.\nOrchestrate {1}{B}{B}",
+          "original_printed_rules_text": "Target player discards two cards.\nOrchestrate {1}{B}{B} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Crystal Conjuration_CAC",
+          "source_card_key": "Crystal Conjuration_CAC",
+          "name": "Crystal Conjuration",
+          "original_text": "Mana cost: {R}{R}\nType: Sorcery\nPut three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nOrchestrate—Sacrifice a land. *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Crystal Conjuration",
+              "original_text": "Mana cost: {R}{R}\nType: Sorcery\nPut three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nOrchestrate—Sacrifice a land. *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Crystal Conjuration",
+              "executable_text": "Mana cost: {R}{R}\nType: Sorcery\nPut three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nYou may sacrifice a land and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Put three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nOrchestrate—Sacrifice a land.",
+              "original_printed_rules_text": "Put three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nOrchestrate—Sacrifice a land. (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {R}{R}\nType: Sorcery\nPut three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nYou may sacrifice a land and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Put three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nOrchestrate—Sacrifice a land.",
+          "original_printed_rules_text": "Put three +1/+1 counters on target land. It becomes a 0/0 colorless Elemental creature with haste that's still a land.\nOrchestrate—Sacrifice a land. (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Shatter Facade_CAC",
+          "source_card_key": "Shatter Facade_CAC",
+          "name": "Shatter Facade",
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nOrchestrate {B} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Shatter Facade",
+              "original_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nOrchestrate {B} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Shatter Facade",
+              "executable_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nYou may pay {B} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nOrchestrate {B}",
+              "original_printed_rules_text": "Destroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nOrchestrate {B} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nYou may pay {B} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nOrchestrate {B}",
+          "original_printed_rules_text": "Destroy target creature if it has mana value 4 or greater. If Shatter Facade was cast from exile, destroy that creature if it has mana value 3 or less instead.\nOrchestrate {B} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Sprout Thought_CAC",
+          "source_card_key": "Sprout Thought_CAC",
+          "name": "Sprout Thought",
+          "original_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card. Scry 2.\nOrchestrate {U} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sprout Thought",
+              "original_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card. Scry 2.\nOrchestrate {U} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sprout Thought",
+              "executable_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card. Scry 2.\nYou may pay {U} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Draw a card. Scry 2.\nOrchestrate {U}",
+              "original_printed_rules_text": "Draw a card. Scry 2.\nOrchestrate {U} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{U}\nType: Instant\nDraw a card. Scry 2.\nYou may pay {U} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Draw a card. Scry 2.\nOrchestrate {U}",
+          "original_printed_rules_text": "Draw a card. Scry 2.\nOrchestrate {U} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Stormsurge_CAC",
+          "source_card_key": "Stormsurge_CAC",
+          "name": "Stormsurge",
+          "original_text": "Mana cost: {2}{R}\nType: Sorcery\nStormsurge deals 3 damage to any target.\nOrchestrate {R} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Stormsurge",
+              "original_text": "Mana cost: {2}{R}\nType: Sorcery\nStormsurge deals 3 damage to any target.\nOrchestrate {R} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Stormsurge",
+              "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nStormsurge deals 3 damage to any target.\nYou may pay {R} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Stormsurge deals 3 damage to any target.\nOrchestrate {R}",
+              "original_printed_rules_text": "Stormsurge deals 3 damage to any target.\nOrchestrate {R} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Sorcery\nStormsurge deals 3 damage to any target.\nYou may pay {R} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Stormsurge deals 3 damage to any target.\nOrchestrate {R}",
+          "original_printed_rules_text": "Stormsurge deals 3 damage to any target.\nOrchestrate {R} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Surge of the Leylines_CAC",
+          "source_card_key": "Surge of the Leylines_CAC",
+          "name": "Surge of the Leylines",
+          "original_text": "Mana cost: {2}{G}\nType: Sorcery\nSearch your library for a basic land card and put it onto the battlefield, then shuffle.\nOrchestrate {1}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Surge of the Leylines",
+              "original_text": "Mana cost: {2}{G}\nType: Sorcery\nSearch your library for a basic land card and put it onto the battlefield, then shuffle.\nOrchestrate {1}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Surge of the Leylines",
+              "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nSearch your library for a basic land card and put it onto the battlefield, then shuffle.\nYou may pay {1}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Search your library for a basic land card and put it onto the battlefield, then shuffle.\nOrchestrate {1}{G}",
+              "original_printed_rules_text": "Search your library for a basic land card and put it onto the battlefield, then shuffle.\nOrchestrate {1}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Sorcery\nSearch your library for a basic land card and put it onto the battlefield, then shuffle.\nYou may pay {1}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Search your library for a basic land card and put it onto the battlefield, then shuffle.\nOrchestrate {1}{G}",
+          "original_printed_rules_text": "Search your library for a basic land card and put it onto the battlefield, then shuffle.\nOrchestrate {1}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Thunderous Charge_CAC",
+          "source_card_key": "Thunderous Charge_CAC",
+          "name": "Thunderous Charge",
+          "original_text": "Mana cost: {G}\nType: Instant\nTarget creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nOrchestrate {G}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Thunderous Charge",
+              "original_text": "Mana cost: {G}\nType: Instant\nTarget creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nOrchestrate {G}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Thunderous Charge",
+              "executable_text": "Mana cost: {G}\nType: Instant\nTarget creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nYou may pay {G}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nOrchestrate {G}{G}",
+              "original_printed_rules_text": "Target creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nOrchestrate {G}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {G}\nType: Instant\nTarget creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nYou may pay {G}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nOrchestrate {G}{G}",
+          "original_printed_rules_text": "Target creature gains hexproof and trample until end of turn. If Thunderous Charge was cast from exile, that creature gets an additional +4/+4 until end of turn.\nOrchestrate {G}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Defying Gravity_VTM",
+          "source_card_key": "Defying Gravity_VTM",
+          "name": "Defying Gravity",
+          "original_text": "Mana cost: {2}{W}\nType: Sorcery\nTarget creature gets +2/+2 and gains flying and lifelink until end of turn.\nOrchestrate {W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Defying Gravity",
+              "original_text": "Mana cost: {2}{W}\nType: Sorcery\nTarget creature gets +2/+2 and gains flying and lifelink until end of turn.\nOrchestrate {W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Defying Gravity",
+              "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nTarget creature gets +2/+2 and gains flying and lifelink until end of turn.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +2/+2 and gains flying and lifelink until end of turn.\nOrchestrate {W}",
+              "original_printed_rules_text": "Target creature gets +2/+2 and gains flying and lifelink until end of turn.\nOrchestrate {W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nTarget creature gets +2/+2 and gains flying and lifelink until end of turn.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +2/+2 and gains flying and lifelink until end of turn.\nOrchestrate {W}",
+          "original_printed_rules_text": "Target creature gets +2/+2 and gains flying and lifelink until end of turn.\nOrchestrate {W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Evigian Crusher_VTM",
+          "source_card_key": "Evigian Crusher_VTM",
+          "name": "Evigian Crusher",
+          "original_text": "Mana cost: {4}{W}\nType: Creature — Elemental\nPower/Toughness: 3/4\nWhen Evigian Crusher enters, untap all creatures you control.\nOrchestrate {1}{W}{W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Evigian Crusher",
+              "original_text": "Mana cost: {4}{W}\nType: Creature — Elemental\nPower/Toughness: 3/4\nWhen Evigian Crusher enters, untap all creatures you control.\nOrchestrate {1}{W}{W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Evigian Crusher",
+              "executable_text": "Mana cost: {4}{W}\nType: Creature — Elemental\nPower/Toughness: 3/4\nWhen Evigian Crusher enters, untap all creatures you control.\nYou may pay {1}{W}{W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When Evigian Crusher enters, untap all creatures you control.\nOrchestrate {1}{W}{W}",
+              "original_printed_rules_text": "When Evigian Crusher enters, untap all creatures you control.\nOrchestrate {1}{W}{W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {4}{W}\nType: Creature — Elemental\nPower/Toughness: 3/4\nWhen Evigian Crusher enters, untap all creatures you control.\nYou may pay {1}{W}{W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When Evigian Crusher enters, untap all creatures you control.\nOrchestrate {1}{W}{W}",
+          "original_printed_rules_text": "When Evigian Crusher enters, untap all creatures you control.\nOrchestrate {1}{W}{W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Growing Pains_VTM",
+          "source_card_key": "Growing Pains_VTM",
+          "name": "Growing Pains",
+          "original_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target tapped creature.\nOrchestrate {W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Growing Pains",
+              "original_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target tapped creature.\nOrchestrate {W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Growing Pains",
+              "executable_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target tapped creature.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target tapped creature.\nOrchestrate {W}",
+              "original_printed_rules_text": "Destroy target tapped creature.\nOrchestrate {W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}\nType: Instant\nDestroy target tapped creature.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target tapped creature.\nOrchestrate {W}",
+          "original_printed_rules_text": "Destroy target tapped creature.\nOrchestrate {W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Malign Growth_VTM",
+          "source_card_key": "Malign Growth_VTM",
+          "name": "Malign Growth",
+          "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target artifact, enchantment, or planeswalker.\nOrchestrate—{G}, Sacrifice a land. *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Malign Growth",
+              "original_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target artifact, enchantment, or planeswalker.\nOrchestrate—{G}, Sacrifice a land. *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Malign Growth",
+              "executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target artifact, enchantment, or planeswalker.\nYou may pay {G}, Sacrifice a land and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Destroy target artifact, enchantment, or planeswalker.\nOrchestrate—{G}, Sacrifice a land.",
+              "original_printed_rules_text": "Destroy target artifact, enchantment, or planeswalker.\nOrchestrate—{G}, Sacrifice a land. (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}{G}\nType: Sorcery\nDestroy target artifact, enchantment, or planeswalker.\nYou may pay {G}, Sacrifice a land and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Destroy target artifact, enchantment, or planeswalker.\nOrchestrate—{G}, Sacrifice a land.",
+          "original_printed_rules_text": "Destroy target artifact, enchantment, or planeswalker.\nOrchestrate—{G}, Sacrifice a land. (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Return to Form_VTM",
+          "source_card_key": "Return to Form_VTM",
+          "name": "Return to Form",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nIf this spell was orchestrated, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nOrchestrate {2}{W}{W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Return to Form",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nIf this spell was orchestrated, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nOrchestrate {2}{W}{W} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Return to Form",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nIf this spell's orchestrate cost was paid, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nYou may pay {2}{W}{W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "If this spell was orchestrated, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nOrchestrate {2}{W}{W}",
+              "original_printed_rules_text": "If this spell was orchestrated, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nOrchestrate {2}{W}{W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Sorcery\nIf this spell's orchestrate cost was paid, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nYou may pay {2}{W}{W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "If this spell was orchestrated, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nOrchestrate {2}{W}{W}",
+          "original_printed_rules_text": "If this spell was orchestrated, up to one target permanent you control gains indestructible until end of turn. Choose a nonland permanent type. Destroy all permanents of the chosen type.\nOrchestrate {2}{W}{W} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Scenery Chewing_VTM",
+          "source_card_key": "Scenery Chewing_VTM",
+          "name": "Scenery Chewing",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature gets +1/+0 for each land you control and gains trample until end of turn.\nOrchestrate {1}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Scenery Chewing",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature gets +1/+0 for each land you control and gains trample until end of turn.\nOrchestrate {1}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Scenery Chewing",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature gets +1/+0 for each land you control and gains trample until end of turn.\nYou may pay {1}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature gets +1/+0 for each land you control and gains trample until end of turn.\nOrchestrate {1}{G}",
+              "original_printed_rules_text": "Target creature gets +1/+0 for each land you control and gains trample until end of turn.\nOrchestrate {1}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature gets +1/+0 for each land you control and gains trample until end of turn.\nYou may pay {1}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature gets +1/+0 for each land you control and gains trample until end of turn.\nOrchestrate {1}{G}",
+          "original_printed_rules_text": "Target creature gets +1/+0 for each land you control and gains trample until end of turn.\nOrchestrate {1}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Taken for Granite_VTM",
+          "source_card_key": "Taken for Granite_VTM",
+          "name": "Taken for Granite",
+          "original_text": "Mana cost: {2}{G}\nType: Instant\nUntil end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nOrchestrate {1}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Taken for Granite",
+              "original_text": "Mana cost: {2}{G}\nType: Instant\nUntil end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nOrchestrate {1}{G} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Taken for Granite",
+              "executable_text": "Mana cost: {2}{G}\nType: Instant\nUntil end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nYou may pay {1}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Until end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nOrchestrate {1}{G}",
+              "original_printed_rules_text": "Until end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nOrchestrate {1}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Instant\nUntil end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nYou may pay {1}{G} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Until end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nOrchestrate {1}{G}",
+          "original_printed_rules_text": "Until end of turn, noncreature lands you control become 3/3 Elemental creatures with haste and trample.\nOrchestrate {1}{G} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Losing My Religion_OTH",
+          "source_card_key": "Losing My Religion_OTH",
+          "name": "Losing My Religion",
+          "original_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} *(You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Losing My Religion",
+              "original_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} *(You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Losing My Religion",
+              "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W}",
+              "original_printed_rules_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} (You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{W}\nType: Sorcery\nExile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nYou may pay {W} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W}",
+          "original_printed_rules_text": "Exile up to one target creature or planeswalker. Its controller gains life equal to its mana value.\nOrchestrate {W} (You may exile this card from your hand any time you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Reytali, Song of the Sand//Reytali of Endless Muses_MSL",
+          "source_card_key": "Reytali, Song of the Sand//Reytali of Endless Muses_MSL",
+          "name": "Reytali, Song of the Sand",
+          "original_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. *(You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)*\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "source_shape": "doubleface",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Reytali, Song of the Sand",
+              "original_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. *(You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)*\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed."
+            },
+            {
+              "face": "back",
+              "name": "Reytali of Endless Muses",
+              "original_text": "Type: Legendary Planeswalker — Reytali\nLoyalty: 4\nWhenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Reytali, Song of the Sand",
+              "executable_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has \"You may pay its mana cost reduced by {2} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost. This is the orchestrate preparation ability.\".\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "reytali",
+                  "plural": "reytalis",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}.\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+              "original_printed_rules_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. (You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed."
+            },
+            {
+              "name": "Reytali of Endless Muses",
+              "executable_text": "Type: Legendary Planeswalker — Reytali\nLoyalty: 4\nWhenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "reytali",
+                  "plural": "reytalis",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste.",
+              "original_printed_rules_text": "Whenever you cast an instant or sorcery spell, put a loyalty counter on Reytali, Song of the Sand.\n[0]: Add X mana in any combination of colors, where X is the number of spells you've cast this turn.\n[-3]: Create two 3/1 red Sand creature tokens with haste."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{R}\nType: Legendary Creature — Human Citizen\nPower/Toughness: 2/3\nEach instant and sorcery card in your hand has \"You may pay its mana cost reduced by {2} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost. This is the orchestrate preparation ability.\".\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [
+            {
+              "singular": "reytali",
+              "plural": "reytalis",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}.\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "original_printed_rules_text": "Each instant and sorcery card in your hand has orchestrate. Its orchestrate cost is equal to its mana cost reduced by {2}. (You may exile those cards from your hand anytime you could cast a sorcery for their orchestrate cost. When you next resolve a spell, you may cast it from exile without paying its mana cost.)\nWhen you cast your third spell this turn, exile Reytali, then return her to the battlefield transformed.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        },
+        {
+          "id": "Strike the Stage_HQZ",
+          "source_card_key": "Strike the Stage_HQZ",
+          "name": "Strike the Stage",
+          "original_text": "Mana cost: {2}{U}\nType: Instant\nExile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control. \nOrchestrate {1}{U} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*",
+          "source_shape": "normal",
+          "scope": "msem",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Strike the Stage",
+              "original_text": "Mana cost: {2}{U}\nType: Instant\nExile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control. \nOrchestrate {1}{U} *(You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Strike the Stage",
+              "executable_text": "Mana cost: {2}{U}\nType: Instant\nExile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control.\nYou may pay {1}{U} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+              "custom_keyword_identities": [
+                "orchestrate"
+              ],
+              "custom_keyword_payments": [
+                "orchestrate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control.\nOrchestrate {1}{U}",
+              "original_printed_rules_text": "Exile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control. \nOrchestrate {1}{U} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)"
+            }
+          ],
+          "executable_text": "Mana cost: {2}{U}\nType: Instant\nExile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control.\nYou may pay {1}{U} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost.",
+          "custom_keyword_identities": [
+            "orchestrate"
+          ],
+          "custom_keyword_payments": [
+            "orchestrate"
+          ],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control.\nOrchestrate {1}{U}",
+          "original_printed_rules_text": "Exile two target artifacts, creatures, and/or enchantments you control, then return those cards to the battlefield under your control. \nOrchestrate {1}{U} (You may exile this card from your hand anytime you could cast a sorcery for its orchestrate cost. When you next resolve a spell, you may cast this from exile without paying its mana cost.)",
+          "rewrite_status": "frontend_materialized_unverified",
+          "supplied_card_definitions": []
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Orchestrate",
+          "template": "{Cost}",
+          "reminder": "You may pay {Cost} and exile this card from your hand as a sorcery. When you next resolve a spell, cast this card from exile without paying its mana cost."
+        }
+      ],
+      "implementation_status": "scratch_implemented_pending_native_verification",
+      "semantic_note": "Corrected shortened reminder discrepancy: original reminder says may cast; formal rule 702.221a requires casting. Original reminder remains immutable evidence; executable uses mandatory cast and preserves the counterable one-shot delayed trigger.",
+      "source_card_count": 19,
+      "native_validation": "pending_parent",
+      "all_card_certification": false
+    }
+  ]
+}

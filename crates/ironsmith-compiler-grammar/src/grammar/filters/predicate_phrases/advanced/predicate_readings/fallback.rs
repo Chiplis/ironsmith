@@ -10,6 +10,22 @@ use super::Predicate;
 
 /// The input's fallback reading, if a shape reads it.
 pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
+    let original=input.predicate_tokens;
+    let (tokens,designation)=crate::util::split_entry_exile_designation(original).unwrap_or((original,None));
+    let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+    if let Some(boundary)=words.windows(3).position(|part|part==["was","exiled","as"])
+        && words.last()==Some(&"entered")
+        && crate::util::is_source_reference_words(&words[boundary+3..words.len()-1])
+        && boundary>0 {
+        let end=*view.token_start_indices().get(boundary)?;
+        let filter=crate::object_filters::parse_object_filter_lexed(&tokens[..end],false).ok()?;
+        crate::word_claims::claim_tokens(&original[end..]);
+        return Some(PredicateAst::ValueComparison {
+            left:Value::TaggedSnapshotCount {tag:crate::util::entry_exiled_tag(designation.as_deref(),true),filter},
+            operator:crate::effect::ValueComparisonOperator::GreaterThanOrEqual,right:Value::Fixed(1),
+        });
+    }
+
     if let Some(predicate) = negated_mana_spent(input.predicate_tokens) {
         return Some(predicate);
     }
@@ -276,6 +292,7 @@ const SHAPES: &[Shape] = whole_clause_shapes![
     cards_above_source,
     opponent_dealt_combat_damage_by,
     cards_left_your_graveyard,
+    shared_subject_turn_history_boolean,
     you_sacrificed_this_turn,
     died_under_your_control,
     you_own_card_in_zone,
@@ -585,6 +602,25 @@ fn cards_left_your_graveyard(words: &[&str]) -> Option<PredicateAst> {
     ))
 }
 
+/// Independent past actions may share their player subject and final time
+/// window. Reuse the existing complete history leaves for each arm.
+fn shared_subject_turn_history_boolean(words: &[&str]) -> Option<PredicateAst> {
+    if !matches!(words.first(),Some(&"you" | &"youve"))
+        || !words.ends_with(&["this","turn"]) {return None;}
+    let end=words.len().checked_sub(2)?;
+    for join in 2..end {
+        if !matches!(words[join],"and"|"or")
+            || !words.get(join+1).is_some_and(|word|matches!(*word,"discarded"|"sacrificed")) {continue;}
+        let mut left=words[..join].to_vec();left.extend_from_slice(&words[end..]);
+        let mut right=vec![words[0]];right.extend_from_slice(&words[join+1..]);
+        let leaf=|arm:&[&str]|you_discarded_this_turn(arm).or_else(||you_sacrificed_this_turn(arm));
+        let (Some(left),Some(right))=(leaf(&left),leaf(&right)) else{continue;};
+        return Some(if words[join]=="and" {PredicateAst::And(Box::new(left),Box::new(right))}
+            else {PredicateAst::Or(Box::new(left),Box::new(right))});
+    }
+    None
+}
+
 /// "you've sacrificed an artifact this turn", "you've sacrificed a Food this
 /// turn" (Detective's Satchel, Bonecache Overseer).
 fn you_sacrificed_this_turn(words: &[&str]) -> Option<PredicateAst> {
@@ -614,11 +650,12 @@ fn you_sacrificed_this_turn(words: &[&str]) -> Option<PredicateAst> {
 /// "a non-Skeleton creature died under your control this turn" (Cult
 /// Conscript).
 fn died_under_your_control(words: &[&str]) -> Option<PredicateAst> {
-    let ["a" | "an", object @ .., "died", "under", "your", "control", "this", "turn"] = words
+    let [determiner @ ("a" | "an" | "another" | "other"), object @ .., "died", "under", "your", "control", "this", "turn"] = words
     else {
         return None;
     };
     let mut filter = filter_from_words(object)?;
+    if matches!(*determiner,"another"|"other") {filter.other=true;}
     filter.zone = None;
     filter.controller = Some(PlayerFilter::You);
     Some(history_at_least(
@@ -1580,7 +1617,9 @@ fn you_didnt_put_onto_battlefield_this_way(words: &[&str]) -> Option<PredicateAs
     };
     let reference = match rest {
         [reference @ .., "onto", "the", "battlefield", "this", "way"]
-        | [reference @ .., "onto", "battlefield", "this", "way"] => reference,
+        | [reference @ .., "onto", "battlefield", "this", "way"]
+        | [reference @ .., "onto", "the", "battlefield"]
+        | [reference @ .., "onto", "battlefield"] => reference,
         _ => return None,
     };
     if !matches!(
@@ -1711,5 +1750,37 @@ mod library_threshold_tests {
         assert_eq!(predicate, at_least(Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Any, 20), 1));
         let tokens = crate::lexer::lex_line("a library has twenty or fewer cards in it unless you control a creature", 0).unwrap();
         assert!(crate::grammar::filters::parse_condition_predicate_lexed(&tokens).is_err());
+    }
+}
+
+#[cfg(test)]
+mod shared_history_window_tests {
+    use super::*;
+    #[test]
+    fn separate_discard_and_sacrifice_share_only_subject_and_turn_window() {
+        for subject in ["you","youve"] {for conjunction in ["and","or"] {
+            let words=[subject,"discarded","a","card",conjunction,"sacrificed","a","creature","this","turn"];
+            let actual=shared_subject_turn_history_boolean(&words).unwrap();
+            let left=you_discarded_this_turn(&[subject,"discarded","a","card","this","turn"]).unwrap();
+            let right=you_sacrificed_this_turn(&[subject,"sacrificed","a","creature","this","turn"]).unwrap();
+            let expected=if conjunction=="and" {PredicateAst::And(Box::new(left),Box::new(right))}else{PredicateAst::Or(Box::new(left),Box::new(right))};
+            assert_eq!(actual,expected);
+        }}
+        assert!(shared_subject_turn_history_boolean(&["you","discarded","a","card","or","sacrificed","a","creature","last","turn"]).is_none());
+        assert!(shared_subject_turn_history_boolean(&["you","discarded","a","card","or","invented","a","creature","this","turn"]).is_none());
+    }
+}
+
+#[cfg(test)]
+mod other_death_history_tests {
+    use super::*;
+    #[test]
+    fn another_creature_death_keeps_source_exclusion_and_event_time_controller() {
+        let actual=died_under_your_control(&["another","creature","died","under","your","control","this","turn"]).unwrap();
+        assert!(matches!(actual,PredicateAst::ValueComparison {
+            left:Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died {filter,controller_surface:ironsmith_core::DeathHistoryControllerSurface::DiedUnderControl}),
+            operator:crate::effect::ValueComparisonOperator::GreaterThanOrEqual,right:Value::Fixed(1)
+        } if filter.other && filter.card_types==[crate::types::CardType::Creature] && filter.controller==Some(PlayerFilter::You) && filter.zone.is_none()));
+        assert!(died_under_your_control(&["another","creature","died","under","your","control","last","turn"]).is_none());
     }
 }

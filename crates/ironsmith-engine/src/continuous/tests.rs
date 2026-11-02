@@ -516,7 +516,8 @@ fn test_pt_sublayer_ordering() {
 #[test]
 fn test_modification_layer() {
     assert_eq!(
-        Modification::CopyOf { retain_original_name: false,
+        Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
             target_id: ObjectId::from_raw(1),
             copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: false,
@@ -1366,7 +1367,8 @@ fn check_copy_cost_layer_filter(exact_cost: bool, fallback: bool) {
     let copied_id = game.create_object_from_card(&copied, alice, Zone::Battlefield);
     let values = crate::snapshot::CopiableValues::from_object(game.object(copied_id).unwrap());
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
-        original_id, alice, EffectTarget::Specific(original_id), Modification::CopyOf { retain_original_name: false,
+        original_id, alice, EffectTarget::Specific(original_id), Modification::CopyOf {
+retain_original_types: false, retain_original_name: false,
             target_id: copied_id, copiable_values: Box::new(values),
             preserve_source_abilities: false, name_override: None,
             name_override_surface: None, add_supertypes: Vec::new(),
@@ -2081,7 +2083,7 @@ fn complete_modification_schema_round_trip_keeps_payloads_and_control_semantics(
     let values = vec![
         literal.clone(),
         relative.clone(),
-        Model::CopyOf { retain_original_name: false,
+        Model::CopyOf { retain_original_name: false, retain_original_types: false,
             target_id: ObjectId::from_raw(99311),
             copiable_values: Box::new("copy with retained abilities and occurrence IDs".into()),
             preserve_source_abilities: true,
@@ -2101,6 +2103,7 @@ fn complete_modification_schema_round_trip_keeps_payloads_and_control_semantics(
         },
         Model::Restriction("restriction with canonical ability occurrence".into()),
         Model::CopyActivatedAbilities {
+            excluded_ability_designations: Vec::new(),
             filter: ObjectFilter::creature().you_control(),
             counter: Some(CounterType::Flood),
             include_mana: true,
@@ -2213,6 +2216,7 @@ fn complete_modification_schema_propagates_nested_payload_failure() {
 #[cfg(feature = "serialization")]
 fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<String> {
     crate::snapshot::RetainedCopiableValues {
+        definition_dependencies:None,
         copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: "Retained characteristics".into(),
         mana_cost: Some(ManaCost::from_symbols(vec![
@@ -2268,6 +2272,7 @@ fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities(
         _ => unreachable!(),
     };
     let native = CopiableValues {
+        definition_dependencies:None,
         copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: copy.name,
         mana_cost: copy.mana_cost,
@@ -2702,9 +2707,11 @@ fn ability_copying_respects_donor_zone_and_linked_identity() {
             )
         } else { ObjectFilter::creature().in_zone(Zone::Exile) };
         let modification = if triggered {
-            Modification::CopyTriggeredAbilities { filter, exclude_source_name: false, exclude_source_id: true }
+            Modification::CopyTriggeredAbilities { excluded_ability_designations: Vec::new(),
+            filter, exclude_source_name: false, exclude_source_id: true }
         } else {
-            Modification::CopyActivatedAbilities { filter, counter: None, include_mana: true,
+            Modification::CopyActivatedAbilities { excluded_ability_designations: Vec::new(),
+            filter, counter: None, include_mana: true,
                 only_loyalty: false, exclude_source_name: false, exclude_source_id: true,
                 force_once_each_turn: false, exclude_loyalty: false }
         };
@@ -3181,7 +3188,8 @@ fn craft_material_links_transfer_to_each_independently_limited_borrowed_ability(
     );
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
         receiver, alice, EffectTarget::Specific(receiver),
-        Modification::CopyActivatedAbilities { filter, counter: None, include_mana: true,
+        Modification::CopyActivatedAbilities { excluded_ability_designations: Vec::new(),
+        filter, counter: None, include_mana: true,
             only_loyalty: false, exclude_source_name: false, exclude_source_id: true,
             force_once_each_turn: true, exclude_loyalty: false },
     ));
@@ -3195,4 +3203,61 @@ fn craft_material_links_transfer_to_each_independently_limited_borrowed_ability(
         assert!(activated.timing == crate::ability::ActivationTiming::OncePerTurn
             || activated.activation_restrictions.contains(&crate::ConditionExpr::MaxActivationsPerTurn(1)));
     }
+}
+
+#[cfg(feature = "serialization")]
+#[test]
+fn retained_copy_dependency_programs_roundtrip_and_follow_ability_mapping() {
+    let mut copy=retained_copy_schema_fixture();
+    copy.definition_dependencies=Some(crate::snapshot::CopyDefinitionDependencies {
+        ability_counter_definitions:std::collections::BTreeMap::from([("arbitrary copied definition".into(),vec!["dependency payload".into()])]),
+        custom_subtypes:vec![Subtype::Elf],
+    });
+    let json=serde_json::to_string(&copy).unwrap();
+    let restored:crate::snapshot::RetainedCopiableValues<String>=serde_json::from_str(&json).unwrap();
+    assert_eq!(restored,copy);
+    let mapped=restored.try_map_abilities(|ability|Ok::<_,String>(ability.to_uppercase())).unwrap();
+    let dependencies=mapped.definition_dependencies.unwrap();
+    assert_eq!(dependencies.ability_counter_definitions["arbitrary copied definition"],vec!["DEPENDENCY PAYLOAD"]);
+    assert_eq!(dependencies.custom_subtypes,vec![Subtype::Elf]);
+}
+
+#[test]
+fn optional_text_cast_selection_matches_across_all_characteristic_calculators() {
+    use crate::ability::Ability;
+    use crate::effects::DestroyEffect;
+    let restricted=ChooseSpec::target(ChooseSpec::Object(ObjectFilter {colors:Some(crate::color::ColorSet::BLACK),..ObjectFilter::creature()}));
+    let unrestricted=ChooseSpec::target(ChooseSpec::creature());
+    let program=|spec|crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(DestroyEffect::with_spec(spec))]);
+    let model:crate::static_abilities::CompiledStaticAbility=ironsmith_core::StaticAbility {
+        id:Some(crate::static_abilities::StaticAbilityId::OptionalTextFragments),label:"Finite text program".into(),
+        payload:ironsmith_core::StaticAbilityPayload::OptionalTextFragments(Box::new(ironsmith_core::OptionalTextFragmentsSpec {
+            labels:vec!["black".into()],invariant_slots:vec![],current_removed:0,casting_payment:Some(0),
+            variants:vec![
+                ironsmith_core::OptionalTextFragmentVariant {removed:0,abilities:vec![],ability_labels:vec![],spell_effect:Some(program(restricted.clone())),aura_attach_filter:None,canonical_text:String::new()},
+                ironsmith_core::OptionalTextFragmentVariant {removed:1,abilities:vec![],ability_labels:vec![],spell_effect:Some(program(unrestricted.clone())),aura_attach_filter:None,canonical_text:String::new()},
+            ],
+        })),
+    };
+    let mut definition=crate::cards::CardDefinitionBuilder::new(CardId::new(),"Independent subset frame")
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![crate::effect::Effect::new(DestroyEffect::with_spec(restricted))])
+        .with_ability(Ability::static_ability(StaticAbility::from_model(model))).build();
+    definition.optional_costs.push(crate::cost::OptionalCost::custom("Additional",crate::cost::TotalCost::free()));
+    let mut game=dynamic_value_test_game();let player=PlayerId::from_index(0);
+    let first=game.create_object_from_definition(&definition,player,Zone::Stack);
+    let second=game.create_object_from_definition(&definition,player,Zone::Stack);
+    let original=game.calculated_copiable_values(first).unwrap();
+    for id in [first,second] {let object=game.object_mut(id).unwrap();object.optional_costs_paid.pay_times(0,1);object.optional_costs_paid.set_text_fragment_choice(0,1);}
+    let read=|chars:&CalculatedCharacteristics| {
+        let crate::snapshot::SpellProgramState::Present(program)=chars.spell_effect.as_ref() else {panic!("complete spell program")};
+        program[0].0.get_target_spec().cloned()
+    };
+    let direct=calculate_characteristics_with_effects(first,game.objects_map(),&[],&game.battlefield,game.commander_objects(),&game).unwrap();
+    let context=CalculationContext {objects:game.objects_map(),effects:&game.effect_store.continuous_effects,battlefield:&game.battlefield,game:&game,current_object:first};
+    let indirect=super::layer_resolution::calculate_with_layers(game.object(first).unwrap(),&context);
+    let batch=calculate_characteristics_batch_with_effects(&[first,second],game.objects_map(),&[],&game.battlefield,game.commander_objects(),&game);
+    let text=text_box_characteristics_with_effects(first,game.objects_map(),&[],&game.battlefield,game.commander_objects(),&game).unwrap();
+    for chars in [&direct,&indirect,&batch[&first],&batch[&second],&text] {assert_eq!(read(chars),Some(unrestricted.clone()));}
+    assert_eq!(game.calculated_copiable_values(first).unwrap(),original,"text selection never changes layer1 copiable values");
 }

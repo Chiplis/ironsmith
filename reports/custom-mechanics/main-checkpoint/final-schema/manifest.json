@@ -1,0 +1,23 @@
+{
+  "patch_sha256": "8dad79b74b89e2445cff9f3b607f301d1e5e5793e49ebd066c6c06bcdbd23b32",
+  "schema_hash": "3535ad1d61837fa1fb4977a9cd4a556c4fa93d126829cfc5282675e18259ffcd",
+  "artifact_format": 20,
+  "files": [
+    {
+      "path": "architecture/custom-mechanics-coherent-schema-v20.descriptor",
+      "base_sha256": "cb88543cd6164dbcf2ea07f2da421d0aa2d01a7908ff1c8cef753a80ba00dfae",
+      "result_sha256": "3535ad1d61837fa1fb4977a9cd4a556c4fa93d126829cfc5282675e18259ffcd"
+    },
+    {
+      "path": "crates/ironsmith-compiled-artifact/src/lib.rs",
+      "base_sha256": "de75f511409b3fe33782b410b220a496f3825e2052ba346c11ec46cd7ff10cc5",
+      "result_sha256": "4c50230483816b1f7de19ad34664bce1387bb705b2a423a2a826db2410eb85bf"
+    }
+  ],
+  "bound_unique_source_files": 4612,
+  "complete_production_trees": 37,
+  "all_source_sample_drift": [],
+  "base_epoch": "Actual root after SEVENTH24263+all earlier applied FIFTH/SIXTH and direct native architecture/compiler repair ledger; root declared stable compiler-runtime libcheck PASS",
+  "historical19": "No historical descriptor or golden modified",
+  "execution": "Static read/hash/patch transport only; no builds/tests/materialization/generator/live writes"
+}

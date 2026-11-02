@@ -1,0 +1,580 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/revolution.json",
+    "source_cards": "reports/cards/lackey-audit-2026-11-01/rev-complete-source.json",
+    "scope": "revolution",
+    "inventory_count": 15
+  },
+  "mechanics": [
+    {
+      "id": "rev-possess-complete",
+      "keyword": "Possess",
+      "scope": "revolution",
+      "rule_reference": "702.228.",
+      "rule_text": {
+        "name": "702.228.",
+        "rule": "Possess",
+        "subrules": [
+          {
+            "name": "702.228a",
+            "rule": "Possess is a triggered ability. \"Possess\" means \"When this creature dies, if it was a nontoken creature as it left the battlefield, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature.\"",
+            "custom": true
+          },
+          {
+            "name": "702.228b",
+            "rule": "If there is no legal target for the possess ability, the card with possess will remain in its owner's graveyard.",
+            "custom": true
+          },
+          {
+            "name": "702.228c",
+            "rule": "When returning as an Aura, the card will lose all its types, but will not lose any of its abilities. If the permanent becomes a non-Aura creature, its possess ability may trigger again.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Breathstealer Spirit",
+          "Chapel Soulguide",
+          "Departed Duelist",
+          "Drogskol Duelist",
+          "Geist Marshal",
+          "Geist of the Erdwal Road",
+          "Guide of Faith",
+          "Hollowhenge Martyr",
+          "Nearheath Disciples",
+          "Night of the Long Silence",
+          "Spectral Insurgent",
+          "Tarnished Swordsuit",
+          "Tethered Fettergeists",
+          "Tormented Bride",
+          "Traft, Aiding the Worthy"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.",
+      "executable_reminder": "When this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature.",
+      "semantic_equivalence": {
+        "status": "pending_generic_implementation_and_fullsource_native_proof",
+        "evidence": "All fifteen operational sources extracted by exact primary corpus key, preserving both faces where present. Frontend and runtime proof pending; inventory is not support certification."
+      },
+      "representative_cards": [
+        {
+          "id": "rev:Breathstealer Spirit_IWH",
+          "source_card_key": "rev:Breathstealer Spirit_IWH",
+          "name": "Breathstealer Spirit",
+          "original_text": "Type: Creature — Spirit\nMana cost: {3}{U}{U}\nPower/Toughness: 3/3\nFlying\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nYou control enchanted creature.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit\nMana cost: {3}{U}{U}\nPower/Toughness: 3/3\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nYou control enchanted creature.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Breathstealer Spirit",
+              "executable_text": "Type: Creature — Spirit\nMana cost: {3}{U}{U}\nPower/Toughness: 3/3\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nYou control enchanted creature.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nPossess\nYou control enchanted creature.",
+              "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nYou control enchanted creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nPossess\nYou control enchanted creature.",
+          "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nYou control enchanted creature.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Chapel Soulguide_IWH",
+          "source_card_key": "rev:Chapel Soulguide_IWH",
+          "name": "Chapel Soulguide",
+          "original_text": "Type: Creature — Spirit Cleric\nMana cost: {3}{W}\nPower/Toughness: 3/3\nFlying\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nEnchanted creature has flying.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit Cleric\nMana cost: {3}{W}\nPower/Toughness: 3/3\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nEnchanted creature has flying.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Chapel Soulguide",
+              "executable_text": "Type: Creature — Spirit Cleric\nMana cost: {3}{W}\nPower/Toughness: 3/3\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nEnchanted creature has flying.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nPossess\nEnchanted creature has flying.",
+              "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nEnchanted creature has flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nPossess\nEnchanted creature has flying.",
+          "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nEnchanted creature has flying.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Departed Duelist_IWH",
+          "source_card_key": "rev:Departed Duelist_IWH",
+          "name": "Departed Duelist",
+          "original_text": "Type: Creature — Spirit Soldier\nMana cost: {2}{W}\nPower/Toughness: 2/3\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit Soldier\nMana cost: {2}{W}\nPower/Toughness: 2/3\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Departed Duelist",
+              "executable_text": "Type: Creature — Spirit Soldier\nMana cost: {2}{W}\nPower/Toughness: 2/3\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature attacks, you may tap target creature defending player controls.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Drogskol Duelist_IWH",
+          "source_card_key": "rev:Drogskol Duelist_IWH",
+          "name": "Drogskol Duelist",
+          "original_text": "Type: Creature — Spirit Soldier\nMana cost: {1}{U}{U}\nPower/Toughness: 3/1\nFlying\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nPrevent all combat damage that would be dealt to and dealt by enchanted creature.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit Soldier\nMana cost: {1}{U}{U}\nPower/Toughness: 3/1\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nPrevent all combat damage that would be dealt to and dealt by enchanted creature.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Drogskol Duelist",
+              "executable_text": "Type: Creature — Spirit Soldier\nMana cost: {1}{U}{U}\nPower/Toughness: 3/1\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nPrevent all combat damage that would be dealt to and dealt by enchanted creature.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nPossess\nPrevent all combat damage that would be dealt to and dealt by enchanted creature.",
+              "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nPrevent all combat damage that would be dealt to and dealt by enchanted creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nPossess\nPrevent all combat damage that would be dealt to and dealt by enchanted creature.",
+          "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nPrevent all combat damage that would be dealt to and dealt by enchanted creature.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Geist Marshal_IWH",
+          "source_card_key": "rev:Geist Marshal_IWH",
+          "name": "Geist Marshal",
+          "original_text": "Type: Creature — Spirit Soldier\nMana cost: {1}{W}\nPower/Toughness: 2/2\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit Soldier\nMana cost: {1}{W}\nPower/Toughness: 2/2\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Geist Marshal",
+              "executable_text": "Type: Creature — Spirit Soldier\nMana cost: {1}{W}\nPower/Toughness: 2/2\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature deals combat damage to an opponent, you may create a 1/1 blue Spirit Soldier creature token. If you don't, put a +1/+1 counter on another Spirit you control.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Geist of the Erdwal Road_IWH",
+          "source_card_key": "rev:Geist of the Erdwal Road_IWH",
+          "name": "Geist of the Erdwal Road",
+          "original_text": "Type: Creature — Spirit Rogue\nMana cost: {2}{U}\nPower/Toughness: 1/3\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit Rogue\nMana cost: {2}{U}\nPower/Toughness: 1/3\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Geist of the Erdwal Road",
+              "executable_text": "Type: Creature — Spirit Rogue\nMana cost: {2}{U}\nPower/Toughness: 1/3\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature deals combat damage to an opponent, draw a card.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Guide of Faith_IWH",
+          "source_card_key": "rev:Guide of Faith_IWH",
+          "name": "Guide of Faith",
+          "original_text": "Type: Creature — Spirit Cleric\nMana cost: {W}{U}\nPower/Toughness: 2/1\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit Cleric\nMana cost: {W}{U}\nPower/Toughness: 2/1\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Guide of Faith",
+              "executable_text": "Type: Creature — Spirit Cleric\nMana cost: {W}{U}\nPower/Toughness: 2/1\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever another Spirit or Aura enters under your control, put a +1/+1 counter on this permanent.\nEnchanted creature gets +1/+1 for each +1/+1 counter on this permanent.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Hollowhenge Martyr_IWH",
+          "source_card_key": "rev:Hollowhenge Martyr_IWH",
+          "name": "Hollowhenge Martyr",
+          "original_text": "Type: Creature — Spirit\nMana cost: {W}\nPower/Toughness: 0/1\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit\nMana cost: {W}\nPower/Toughness: 0/1\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Hollowhenge Martyr",
+              "executable_text": "Type: Creature — Spirit\nMana cost: {W}\nPower/Toughness: 0/1\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhen this creature or enchanted creature dies, that creature's controller creates a 1/1 white Spirit creature token with flying.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Nearheath Disciples_IWH",
+          "source_card_key": "rev:Nearheath Disciples_IWH",
+          "name": "Nearheath Disciples",
+          "original_text": "Type: Creature — Human Spirit Scout\nMana cost: {1}{W}\nPower/Toughness: 2/2\nVigilance\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Human Spirit Scout\nMana cost: {1}{W}\nPower/Toughness: 2/2\nVigilance\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Nearheath Disciples",
+              "executable_text": "Type: Creature — Human Spirit Scout\nMana cost: {1}{W}\nPower/Toughness: 2/2\nVigilance\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nPossess\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1.",
+              "original_printed_rules_text": "Vigilance\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nPossess\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1.",
+          "original_printed_rules_text": "Vigilance\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nAs long as enchanted creature is a Human or Spirit, it gets +1/+1.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Night of the Long Silence_IWH",
+          "source_card_key": "rev:Night of the Long Silence_IWH",
+          "name": "Night of the Long Silence",
+          "original_text": "Type: Sorcery\nMana cost: {3}{W}{W}{W}\nExile all nonland permanents. You may return an Aura with possess you owned that was exiled this way to the battlefield. *(It returns as a creature.)*",
+          "source_layout": "normal",
+          "executable_text": "Type: Sorcery\nMana cost: {3}{W}{W}{W}\nExile all nonland permanents. You may return an Aura with custom keyword \"possess\" you owned that was exiled this way to the battlefield.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Night of the Long Silence",
+              "executable_text": "Type: Sorcery\nMana cost: {3}{W}{W}{W}\nExile all nonland permanents. You may return an Aura with custom keyword \"possess\" you owned that was exiled this way to the battlefield.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Exile all nonland permanents. You may return an Aura with possess you owned that was exiled this way to the battlefield.",
+              "original_printed_rules_text": "Exile all nonland permanents. You may return an Aura with possess you owned that was exiled this way to the battlefield. (It returns as a creature.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Exile all nonland permanents. You may return an Aura with possess you owned that was exiled this way to the battlefield.",
+          "original_printed_rules_text": "Exile all nonland permanents. You may return an Aura with possess you owned that was exiled this way to the battlefield. (It returns as a creature.)",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Spectral Insurgent_IWH",
+          "source_card_key": "rev:Spectral Insurgent_IWH",
+          "name": "Spectral Insurgent",
+          "original_text": "Type: Creature — Spirit\nMana cost: {1}{U}\nPower/Toughness: 1/3\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit\nMana cost: {1}{U}\nPower/Toughness: 1/3\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Spectral Insurgent",
+              "executable_text": "Type: Creature — Spirit\nMana cost: {1}{U}\nPower/Toughness: 1/3\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature attacks, if that creature is attacking alone, it gets +1/+0 and can't be blocked until end of turn.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Tarnished Swordsuit_IWH",
+          "source_card_key": "rev:Tarnished Swordsuit_IWH",
+          "name": "Tarnished Swordsuit",
+          "original_text": "Type: Artifact Creature — Construct Spirit\nMana cost: {4}\nPower/Toughness: 2/5\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature. It's also no longer an artifact.)*\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn.",
+          "source_layout": "normal",
+          "executable_text": "Type: Artifact Creature — Construct Spirit\nMana cost: {4}\nPower/Toughness: 2/5\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Tarnished Swordsuit",
+              "executable_text": "Type: Artifact Creature — Construct Spirit\nMana cost: {4}\nPower/Toughness: 2/5\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Possess\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn.",
+              "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature. It's also no longer an artifact.)\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Possess\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn.",
+          "original_printed_rules_text": "Possess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature. It's also no longer an artifact.)\nWhenever this creature or enchanted creature attacks, it gets +2/+0 and gains menace until end of turn.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Tethered Fettergeists_IWH",
+          "source_card_key": "rev:Tethered Fettergeists_IWH",
+          "name": "Tethered Fettergeists",
+          "original_text": "Type: Creature — Spirit\nMana cost: {1}{W}{U}\nPower/Toughness: 4/5\nFlying, vigilance\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit\nMana cost: {1}{W}{U}\nPower/Toughness: 4/5\nFlying, vigilance\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Tethered Fettergeists",
+              "executable_text": "Type: Creature — Spirit\nMana cost: {1}{W}{U}\nPower/Toughness: 4/5\nFlying, vigilance\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, vigilance\nPossess\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}.",
+              "original_printed_rules_text": "Flying, vigilance\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying, vigilance\nPossess\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}.",
+          "original_printed_rules_text": "Flying, vigilance\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nThis creature can't attack or block unless you pay {2}.\nEnchanted creature can't attack or block unless its controller pays {2}.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Tormented Bride_IWH",
+          "source_card_key": "rev:Tormented Bride_IWH",
+          "name": "Tormented Bride",
+          "original_text": "Type: Creature — Spirit\nMana cost: {4}{U}\nPower/Toughness: 2/5\nFlying\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power.",
+          "source_layout": "normal",
+          "executable_text": "Type: Creature — Spirit\nMana cost: {4}{U}\nPower/Toughness: 2/5\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Tormented Bride",
+              "executable_text": "Type: Creature — Spirit\nMana cost: {4}{U}\nPower/Toughness: 2/5\nFlying\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nPossess\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power.",
+              "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nPossess\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power.",
+          "original_printed_rules_text": "Flying\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nWhenever this creature or enchanted creature attacks an opponent, you may have target player mill cards equal to its power.",
+          "custom_token_definitions": []
+        },
+        {
+          "id": "rev:Traft, Aiding the Worthy_IWH",
+          "source_card_key": "rev:Traft, Aiding the Worthy_IWH",
+          "name": "Traft, Aiding the Worthy",
+          "original_text": "Type: Legendary Creature — Spirit Cleric\nMana cost: {2}{W}{U}\nPower/Toughness: 3/3\nWard {2}\nPossess *(When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)*\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat.",
+          "source_layout": "normal",
+          "executable_text": "Type: Legendary Creature — Spirit Cleric\nMana cost: {2}{W}{U}\nPower/Toughness: 3/3\nWard {2}\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "executable_faces": [
+            {
+              "name": "Traft, Aiding the Worthy",
+              "executable_text": "Type: Legendary Creature — Spirit Cleric\nMana cost: {2}{W}{U}\nPower/Toughness: 3/3\nWard {2}\nWhen this nontoken creature dies, you may return it to the battlefield as an Aura enchantment with enchant creature attached to target creature\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat.",
+              "custom_keyword_identities": [
+                "possess"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Ward {2}\nPossess\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat.",
+              "original_printed_rules_text": "Ward {2}\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat."
+            }
+          ],
+          "custom_keyword_identities": [
+            "possess"
+          ],
+          "custom_keyword_payments": [],
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Ward {2}\nPossess\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat.",
+          "original_printed_rules_text": "Ward {2}\nPossess (When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.)\nEnchanted creature has ward {2}.\nWhenever Traft or enchanted creature attacks an opponent, create a 4/4 white Angel creature token with flying that's tapped and attacking. Exile that token at end of combat.",
+          "custom_token_definitions": []
+        }
+      ],
+      "source_cards": [
+        "Breathstealer Spirit",
+        "Chapel Soulguide",
+        "Departed Duelist",
+        "Drogskol Duelist",
+        "Geist Marshal",
+        "Geist of the Erdwal Road",
+        "Guide of Faith",
+        "Hollowhenge Martyr",
+        "Nearheath Disciples",
+        "Night of the Long Silence",
+        "Spectral Insurgent",
+        "Tarnished Swordsuit",
+        "Tethered Fettergeists",
+        "Tormented Bride",
+        "Traft, Aiding the Worthy"
+      ],
+      "behavioral_assertions": [],
+      "original_reminder_variants": [
+        "When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature.",
+        "It returns as a creature.",
+        "When this dies as a creature, you may return it to the battlefield as an Aura attached to target creature. It's also no longer an artifact."
+      ]
+    }
+  ]
+}

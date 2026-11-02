@@ -1359,6 +1359,7 @@ pub(super) fn test_once_per_turn_ability_tracking() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -1405,6 +1406,7 @@ pub(super) fn test_activate_no_more_than_twice_each_turn_restriction() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -1462,6 +1464,7 @@ pub(super) fn test_non_mana_activation_condition_max_activations_per_turn_is_enf
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -1878,6 +1881,7 @@ pub(super) fn test_undying_trigger_generation() {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -1937,6 +1941,7 @@ pub(super) fn test_undying_does_not_trigger_with_plus_counters() {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     game.object_mut(creature_id)
@@ -1998,6 +2003,7 @@ pub(super) fn test_persist_trigger_generation() {
                 intervening_if: None,
                 presentation_label: None,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -2131,6 +2137,7 @@ pub(super) fn test_once_per_turn_in_legal_actions() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     game.remove_summoning_sickness(creature_id);
@@ -2207,6 +2214,7 @@ pub(super) fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap(
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: true,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             },
             Ability {
@@ -2225,6 +2233,7 @@ pub(super) fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap(
                     mana_usage_restrictions: vec![],
                     is_loyalty_ability: true,
                 }),
+                designations: Default::default(),
                 functional_zones: vec![Zone::Battlefield],
             },
         ]);
@@ -2329,6 +2338,7 @@ pub(super) fn test_negative_loyalty_cost_requires_enough_loyalty_in_legal_action
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: true,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -2383,6 +2393,7 @@ pub(super) fn elvish_refueler_exhaust_permission_allows_one_used_exhaust_on_your
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -2468,6 +2479,7 @@ pub(super) fn test_nonactive_player_keeps_priority_after_activating_ability() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
 
@@ -2550,6 +2562,7 @@ pub(super) fn test_once_per_turn_restriction_survives_control_change() {
                 mana_usage_restrictions: vec![],
                 is_loyalty_ability: false,
             }),
+            designations: Default::default(),
             functional_zones: vec![Zone::Battlefield],
         });
     game.remove_summoning_sickness(creature_id);

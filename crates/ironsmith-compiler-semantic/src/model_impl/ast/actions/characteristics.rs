@@ -4,6 +4,7 @@ use super::*;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum CharacteristicActionAst {
+    RemoveOptionalTextFragment { target: TargetAst, duration: Until },
     ChangeText {
         target: TargetAst,
         selection: ironsmith_core::TextChangeSelection,
@@ -21,6 +22,9 @@ pub enum CharacteristicActionAst {
         add_supertypes: Vec<Supertype>,
         remove_all_abilities: bool,
         remove_other_abilities: bool,
+        remove_other_supertypes: bool,
+        remove_other_card_types: bool,
+        remove_other_subtypes: bool,
         base_power_toughness: Option<(Value, Value)>,
         target: TargetAst,
         card_types: Vec<CardType>,
@@ -85,6 +89,11 @@ pub enum CharacteristicActionAst {
     BecomeAuraEnchantment {
         target: TargetAst,
         attachment_filter: ObjectFilter,
+        /// A player-enchanting Aura uses the same runtime attachment legality
+        /// as printed enchant-player abilities, rather than an object filter.
+        attachment_player_filter: Option<PlayerFilter>,
+        /// Additional authored enchantment subtypes, such as Curse.
+        additional_subtypes: Vec<Subtype>,
         granted_abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
@@ -105,11 +114,15 @@ pub enum CharacteristicActionAst {
         preserve_other_types: bool,
     },
     BecomeCreatureTypeChoice {
+        use_source_chosen_type: bool,
         target: TargetAst,
         duration: Until,
         excluded_subtypes: Vec<Subtype>,
         /// "in addition to its other types": keep the other creature types.
         in_addition_to_other_types: bool,
+        use_source_chosen_card_type: bool,
+        /// An unqualified chosen type can be bound by a preceding local choice.
+        source_type_is_unspecified: bool,
     },
     BecomeColorChoice {
         target: TargetAst,

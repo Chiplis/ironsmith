@@ -250,6 +250,13 @@ pub(crate) fn hexproof_from_counter_color(name: &str) -> Option<crate::color::Co
     crate::color::Color::from_name(color.trim())
 }
 
+/// Read the generic-mana operand of an official ward keyword counter.
+pub(crate) fn ward_counter_generic_amount(name: &str) -> Option<u8> {
+    let lower = name.trim().to_ascii_lowercase();
+    let cost = lower.strip_prefix("ward ")?.trim();
+    cost.strip_prefix('{')?.strip_suffix('}')?.parse().ok()
+}
+
 /// Runtime-only behavior for counter types that grant static abilities.
 pub trait CounterTypeExt {
     fn granted_ability(&self) -> Option<StaticAbilityId>;
@@ -272,6 +279,8 @@ impl CounterTypeExt for CounterType {
             CounterType::Trample => Some(StaticAbilityId::Trample),
             CounterType::Vigilance => Some(StaticAbilityId::Vigilance),
             CounterType::Haste => Some(StaticAbilityId::Haste),
+            CounterType::Named(name) if ward_counter_generic_amount(name).is_some() => Some(StaticAbilityId::Ward),
+            CounterType::Named(name) if name.eq_ignore_ascii_case("prowess") => Some(StaticAbilityId::Prowess),
             CounterType::Named(name) if name.eq_ignore_ascii_case("shadow") => Some(StaticAbilityId::Shadow),
             CounterType::Named(name) if hexproof_from_counter_color(name).is_some() => {
                 Some(StaticAbilityId::HexproofFrom)

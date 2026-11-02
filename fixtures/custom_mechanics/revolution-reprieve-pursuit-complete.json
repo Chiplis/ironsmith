@@ -1,0 +1,1398 @@
+{
+  "schema_version": 1,
+  "scope": "revolution",
+  "mechanics": [
+    {
+      "id": "rev-reprieve-242",
+      "keyword": "Reprieve",
+      "scope": "revolution",
+      "rule_reference": "702.226.",
+      "rule_text": {
+        "name": "702.226.",
+        "rule": "Reprieve",
+        "subrules": [
+          {
+            "name": "702.226a",
+            "rule": "Reprieve is a static ability. “Reprieve” means “As this creature enters, you may return a creature you control without reprieve to its owner's hand.”",
+            "custom": true
+          },
+          {
+            "name": "702.226b",
+            "rule": "A creature with reprieve “reprieves a creature” when its controller returns a creature to a player's hand with the ability.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Architect of Resolve",
+          "Boundlight Seraph",
+          "Choir Ascendant",
+          "Dawnhymn Herald",
+          "Dawnspark Vanguard",
+          "Lunate Prowlwarden",
+          "Lunate Sentinel",
+          "Paragon of Sacred Bellows",
+          "Purifier of Dawnbloom Grove",
+          "Sanctum of Repression",
+          "Shaper of Luminous Will",
+          "Softlight Harmonist"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "As this permanent enters, you may return a creature you control without reprieve to its owner's hand.",
+      "executable_reminder": "As this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action.",
+      "semantic_equivalence": {
+        "status": "pending_independent_fullsource_verification"
+      },
+      "representative_cards": [
+        {
+          "id": "Architect of Resolve_TWI",
+          "name": "Architect of Resolve",
+          "source_card_key": "Architect of Resolve_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{G}\nType: Creature — Human Soldier\nPower/Toughness: 3/4\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens.",
+          "source_faces": [
+            {
+              "name": "Architect of Resolve",
+              "original_text": "Mana cost: {3}{G}\nType: Creature — Human Soldier\nPower/Toughness: 3/4\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{G}\nType: Creature — Human Soldier\nPower/Toughness: 3/4\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Architect of Resolve",
+              "executable_text": "Mana cost: {3}{G}\nType: Creature — Human Soldier\nPower/Toughness: 3/4\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nAt the beginning of your end step, if one or more other creatures you controlled left the battlefield without dying, create two 1/1 white Soldier creature tokens."
+        },
+        {
+          "id": "Boundlight Seraph_TWI",
+          "name": "Boundlight Seraph",
+          "source_card_key": "Boundlight Seraph_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/3\nFlying, lifelink\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhenever Boundlight Seraph enters, return it to its owner's hand unless it reprieved a creature.",
+          "source_faces": [
+            {
+              "name": "Boundlight Seraph",
+              "original_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/3\nFlying, lifelink\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhenever Boundlight Seraph enters, return it to its owner's hand unless it reprieved a creature."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/3\nFlying, lifelink\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhenever Boundlight Seraph enters, return it to its owner's hand unless the number of times this permanent has performed the reprieve action is greater than 0.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Boundlight Seraph",
+              "executable_text": "Mana cost: {1}{W}{W}\nType: Creature — Angel Cleric\nPower/Toughness: 3/3\nFlying, lifelink\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhenever Boundlight Seraph enters, return it to its owner's hand unless the number of times this permanent has performed the reprieve action is greater than 0.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying, lifelink\nReprieve\nWhenever Boundlight Seraph enters, return it to its owner's hand unless it reprieved a creature.",
+              "original_printed_rules_text": "Flying, lifelink\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhenever Boundlight Seraph enters, return it to its owner's hand unless it reprieved a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying, lifelink\nReprieve\nWhenever Boundlight Seraph enters, return it to its owner's hand unless it reprieved a creature.",
+          "original_printed_rules_text": "Flying, lifelink\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhenever Boundlight Seraph enters, return it to its owner's hand unless it reprieved a creature."
+        },
+        {
+          "id": "Choir Ascendant_TWI",
+          "name": "Choir Ascendant",
+          "source_card_key": "Choir Ascendant_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nReprieve, reprieve, reprieve *(As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)*\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying.",
+          "source_faces": [
+            {
+              "name": "Choir Ascendant",
+              "original_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nReprieve, reprieve, reprieve *(As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)*\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Choir Ascendant enters, Repeat the following process the number of times this permanent has performed the reprieve action times: [create a 4/4 white Angel creature token with flying].",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Choir Ascendant",
+              "executable_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Choir Ascendant enters, Repeat the following process the number of times this permanent has performed the reprieve action times: [create a 4/4 white Angel creature token with flying].",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nReprieve, reprieve, reprieve\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying.",
+              "original_printed_rules_text": "Flying\nReprieve, reprieve, reprieve (As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nReprieve, reprieve, reprieve\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying.",
+          "original_printed_rules_text": "Flying\nReprieve, reprieve, reprieve (As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying."
+        },
+        {
+          "id": "Dawnhymn Herald_TWI",
+          "name": "Dawnhymn Herald",
+          "source_card_key": "Dawnhymn Herald_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Dawnhymn Herald enters, choose one. If it reprieved a creature, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life.",
+          "source_faces": [
+            {
+              "name": "Dawnhymn Herald",
+              "original_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Dawnhymn Herald enters, choose one. If it reprieved a creature, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Dawnhymn Herald enters, choose one. If the number of times this permanent has performed the reprieve action is greater than 0, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Dawnhymn Herald",
+              "executable_text": "Mana cost: {3}{W}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Dawnhymn Herald enters, choose one. If the number of times this permanent has performed the reprieve action is greater than 0, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nReprieve\nWhen Dawnhymn Herald enters, choose one. If it reprieved a creature, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life.",
+              "original_printed_rules_text": "Flying\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Dawnhymn Herald enters, choose one. If it reprieved a creature, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nReprieve\nWhen Dawnhymn Herald enters, choose one. If it reprieved a creature, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life.",
+          "original_printed_rules_text": "Flying\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Dawnhymn Herald enters, choose one. If it reprieved a creature, choose up to two instead.\n• Create two 1/1 white Soldier creature tokens.\n• Exile target creature with power 4 or greater.\n• Target player gains 5 life."
+        },
+        {
+          "id": "Dawnspark Vanguard_TWI",
+          "name": "Dawnspark Vanguard",
+          "source_card_key": "Dawnspark Vanguard_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Human Scout\nPower/Toughness: 1/1\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If it reprieved a creature, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle. ",
+          "source_faces": [
+            {
+              "name": "Dawnspark Vanguard",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Human Scout\nPower/Toughness: 1/1\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If it reprieved a creature, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle. "
+            }
+          ],
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Scout\nPower/Toughness: 1/1\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If the number of times this permanent has performed the reprieve action is greater than 0, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Dawnspark Vanguard",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Human Scout\nPower/Toughness: 1/1\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If the number of times this permanent has performed the reprieve action is greater than 0, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If it reprieved a creature, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If it reprieved a creature, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle. "
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If it reprieved a creature, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Dawnspark Vanguard enters, you may search your library for a basic land card. If it reprieved a creature, you may instead search your library for a land card. Reveal that card, put it into your hand, then shuffle. "
+        },
+        {
+          "id": "Lunate Prowlwarden_TWI",
+          "name": "Lunate Prowlwarden",
+          "source_card_key": "Lunate Prowlwarden_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {G}{W}\nType: Creature — Cat Soldier\nPower/Toughness: 2/2\nFlash\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*",
+          "source_faces": [
+            {
+              "name": "Lunate Prowlwarden",
+              "original_text": "Mana cost: {G}{W}\nType: Creature — Cat Soldier\nPower/Toughness: 2/2\nFlash\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*"
+            }
+          ],
+          "executable_text": "Mana cost: {G}{W}\nType: Creature — Cat Soldier\nPower/Toughness: 2/2\nFlash\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Lunate Prowlwarden",
+              "executable_text": "Mana cost: {G}{W}\nType: Creature — Cat Soldier\nPower/Toughness: 2/2\nFlash\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flash\nReprieve",
+              "original_printed_rules_text": "Flash\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flash\nReprieve",
+          "original_printed_rules_text": "Flash\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)"
+        },
+        {
+          "id": "Lunate Sentinel_TWI",
+          "name": "Lunate Sentinel",
+          "source_card_key": "Lunate Sentinel_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Elf Soldier\nPower/Toughness: 3/2\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If Lunate Sentinel reprieved a creature, that creature gets +4/+4 until end of turn instead.",
+          "source_faces": [
+            {
+              "name": "Lunate Sentinel",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Elf Soldier\nPower/Toughness: 3/2\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If Lunate Sentinel reprieved a creature, that creature gets +4/+4 until end of turn instead."
+            }
+          ],
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Soldier\nPower/Toughness: 3/2\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If the number of times this permanent has performed the reprieve action is greater than 0, that creature gets +4/+4 until end of turn instead.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Lunate Sentinel",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Elf Soldier\nPower/Toughness: 3/2\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If the number of times this permanent has performed the reprieve action is greater than 0, that creature gets +4/+4 until end of turn instead.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If Lunate Sentinel reprieved a creature, that creature gets +4/+4 until end of turn instead.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If Lunate Sentinel reprieved a creature, that creature gets +4/+4 until end of turn instead."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If Lunate Sentinel reprieved a creature, that creature gets +4/+4 until end of turn instead.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Lunate Sentinel enters, target creature gets +2/+2 until end of turn. If Lunate Sentinel reprieved a creature, that creature gets +4/+4 until end of turn instead."
+        },
+        {
+          "id": "Paragon of Sacred Bellows_TWI",
+          "name": "Paragon of Sacred Bellows",
+          "source_card_key": "Paragon of Sacred Bellows_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Elephant Soldier\nPower/Toughness: 5/5\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If Paragon of Sacred Bellows reprieved a creature, creatures you control gain trample and haste until end of turn.",
+          "source_faces": [
+            {
+              "name": "Paragon of Sacred Bellows",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Elephant Soldier\nPower/Toughness: 5/5\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If Paragon of Sacred Bellows reprieved a creature, creatures you control gain trample and haste until end of turn."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Elephant Soldier\nPower/Toughness: 5/5\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If the number of times this permanent has performed the reprieve action is greater than 0, creatures you control gain trample and haste until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Paragon of Sacred Bellows",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Elephant Soldier\nPower/Toughness: 5/5\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If the number of times this permanent has performed the reprieve action is greater than 0, creatures you control gain trample and haste until end of turn.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If Paragon of Sacred Bellows reprieved a creature, creatures you control gain trample and haste until end of turn.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If Paragon of Sacred Bellows reprieved a creature, creatures you control gain trample and haste until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If Paragon of Sacred Bellows reprieved a creature, creatures you control gain trample and haste until end of turn.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Paragon of Sacred Bellows enters, put a +1/+1 counter on each other creature you control. If Paragon of Sacred Bellows reprieved a creature, creatures you control gain trample and haste until end of turn."
+        },
+        {
+          "id": "Purifier of Dawnbloom Grove_TWI",
+          "name": "Purifier of Dawnbloom Grove",
+          "source_card_key": "Purifier of Dawnbloom Grove_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{G}\nType: Creature — Elf Druid\nPower/Toughness: 2/2\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if Purifier of Dawnbloom Grove reprieved a creature.",
+          "source_faces": [
+            {
+              "name": "Purifier of Dawnbloom Grove",
+              "original_text": "Mana cost: {1}{G}\nType: Creature — Elf Druid\nPower/Toughness: 2/2\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if Purifier of Dawnbloom Grove reprieved a creature."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{G}\nType: Creature — Elf Druid\nPower/Toughness: 2/2\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if the number of times this permanent has performed the reprieve action is greater than 0.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Purifier of Dawnbloom Grove",
+              "executable_text": "Mana cost: {1}{G}\nType: Creature — Elf Druid\nPower/Toughness: 2/2\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if the number of times this permanent has performed the reprieve action is greater than 0.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if Purifier of Dawnbloom Grove reprieved a creature.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if Purifier of Dawnbloom Grove reprieved a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if Purifier of Dawnbloom Grove reprieved a creature.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Purifier of Dawnbloom Grove enters, you may destroy target artifact or enchantment if it has mana value 1 or less or if Purifier of Dawnbloom Grove reprieved a creature."
+        },
+        {
+          "id": "Sanctum of Repression_TWI",
+          "name": "Sanctum of Repression",
+          "source_card_key": "Sanctum of Repression_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {1}{W}\nType: Enchantment\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if it reprieved a creature or that permanent's mana value is 3 or less.",
+          "source_faces": [
+            {
+              "name": "Sanctum of Repression",
+              "original_text": "Mana cost: {1}{W}\nType: Enchantment\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if it reprieved a creature or that permanent's mana value is 3 or less."
+            }
+          ],
+          "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if the number of times this permanent has performed the reprieve action is greater than 0 or that permanent's mana value is 3 or less.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Sanctum of Repression",
+              "executable_text": "Mana cost: {1}{W}\nType: Enchantment\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if the number of times this permanent has performed the reprieve action is greater than 0 or that permanent's mana value is 3 or less.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if it reprieved a creature or that permanent's mana value is 3 or less.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if it reprieved a creature or that permanent's mana value is 3 or less."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if it reprieved a creature or that permanent's mana value is 3 or less.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Sanctum of Repression enters, exile target nonland permanent you don't control until Sanctum of Repression leaves the battlefield if it reprieved a creature or that permanent's mana value is 3 or less."
+        },
+        {
+          "id": "Shaper of Luminous Will_TWI",
+          "name": "Shaper of Luminous Will",
+          "source_card_key": "Shaper of Luminous Will_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if it reprieved a creature.",
+          "source_faces": [
+            {
+              "name": "Shaper of Luminous Will",
+              "original_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if it reprieved a creature."
+            }
+          ],
+          "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if the number of times this permanent has performed the reprieve action is greater than 0.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Shaper of Luminous Will",
+              "executable_text": "Mana cost: {3}{W}\nType: Creature — Human Soldier\nPower/Toughness: 3/3\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if the number of times this permanent has performed the reprieve action is greater than 0.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reprieve\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if it reprieved a creature.",
+              "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if it reprieved a creature."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reprieve\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if it reprieved a creature.",
+          "original_printed_rules_text": "Reprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Shaper of Luminous Will enters, you may create a 2/2 white Knight creature token with vigilance if it reprieved a creature."
+        },
+        {
+          "id": "Softlight Harmonist_TWI",
+          "name": "Softlight Harmonist",
+          "source_card_key": "Softlight Harmonist_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {W}\nType: Creature — Angel Bard\nPower/Toughness: 1/1\nFlying\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Softlight Harmonist enters, if it reprieved a creature, put a +1/+1 counter on target creature you control.",
+          "source_faces": [
+            {
+              "name": "Softlight Harmonist",
+              "original_text": "Mana cost: {W}\nType: Creature — Angel Bard\nPower/Toughness: 1/1\nFlying\nReprieve *(As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)*\nWhen Softlight Harmonist enters, if it reprieved a creature, put a +1/+1 counter on target creature you control."
+            }
+          ],
+          "executable_text": "Mana cost: {W}\nType: Creature — Angel Bard\nPower/Toughness: 1/1\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Softlight Harmonist enters, if the number of times this permanent has performed the reprieve action is greater than 0, put a +1/+1 counter on target creature you control.",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Softlight Harmonist",
+              "executable_text": "Mana cost: {W}\nType: Creature — Angel Bard\nPower/Toughness: 1/1\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Softlight Harmonist enters, if the number of times this permanent has performed the reprieve action is greater than 0, put a +1/+1 counter on target creature you control.",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nReprieve\nWhen Softlight Harmonist enters, if it reprieved a creature, put a +1/+1 counter on target creature you control.",
+              "original_printed_rules_text": "Flying\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Softlight Harmonist enters, if it reprieved a creature, put a +1/+1 counter on target creature you control."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nReprieve\nWhen Softlight Harmonist enters, if it reprieved a creature, put a +1/+1 counter on target creature you control.",
+          "original_printed_rules_text": "Flying\nReprieve (As this permanent enters, you may return a creature you control without reprieve to its owner's hand.)\nWhen Softlight Harmonist enters, if it reprieved a creature, put a +1/+1 counter on target creature you control."
+        }
+      ],
+      "source_cards": [
+        "Architect of Resolve"
+      ],
+      "behavioral_assertions": [],
+      "support_status": "pending_generic_readers",
+      "executable_definitions": [
+        {
+          "keyword": "Reprieve",
+          "reminder": "As this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action."
+        }
+      ],
+      "source_semantic_notes": {
+        "noncreature_source": "Sanctum of Repression_TWI is Type: Enchantment and explicitly has the permanent-entry reminder. The generic source-entry operation is not restricted to creature recipients.",
+        "history_window_ambiguity": "Architect of Resolve_TWI says left the battlefield without dying without an explicit time window. No this-turn restriction is inserted."
+      }
+    },
+    {
+      "id": "rev-reprieve-243",
+      "keyword": "Reprieve",
+      "scope": "revolution",
+      "rule_reference": "702.226.",
+      "rule_text": {
+        "name": "702.226.",
+        "rule": "Reprieve",
+        "subrules": [
+          {
+            "name": "702.226a",
+            "rule": "Reprieve is a static ability. “Reprieve” means “As this creature enters, you may return a creature you control without reprieve to its owner's hand.”",
+            "custom": true
+          },
+          {
+            "name": "702.226b",
+            "rule": "A creature with reprieve “reprieves a creature” when its controller returns a creature to a player's hand with the ability.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Architect of Resolve",
+          "Boundlight Seraph",
+          "Choir Ascendant",
+          "Dawnhymn Herald",
+          "Dawnspark Vanguard",
+          "Lunate Prowlwarden",
+          "Lunate Sentinel",
+          "Paragon of Sacred Bellows",
+          "Purifier of Dawnbloom Grove",
+          "Sanctum of Repression",
+          "Shaper of Luminous Will",
+          "Softlight Harmonist"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.",
+      "executable_reminder": "As this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action.",
+      "semantic_equivalence": {
+        "status": "pending_independent_fullsource_verification"
+      },
+      "representative_cards": [
+        {
+          "id": "Choir Ascendant_TWI",
+          "name": "Choir Ascendant",
+          "source_card_key": "Choir Ascendant_TWI",
+          "source_shape": "normal",
+          "original_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nReprieve, reprieve, reprieve *(As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)*\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying.",
+          "source_faces": [
+            {
+              "name": "Choir Ascendant",
+              "original_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nReprieve, reprieve, reprieve *(As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)*\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying."
+            }
+          ],
+          "executable_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Choir Ascendant enters, Repeat the following process the number of times this permanent has performed the reprieve action times: [create a 4/4 white Angel creature token with flying].",
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Choir Ascendant",
+              "executable_text": "Mana cost: {4}{G}{W}\nType: Creature — Angel Bard\nPower/Toughness: 4/4\nFlying\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nAs this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action\nWhen Choir Ascendant enters, Repeat the following process the number of times this permanent has performed the reprieve action times: [create a 4/4 white Angel creature token with flying].",
+              "custom_keyword_identities": [
+                "reprieve"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Flying\nReprieve, reprieve, reprieve\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying.",
+              "original_printed_rules_text": "Flying\nReprieve, reprieve, reprieve (As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reprieve"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Flying\nReprieve, reprieve, reprieve\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying.",
+          "original_printed_rules_text": "Flying\nReprieve, reprieve, reprieve (As this creature enters, you may return up to three creatures you control without reprieve to their owner's hands.)\nWhen Choir Ascendant enters, for each time it reprieved a creature, create a 4/4 white Angel creature token with flying."
+        }
+      ],
+      "source_cards": [
+        "Choir Ascendant"
+      ],
+      "behavioral_assertions": [],
+      "support_status": "pending_generic_readers",
+      "executable_definitions": [
+        {
+          "keyword": "Reprieve",
+          "reminder": "As this permanent enters, you may return a creature you control without custom keyword \"reprieve\" to its owner's hand. If you do, have this permanent perform the reprieve action."
+        }
+      ],
+      "source_semantic_notes": {
+        "noncreature_source": "Sanctum of Repression_TWI is Type: Enchantment and explicitly has the permanent-entry reminder. The generic source-entry operation is not restricted to creature recipients.",
+        "history_window_ambiguity": "Architect of Resolve_TWI says left the battlefield without dying without an explicit time window. No this-turn restriction is inserted."
+      }
+    },
+    {
+      "id": "rev-pursuit-249",
+      "keyword": "Pursuit",
+      "scope": "revolution",
+      "rule_reference": "702.229.",
+      "rule_text": {
+        "name": "702.229.",
+        "rule": "Pursuit",
+        "subrules": [
+          {
+            "name": "702.229a",
+            "rule": "Pursuit represents a static ability that functions while the card with pursuit is in a player's graveyard. \"Pursuit [cost]\" means \"You may cast a copy of this card from your graveyard by paying [cost], sacrificing a nonland permanent, and exiling this card from your graveyard rather than paying its mana cost.\" Casting a spell using its pursuit ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Become the Hunted",
+          "End the Chase",
+          "Guild Elite",
+          "Gutter Rat",
+          "Hired Hand",
+          "Patient Executioner",
+          "Ruthless Stalker",
+          "Slinking Swiftblade",
+          "The Founder's Hunt Begins",
+          "Unerring Killer",
+          "Veteran Hunter",
+          "Winding Assailant"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.",
+      "executable_reminder": "You may cast a copy of this card from your graveyard by paying {Cost} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+      "semantic_equivalence": {
+        "status": "existing_operations_candidate_unverified",
+        "notes": "Complete source graph preserved. Possess uses LKI nontoken creature trigger, targeted attachment and all-type replacement; Pursuit depends generic copy-as-cast announcement. Reminder-only variants247/250 are informational and must not register a second incompatible keyword definition."
+      },
+      "representative_cards": [
+        {
+          "id": "Become the Hunted_VLR",
+          "name": "Become the Hunted",
+          "original_text": "Mana cost: {1}{B}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nPursuit {1}{B}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Become the Hunted_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Become the Hunted",
+              "original_text": "Mana cost: {1}{B}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nPursuit {1}{B}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Become the Hunted",
+              "executable_text": "Mana cost: {1}{B}\nType: Sorcery\nReturn target creature card with mana value 3 or less from your graveyard to the battlefield.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nPursuit {1}{B}{B}",
+              "original_printed_rules_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nPursuit {1}{B}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nPursuit {1}{B}{B}",
+          "original_printed_rules_text": "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nPursuit {1}{B}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "End the Chase_VLR",
+          "name": "End the Chase",
+          "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nPursuit {3}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "End the Chase_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "End the Chase",
+              "original_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nPursuit {3}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "End the Chase",
+              "executable_text": "Mana cost: {1}{G}\nType: Sorcery\nTarget creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nPursuit {3}{G}{G}",
+              "original_printed_rules_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nPursuit {3}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nPursuit {3}{G}{G}",
+          "original_printed_rules_text": "Target creature you control deals damage equal to its power to target creature or planeswalker you don't control.\nPursuit {3}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Guild Elite_VLR",
+          "name": "Guild Elite",
+          "original_text": "Mana cost: {B}{G}\nType: Creature — Human Mercenary Noble\nPower/Toughness: 2/2\nWhenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nPursuit {1}{B}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {B}{G}\nType: Creature — Human Mercenary Noble\nPower/Toughness: 2/2\nWhenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Guild Elite_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Guild Elite",
+              "original_text": "Mana cost: {B}{G}\nType: Creature — Human Mercenary Noble\nPower/Toughness: 2/2\nWhenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nPursuit {1}{B}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Guild Elite",
+              "executable_text": "Mana cost: {B}{G}\nType: Creature — Human Mercenary Noble\nPower/Toughness: 2/2\nWhenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Whenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nPursuit {1}{B}{G}",
+              "original_printed_rules_text": "Whenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nPursuit {1}{B}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Whenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nPursuit {1}{B}{G}",
+          "original_printed_rules_text": "Whenever this creature attacks, you may sacrifice another nonland permanent. If you do, it gets +2/+2 until end of turn.\nPursuit {1}{B}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Gutter Rat_VLR",
+          "name": "Gutter Rat",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/3\nTrample\nWhen this creature enters, choose up to one card with pursuit you own in exile. Put that card into your graveyard.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/3\nTrample\nWhen this creature enters, choose up to one card with custom keyword \"pursuit\" you own in exile. Put that card into your graveyard.",
+          "source_card_key": "Gutter Rat_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Gutter Rat",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/3\nTrample\nWhen this creature enters, choose up to one card with pursuit you own in exile. Put that card into your graveyard."
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Gutter Rat",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/3\nTrample\nWhen this creature enters, choose up to one card with custom keyword \"pursuit\" you own in exile. Put that card into your graveyard.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nWhen this creature enters, choose up to one card with pursuit you own in exile. Put that card into your graveyard.",
+              "original_printed_rules_text": "Trample\nWhen this creature enters, choose up to one card with pursuit you own in exile. Put that card into your graveyard."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nWhen this creature enters, choose up to one card with pursuit you own in exile. Put that card into your graveyard.",
+          "original_printed_rules_text": "Trample\nWhen this creature enters, choose up to one card with pursuit you own in exile. Put that card into your graveyard."
+        },
+        {
+          "id": "Hired Hand_VLR",
+          "name": "Hired Hand",
+          "original_text": "Mana cost: {4}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 4/5\nVigilance\nPursuit {3}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {4}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 4/5\nVigilance\nYou may cast a copy of this card from your graveyard by paying {3}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Hired Hand_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Hired Hand",
+              "original_text": "Mana cost: {4}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 4/5\nVigilance\nPursuit {3}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Hired Hand",
+              "executable_text": "Mana cost: {4}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 4/5\nVigilance\nYou may cast a copy of this card from your graveyard by paying {3}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nPursuit {3}{G}",
+              "original_printed_rules_text": "Vigilance\nPursuit {3}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nPursuit {3}{G}",
+          "original_printed_rules_text": "Vigilance\nPursuit {3}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Patient Executioner_VLR",
+          "name": "Patient Executioner",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Bird Mercenary\nPower/Toughness: 3/1\nWhen this creature enters, each player sacrifices a creature or planeswalker of their choice.\nPursuit {1}{B}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Bird Mercenary\nPower/Toughness: 3/1\nWhen this creature enters, each player sacrifices a creature or planeswalker of their choice.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Patient Executioner_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Patient Executioner",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Bird Mercenary\nPower/Toughness: 3/1\nWhen this creature enters, each player sacrifices a creature or planeswalker of their choice.\nPursuit {1}{B}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Patient Executioner",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Bird Mercenary\nPower/Toughness: 3/1\nWhen this creature enters, each player sacrifices a creature or planeswalker of their choice.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, each player sacrifices a creature or planeswalker of their choice.\nPursuit {1}{B}{B}",
+              "original_printed_rules_text": "When this creature enters, each player sacrifices a creature or planeswalker of their choice.\nPursuit {1}{B}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, each player sacrifices a creature or planeswalker of their choice.\nPursuit {1}{B}{B}",
+          "original_printed_rules_text": "When this creature enters, each player sacrifices a creature or planeswalker of their choice.\nPursuit {1}{B}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Ruthless Stalker_VLR",
+          "name": "Ruthless Stalker",
+          "original_text": "Mana cost: {B}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 2/2\nMenace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nPursuit {2}{B}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {B}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 2/2\nMenace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nYou may cast a copy of this card from your graveyard by paying {2}{B}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Ruthless Stalker_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Ruthless Stalker",
+              "original_text": "Mana cost: {B}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 2/2\nMenace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nPursuit {2}{B}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Ruthless Stalker",
+              "executable_text": "Mana cost: {B}{G}\nType: Creature — Rat Mercenary\nPower/Toughness: 2/2\nMenace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nYou may cast a copy of this card from your graveyard by paying {2}{B}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nPursuit {2}{B}{G}",
+              "original_printed_rules_text": "Menace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nPursuit {2}{B}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nPursuit {2}{B}{G}",
+          "original_printed_rules_text": "Menace\nAt the beginning of your end step, if you sacrificed a nonland permanent this turn, put a +1/+1 counter on this creature.\nPursuit {2}{B}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Slinking Swiftblade_VLR",
+          "name": "Slinking Swiftblade",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nMenace\nPursuit {2}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nMenace\nYou may cast a copy of this card from your graveyard by paying {2}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Slinking Swiftblade_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Slinking Swiftblade",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nMenace\nPursuit {2}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Slinking Swiftblade",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nMenace\nYou may cast a copy of this card from your graveyard by paying {2}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Menace\nPursuit {2}{B}",
+              "original_printed_rules_text": "Menace\nPursuit {2}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Menace\nPursuit {2}{B}",
+          "original_printed_rules_text": "Menace\nPursuit {2}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "The Founder's Hunt Begins_VLR",
+          "name": "The Founder's Hunt Begins",
+          "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nChoose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nPursuit—{1}{B}{B}, Pay 3 life. *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nChoose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B}, Pay 3 life and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "The Founder's Hunt Begins_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "The Founder's Hunt Begins",
+              "original_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nChoose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nPursuit—{1}{B}{B}, Pay 3 life. *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "The Founder's Hunt Begins",
+              "executable_text": "Mana cost: {3}{B}{B}\nType: Sorcery\nChoose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B}, Pay 3 life and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Choose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nPursuit—{1}{B}{B}, Pay 3 life.",
+              "original_printed_rules_text": "Choose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nPursuit—{1}{B}{B}, Pay 3 life. (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Choose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nPursuit—{1}{B}{B}, Pay 3 life.",
+          "original_printed_rules_text": "Choose one —\n• Search your library for a card, put it into your hand, then shuffle.\n• Put a card you own from outside the game into your hand.\nPursuit—{1}{B}{B}, Pay 3 life. (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Unerring Killer_VLR",
+          "name": "Unerring Killer",
+          "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 5/5\nTrample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nPursuit {3}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 5/5\nTrample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Unerring Killer_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Unerring Killer",
+              "original_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 5/5\nTrample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nPursuit {3}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Unerring Killer",
+              "executable_text": "Mana cost: {3}{G}{G}\nType: Creature — Human Mercenary\nPower/Toughness: 5/5\nTrample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nPursuit {3}{G}{G}",
+              "original_printed_rules_text": "Trample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nPursuit {3}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nPursuit {3}{G}{G}",
+          "original_printed_rules_text": "Trample\nThis creature has haste as long as it entered from a graveyard or was cast from a graveyard this turn.\nPursuit {3}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Veteran Hunter_VLR",
+          "name": "Veteran Hunter",
+          "original_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nWhen this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nPursuit {1}{B}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*",
+          "executable_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nWhen this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+          "source_card_key": "Veteran Hunter_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Veteran Hunter",
+              "original_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nWhen this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nPursuit {1}{B}{B} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Veteran Hunter",
+              "executable_text": "Mana cost: {2}{B}\nType: Creature — Rat Mercenary\nPower/Toughness: 3/2\nWhen this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nYou may cast a copy of this card from your graveyard by paying {1}{B}{B} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "When this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nPursuit {1}{B}{B}",
+              "original_printed_rules_text": "When this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nPursuit {1}{B}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "When this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nPursuit {1}{B}{B}",
+          "original_printed_rules_text": "When this creature enters, choose up to one target creature. Its controller sacrifices it unless they pay 3 life or discard a card.\nPursuit {1}{B}{B} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)"
+        },
+        {
+          "id": "Winding Assailant_VLR",
+          "name": "Winding Assailant",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nPursuit {3}{G}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*\nWhen you cast this spell for its pursuit cost, copy it. *(The copy becomes a token.)*",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.\nWhen you cast this spell for its pursuit cost, copy it.",
+          "source_card_key": "Winding Assailant_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Winding Assailant",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nPursuit {3}{G}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*\nWhen you cast this spell for its pursuit cost, copy it. *(The copy becomes a token.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Winding Assailant",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.\nWhen you cast this spell for its pursuit cost, copy it.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nPursuit {3}{G}{G}{G}\nWhen you cast this spell for its pursuit cost, copy it.",
+              "original_printed_rules_text": "Trample\nPursuit {3}{G}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)\nWhen you cast this spell for its pursuit cost, copy it. (The copy becomes a token.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nPursuit {3}{G}{G}{G}\nWhen you cast this spell for its pursuit cost, copy it.",
+          "original_printed_rules_text": "Trample\nPursuit {3}{G}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)\nWhen you cast this spell for its pursuit cost, copy it. (The copy becomes a token.)"
+        }
+      ],
+      "source_cards": [
+        "Become the Hunted",
+        "End the Chase",
+        "Guild Elite",
+        "Hired Hand",
+        "Ruthless Stalker",
+        "Slinking Swiftblade",
+        "The Founder's Hunt Begins",
+        "Winding Assailant"
+      ],
+      "behavioral_assertions": [],
+      "expanded_source_cards": [
+        "Become the Hunted",
+        "End the Chase",
+        "Guild Elite",
+        "Gutter Rat",
+        "Hired Hand",
+        "Patient Executioner",
+        "Ruthless Stalker",
+        "Slinking Swiftblade",
+        "The Founder's Hunt Begins",
+        "Unerring Killer",
+        "Veteran Hunter",
+        "Winding Assailant"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Pursuit {Cost}",
+          "reminder": "You may cast a copy of this card from your graveyard by paying {Cost} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit."
+        }
+      ],
+      "support_status": "candidate_existing_operations_unverified"
+    },
+    {
+      "id": "rev-pursuit-250",
+      "keyword": "Pursuit",
+      "scope": "revolution",
+      "rule_reference": "702.229.",
+      "rule_text": {
+        "name": "702.229.",
+        "rule": "Pursuit",
+        "subrules": [
+          {
+            "name": "702.229a",
+            "rule": "Pursuit represents a static ability that functions while the card with pursuit is in a player's graveyard. \"Pursuit [cost]\" means \"You may cast a copy of this card from your graveyard by paying [cost], sacrificing a nonland permanent, and exiling this card from your graveyard rather than paying its mana cost.\" Casting a spell using its pursuit ability follows the rules for paying alternative costs in rules 601.2b and 601.2f–h.",
+            "custom": true
+          }
+        ],
+        "custom": true,
+        "section": "702",
+        "matched_card_names": [
+          "Become the Hunted",
+          "End the Chase",
+          "Guild Elite",
+          "Gutter Rat",
+          "Hired Hand",
+          "Patient Executioner",
+          "Ruthless Stalker",
+          "Slinking Swiftblade",
+          "The Founder's Hunt Begins",
+          "Unerring Killer",
+          "Veteran Hunter",
+          "Winding Assailant"
+        ],
+        "builder_reserved_keyword": false
+      },
+      "original_reminder": "The copy becomes a token.",
+      "executable_reminder": "You may cast a copy of this card from your graveyard by paying {Cost} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.",
+      "semantic_equivalence": {
+        "status": "existing_operations_candidate_unverified",
+        "notes": "Complete source graph preserved. Possess uses LKI nontoken creature trigger, targeted attachment and all-type replacement; Pursuit depends generic copy-as-cast announcement. Reminder-only variants247/250 are informational and must not register a second incompatible keyword definition."
+      },
+      "representative_cards": [
+        {
+          "id": "Winding Assailant_VLR",
+          "name": "Winding Assailant",
+          "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nPursuit {3}{G}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*\nWhen you cast this spell for its pursuit cost, copy it. *(The copy becomes a token.)*",
+          "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.\nWhen you cast this spell for its pursuit cost, copy it.",
+          "source_card_key": "Winding Assailant_VLR",
+          "source_face": "front",
+          "source_shape": "normal",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Winding Assailant",
+              "original_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nPursuit {3}{G}{G}{G} *(You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)*\nWhen you cast this spell for its pursuit cost, copy it. *(The copy becomes a token.)*"
+            }
+          ],
+          "rewrite_status": "frontend_materialized_unverified",
+          "scope": "revolution",
+          "source_layout": "normal",
+          "executable_faces": [
+            {
+              "name": "Winding Assailant",
+              "executable_text": "Mana cost: {1}{G}{G}\nType: Creature — Snake Mercenary\nPower/Toughness: 4/4\nTrample\nYou may cast a copy of this card from your graveyard by paying {3}{G}{G}{G} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit.\nWhen you cast this spell for its pursuit cost, copy it.",
+              "custom_keyword_identities": [
+                "pursuit"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Trample\nPursuit {3}{G}{G}{G}\nWhen you cast this spell for its pursuit cost, copy it.",
+              "original_printed_rules_text": "Trample\nPursuit {3}{G}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)\nWhen you cast this spell for its pursuit cost, copy it. (The copy becomes a token.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "pursuit"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Trample\nPursuit {3}{G}{G}{G}\nWhen you cast this spell for its pursuit cost, copy it.",
+          "original_printed_rules_text": "Trample\nPursuit {3}{G}{G}{G} (You may cast a copy of this card from your graveyard for its pursuit cost by exiling it and sacrificing a nonland permanent.)\nWhen you cast this spell for its pursuit cost, copy it. (The copy becomes a token.)"
+        }
+      ],
+      "source_cards": [
+        "Winding Assailant"
+      ],
+      "behavioral_assertions": [],
+      "expanded_source_cards": [
+        "Winding Assailant"
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Pursuit {Cost}",
+          "reminder": "You may cast a copy of this card from your graveyard by paying {Cost} and sacrificing a nonland permanent and exiling this card from your graveyard rather than paying its mana cost. This alternative cost is named Pursuit."
+        }
+      ],
+      "support_status": "candidate_existing_operations_unverified"
+    }
+  ]
+}

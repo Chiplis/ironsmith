@@ -350,6 +350,7 @@ fn entry_type_changes_apply_before_replacements_and_do_not_survive_blink() {
             ironsmith::CounterType::PlusOnePlusOne, 1, ironsmith_core::BattlefieldEntryCounterSurface::Inline));
     movement.entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
         color_changes: Vec::new(),
+        set_card_types: None,
         added_card_types: vec![CardType::Artifact, CardType::Creature],
         removed_subtype_families: vec![SubtypeFamily::Creature],
         added_subtypes: vec![Subtype::Borg],

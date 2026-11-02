@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "source_fixture": "fixtures/custom_mechanics/msem-abilities-tail.json",
+    "scope": "Exact complete Copperhide Calf and Verdigris Behemoth physical source pair; ordinary recurring damage prevention budgets"
+  },
+  "mechanics": [
+    {
+      "id": "msem-411",
+      "keyword": "Experience",
+      "original_reminder": "Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.",
+      "executable_reminder": "Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.",
+      "source_cards": [
+        "Copperhide Calf//Verdigris Behemoth"
+      ],
+      "rule_reference": "702.198.",
+      "rule_text": [
+        {
+          "name": "702.198a",
+          "rule": "Experience is a triggered ability. “Experience” means “Whenever this creature attacks, if it has two or fewer +1/+1 counters on it, put a +1/+1 counter on it.”",
+          "custom": true
+        },
+        {
+          "name": "702.198b",
+          "rule": "If a creature with experience has three or more +1/+1 counters on it as the ability tries to resolve, it will have no effect.",
+          "custom": true
+        },
+        {
+          "name": "702.198c",
+          "rule": "Level experience is a variant of the experience ability. “Level experience” means “Whenever this creature attacks, if it has two or fewer level counters on it, put a level counter on it.”",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Copperhide Calf//Verdigris Behemoth_OTH",
+          "name": "Copperhide Calf",
+          "original_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nLevel experience *(Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)*\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it. [2/2]\n[level 1-3] Prevent the first 1 damage that would be dealt to Copperhide Calf each turn. [3/3]",
+          "executable_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nPower/Toughness: 2/2\nlevel experience — Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+          "mana_cost": "{G}{W}",
+          "type_line": "Artifact Creature — Elephant Construct",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Copperhide Calf//Verdigris Behemoth_OTH",
+          "source_face": "front",
+          "source_shape": "doubleface",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Copperhide Calf",
+              "original_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nLevel experience *(Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)*\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it. [2/2]\n[level 1-3] Prevent the first 1 damage that would be dealt to Copperhide Calf each turn. [3/3]"
+            },
+            {
+              "face": "back",
+              "name": "Verdigris Behemoth",
+              "original_text": "Type: Artifact Creature — Elephant Construct\nLevel experience, vigilance, trample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn. [5/5]\n[level 3+] Whenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls. [7/7]"
+            }
+          ],
+          "other_faces_validation": "pending; representative input alone does not establish complete multi-face card support",
+          "executable_faces": [
+            {
+              "name": "Copperhide Calf",
+              "executable_text": "Mana cost: {G}{W}\nType: Artifact Creature — Elephant Construct\nPower/Toughness: 2/2\nlevel experience — Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+              "custom_keyword_identities": [
+                "level experience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Level experience\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+              "original_printed_rules_text": "Level experience (Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3"
+            },
+            {
+              "name": "Verdigris Behemoth",
+              "executable_text": "Type: Artifact Creature — Elephant Construct\nPower/Toughness: 5/5\nlevel experience — Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it\nvigilance\ntrample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn.\nLEVEL 3+\nWhenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls.\n7/7",
+              "custom_keyword_identities": [
+                "level experience"
+              ],
+              "custom_keyword_payments": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Level experience, vigilance, trample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn.\nLEVEL 3+\nWhenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls.\n7/7",
+              "original_printed_rules_text": "Level experience, vigilance, trample\nPrevent all but the first 1 damage that would be dealt to Verdigris Behemoth each turn.\nLEVEL 3+\nWhenever Verdigris Behemoth deals combat damage to a player, you may destroy target artifact or enchantment that player controls.\n7/7"
+            }
+          ],
+          "custom_keyword_identities": [
+            "level experience"
+          ],
+          "custom_keyword_payments": [],
+          "rewrite_status": "frontend_materialized_unverified",
+          "original_display_text": "Level experience\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3",
+          "custom_subtypes": [],
+          "custom_keyword_counter_definitions": [],
+          "custom_token_definitions": [],
+          "original_printed_rules_text": "Level experience (Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.)\nWhen Copperhide Calf has three or more level counters on it, remove them all and transform it.\nLEVEL 1-3\nPrevent the first 1 damage that would be dealt to Copperhide Calf each turn.\n3/3"
+        }
+      ],
+      "executable_keyword": "Level experience",
+      "executable_definitions": [
+        {
+          "keyword": "Level experience",
+          "reminder": "Whenever this creature attacks, if it has fewer than three level counters on it, put a level counter on it.",
+          "abilityDesignation": "level experience"
+        }
+      ]
+    }
+  ]
+}

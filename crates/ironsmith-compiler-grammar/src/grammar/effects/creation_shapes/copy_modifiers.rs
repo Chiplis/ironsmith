@@ -19,6 +19,7 @@ pub struct CopyModifierSpec {
     pub added_colors: ColorSet,
     pub set_card_types: Option<Vec<CardType>>,
     pub set_subtypes: Option<Vec<Subtype>>,
+    pub preserve_noncreature_subtypes: bool,
     pub added_card_types: Vec<CardType>,
     pub added_subtypes: Vec<Subtype>,
     pub removed_supertypes: Vec<Supertype>,
@@ -31,6 +32,8 @@ pub struct CopyModifierSpec {
     /// "except it has haste and loses soulbond": the copy is created without
     /// the soulbond pairing ability.
     pub loses_soulbond: bool,
+    pub removed_ability_designations: Vec<String>,
+    pub ability_loss_until: Option<crate::effect::Until>,
     /// CR 707.9b: "except its name is X" / "... named X". Lowercase parser
     /// words; the caller recovers the authored casing from its tokens.
     pub name_words: Option<Vec<String>>,
@@ -68,4 +71,4 @@ mod tests;
 
 #[path = "copy_modifiers/object_action.rs"]
 mod object_action_programs;
-pub use object_action_programs::parse_copy_modifier_words;
+pub use object_action_programs::{parse_copy_modifier_words,parse_copy_modifier_tokens};

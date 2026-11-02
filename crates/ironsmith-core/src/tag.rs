@@ -34,6 +34,8 @@ pub const SOURCE_COST_PUBLIC_ARRIVAL_TAG: &str = "__source_cost_public_arrival__
 /// so "each other card exiled with ~" excludes the just-exiled card through
 /// this resolution-scoped identity.
 pub const SOURCE_EXILED_THIS_RESOLUTION_TAG: &str = "__source_exiled_this_resolution__";
+/// The latest exact exile result, distinct from the accumulated linked pool.
+pub const LAST_EXILED_RESULT_TAG: &str = "__last_exiled_result__";
 
 /// Runtime tag for the permanents the source sacrificed to its devour ability
 /// as it entered ("the number of Goblins it devoured", CR 702.82b). Evaluated
@@ -116,6 +118,19 @@ pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
 
 /// The actual pre-payment creature snapshot sacrificed for this source's
 /// Emerge alternative cost. Imported only by that incarnation's ETB event.
+/// A named optional additional cost's completed tap action. The name is
+/// attributed source metadata, independent of the tapped permanent's status.
+pub fn additional_cost_tap_receipt(keyword: &str) -> TagKey {
+    TagKey::new(format!("__additional_cost_tap:{}",keyword.trim().to_lowercase()))
+}
+
+pub fn additional_cost_tap_instance(reference:&crate::OptionalCostRef,keyword:&str)->TagKey{
+    TagKey::new(format!("__additional_cost_tap_instance:{}:{:?}",keyword.trim().to_lowercase(),reference.discriminator))
+}
+pub fn selected_additional_cost_tap(keyword:&str)->TagKey{
+    TagKey::new(format!("__selected_additional_cost_tap:{}",keyword.trim().to_lowercase()))
+}
+
 pub const SOURCE_EMERGE_SACRIFICE_TAG: &str = "__source_emerge_sacrifice__";
 
 /// A sacrifice cost's announced object set and its completed original action
@@ -340,6 +355,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     SOURCE_EXILED_TAG,
     SOURCE_EXILED_SELF_TAG,
     SOURCE_EXILED_THIS_RESOLUTION_TAG,
+    LAST_EXILED_RESULT_TAG,
     EXILED_BY_YOU_TAG,
     SOURCE_EXILED_BY_YOU_TAG,
     SOURCE_EXILED_BY_YOU_THIS_TURN_TAG,
@@ -450,3 +466,12 @@ pub fn optional_cost_sacrifice_receipt(reference: &crate::cost_model::OptionalCo
 
 /// Resolve to the last source-linked exiled incarnation when mana is produced.
 pub const LAST_SOURCE_EXILED_AT_PRODUCTION_TAG: &str = "__last_source_exiled_at_production__";
+
+/// Immutable object operand of an active object iteration. Distinct from
+/// ordinary `it`, which a child instruction may rebind.
+pub const CURRENT_ITERATED_OBJECT_TAG: &str = "__current_iterated_object__";
+
+/// Immutable actual destination and departure packet of a completed planeswalk.
+/// These are event receipts, not current command-zone state queries.
+pub const PLANESWALK_DESTINATION_TAG: &str = "__planeswalk_destination__";
+pub const PLANESWALK_ORIGINS_TAG: &str = "__planeswalk_origins__";

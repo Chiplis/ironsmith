@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "scope": "msem",
+  "provenance": {
+    "source": "reports/cards/lackey-audit-2026-11-01/mechanic-definitions.json",
+    "card_source": "reports/cards/lackey-audit-2026-11-01/msem-complete-source.json",
+    "snapshot_fetched": "2026-10-31",
+    "scope": "msem",
+    "status": "unreviewed source inventory; all executable rewrites pending",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces."
+  },
+  "cohort": "Permanent Tithe named resolved payment",
+  "mechanics": [
+    {
+      "id": "msem-664",
+      "keyword": "Tithe",
+      "original_reminder": "When this creature enters, you may tap three other artifacts and/or creatures you control.",
+      "executable_reminder": "When this permanent enters, you may tap three other untapped artifacts and/or creatures you control. If you do, perform the tithe action with permanents tapped this way.",
+      "source_cards": [
+        "Cataclysmic Preacher"
+      ],
+      "rule_reference": "702.236.",
+      "rule_text": [
+        {
+          "name": "702.236a",
+          "rule": "Tithe is an ability of some cards. It behaves differently on permanent and nonpermanent cards.",
+          "custom": true
+        },
+        {
+          "name": "702.236b",
+          "rule": "On a permanent card, tithe is a triggered ability. “Tithe” on a permanent means “When this permanent enters, you may tap three other untapped artifacts and/or creatures you control.” Tapping the three permanents is a cost (see rule 118) and may be referred to as paying the permanent's tithe.",
+          "custom": true
+        },
+        {
+          "name": "702.236c",
+          "rule": "On an instant or sorcery card, tithe is a static ability that functions while the spell with tithe is on the stack. “Tithe” on an instant or sorcery spell means “As an additional cost to cast this spell, you may tap three untapped artifacts and/or creatures you control.” Paying an instant or sorcery spell's tithe cost follows the rules for paying additional costs in rules 601.2b and 601.2f–h. An instant or sorcery spell's tithe cost may also simply be referred to as its tithe.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Cataclysmic Preacher_EAU",
+          "name": "Cataclysmic Preacher",
+          "original_text": "Mana cost: {3}{R}\nType: Creature — Human Cleric\nPower/Toughness: 3/3\nTithe *(When this creature enters, you may tap three other artifacts and/or creatures you control.)*\nWhen Cataclysmic Preacher's tithe is paid, return target instant or sorcery card from your graveyard to your hand.",
+          "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Cleric\nPower/Toughness: 3/3\nWhen this permanent enters, you may tap three other untapped artifacts and/or creatures you control. If you do, perform the tithe action with permanents tapped this way\nWhen this permanent performs the tithe action, return target instant or sorcery card from your graveyard to your hand.",
+          "mana_cost": "{3}{R}",
+          "type_line": "Creature — Human Cleric",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Cataclysmic Preacher_EAU",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Cataclysmic Preacher",
+              "original_text": "Mana cost: {3}{R}\nType: Creature — Human Cleric\nPower/Toughness: 3/3\nTithe *(When this creature enters, you may tap three other artifacts and/or creatures you control.)*\nWhen Cataclysmic Preacher's tithe is paid, return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Cataclysmic Preacher",
+              "executable_text": "Mana cost: {3}{R}\nType: Creature — Human Cleric\nPower/Toughness: 3/3\nWhen this permanent enters, you may tap three other untapped artifacts and/or creatures you control. If you do, perform the tithe action with permanents tapped this way\nWhen this permanent performs the tithe action, return target instant or sorcery card from your graveyard to your hand.",
+              "custom_keyword_identities": [
+                "tithe"
+              ],
+              "custom_keyword_payments": [],
+              "original_display_text": "Tithe\nWhen Cataclysmic Preacher's tithe is paid, return target instant or sorcery card from your graveyard to your hand."
+            }
+          ],
+          "custom_keyword_identities": [
+            "tithe"
+          ],
+          "custom_keyword_payments": [],
+          "original_display_text": "Tithe\nWhen Cataclysmic Preacher's tithe is paid, return target instant or sorcery card from your graveyard to your hand.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Tithe",
+          "reminder": "When this permanent enters, you may tap three other untapped artifacts and/or creatures you control. If you do, perform the tithe action with permanents tapped this way.",
+          "forms": {
+            "eventPaymentNoun": "tithe",
+            "eventLabel": "tithe"
+          }
+        }
+      ],
+      "implementation_status": "next_wave_named_successful_payment_receipt_unverified",
+      "behavioral_assertions": [
+        {
+          "id": "named-resolution-payment",
+          "status": "pending",
+          "test_reference": "custom_tithe_permanent::optional_entry_payment_emits_only_after_exact_other_permanents_are_tapped",
+          "observable": "Payment excludes source, tapped and opponent permanents. Decline and insufficient resources emit no event; exact successful payment creates one source-bound named-action trigger."
+        }
+      ]
+    }
+  ]
+}

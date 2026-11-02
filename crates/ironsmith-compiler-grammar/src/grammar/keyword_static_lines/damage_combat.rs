@@ -398,6 +398,40 @@ fn parse_additive_damage_amount_lexed<'a>(
     })
 }
 
+/// A complete damage-source noun phrase extracted by another typed grammar.
+/// Explicit "sources" has any-zone scope; ordinary object nouns retain their
+/// ordinary domain. Characteristics remain owned by the shared filter reader.
+pub fn parse_damage_source_operand_tokens(tokens: &[OwnedLexToken]) -> Option<DamageSourceShape<'_>> {
+    let tokens=trim_lexed_commas(tokens);
+    if tokens.is_empty(){return None}
+    let Some(noun)=tokens.iter().position(|token|token.is_any_word(&["source","sources"])) else {
+        return Some(DamageSourceShape {source_noun:false,filter_tokens:tokens,
+            controller:DamageSourceControllerKind::None,trailing_filter_tokens:&[]});
+    };
+    let prefix=&tokens[..noun];
+    let article_only=prefix.len()==1&&prefix[0].is_any_word(&["a","an","any"]);
+    let filter_tokens=if article_only{&prefix[..0]}else{prefix};
+    let tail=&tokens[noun+1..];
+    let controllers:[(&[&str],DamageSourceControllerKind);9]=[
+        (&["you","do","not","control"],DamageSourceControllerKind::NotYou),
+        (&["you","don't","control"],DamageSourceControllerKind::NotYou),
+        (&["you","dont","control"],DamageSourceControllerKind::NotYou),
+        (&["you","don’t","control"],DamageSourceControllerKind::NotYou),
+        (&["you","control"],DamageSourceControllerKind::You),
+        (&["an","opponent","controls"],DamageSourceControllerKind::Opponent),
+        (&["opponent","controls"],DamageSourceControllerKind::Opponent),
+        (&["your","opponents","control"],DamageSourceControllerKind::Opponent),
+        (&["opponents","control"],DamageSourceControllerKind::Opponent),
+    ];
+    let (controller,used)=controllers.iter().find_map(|(words,kind)|
+        (tail.len()>=words.len() && tail[..words.len()].iter().zip(*words).all(|(token,word)|token.is_word(word)))
+            .then_some((*kind,words.len()))).unwrap_or((DamageSourceControllerKind::None,0));
+    crate::word_claims::claim_tokens(&tokens[noun..noun+1+used]);
+    if article_only{crate::word_claims::claim_tokens(prefix);}
+    Some(DamageSourceShape {source_noun:true,filter_tokens,controller,
+        trailing_filter_tokens:trim_lexed_commas(&tail[used..])})
+}
+
 fn parse_damage_source_shape_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<DamageSourceShape<'a>> {

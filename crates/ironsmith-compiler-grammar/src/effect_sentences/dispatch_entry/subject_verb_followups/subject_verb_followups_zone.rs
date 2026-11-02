@@ -97,7 +97,7 @@ pub(super) fn post_rule_source_until_exile_return_enters(
         one_shot: true,
         duration: Until::Forever,
         either_of_watched_objects: false,
-        while_any_tagged_object_in_zone: None,
+        while_any_tagged_object_in_zone: None, source_collection_scope: None,
     }));
     Ok(Some(PostParseFollowupResult::Annotated))
 }
@@ -208,7 +208,7 @@ pub(super) fn post_rule_returned_permanent_enters(
             one_shot: true,
             duration: Until::Forever,
             either_of_watched_objects: false,
-            while_any_tagged_object_in_zone: None,
+            while_any_tagged_object_in_zone: None, source_collection_scope: None,
         },
     ));
     Ok(Some(PostParseFollowupResult::Annotated))

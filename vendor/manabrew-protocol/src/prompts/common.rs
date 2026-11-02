@@ -126,6 +126,7 @@ pub enum PaymentResourceKind {
     Improvise,
     Delve,
     Waterbend,
+    PutMinusOneCounter,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

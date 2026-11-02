@@ -1,0 +1,953 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "derived_from": "fixtures/custom_mechanics/msem-source.json",
+    "scope": "msem",
+    "policy": "No new game rules; existing operations only; source variants retained independently",
+    "representative_metadata": "Complete loyalty/defense and main+auxiliary lookup; source_faces retain both native inputs where present. Representative-only checks do not certify all faces."
+  },
+  "mechanics": [
+    {
+      "id": "msem-255",
+      "keyword": "Catalyze",
+      "original_reminder": "The next spell you cast this turn costs {1} less to cast.",
+      "executable_reminder": "The next spell you cast this turn costs {1} less to cast.",
+      "source_cards": [
+        "Bazaar Trickster",
+        "Duela Alchemist",
+        "Duela Marshall",
+        "Duela Science Kit",
+        "Energize",
+        "Feed Into Aether",
+        "Practical Battlemage",
+        "Steamwalker",
+        "Jolt Awake"
+      ],
+      "rule_reference": "701.70.",
+      "rule_text": [
+        {
+          "name": "701.70a",
+          "rule": "Certain spells and abilities cause a player to catalyze. The next spell that player casts this turn costs (1) less to cast.",
+          "custom": true
+        },
+        {
+          "name": "701.70b",
+          "rule": "Multiple instances of catalyze stack, but will all apply to the same spell, even if the spell costs less than the number of active catalyzes.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Bazaar Trickster_ORP",
+          "name": "Bazaar Trickster",
+          "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/4\nIf you would catalyze, catalyze twice instead. *(The next spell you cast this turn costs {1} less to cast.)*\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+          "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/4\nIf you would perform the catalyze action, catalyze twice instead.\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+          "mana_cost": "{3}{U}{U}",
+          "type_line": "Creature — Dwarf Wizard",
+          "power": "2",
+          "toughness": "4",
+          "rewrite_note": "Full source contains additional mechanics; exact card rewrite remains pending. Reminder-only support is not full card support.",
+          "source_card_key": "Bazaar Trickster_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Bazaar Trickster",
+              "original_text": "Mana cost: {3}{U}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/4\nIf you would catalyze, catalyze twice instead. *(The next spell you cast this turn costs {1} less to cast.)*\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Bazaar Trickster",
+              "executable_text": "Mana cost: {3}{U}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/4\nIf you would perform the catalyze action, catalyze twice instead.\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "If you would catalyze, catalyze twice instead.\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+              "original_printed_rules_text": "If you would catalyze, catalyze twice instead. (The next spell you cast this turn costs {1} less to cast.)\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library."
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "If you would catalyze, catalyze twice instead.\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+          "original_printed_rules_text": "If you would catalyze, catalyze twice instead. (The next spell you cast this turn costs {1} less to cast.)\nYou may pay an additional {2} as you cast a spell. If you do, reveal the bottom card of your library. You may put it into your graveyard or on top of your library.",
+          "rewrite_status": "frontend_materialized_unverified"
+        },
+        {
+          "id": "Energize_ORP",
+          "name": "Energize",
+          "original_text": "Mana cost: {1}{R}\nType: Sorcery\nEnergize deals 3 damage to any target.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*",
+          "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nEnergize deals 3 damage to any target.\nPerform the catalyze action as follows: The next spell you cast this turn costs {1} less to cast.",
+          "source_card_key": "Energize_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Energize",
+              "original_text": "Mana cost: {1}{R}\nType: Sorcery\nEnergize deals 3 damage to any target.\nCatalyze. *(The next spell you cast this turn costs {1} less to cast.)*"
+            }
+          ],
+          "mana_cost": "{1}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "executable_faces": [
+            {
+              "name": "Energize",
+              "executable_text": "Mana cost: {1}{R}\nType: Sorcery\nEnergize deals 3 damage to any target.\nPerform the catalyze action as follows: The next spell you cast this turn costs {1} less to cast.",
+              "custom_keyword_identities": [
+                "catalyze"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Energize deals 3 damage to any target.\nCatalyze.",
+              "original_printed_rules_text": "Energize deals 3 damage to any target.\nCatalyze. (The next spell you cast this turn costs {1} less to cast.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "catalyze"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Energize deals 3 damage to any target.\nCatalyze.",
+          "original_printed_rules_text": "Energize deals 3 damage to any target.\nCatalyze. (The next spell you cast this turn costs {1} less to cast.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Uses existing next-spell generic cost reduction operation. The {2} variant summarizes two catalyze actions; do not expand each individual action as {2}."
+      },
+      "implementation_status": "existing_runtime",
+      "behavioral_assertions": [
+        {
+          "id": "stack-and-consume",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::existing_next_spell_reductions_stack_on_one_cast_and_are_consumed_even_when_excessive",
+          "observable": "two instances apply to same next spell; excess consumed; subsequent spell pays full cost",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Catalyze",
+          "reminder": "The next spell you cast this turn costs {1} less to cast.",
+          "actionProgram": true
+        }
+      ]
+    },
+    {
+      "id": "msem-256",
+      "keyword": "Catalyze",
+      "original_reminder": "The next spell you cast this turn costs {2} less to cast.",
+      "executable_reminder": "The next spell you cast this turn costs {1} less to cast.",
+      "source_cards": [
+        "Sigil Slinger"
+      ],
+      "rule_reference": "701.70.",
+      "rule_text": [
+        {
+          "name": "701.70a",
+          "rule": "Certain spells and abilities cause a player to catalyze. The next spell that player casts this turn costs (1) less to cast.",
+          "custom": true
+        },
+        {
+          "name": "701.70b",
+          "rule": "Multiple instances of catalyze stack, but will all apply to the same spell, even if the spell costs less than the number of active catalyzes.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Sigil Slinger_ORP",
+          "name": "Sigil Slinger",
+          "original_text": "Mana cost: {3}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/3\nProwess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater. *(The next spell you cast this turn costs {2} less to cast.)*",
+          "executable_text": "Mana cost: {3}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/3\nProwess\n{T}: Perform the catalyze action as follows: The next spell you cast this turn costs {1} less to cast. Then Perform the catalyze action as follows: The next spell you cast this turn costs {1} less to cast. Activate only if Sigil Slinger's power is 5 or greater.",
+          "mana_cost": "{3}{U}",
+          "type_line": "Creature — Dwarf Wizard",
+          "power": "2",
+          "toughness": "3",
+          "rewrite_note": "Full source contains additional mechanics; exact card rewrite remains pending. Reminder-only support is not full card support.",
+          "source_card_key": "Sigil Slinger_ORP",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Sigil Slinger",
+              "original_text": "Mana cost: {3}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/3\nProwess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater. *(The next spell you cast this turn costs {2} less to cast.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Sigil Slinger",
+              "executable_text": "Mana cost: {3}{U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 2/3\nProwess\n{T}: Perform the catalyze action as follows: The next spell you cast this turn costs {1} less to cast. Then Perform the catalyze action as follows: The next spell you cast this turn costs {1} less to cast. Activate only if Sigil Slinger's power is 5 or greater.",
+              "custom_keyword_identities": [
+                "catalyze"
+              ],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Prowess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater.",
+              "original_printed_rules_text": "Prowess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater. (The next spell you cast this turn costs {2} less to cast.)"
+            }
+          ],
+          "custom_keyword_identities": [
+            "catalyze"
+          ],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Prowess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater.",
+          "original_printed_rules_text": "Prowess\n{T}: Catalyze, then catalyze again. Activate only if Sigil Slinger's power is 5 or greater. (The next spell you cast this turn costs {2} less to cast.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Uses existing next-spell generic cost reduction operation. The {2} variant summarizes two catalyze actions; do not expand each individual action as {2}."
+      },
+      "implementation_status": "existing_runtime",
+      "executable_definitions": [
+        {
+          "keyword": "Catalyze",
+          "reminder": "The next spell you cast this turn costs {1} less to cast.",
+          "actionProgram": true
+        }
+      ]
+    },
+    {
+      "id": "msem-454",
+      "keyword": "Reverberate",
+      "original_reminder": "When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.",
+      "executable_reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+      "source_cards": [
+        "Controlled Decisions",
+        "Elementalize",
+        "Lafterii Trickery",
+        "Memories Reignited",
+        "Mirror Image",
+        "Searing Pulse"
+      ],
+      "rule_reference": "702.206.",
+      "rule_text": [
+        {
+          "name": "702.206a",
+          "rule": "Reverberate is a keyword that represents a static ability and a triggered ability that function while the spell with reverberate is on the stack. “Reverberate (cost)” means “As an additional cost to cast this spell, you may pay (cost),” and “When you cast this spell, if you paid its reverberate cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        },
+        {
+          "name": "702.206b",
+          "rule": "A spell is “reverberated” if it's a copy and it has reverberate.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Controlled Decisions_KZD",
+          "name": "Controlled Decisions",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nReverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Controlled Decisions_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Controlled Decisions",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nReverberate {3} *(When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Controlled Decisions",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {3}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {3}\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+              "original_printed_rules_text": "Reverberate {3} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {3}\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "original_printed_rules_text": "Reverberate {3} (When you cast this spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)\nTarget creature can't block this turn.\nTarget creature can't be blocked this turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Single optional additional mana payment plus existing paid-label cast-trigger copy; not repeatable replicate and grants no official keyword identity. Permanent spell copies use existing normal copy resolution."
+      },
+      "implementation_status": "parser_composition",
+      "executable_definitions": [
+        {
+          "keyword": "Reverberate",
+          "template": "{Cost}",
+          "reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+          "statusPredicate": {
+            "spellCopy": true,
+            "customKeyword": "reverberate"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msem-455",
+      "keyword": "Reverberate",
+      "original_reminder": "When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.",
+      "executable_reminder": null,
+      "source_cards": [
+        "Merkurio Zellurys"
+      ],
+      "rule_reference": "702.206.",
+      "rule_text": [
+        {
+          "name": "702.206a",
+          "rule": "Reverberate is a keyword that represents a static ability and a triggered ability that function while the spell with reverberate is on the stack. “Reverberate (cost)” means “As an additional cost to cast this spell, you may pay (cost),” and “When you cast this spell, if you paid its reverberate cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        },
+        {
+          "name": "702.206b",
+          "rule": "A spell is “reverberated” if it's a copy and it has reverberate.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Merkurio Zellurys_KZD",
+          "name": "Merkurio Zellurys",
+          "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*",
+          "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has custom keyword 'reverberate', and 'As an additional cost to cast this spell, you may pay mana equal to this spell's mana value. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy. This optional additional cost is named reverberate.'.”",
+          "mana_cost": "{1}{U}{R}",
+          "type_line": "Legendary Planeswalker — Merkurio",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Merkurio Zellurys_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "3",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Merkurio Zellurys",
+              "original_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” *(When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Merkurio Zellurys",
+              "executable_text": "Mana cost: {1}{U}{R}\nType: Legendary Planeswalker — Merkurio\nLoyalty: 3\n[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has custom keyword 'reverberate', and 'As an additional cost to cast this spell, you may pay mana equal to this spell's mana value. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy. This optional additional cost is named reverberate.'.”",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [
+                {
+                  "singular": "merkurio",
+                  "plural": "merkurios",
+                  "family": "Planeswalker"
+                }
+              ],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.”",
+              "original_printed_rules_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” (When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [
+            {
+              "singular": "merkurio",
+              "plural": "merkurios",
+              "family": "Planeswalker"
+            }
+          ],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.”",
+          "original_printed_rules_text": "[+1]: Merkurio deals 2 damage to target player or planeswalker. That player or that planeswalker's controller may draw a card.\n[-2]: The next instant or sorcery spell you cast this turn costs {U}{R} less to cast. This effect reduces only the amount of colored mana you pay.\n[-7]: You get an emblem with “Each instant and sorcery card you own has reverberate {X}, where X is its mana value.” (When you cast a spell, copy it if you paid its reverberate cost. You may choose new targets for the copy.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "implementation_status": "pending_support",
+      "boundary_reason": "Needs generic scoped grant of one-time custom optional payment/copy trigger; existing granted replicate would change payment repeatability and official keyword identity."
+    },
+    {
+      "id": "msem-456",
+      "keyword": "Reverberate",
+      "original_reminder": "When you cast this spell, copy it if you paid its reverberate cost.",
+      "executable_reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+      "source_cards": [
+        "Quiet Meditation",
+        "Unstable Experiment",
+        "Violent Spasm",
+        "Noxious Upwelling"
+      ],
+      "rule_reference": "702.206.",
+      "rule_text": [
+        {
+          "name": "702.206a",
+          "rule": "Reverberate is a keyword that represents a static ability and a triggered ability that function while the spell with reverberate is on the stack. “Reverberate (cost)” means “As an additional cost to cast this spell, you may pay (cost),” and “When you cast this spell, if you paid its reverberate cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        },
+        {
+          "name": "702.206b",
+          "rule": "A spell is “reverberated” if it's a copy and it has reverberate.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Quiet Meditation_KZD",
+          "name": "Quiet Meditation",
+          "original_text": "Mana cost: {U}\nType: Sorcery\nReverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card.",
+          "executable_text": "Mana cost: {U}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {2}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nDraw a card.",
+          "mana_cost": "{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Quiet Meditation_KZD",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Quiet Meditation",
+              "original_text": "Mana cost: {U}\nType: Sorcery\nReverberate {2} *(When you cast this spell, copy it if you paid its reverberate cost.)*\nDraw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Quiet Meditation",
+              "executable_text": "Mana cost: {U}\nType: Sorcery\nAs an additional cost to cast this spell, you may pay {2}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nDraw a card.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}\nDraw a card.",
+              "original_printed_rules_text": "Reverberate {2} (When you cast this spell, copy it if you paid its reverberate cost.)\nDraw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}\nDraw a card.",
+          "original_printed_rules_text": "Reverberate {2} (When you cast this spell, copy it if you paid its reverberate cost.)\nDraw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Single optional additional mana payment plus existing paid-label cast-trigger copy; not repeatable replicate and grants no official keyword identity. Permanent spell copies use existing normal copy resolution."
+      },
+      "implementation_status": "parser_composition",
+      "executable_definitions": [
+        {
+          "keyword": "Reverberate",
+          "template": "{Cost}",
+          "reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+          "statusPredicate": {
+            "spellCopy": true,
+            "customKeyword": "reverberate"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msem-457",
+      "keyword": "Reverberate",
+      "original_reminder": "When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.",
+      "executable_reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+      "source_cards": [
+        "Mystical Echo"
+      ],
+      "rule_reference": "702.206.",
+      "rule_text": [
+        {
+          "name": "702.206a",
+          "rule": "Reverberate is a keyword that represents a static ability and a triggered ability that function while the spell with reverberate is on the stack. “Reverberate (cost)” means “As an additional cost to cast this spell, you may pay (cost),” and “When you cast this spell, if you paid its reverberate cost, copy it. If the spell has any targets, you may choose new targets for the copy.”",
+          "custom": true
+        },
+        {
+          "name": "702.206b",
+          "rule": "A spell is “reverberated” if it's a copy and it has reverberate.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Mystical Echo_OTH",
+          "name": "Mystical Echo",
+          "original_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nReverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "executable_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nAs an additional cost to cast this spell, you may pay {2}{G}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "mana_cost": "{2}{G}",
+          "type_line": "Creature — Cat Reflection",
+          "power": "3",
+          "toughness": "3",
+          "source_card_key": "Mystical Echo_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Mystical Echo",
+              "original_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nReverberate {2}{G} *(When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)*\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Mystical Echo",
+              "executable_text": "Mana cost: {2}{G}\nType: Creature — Cat Reflection\nPower/Toughness: 3/3\nAs an additional cost to cast this spell, you may pay {2}{G}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+              "custom_keyword_identities": [
+                "reverberate"
+              ],
+              "custom_keyword_payments": [
+                "reverberate"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Reverberate {2}{G}\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+              "original_printed_rules_text": "Reverberate {2}{G} (When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn."
+            }
+          ],
+          "custom_keyword_identities": [
+            "reverberate"
+          ],
+          "custom_keyword_payments": [
+            "reverberate"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Reverberate {2}{G}\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "original_printed_rules_text": "Reverberate {2}{G} (When you cast this spell, copy it if you paid its reverberate cost. The copy becomes a permanent when it resolves.)\nMystical Echo gets +1/+1 for each other Reflection you control.\nWhenever you discard a card, Reflections you control gain trample until end of turn.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Single optional additional mana payment plus existing paid-label cast-trigger copy; not repeatable replicate and grants no official keyword identity. Permanent spell copies use existing normal copy resolution."
+      },
+      "implementation_status": "parser_composition",
+      "behavioral_assertions": [
+        {
+          "id": "actual-permanent-spell-copy",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::mystical_echo_paid_copy_resolves_as_a_token_permanent_without_replicate_identity",
+          "observable": "actual Mystical Echo source expansion pays once, makes one spell copy, copy becomes token permanent, original remains nontoken, no replicate identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ],
+      "executable_definitions": [
+        {
+          "keyword": "Reverberate",
+          "template": "{Cost}",
+          "reminder": "As an additional cost to cast this spell, you may pay {Cost}. When you cast this spell, if you paid this additional cost, copy this spell and you may choose new targets for the copy.",
+          "statusPredicate": {
+            "spellCopy": true,
+            "customKeyword": "reverberate"
+          }
+        }
+      ]
+    },
+    {
+      "id": "msem-690",
+      "keyword": "Harness",
+      "original_reminder": "You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.",
+      "source_cards": [
+        "Confusion"
+      ],
+      "rule_reference": "702.245.",
+      "rule_text": [
+        {
+          "name": "702.245a",
+          "rule": "“Harness” means “As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is that creature's power.”",
+          "custom": true
+        },
+        {
+          "name": "702.245b",
+          "rule": "The creature tapped this way “harnesses” that spell.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Confusion_MON",
+          "name": "Confusion",
+          "original_text": "Mana cost: {2}{U}\nType: Sorcery\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)*\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+          "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nReturn target nonland permanent to its owner's hand. if this spell paid the additional cost named power price, draw a card.",
+          "mana_cost": "{2}{U}",
+          "type_line": "Sorcery",
+          "power": "",
+          "toughness": "",
+          "rewrite_note": "This source has exactly one optional additional cost, so its harnessed condition is equivalent to testing payment of that cost. The source display Harness remains preserved separately; scoped import alias must be honored.",
+          "source_card_key": "Confusion_MON",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Confusion",
+              "original_text": "Mana cost: {2}{U}\nType: Sorcery\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)*\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card."
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Confusion",
+              "executable_text": "Mana cost: {2}{U}\nType: Sorcery\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nReturn target nonland permanent to its owner's hand. if this spell paid the additional cost named power price, draw a card.",
+              "custom_keyword_identities": [
+                "power price"
+              ],
+              "custom_keyword_payments": [
+                "power price"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Harness\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+              "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card."
+            }
+          ],
+          "custom_keyword_identities": [
+            "power price"
+          ],
+          "custom_keyword_payments": [
+            "power price"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Harness\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+          "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce this spell's mana cost by that creature's power.)\nReturn target nonland permanent to its owner's hand. If this spell was harnessed, draw a card.",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "implementation_status": "operation_verified_source_materialization_pending",
+      "boundary_reason": "Needs optional casting-cost announcement and power-linked reduction through shared existing operations; dependent harnessed-by receipts need scoped references, never the permanent harnessed designation.",
+      "executable_keyword": "MSEM Powerlink",
+      "source_display_keyword": "Harness",
+      "alias_policy": "Explicit MSEM import alias only. Preserve original source display and rewrite linked cost references in the same source scope; never globally override official/permanent Harness identity.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Additional optional tap cost and power of its exact payment receipt reduce the total generic cast cost; no official identity or timing permission. Full source dependent harnessed/by-Ox references and granted ability scope remain pending."
+      },
+      "behavioral_assertions": [
+        {
+          "id": "optional-tap-power",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::optional_tap_power_reduction_pays_total_cost_and_preserves_identity",
+          "observable": "pay/decline, total increased cost reduction, no alternative-casting or harnessed identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "scoped-cost-receipt",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::scoped_optional_tap_metric_ignores_a_second_unrelated_tap_cost_even_when_declined",
+          "observable": "unrelated mandatory tap never contributes power",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "reserved-tap-source",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::the_tapped_discount_creature_cannot_also_pay_the_remaining_mana_cost",
+          "observable": "discount resource and tap mana ability cannot use the same tap",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ]
+    },
+    {
+      "id": "msem-691",
+      "keyword": "Harness",
+      "original_reminder": "You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.",
+      "source_cards": [
+        "Darutu, God of Bounty"
+      ],
+      "rule_reference": "702.245.",
+      "rule_text": [
+        {
+          "name": "702.245a",
+          "rule": "“Harness” means “As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is that creature's power.”",
+          "custom": true
+        },
+        {
+          "name": "702.245b",
+          "rule": "The creature tapped this way “harnesses” that spell.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Darutu, God of Bounty_OTH",
+          "name": "Darutu, God of Bounty",
+          "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. *(You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)*",
+          "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have custom keyword \"power price\", and \"As an additional cost named 'power price' to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.\". ",
+          "mana_cost": "{1}{G}{W}",
+          "type_line": "Legendary Enchantment Creature — Ox God",
+          "power": "2",
+          "toughness": "4",
+          "source_card_key": "Darutu, God of Bounty_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Darutu, God of Bounty",
+              "original_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. *(You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)*"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Darutu, God of Bounty",
+              "executable_text": "Mana cost: {1}{G}{W}\nType: Legendary Enchantment Creature — Ox God\nPower/Toughness: 2/4\nVigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have custom keyword \"power price\", and \"As an additional cost named 'power price' to cast this spell, you may tap an untapped Ox you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.\". ",
+              "custom_keyword_identities": [],
+              "custom_keyword_payments": [],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells.",
+              "original_printed_rules_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. (You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)"
+            }
+          ],
+          "custom_keyword_identities": [],
+          "custom_keyword_payments": [],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells.",
+          "original_printed_rules_text": "Vigilance\nWhenever Darutu, God of Bounty enters or attacks, you may put a +1/+1 counter on another target Ox you control.\nEnchantment spells you cast have harness. Only Oxen can be tapped to harness those spells. (You may tap an Ox you control as you cast that spell. If you do, reduce that spell's mana cost by that Ox's power.)",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "implementation_status": "operation_verified_source_materialization_pending",
+      "boundary_reason": "Needs optional casting-cost announcement and power-linked reduction through shared existing operations; dependent harnessed-by receipts need scoped references, never the permanent harnessed designation.",
+      "executable_keyword": "MSEM Powerlink",
+      "source_display_keyword": "Harness",
+      "alias_policy": "Explicit MSEM import alias only. Preserve original source display and rewrite linked cost references in the same source scope; never globally override official/permanent Harness identity.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Additional optional tap cost and power of its exact payment receipt reduce the total generic cast cost; no official identity or timing permission. Full source dependent harnessed/by-Ox references and granted ability scope remain pending."
+      },
+      "behavioral_assertions": [
+        {
+          "id": "optional-tap-power",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::optional_tap_power_reduction_pays_total_cost_and_preserves_identity",
+          "observable": "pay/decline, total increased cost reduction, no alternative-casting or harnessed identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "scoped-cost-receipt",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::scoped_optional_tap_metric_ignores_a_second_unrelated_tap_cost_even_when_declined",
+          "observable": "unrelated mandatory tap never contributes power",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "reserved-tap-source",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::the_tapped_discount_creature_cannot_also_pay_the_remaining_mana_cost",
+          "observable": "discount resource and tap mana ability cannot use the same tap",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ]
+    },
+    {
+      "id": "msem-692",
+      "keyword": "Harness",
+      "original_reminder": "You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.",
+      "executable_reminder": "As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way.",
+      "source_cards": [
+        "Darutu's Plow"
+      ],
+      "rule_reference": "702.245.",
+      "rule_text": [
+        {
+          "name": "702.245a",
+          "rule": "“Harness” means “As an additional cost to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is that creature's power.”",
+          "custom": true
+        },
+        {
+          "name": "702.245b",
+          "rule": "The creature tapped this way “harnesses” that spell.",
+          "custom": true
+        }
+      ],
+      "scope": "msem",
+      "representative_cards": [
+        {
+          "id": "Darutu's Plow_OTH",
+          "name": "Darutu's Plow",
+          "original_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)*\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "executable_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nWhen Darutu's Plow enters, if an Ox was tapped to pay its power price additional cost, choose an Ox from the creatures tapped to pay its power price additional cost. untap the selected power price payment object and attach Darutu's Plow to the selected power price payment object.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "mana_cost": "{2}{W}",
+          "type_line": "Enchantment Artifact — Equipment",
+          "power": "",
+          "toughness": "",
+          "source_card_key": "Darutu's Plow_OTH",
+          "source_face": "front",
+          "source_shape": "normal",
+          "loyalty": "",
+          "defense": "",
+          "source_faces": [
+            {
+              "face": "front",
+              "name": "Darutu's Plow",
+              "original_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nHarness *(You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)*\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}"
+            }
+          ],
+          "executable_faces": [
+            {
+              "name": "Darutu's Plow",
+              "executable_text": "Mana cost: {2}{W}\nType: Enchantment Artifact — Equipment\nAs an additional cost named \"power price\" to cast this spell, you may tap an untapped creature you control. This spell costs {X} less to cast, where X is the power of the creature tapped this way\nWhen Darutu's Plow enters, if an Ox was tapped to pay its power price additional cost, choose an Ox from the creatures tapped to pay its power price additional cost. untap the selected power price payment object and attach Darutu's Plow to the selected power price payment object.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+              "custom_keyword_identities": [
+                "power price"
+              ],
+              "custom_keyword_payments": [
+                "power price"
+              ],
+              "supplied_card_definitions": [],
+              "custom_subtypes": [],
+              "custom_token_definitions": [],
+              "custom_keyword_counter_definitions": [],
+              "original_display_text": "Harness\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+              "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}"
+            }
+          ],
+          "custom_keyword_identities": [
+            "power price"
+          ],
+          "custom_keyword_payments": [
+            "power price"
+          ],
+          "supplied_card_definitions": [],
+          "custom_subtypes": [],
+          "custom_token_definitions": [],
+          "custom_keyword_counter_definitions": [],
+          "original_display_text": "Harness\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "original_printed_rules_text": "Harness (You may tap a creature you control as you cast this spell. If you do, reduce that spell's mana cost by that creature's power.)\nWhen Darutu's Plow enters, if it was harnessed by an Ox, untap that Ox and attach Darutu's Plow to it.\nEquipped creature gets +0/+2 and assigns combat damage equal to its toughness rather than its power.\nEquip {3}",
+          "rewrite_status": "frontend_materialized_unverified"
+        }
+      ],
+      "implementation_status": "operation_verified_source_materialization_pending",
+      "boundary_reason": "Needs optional casting-cost announcement and power-linked reduction through shared existing operations; dependent harnessed-by receipts need scoped references, never the permanent harnessed designation.",
+      "executable_keyword": "MSEM Powerlink",
+      "source_display_keyword": "Harness",
+      "alias_policy": "Explicit MSEM import alias only. Preserve original source display and rewrite linked cost references in the same source scope; never globally override official/permanent Harness identity.",
+      "semantic_equivalence": {
+        "status": "reviewed",
+        "evidence": "Additional optional tap cost and power of its exact payment receipt reduce the total generic cast cost; no official identity or timing permission. Full source dependent harnessed/by-Ox references and granted ability scope remain pending."
+      },
+      "behavioral_assertions": [
+        {
+          "id": "optional-tap-power",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::optional_tap_power_reduction_pays_total_cost_and_preserves_identity",
+          "observable": "pay/decline, total increased cost reduction, no alternative-casting or harnessed identity",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "scoped-cost-receipt",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::scoped_optional_tap_metric_ignores_a_second_unrelated_tap_cost_even_when_declined",
+          "observable": "unrelated mandatory tap never contributes power",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        },
+        {
+          "id": "reserved-tap-source",
+          "status": "passed",
+          "test_reference": "custom_casting_costs::the_tapped_discount_creature_cannot_also_pay_the_remaining_mana_cost",
+          "observable": "discount resource and tap mana ability cannot use the same tap",
+          "validation_log": "reports/custom-mechanics/validation/msem-casting-round8.log"
+        }
+      ]
+    }
+  ]
+}
